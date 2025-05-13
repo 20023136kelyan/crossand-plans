@@ -1,0 +1,146 @@
+export const COMMON_US_FOOD_ALLERGENS: string[] = [
+  "Milk",
+  "Eggs",
+  "Peanuts",
+  "Almonds",
+  "Walnuts",
+  "Pecans",
+  "Cashews", // Common Tree Nuts
+  "Cod",
+  "Salmon",
+  "Tuna", // Common Fish
+  "Shrimp",
+  "Crab",
+  "Lobster", // Common Shellfish
+  "Wheat",
+  "Soy",
+  "Sesame",
+  "Mustard",
+  "Corn",
+  "Sulfites",
+];
+
+export const COMMON_DIETARY_RESTRICTIONS: string[] = [
+  "Vegetarian",
+  "Vegan",
+  "Pescatarian",
+  "Gluten-Free",
+  "Dairy-Free",
+  "Lactose-Intolerant",
+  "Nut-Free", // Broader than specific nut allergies
+  "Soy-Free",
+  "Egg-Free",
+  "Halal",
+  "Kosher",
+  "Low-Carb",
+  "Keto",
+  "Paleo",
+  "Low-FODMAP",
+  "No Red Meat",
+  "No Pork",
+  "Sugar-Free",
+];
+
+export const COMMON_CUISINES: string[] = [
+  "Italian",
+  "Mexican",
+  "Chinese (Cantonese)",
+  "Chinese (Sichuan)",
+  "Chinese (General)",
+  "Indian (North)",
+  "Indian (South)",
+  "Indian (General)",
+  "Japanese (Sushi)",
+  "Japanese (Ramen)",
+  "Japanese (General)",
+  "Thai",
+  "French",
+  "Spanish (Tapas)",
+  "Spanish (General)",
+  "Greek",
+  "American (New American)",
+  "American (Comfort Food)",
+  "American (BBQ)",
+  "American (Burgers)",
+  "Vietnamese",
+  "Korean (BBQ)",
+  "Korean (General)",
+  "Mediterranean",
+  "Middle Eastern (Lebanese)",
+  "Middle Eastern (Persian)",
+  "Middle Eastern (General)",
+  "Caribbean",
+  "Brazilian",
+  "German",
+  "British",
+  "African (Ethiopian)",
+  "African (Nigerian)",
+  "African (General)",
+  "Cajun/Creole",
+  "Soul Food",
+  "Seafood",
+  "Steakhouse",
+  "Breakfast/Brunch",
+  "Desserts/Bakery",
+  "Pizza",
+];
+
+export const COMMON_PHYSICAL_LIMITATIONS: string[] = [
+  "Wheelchair User",
+  "Difficulty with Stairs",
+  "Limited Mobility",
+  "Requires Ramp Access",
+  "Visual Impairment",
+  "Hearing Impairment",
+  "Needs Frequent Rests",
+  "Sensitivity to Flashing Lights",
+];
+
+export const COMMON_ACTIVITY_TYPES: string[] = [
+  "Outdoors (Hiking, Parks)",
+  "Arts & Culture (Museums, Theater)",
+  "Sports (Playing)",
+  "Sports (Watching)",
+  "Relaxation (Spa, Meditation)",
+  "Adventure (Rock Climbing, Theme Parks)",
+  "Food & Drink (Restaurants, Bars, Cooking)",
+  "Social Gatherings (Parties, Meetups)",
+  "Shopping",
+  "Gaming (Video Games, Board Games)",
+  "Live Music/Concerts",
+  "Movies/Cinema",
+  "Educational (Workshops, Lectures)",
+  "Volunteering",
+  "Nightlife (Clubs, Dancing)",
+];
+
+export const COMMON_ENVIRONMENTAL_SENSITIVITIES: string[] = [
+  "Noise Sensitivity (Prefers Quiet)",
+  "Crowd Aversion (Prefers Less Crowded)",
+  "Sensitivity to Strong Smells",
+  "Claustrophobia (Dislikes Enclosed Spaces)",
+  "Agoraphobia (Dislikes Open/Public Spaces)",
+  "Temperature Sensitivity (Hot/Cold)",
+  "Motion Sickness",
+];
+
+export const COMMON_SOCIAL_PREFERENCES: string[] = [
+  "Small groups (2-4 people)",
+  "Medium groups (5-8 people)",
+  "Large groups (9+ people)",
+  "One-on-one interactions",
+  "Prefers familiar people",
+  "Enjoys meeting new people",
+  "Prefers structured activities",
+  "Prefers spontaneous activities",
+];
+
+export const COMMON_PRICE_RANGES: string[] = [
+  "Free",
+  "Budget (0-15 USD)",
+  "Mid-range (15-40 USD)",
+  "High-end (40-100 USD)",
+  "Luxury (100+ USD)",
+  "Contact for Price",
+  "Varies"
+];

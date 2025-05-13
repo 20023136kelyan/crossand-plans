@@ -1,0 +1,41 @@
+{
+  "name": "Wine and Conversation in North Beach",
+  "description": "Enjoy a relaxed and intimate evening at a cozy wine bar in North Beach.",
+  "eventTime": "2025-05-13T09:00:00.000Z",
+  "eventType": "Casual Date",
+  "priceRange": "Budget (0-15 USD)",
+  "invitedParticipantUserIds": ["friend_1"],
+  "status": "draft",
+  "itinerary": [
+    {
+      "id": "ai_itin_1747123761817_7qwjp",
+      "placeName": "Tony Nik's Cafe",
+      "address": "Tony Nik's Cafe, San Francisco",
+      "city": "San Francisco",
+      "description": "Savor artisanal wines and small bites in a warm and inviting atmosphere, perfect for conversation and connection.",
+      "startTime": "2025-05-13T09:00:00.000Z",
+      "endTime": "2025-05-13T11:00:00.000Z",
+      "rating": null,
+      "reviewCount": null,
+      "activitySuggestions": [
+        "Share a cheese board",
+        "Sample different wines",
+        "Enjoy the lively ambiance"
+      ],
+      "businessStatus": "OPERATIONAL",
+      "isOperational": true,
+      "statusText": "Open for business",
+      "googleMapsImageUrl": "https://maps.googleapis.com/maps/api/staticmap?center=Tony+Nik's+Cafe,+San+Francisco&zoom=15&size=400x225&maptype=roadmap&markers=color:red%7CTony+Nik's+Cafe,+San+Francisco"
+    }
+  ],
+  "selectedPoint": {
+    "lat": 37.78072892098565,
+    "lng": -122.41014842397276
+  },
+  "mapRadiusKm": 5,
+  "userEnteredCityForStep2": "San Francisco",
+  "hostId": "user_123",
+  "location": "Tony Nik's Cafe",
+  "city": "San Francisco",
+  "planType": "single-stop"
+} 
