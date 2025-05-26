@@ -2,8 +2,9 @@
 import 'server-only';
 import { firestoreAdmin } from '@/lib/firebaseAdmin';
 import type { FeedPost, FeedPostVisibility, UserRoleType, FeedComment } from '@/types/user';
-import { Timestamp as AdminTimestamp, FieldValue } from 'firebase-admin/firestore';
+import { Timestamp as AdminTimestamp, FieldValue, type DocumentData, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { getFriendUidsAdmin } from '@/services/userService.server'; 
+import type { FirebaseFirestore } from 'firebase-admin/firestore';
 
 const FEED_POSTS_COLLECTION = 'feedPosts';
 const COMMENTS_SUBCOLLECTION = 'comments';
@@ -554,5 +555,76 @@ export const deleteCommentFromPostAdmin = async (
       errorCode: "TRANSACTION_FAILED", 
       originalError: error.message || String(error) 
     };
+  }
+};
+
+export const updateUserAvatarInFeedAdmin = async (userId: string, newAvatarUrl: string): Promise<void> => {
+  if (!firestoreAdmin) {
+    console.error("[updateUserAvatarInFeedAdmin] Firestore Admin SDK is not initialized.");
+    throw new Error("Server configuration error: Database service not available.");
+  }
+
+  try {
+    // Update all feed posts by the user
+    const postsQuery = firestoreAdmin.collection(FEED_POSTS_COLLECTION).where('userId', '==', userId);
+    const postsSnapshot = await postsQuery.get();
+    
+    if (!postsSnapshot.empty) {
+      const batch = firestoreAdmin.batch();
+      let operationsCount = 0;
+      const MAX_BATCH_SIZE = 500;
+      let currentBatch = batch;
+
+      for (const doc of postsSnapshot.docs as QueryDocumentSnapshot<DocumentData>[]) {
+        currentBatch.update(doc.ref, { userAvatarUrl: newAvatarUrl });
+        operationsCount++;
+
+        if (operationsCount >= MAX_BATCH_SIZE) {
+          await currentBatch.commit();
+          currentBatch = firestoreAdmin.batch();
+          operationsCount = 0;
+        }
+      }
+
+      if (operationsCount > 0) {
+        await currentBatch.commit();
+      }
+    }
+
+    // Update all comments by the user across all posts
+    const allPostsQuery = firestoreAdmin.collection(FEED_POSTS_COLLECTION);
+    const allPostsSnapshot = await allPostsQuery.get();
+
+    for (const postDoc of allPostsSnapshot.docs as QueryDocumentSnapshot<DocumentData>[]) {
+      const commentsQuery = postDoc.ref.collection(COMMENTS_SUBCOLLECTION).where('userId', '==', userId);
+      const commentsSnapshot = await commentsQuery.get();
+
+      if (!commentsSnapshot.empty) {
+        const batch = firestoreAdmin.batch();
+        let operationsCount = 0;
+        const MAX_BATCH_SIZE = 500;
+        let currentBatch = batch;
+
+        for (const commentDoc of commentsSnapshot.docs as QueryDocumentSnapshot<DocumentData>[]) {
+          currentBatch.update(commentDoc.ref, { userAvatarUrl: newAvatarUrl });
+          operationsCount++;
+
+          if (operationsCount >= MAX_BATCH_SIZE) {
+            await currentBatch.commit();
+            currentBatch = firestoreAdmin.batch();
+            operationsCount = 0;
+          }
+        }
+
+        if (operationsCount > 0) {
+          await currentBatch.commit();
+        }
+      }
+    }
+
+    console.log(`[updateUserAvatarInFeedAdmin] Successfully updated avatar URL for user ${userId} in all feed posts and comments.`);
+  } catch (error) {
+    console.error(`[updateUserAvatarInFeedAdmin] Error updating avatar URL for user ${userId}:`, error);
+    throw error;
   }
 };

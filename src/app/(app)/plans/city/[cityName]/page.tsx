@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -24,51 +23,84 @@ import {
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { PlanCard, UserPlanViewStatus } from '../../../plans/page'; 
 import type { Plan as PlanType } from '@/types/user';
-import { getPublishedPlansByCityAdmin } from '@/services/planService.server';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from "@/lib/utils";
 import { format, isSameDay, startOfMonth, parseISO, isFuture, isPast, isValid } from 'date-fns';
+import { getPublishedPlansByCityAction } from '@/app/actions/planActions';
+import { useToast } from '@/hooks/use-toast';
+
+interface DayWithDotProps { 
+  date: Date; 
+  displayMonth: Date;
+  selectedDate?: Date | null;
+  eventDates: Date[];
+}
+
+const DayWithDot = ({ date, displayMonth, selectedDate, eventDates }: DayWithDotProps) => {
+  const isCurrentDisplayMonth = isValid(date) && isValid(displayMonth) && date.getMonth() === displayMonth.getMonth();
+  const hasEvent = isValid(date) && eventDates.some((eventDateItem: Date) => isValid(eventDateItem) && isSameDay(eventDateItem, date));
+  return (
+    <div className="relative h-full w-full flex items-center justify-center">
+      {isValid(date) ? format(date, 'd') : ''}
+      {hasEvent && isCurrentDisplayMonth && selectedDate && isValid(selectedDate) && isSameDay(date, selectedDate) && (
+        <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-primary-foreground" />
+      )}
+      {hasEvent && isCurrentDisplayMonth && selectedDate && isValid(selectedDate) && !isSameDay(date, selectedDate) && (
+        <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-primary" />
+      )}
+      {hasEvent && isCurrentDisplayMonth && (!selectedDate || !isValid(selectedDate)) && (
+        <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-primary" />
+      )}
+    </div>
+  );
+};
 
 export default function CityPlansPage() {
   const params = useParams();
   const router = useRouter();
-  const { user } = useAuth(); 
-  
-  const [decodedCityName, setDecodedCityName] = useState<string | null>(null);
-  const [cityPlans, setCityPlans] = useState<PlanType[]>([]);
+  const { toast } = useToast();
+  const cityName = params.cityName as string;
+  const { user: currentUser } = useAuth();
+  const [plans, setPlans] = useState<PlanType[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [decodedCityName, setDecodedCityName] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: 'date' | 'name'; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [currentMonth, setCurrentMonth] = useState<Date>(startOfMonth(new Date()));
 
   useEffect(() => {
-    if (params.cityName) {
+    const fetchPlans = async () => {
+      setLoading(true);
       try {
-        const name = decodeURIComponent(params.cityName as string);
-        setDecodedCityName(name);
-        setLoading(true);
-        getPublishedPlansByCityAdmin(name)
-          .then(plans => {
-            setCityPlans(plans);
-          })
-          .catch(err => {
-            console.error("Error fetching plans for city:", name, err);
-            setCityPlans([]); 
-          })
-          .finally(() => setLoading(false));
-      } catch (e) {
-        console.error("Error decoding city name:", e);
-        setDecodedCityName(params.cityName as string); 
+        const result = await getPublishedPlansByCityAction(cityName);
+        if (result.success && result.plans) {
+          setPlans(result.plans);
+          setDecodedCityName(cityName);
+        } else {
+          toast({
+            title: "Error",
+            description: result.error || "Failed to load plans",
+            variant: "destructive"
+          });
+        }
+      } catch (err: any) {
+        console.error('Error fetching city plans:', err);
+        toast({
+          title: "Error",
+          description: "Failed to load plans",
+          variant: "destructive"
+        });
+      } finally {
         setLoading(false);
       }
-    } else {
-      setLoading(false);
-    }
-  }, [params.cityName]);
+    };
+
+    fetchPlans();
+  }, [cityName, toast]);
 
   const handleSortCycle = () => {
     setSortConfig(prevConfig => {
@@ -80,16 +112,16 @@ export default function CityPlansPage() {
   };
 
   const baseFilteredPlans = useMemo(() => {
-    let plans = [...cityPlans];
+    let filteredPlans = [...plans];
     if (searchTerm && viewMode === 'list') {
-      plans = plans.filter(plan =>
+      filteredPlans = filteredPlans.filter(plan =>
         plan.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (plan.description && plan.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
         plan.location.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
-    return plans;
-  }, [cityPlans, searchTerm, viewMode]);
+    return filteredPlans;
+  }, [plans, searchTerm, viewMode]);
 
   const sortedPlans = useMemo(() => {
     let plans = [...baseFilteredPlans];
@@ -134,7 +166,7 @@ export default function CityPlansPage() {
   }, [plansForCalendar]);
 
   const plansForSelectedDate = useMemo(() => {
-    if (!selectedDate || !isValid(selectedDate)) return [];
+    if (!selectedDate) return [];
     return plansForCalendar.filter(plan => {
       if (!plan.eventTime) return false;
       const planDate = parseISO(plan.eventTime);
@@ -155,51 +187,53 @@ export default function CityPlansPage() {
     </div>
   );
 
-  interface DayWithDotProps { date: Date; displayMonth: Date; }
-  const DayWithDot: React.FC<DayWithDotProps> = ({ date, displayMonth }) => {
-    const isCurrentDisplayMonth = isValid(date) && isValid(displayMonth) && date.getMonth() === displayMonth.getMonth();
-    const hasEvent = isValid(date) && eventDates.some(eventDateItem => isValid(eventDateItem) && isSameDay(eventDateItem, date));
+  let calendarFooter = null;
+  if (plansForSelectedDate.length > 0) {
+    calendarFooter = (
+      <div className="p-3 space-y-2">
+        <h4 className="font-medium">Plans for {format(selectedDate!, 'MMMM d, yyyy')}</h4>
+        <div className="space-y-2">
+          {plansForSelectedDate.map(plan => (
+            <PlanCard key={plan.id} plan={plan} currentUserUid={currentUser?.uid} />
+          ))}
+        </div>
+      </div>
+    );
+  } else if (selectedDate) {
+    calendarFooter = (
+      <p className="text-sm text-muted-foreground p-3 text-center">
+        No plans for {format(selectedDate, 'MMMM d, yyyy')}
+      </p>
+    );
+  } else {
+    calendarFooter = (
+      <p className="text-sm text-muted-foreground p-3 text-center">
+        Please pick a day to see plans.
+      </p>
+    );
+  }
+
+  // Calendar day render function
+  const renderCalendarDay = useCallback((props: { date: Date; displayMonth: Date }) => {
+    const { date: day, displayMonth } = props;
+    const isCurrentDisplayMonth = day.getMonth() === displayMonth.getMonth();
+    const hasEvent = eventDates.some(eventDate => isSameDay(eventDate, day));
+    
     return (
       <div className="relative h-full w-full flex items-center justify-center">
-        {isValid(date) ? format(date, 'd') : ''}
-        {hasEvent && isCurrentDisplayMonth && selectedDate && isValid(selectedDate) && isSameDay(date, selectedDate) && (
+        {format(day, 'd')}
+        {hasEvent && isCurrentDisplayMonth && selectedDate && isSameDay(day, selectedDate) && (
           <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-primary-foreground" />
         )}
-        {hasEvent && isCurrentDisplayMonth && selectedDate && isValid(selectedDate) && !isSameDay(date, selectedDate) && (
+        {hasEvent && isCurrentDisplayMonth && selectedDate && !isSameDay(day, selectedDate) && (
           <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-primary" />
         )}
-        {hasEvent && isCurrentDisplayMonth && (!selectedDate || !isValid(selectedDate)) && (
+        {hasEvent && isCurrentDisplayMonth && !selectedDate && (
           <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-primary" />
         )}
       </div>
     );
-  };
-  
-  let calendarFooter = <p className="text-sm text-muted-foreground p-3 text-center">Please pick a day to see plans.</p>;
-  if (selectedDate && isValid(selectedDate)) {
-    if (plansForSelectedDate.length > 0) {
-      calendarFooter = (
-        <div className="p-3 pt-2 max-h-48 overflow-y-auto custom-scrollbar-horizontal">
-          <h4 className="font-medium text-sm mb-1.5 text-foreground/80">
-            Plans for {format(selectedDate, 'PPP')}
-          </h4>
-          <ul className="space-y-1.5">
-            {plansForSelectedDate.map(plan => (
-              <li key={plan.id} className="text-xs">
-                <Link href={`/plans/${plan.id}`} className="hover:underline text-primary flex items-center gap-1.5">
-                  <span className="truncate">{plan.name}</span>
-                  <span className="text-muted-foreground flex-shrink-0">{plan.eventTime && isValid(parseISO(plan.eventTime)) ? format(parseISO(plan.eventTime), 'p') : ''}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      );
-    } else {
-      calendarFooter = <p className="text-sm text-muted-foreground p-3 text-center">No plans for {format(selectedDate, 'PPP')}.</p>;
-    }
-  }
-
+  }, [eventDates, selectedDate]);
 
   if (loading) {
     return (
@@ -288,7 +322,7 @@ export default function CityPlansPage() {
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {upcomingPlans.map(plan => (
-                        <PlanCard key={plan.id} plan={plan} currentUserUid={user?.uid} />
+                        <PlanCard key={plan.id} plan={plan} currentUserUid={currentUser?.uid} />
                     ))}
                     </div>
                 )}
@@ -303,7 +337,7 @@ export default function CityPlansPage() {
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {pastPlans.map(plan => (
-                        <PlanCard key={plan.id} plan={plan} currentUserUid={user?.uid} />
+                        <PlanCard key={plan.id} plan={plan} currentUserUid={currentUser?.uid} />
                     ))}
                     </div>
                 )}
@@ -317,32 +351,22 @@ export default function CityPlansPage() {
                         message={`There are no ${activeTab} plans in ${decodedCityName} to display on the calendar.`}
                     />
                 ) : (
-                    <div className="bg-card p-2 sm:p-4 rounded-lg shadow">
+                    <div className="flex flex-col space-y-4">
                         <CalendarComponent
                         mode="single"
                         selected={selectedDate}
-                        onSelect={(day) => {
-                            if (day && isValid(day)) { setSelectedDate(day); setCurrentMonth(startOfMonth(day));} 
-                            else { setSelectedDate(undefined); }
-                        }}
+                        onSelect={(date) => setSelectedDate(date || undefined)}
                         month={currentMonth}
                         onMonthChange={setCurrentMonth}
-                        className="rounded-md [&_button[name=day]]:rounded-md"
+                        className="rounded-md border shadow"
                         classNames={{
-                            day_selected: 'bg-primary text-primary-foreground hover:bg-primary/90 focus:bg-primary focus:text-primary-foreground',
-                            day_today: 'bg-accent text-accent-foreground',
-                            months: 'flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0 justify-center',
-                            month: 'space-y-4 w-full sm:w-auto',
-                            caption_label: 'text-lg font-medium text-foreground/90',
-                            head_cell: 'text-muted-foreground rounded-md w-full sm:w-10 font-normal text-[0.8rem]',
-                            cell: 'h-10 w-full sm:w-10 text-center text-sm p-0 relative first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20',
-                            day: 'h-10 w-10 p-0 font-normal aria-selected:opacity-100 rounded-md',
-                            nav_button: cn(buttonVariants({ variant: "outline" }), "h-8 w-8 bg-transparent p-0 opacity-70 hover:opacity-100"),
+                          day_selected: 'bg-primary text-primary-foreground hover:bg-primary/90 focus:bg-primary focus:text-primary-foreground',
+                          day_today: 'bg-accent text-accent-foreground',
                         }}
-                        components={{ DayContent: DayWithDot }}
-                        footer={calendarFooter}
-                        modifiers={{ event: eventDates.filter(date => isValid(date)) as Date[] }}
-                        modifiersClassNames={{ event: 'has-event' }}
+                        components={{
+                          DayContent: renderCalendarDay
+                        }}
+                        modifiers={{ hasEvent: eventDates }}
                         />
                     </div>
                 )}

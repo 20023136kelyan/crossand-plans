@@ -173,9 +173,6 @@ export default function UserProfilePage() {
       });
       return;
     }
-    setLoadingProfile(true);
-    setIsFollowing(null);
-    setFriendshipStatusWithViewer(null);
 
     try {
       const result = await fetchPublicUserProfileDataAction(profileId, currentUser?.uid || null);
@@ -626,8 +623,13 @@ export default function UserProfilePage() {
 
         <div className="flex flex-col items-center px-4 md:px-0 py-6">
           <div className="relative group">
-            <Avatar className={cn("h-24 w-24 sm:h-28 sm:w-28 md:h-32 md:w-32 text-4xl border-2 border-primary/30 shadow-lg", avatarPreviewUrl && "ring-2 ring-offset-2 ring-offset-background ring-primary")}>
-              <AvatarImage src={avatarPreviewUrl || userProfile.avatarUrl || undefined} alt={userProfile.name || "User Avatar"} data-ai-hint="person portrait" />
+            <Avatar className={cn("h-24 w-24 sm:h-28 sm:w-28 md:h-32 md:w-32 text-4xl border-2 border-primary/30 shadow-lg", avatarPreviewUrl && "ring-2 ring-offset-2 ring-offset-background ring-primary")}
+              key={avatarPreviewUrl || userProfile.avatarUrl || 'default'}>
+              <AvatarImage 
+                src={avatarPreviewUrl || userProfile.avatarUrl || undefined} 
+                alt={userProfile.name || "User Avatar"} 
+                data-ai-hint="person portrait"
+              />
               <AvatarFallback>{userInitial}</AvatarFallback>
             </Avatar>
             {isOwnProfile && !avatarPreviewUrl && (
@@ -674,58 +676,63 @@ export default function UserProfilePage() {
           )}
 
          {!avatarPreviewUrl && (
-          <div className="flex flex-col xs:flex-row gap-2 mt-0 w-full max-w-xs justify-center">
+          <div className="flex flex-row gap-2 mt-4 w-full max-w-xs justify-center">
             {isOwnProfile ? (
-              <>
-                <Button variant="outline" className="w-full xs:flex-1 h-9 text-sm" asChild>
-                  <Link href="/onboarding">
-                    <Edit3 className="mr-2 h-4 w-4" /> Edit Profile
-                  </Link>
-                </Button>
-              </>
+              <Button variant="outline" className="w-full h-9 text-sm" asChild>
+                <Link href="/onboarding">
+                  <Edit3 className="mr-2 h-4 w-4" /> Edit Profile
+                </Link>
+              </Button>
             ) : (
               <>
                 {friendshipStatusWithViewer === 'friends' ? (
-                  <>
+                  <div className="flex gap-2 w-full">
+                    <Button variant="outline" className="flex-1 h-9 text-sm" onClick={handleInitiateChat} disabled={actionLoading || isInitiatingChat}>
+                      {isInitiatingChat ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <MessageSquare className="mr-2 h-4 w-4" />} Message
+                    </Button>
                     <Button 
                       variant="outline" 
-                      className={cn("w-full xs:flex-1 h-9 text-sm border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive")} 
+                      className={cn("flex-1 h-9 text-sm text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30")} 
                       disabled={actionLoading || followActionLoading} 
                       onClick={() => handleFriendRequestButtonAction('remove')}
                     >
                       {(actionLoading) ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4"/>} 
                       Unfriend
                     </Button>
-                    <Button variant="outline" className="w-full xs:flex-1 h-9 text-sm border-border/50 hover:bg-accent/50" onClick={handleInitiateChat} disabled={actionLoading || isInitiatingChat}>
-                      {isInitiatingChat ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <MessageSquare className="mr-2 h-4 w-4" />} Message
-                    </Button>
-                  </>
+                  </div>
                 ) : friendshipStatusWithViewer === 'pending_sent' ? (
-                  <Button variant="outline" className="w-full xs:flex-1 h-9 text-sm" disabled={actionLoading || followActionLoading} onClick={() => handleFriendRequestButtonAction('cancel')}>
+                  <Button variant="outline" className="w-full h-9 text-sm" disabled={actionLoading || followActionLoading} onClick={() => handleFriendRequestButtonAction('cancel')}>
                     {(actionLoading) ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <XIcon className="mr-2 h-4 w-4" />} Request Sent
                   </Button>
                 ) : friendshipStatusWithViewer === 'pending_received' ? (
-                  <>
-                    <Button className="w-full xs:flex-1 h-9 text-sm" disabled={actionLoading || followActionLoading} onClick={() => handleFriendRequestButtonAction('accept')}>
+                  <div className="flex gap-2 w-full">
+                    <Button className="flex-1 h-9 text-sm" disabled={actionLoading || followActionLoading} onClick={() => handleFriendRequestButtonAction('accept')}>
                       {(actionLoading) ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Check className="mr-2 h-4 w-4" />} Accept
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleFriendRequestButtonAction('decline')} disabled={actionLoading || followActionLoading} className="w-full xs:flex-1 h-9 text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10">Decline</Button>
-                  </>
+                    <Button variant="outline" onClick={() => handleFriendRequestButtonAction('decline')} disabled={actionLoading || followActionLoading} className="flex-1 h-9 text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10">
+                      Decline
+                    </Button>
+                  </div>
                 ) : (
-                  <>
+                  <div className="flex gap-2 w-full">
                     <Button 
                       variant="default" 
-                      className={cn("w-full xs:flex-1 h-9 text-sm")} 
+                      className="flex-1 h-9 text-sm"
                       disabled={followActionLoading || isFollowing === null} 
                       onClick={() => handleFriendRequestButtonAction('send')}
                     >
                       {(followActionLoading) ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4" />}
-                      {isFollowing === null ? "Loading..." : 'Add Friend'}
+                      Add Friend
                     </Button>
-                    <Button variant="outline" className="w-full xs:flex-1 h-9 text-sm border-border/50 hover:bg-accent/50" onClick={handleInitiateChat} disabled={actionLoading || isInitiatingChat}>
+                    <Button 
+                      variant="outline" 
+                      className="flex-1 h-9 text-sm" 
+                      onClick={handleInitiateChat} 
+                      disabled={actionLoading || isInitiatingChat}
+                    >
                       {isInitiatingChat ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <MessageSquare className="mr-2 h-4 w-4" />} Message
                     </Button>
-                  </>
+                  </div>
                 )}
               </>
             )}
@@ -762,6 +769,8 @@ export default function UserProfilePage() {
                       className="group-hover:opacity-80 transition-opacity"
                       data-ai-hint="user generated content"
                       unoptimized={!post.mediaUrl?.startsWith('http') || post.mediaUrl.includes('placehold.co')}
+                      priority={index < 3}
+                      loading={index < 3 ? 'eager' : 'lazy'}
                     />
                   ) : (
                        <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground p-1">No Image</div>

@@ -185,18 +185,26 @@ export async function updateUserAvatarAction(
     const buffer = Buffer.from(await imageFile.arrayBuffer());
 
     await blob.save(buffer, {
-      metadata: { contentType: determinedContentType, cacheControl: 'public, max-age=3600', customMetadata: { uploaderUid: userId } },
-      public: true, // Make object public for simpler URL, ensure rules allow this
+      metadata: { 
+        contentType: determinedContentType, 
+        cacheControl: 'no-cache, max-age=0',
+        customMetadata: { uploaderUid: userId } 
+      },
+      public: true,
     });
     
     // Construct the public URL manually - this is more reliable for public objects
-    const downloadURL = `https://storage.googleapis.com/${bucketName}/${encodeURIComponent(fileName)}`;
+    const downloadURL = `https://storage.googleapis.com/${bucketName}/${encodeURIComponent(fileName)}?t=${Date.now()}`;
     
     await updateUserProfileAvatarAdmin(userId, downloadURL);
 
+    // Revalidate all affected pages
     revalidatePath(`/users/${userId}`);
-    revalidatePath(`/profile`); // If current user updated their own, revalidate settings page
+    revalidatePath(`/profile`);
     revalidatePath('/(app)/layout', 'layout'); // To refresh avatar in navs
+    revalidatePath('/feed'); // Refresh feed to update user's posts
+    revalidatePath('/explore'); // Refresh explore page where user might appear
+    revalidatePath('/messages'); // Refresh messages where user's avatar appears
     return { success: true, newAvatarUrl: downloadURL };
 
   } catch (error: any) {

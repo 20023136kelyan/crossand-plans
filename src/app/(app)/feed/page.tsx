@@ -71,7 +71,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ExploreTabContent from '@/components/explore/ExploreTabContent';
 import { cn } from "@/lib/utils";
-import { getPostComments as getPostCommentsClient } from "@/services/feedService"; // Client SDK for comments listener
+import { getPostComments } from "@/services/feedService"; // Client SDK for comments listener
 import { getUserProfile } from "@/services/userService"; // Added for PostDetailModal author fetching
 import { FriendPickerDialog } from '@/components/messages/FriendPickerDialog';
 import { PostDetailModal } from '@/components/feed/PostDetailModal'; // Added for PostDetailModal
@@ -527,7 +527,7 @@ const FeedPostCard = React.memo(({
 
       <CardContent className="px-3 sm:px-4 pt-2 pb-3 sm:pb-4 text-sm space-y-2">
         {item.text && (
-           <div onClick={toggleCaptionExpansion} className={cn("max-w-prose mx-auto", canShowMoreCaption ? "cursor-pointer" : "")}>
+           <div onClick={toggleCaptionExpansion} className={cn("w-full", canShowMoreCaption ? "cursor-pointer" : "")}>
             <p
                 ref={captionRef}
                 className={cn(
@@ -686,18 +686,22 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="sm:max-w-md p-0 flex flex-col h-[85vh] sm:h-[75vh] bg-card border-border/30 rounded-t-xl sm:rounded-xl shadow-2xl overflow-hidden" hideCloseButton>
         <DialogHeader className="p-4 border-b border-border/30">
-          <div className="flex flex-col items-center w-full pr-8">
+          <DialogClose asChild>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="absolute top-3 right-3 h-10 w-10 rounded-full text-muted-foreground hover:bg-muted/80"
+            >
+              <XIcon className="h-5 w-5" aria-hidden="true" />
+              <span className="sr-only">Close comments</span>
+            </Button>
+          </DialogClose>
+          <div className="flex flex-col items-center w-full pt-8">
             <DialogTitle className="text-lg font-semibold text-center">Comments on {post.userName}'s post</DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground text-center mt-1">
               Read and add comments below. The original post text is shown for context.
             </DialogDescription>
           </div>
-          <DialogClose asChild className="absolute top-3 right-3">
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:bg-muted/80">
-              <XIcon className="h-4 w-4" aria-hidden="true" />
-              <span className="sr-only">Close comments</span>
-            </Button>
-          </DialogClose>
         </DialogHeader>
 
         <div className="px-4 pt-3 pb-2 border-b border-border/30 shrink-0">
@@ -736,27 +740,27 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
                     const isCommentOwner = user?.uid === comment.userId;
 
                     return (
-                      <div key={comment.id} className="flex items-start gap-2.5 group">
+                      <div key={comment.id} className="flex items-start gap-2.5">
                         <Avatar className="h-7 w-7">
                           <AvatarImage src={comment.userAvatarUrl || undefined} alt={comment.userName || 'User'} data-ai-hint="person avatar"/>
                           <AvatarFallback className="text-xs">{commenterInitial}</AvatarFallback>
                         </Avatar>
                         <div className="flex-1 text-xs bg-muted/50 p-2 rounded-lg">
-                          <div className="flex items-baseline justify-between">
+                          <div className="flex items-baseline justify-between gap-2">
                             <span className="font-semibold text-foreground/90">{comment.userName || 'User'}</span>
-                            <span className="text-muted-foreground/70 text-[10px]">{commentTimestampRelative}</span>
+                            <span className="text-muted-foreground/70 text-[10px] shrink-0">{commentTimestampRelative}</span>
                           </div>
-                          <p className="text-foreground/80 mt-0.5 whitespace-pre-line">{comment.text}</p>
+                          <p className="text-foreground/80 mt-0.5 whitespace-pre-line break-words">{comment.text}</p>
                         </div>
                         {isCommentOwner && (
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity -ml-1"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full shrink-0"
                             onClick={() => handleDeleteComment(comment.id)}
                             disabled={isDeletingComment}
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Trash2 className="h-4 w-4" />
                             <span className="sr-only">Delete comment</span>
                           </Button>
                         )}
@@ -973,7 +977,7 @@ export default function FeedPage() {
             commentsCount: result.updatedPostFields.commentsCount,
         });
         // Optimistic update for commentsForActivePost removed.
-        // The listener (getPostCommentsClient) will handle fetching the new comment.
+        // The listener (getPostComments) will handle fetching the new comment.
         return true;
       } else {
         // Handle error case based on new error structure from server action if needed
@@ -1012,14 +1016,14 @@ export default function FeedPage() {
       if (commentsUnsubscribeRef.current) {
         commentsUnsubscribeRef.current(); // Unsubscribe from previous post if any
       }
-      commentsUnsubscribeRef.current = getPostCommentsClient(
+      commentsUnsubscribeRef.current = getPostComments(
         activePostForCommentsModal.id,
         (fetchedComments) => {
           // // console.log(`[FeedPage] Comments received for ${activePostForCommentsModal.id}: ${fetchedComments.length}`);
           setCommentsForActivePost(fetchedComments);
           setLoadingComments(false);
         },
-        (error) => { // Error callback for getPostCommentsClient
+        (error) => { // Error callback for getPostComments
           console.error(`[FeedPage] Error in comments listener for post ${activePostForCommentsModal.id}:`, error);
           toast({ title: "Error Loading Comments", description: error.message || "Could not load comments.", variant: "destructive" });
           setCommentsForActivePost([]);

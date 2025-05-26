@@ -326,7 +326,7 @@ export default function ExploreTabContent() {
   }, [debouncedSearchTerm, user, toast]);
 
   const combinedUserResults = useMemo(() => {
-    if (!user || !Array.isArray(userSearchResults) || userSearchResults.length === 0) return [];
+    if (!user || !userSearchResults || !Array.isArray(userSearchResults)) return [];
     const currentFriendships = Array.isArray(friendships) ? friendships : [];
     const friendsMap = new Map(currentFriendships.map(f => [f.friendUid, f.status as FriendStatus]));
     

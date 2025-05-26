@@ -1172,3 +1172,65 @@ export async function getPublicPlanByIdAction(planId: string): Promise<{ plan: P
     return { plan: null, error: error.message || "Failed to fetch plan details." };
   }
 }
+
+export async function getPublishedPlansByCityAction(cityName: string): Promise<{ success: boolean; plans?: Plan[]; error?: string }> {
+  ensureAdminServices();
+
+  try {
+    const plansRef = firestoreAdmin.collection(PLANS_COLLECTION);
+    const q = plansRef
+      .where('status', '==', 'published')
+      .where('city', '==', cityName)
+      .orderBy('eventTime', 'desc');
+    
+    const querySnapshot = await q.get();
+    const plans: Plan[] = [];
+    
+    querySnapshot.forEach(doc => {
+      const data = doc.data();
+      plans.push({
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate().toISOString() || new Date(0).toISOString(),
+        updatedAt: data.updatedAt?.toDate().toISOString() || new Date(0).toISOString(),
+        eventTime: data.eventTime?.toDate().toISOString() || null,
+      } as Plan);
+    });
+
+    return { success: true, plans };
+  } catch (error: any) {
+    console.error('[getPublishedPlansByCityAction] Error:', error);
+    return { success: false, error: error.message || 'Failed to fetch plans.' };
+  }
+}
+
+export async function getPublishedPlansByCategoryAction(categoryName: string): Promise<{ success: boolean; plans?: Plan[]; error?: string }> {
+  ensureAdminServices();
+
+  try {
+    const plansRef = firestoreAdmin.collection(PLANS_COLLECTION);
+    const q = plansRef
+      .where('status', '==', 'published')
+      .where('category', '==', categoryName)
+      .orderBy('eventTime', 'desc');
+    
+    const querySnapshot = await q.get();
+    const plans: Plan[] = [];
+    
+    querySnapshot.forEach(doc => {
+      const data = doc.data();
+      plans.push({
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate().toISOString() || new Date(0).toISOString(),
+        updatedAt: data.updatedAt?.toDate().toISOString() || new Date(0).toISOString(),
+        eventTime: data.eventTime?.toDate().toISOString() || null,
+      } as Plan);
+    });
+
+    return { success: true, plans };
+  } catch (error: any) {
+    console.error('[getPublishedPlansByCategoryAction] Error:', error);
+    return { success: false, error: error.message || 'Failed to fetch plans.' };
+  }
+}

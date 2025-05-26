@@ -902,14 +902,17 @@ export default function PlansPage() {
               {viewMode === 'list' ? <CalendarDays className="h-4 w-4" aria-hidden="true"/> : <ListIconLucide className="h-4 w-4" aria-hidden="true"/>}
             </Button>
 
-            <div className={cn("relative flex-1 min-w-0", isSearchFocused && "sm:mr-auto")}>
+            <div className={cn("relative flex-1 min-w-0", isSearchFocused && "flex-grow")}>
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
               <Input
                 type="search"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onFocus={() => setIsSearchFocused(true)}
-                onBlur={() => setIsSearchFocused(false)}
+                onBlur={() => {
+                  // Add a small delay to ensure any tap/click events are processed first
+                  setTimeout(() => setIsSearchFocused(false), 200);
+                }}
                 className="pl-10 bg-card border-border text-sm h-9 rounded-lg focus:ring-primary focus:border-primary w-full"
                 disabled={viewMode === 'calendar'}
                 placeholder="Search your plans..."
@@ -920,10 +923,9 @@ export default function PlansPage() {
               data-testid="search-actions-container"
               className={cn(
                 "flex items-center gap-2 flex-shrink-0 origin-right transition-all duration-300 ease-in-out",
-                 isSearchFocused && !isMobile
-                                        ? "w-0 opacity-0 scale-x-0 invisible overflow-hidden" 
-                                         : "w-auto opacity-100 scale-x-100 visible" 
-            )}>
+                (isSearchFocused || searchTerm) && "sm:w-0 sm:opacity-0 sm:scale-x-0 sm:invisible sm:overflow-hidden",
+                isSearchFocused && isMobile && "w-0 opacity-0 scale-x-0 invisible overflow-hidden"
+              )}>
               {viewMode === 'list' && (
                 <Button variant="outline" onClick={handleSortCycle} size="sm" className="bg-card border-border hover:bg-secondary/50 text-sm rounded-lg h-9 whitespace-nowrap">
                   {sortConfig.key === 'date' ? 'Date' : 'Name'}

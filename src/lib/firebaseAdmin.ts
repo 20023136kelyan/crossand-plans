@@ -1,6 +1,10 @@
-
 // src/lib/firebaseAdmin.ts
-import 'server-only'; // Ensures this module is only used on the server.
+
+// Ensure this module is only used on the server
+if (typeof window !== 'undefined') {
+  throw new Error('This module can only be used on the server side.');
+}
+
 import admin from 'firebase-admin';
 import type { ServiceAccount } from 'firebase-admin';
 
@@ -26,12 +30,17 @@ function initializeAdminApp() {
     if (serviceAccountString && serviceAccountString.trim() !== "" && serviceAccountString.trim() !== "{}") {
       // console.log("[firebaseAdmin] FIREBASE_SERVICE_ACCOUNT environment variable found.");
       try {
-        serviceAccountJson = JSON.parse(serviceAccountString);
-        if (!serviceAccountJson.project_id || !serviceAccountJson.private_key || !serviceAccountJson.client_email) {
-          console.error("[firebaseAdmin] CRITICAL: Parsed service account JSON from env var is missing essential fields (project_id, private_key, client_email).");
+        const parsedJson = JSON.parse(serviceAccountString);
+        if (!parsedJson.projectId || !parsedJson.privateKey || !parsedJson.clientEmail) {
+          console.error("[firebaseAdmin] CRITICAL: Parsed service account JSON from env var is missing essential fields (projectId, privateKey, clientEmail).");
           serviceAccountJson = undefined;
         } else {
-          // console.log("[firebaseAdmin] Successfully parsed FIREBASE_SERVICE_ACCOUNT for project:", serviceAccountJson.project_id);
+          // console.log("[firebaseAdmin] Successfully parsed FIREBASE_SERVICE_ACCOUNT for project:", parsedJson.projectId);
+          serviceAccountJson = {
+            projectId: parsedJson.projectId,
+            privateKey: parsedJson.privateKey,
+            clientEmail: parsedJson.clientEmail
+          };
           credentialsSource = "Environment Variable (FIREBASE_SERVICE_ACCOUNT)";
         }
       } catch (e: any) {
@@ -51,12 +60,17 @@ function initializeAdminApp() {
         const absolutePath = path.resolve(SERVICE_ACCOUNT_KEY_PATH_FALLBACK);
         if (fs.existsSync(absolutePath)) {
           const rawFileContent = fs.readFileSync(absolutePath, 'utf8');
-          serviceAccountJson = JSON.parse(rawFileContent);
-          if (!serviceAccountJson!.project_id || !serviceAccountJson!.private_key || !serviceAccountJson!.client_email) {
+          const parsedJson = JSON.parse(rawFileContent);
+          if (!parsedJson.projectId || !parsedJson.privateKey || !parsedJson.clientEmail) {
             console.error(`[firebaseAdmin] CRITICAL: Parsed service account JSON from file ${absolutePath} is missing essential fields.`);
             serviceAccountJson = undefined;
           } else {
-            // console.log(`[firebaseAdmin] Successfully loaded and parsed service account from file: ${absolutePath}. Project ID: ${serviceAccountJson!.project_id}`);
+            // console.log(`[firebaseAdmin] Successfully loaded and parsed service account from file: ${absolutePath}. Project ID: ${parsedJson.projectId}`);
+            serviceAccountJson = {
+              projectId: parsedJson.projectId,
+              privateKey: parsedJson.privateKey,
+              clientEmail: parsedJson.clientEmail
+            };
             credentialsSource = `File Path (${absolutePath})`;
           }
         } else {
@@ -83,7 +97,7 @@ function initializeAdminApp() {
 
     let effectiveStorageBucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
     if (!effectiveStorageBucket) {
-      const inferredProjectId = serviceAccountJson?.project_id || process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
+      const inferredProjectId = serviceAccountJson?.projectId || process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
       if (inferredProjectId) {
         effectiveStorageBucket = `${inferredProjectId}.appspot.com`;
         // console.log(`[firebaseAdmin] Inferred storage bucket: ${effectiveStorageBucket}`);

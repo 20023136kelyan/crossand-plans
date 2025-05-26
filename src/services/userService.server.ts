@@ -4,6 +4,7 @@ import { firestoreAdmin } from '@/lib/firebaseAdmin';
 import type { UserProfile, OnboardingProfileData, FriendEntry, SearchedUser, UserRoleType, UserStats, FriendStatus, AppTimestamp } from '@/types/user';
 import { Timestamp as AdminTimestamp, FieldValue } from 'firebase-admin/firestore';
 import admin from 'firebase-admin'; // For FieldPath.documentId()
+import { updateUserAvatarInFeedAdmin } from './feedService.server';
 
 const USER_COLLECTION = 'users';
 const FRIENDSHIPS_SUBCOLLECTION = 'friendships';
@@ -234,6 +235,9 @@ export const updateUserProfileAvatarAdmin = async (userId: string, newAvatarUrl:
       updatedAt: FieldValue.serverTimestamp(),
     });
     console.log(`[updateUserProfileAvatarAdmin] Avatar URL updated for user ${userId}.`);
+
+    // Update avatar URL in all feed posts and comments
+    await updateUserAvatarInFeedAdmin(userId, newAvatarUrl);
   } catch (error) {
     console.error(`[updateUserProfileAvatarAdmin] Error updating avatar URL for user ${userId}:`, error);
     throw error;
