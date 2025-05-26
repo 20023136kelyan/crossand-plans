@@ -1,4 +1,3 @@
-
 // src/components/explore/ExploreTabContent.tsx
 'use client';
 
@@ -39,11 +38,7 @@ const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, is
 
 const Section = ({ title, children, viewAllHref, itemClassName }: { title: string, children: React.ReactNode, viewAllHref?: string, itemClassName?: string }) => {
   const childCount = React.Children.count(children);
-  if (childCount === 0 && !viewAllHref) { // Only hide if truly no content and no "view all" to suggest more
-    return null; 
-  }
-  // If childCount is 0 but there's a viewAllHref, we might still want to show the section header.
-  // This depends on desired UX. For now, it hides if no children.
+  if (childCount === 0 && !viewAllHref) return null;
   if (childCount === 0) return null;
 
   return (
@@ -56,7 +51,11 @@ const Section = ({ title, children, viewAllHref, itemClassName }: { title: strin
           </Link>
         )}
       </div>
-      <div className={cn("flex overflow-x-auto space-x-4 pb-4 custom-scrollbar-horizontal", itemClassName)}>
+      <div className={cn(
+        "flex overflow-x-auto pb-4 custom-scrollbar-horizontal",
+        "space-x-4", // Default horizontal spacing
+        itemClassName // Allow override for vertical layouts
+      )}>
         {children}
       </div>
     </section>
@@ -138,8 +137,10 @@ const CityChip = ({ name }: { name: string }) => (
   </Link>
 );
 
+type FriendStatus = 'friends' | 'pending_sent' | 'pending_received';
+
 const UserSearchResultCard = ({ userResult, onAction, currentUserId, isActionLoading }: {
-  userResult: SearchedUser & { friendshipStatus?: FriendEntry['status'] | 'is_self' | 'not_friends' };
+  userResult: SearchedUser & { friendshipStatus?: FriendStatus | 'is_self' | 'not_friends' };
   onAction: (actionType: 'send' | 'accept' | 'decline' | 'remove' | 'cancel', targetUser: SearchedUser) => void;
   currentUserId: string;
   isActionLoading: boolean;
@@ -156,7 +157,7 @@ const UserSearchResultCard = ({ userResult, onAction, currentUserId, isActionLoa
         <div className="min-w-0">
           <div className="flex items-center">
             <p className="text-sm font-semibold text-foreground truncate" title={userResult.name || userResult.email || undefined}>{userResult.name || userResult.email}</p>
-            <VerificationBadge role={userResult.role} isVerified={userResult.isVerified || false} />
+            <VerificationBadge role={userResult.role || null} isVerified={userResult.isVerified || false} />
           </div>
           <p className="text-xs text-muted-foreground truncate">{userResult.email}</p>
         </div>
@@ -167,15 +168,15 @@ const UserSearchResultCard = ({ userResult, onAction, currentUserId, isActionLoa
         ) : userResult.friendshipStatus === 'friends' ? (
           <Badge variant="default" className="text-xs">Friends</Badge>
         ) : userResult.friendshipStatus === 'pending_sent' ? (
-          <Button size="xs" variant="outline" onClick={() => onAction('cancel', userResult)} disabled={isActionLoading}>
+          <Button variant="outline" className="h-8 px-3 text-xs" onClick={() => onAction('cancel', userResult)} disabled={isActionLoading}>
             <XCircle className="mr-1.5 h-3.5 w-3.5" /> Cancel
           </Button>
         ) : userResult.friendshipStatus === 'pending_received' ? (
-          <Button size="xs" onClick={() => onAction('accept', userResult)} disabled={isActionLoading}>
+          <Button className="h-8 px-3 text-xs" onClick={() => onAction('accept', userResult)} disabled={isActionLoading}>
             <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Accept
           </Button>
         ) : (
-          <Button size="xs" variant="outline" onClick={() => onAction('send', userResult)} disabled={isActionLoading}>
+          <Button variant="outline" className="h-8 px-3 text-xs" onClick={() => onAction('send', userResult)} disabled={isActionLoading}>
             <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Add
           </Button>
         )}
@@ -326,19 +327,18 @@ export default function ExploreTabContent() {
 
   const combinedUserResults = useMemo(() => {
     if (!user || !Array.isArray(userSearchResults) || userSearchResults.length === 0) return [];
-    // Ensure friendships is always an array before mapping
     const currentFriendships = Array.isArray(friendships) ? friendships : [];
-    const friendsMap = new Map(currentFriendships.map(f => [f.friendUid, f.status]));
+    const friendsMap = new Map(currentFriendships.map(f => [f.friendUid, f.status as FriendStatus]));
     
     return userSearchResults.map(su => ({
       ...su,
-      friendshipStatus: su.uid === user.uid ? 'is_self' : (friendsMap.get(su.uid) || 'not_friends')
+      friendshipStatus: su.uid === user.uid ? ('is_self' as const) : (friendsMap.get(su.uid) || ('not_friends' as const))
     }));
   }, [userSearchResults, friendships, user]);
 
   const handleFriendAction = async (actionType: 'send' | 'accept' | 'decline' | 'remove' | 'cancel', targetUser: SearchedUser) => {
     if (!user || !currentUserProfile) {
-      toast({ title: "Authentication Error", description: "Please log in to manage friends.", variant: "destructive"});
+      toast({ title: "Auth Error", description: "Please log in to manage friends.", variant: "destructive" });
       return;
     }
     setFriendActionLoading(true);
@@ -346,40 +346,39 @@ export default function ExploreTabContent() {
       await user.getIdToken(true);
       const idToken = await user.getIdToken();
       if (!idToken) {
-          toast({ title: "Authentication Error", description: "Could not perform friend action.", variant: "destructive"});
+        toast({ title: "Auth Error", description: "Could not get authentication token.", variant: "destructive" });
+        setFriendActionLoading(false);
+        return;
+      }
+
+      let result: { success: boolean; error?: string; message?: string };
+
+      switch (actionType) {
+        case 'send':
+          result = await sendFriendRequestAction(targetUser.uid, idToken);
+          break;
+        case 'accept':
+          result = await acceptFriendRequestAction(targetUser.uid, idToken);
+          break;
+        case 'decline':
+        case 'cancel':
+          result = await declineFriendRequestAction(targetUser.uid, idToken);
+          break;
+        case 'remove':
+          result = await removeFriendAction(targetUser.uid, idToken);
+          break;
+        default:
           setFriendActionLoading(false);
           return;
       }
-      let result: { success: boolean; error?: string; message?: string };
-      const targetUserInfoForAction = {
-        uid: targetUser.uid,
-        name: targetUser.name,
-        avatarUrl: targetUser.avatarUrl,
-        role: targetUser.role,
-        isVerified: targetUser.isVerified
-      };
-
-      switch (actionType) {
-        case 'send': result = await sendFriendRequestAction(targetUserInfoForAction, idToken); break;
-        case 'accept': result = await acceptFriendRequestAction(targetUserInfoForAction, idToken); break;
-        case 'decline':
-        case 'cancel': result = await declineFriendRequestAction(targetUser.uid, idToken); break;
-        case 'remove': result = await removeFriendAction(targetUser.uid, idToken); break;
-        default: setFriendActionLoading(false); return;
-      }
 
       if (result.success) {
-        toast({ title: "Success", description: result.message || `Friend action successful.`});
-        // Re-fetch friendships after an action to update the map
-        if (user?.uid) {
-          // No need to manage unsubscribe here as the main useEffect for friendships will handle it
-          // This ensures the main friendships listener updates the state.
-        }
-        setUserSearchResults(prev => prev.map(u => { 
+        toast({ title: "Success", description: result.message || `Friend action successful.` });
+        setUserSearchResults(prev => prev.map(u => {
           if (u.uid === targetUser.uid) {
-            if (actionType === 'send') return { ...u, friendshipStatus: 'pending_sent' as FriendEntry['status'] };
-            if (actionType === 'accept') return { ...u, friendshipStatus: 'friends' as FriendEntry['status']  };
-            if (['decline', 'cancel', 'remove'].includes(actionType)) return { ...u, friendshipStatus: 'not_friends' as 'not_friends' };
+            if (actionType === 'send') return { ...u, friendshipStatus: 'pending_sent' as const };
+            if (actionType === 'accept') return { ...u, friendshipStatus: 'friends' as const };
+            if (['decline', 'cancel', 'remove'].includes(actionType)) return { ...u, friendshipStatus: 'not_friends' as const };
           }
           return u;
         }));
@@ -418,7 +417,7 @@ export default function ExploreTabContent() {
         <div className="flex justify-center py-4"><Loader2 className="h-6 w-6 animate-spin text-primary"/></div>
       )}
       {combinedUserResults.length > 0 && !userSearchLoading && (
-        <Section title="People" itemClassName="flex-col space-y-3 !pb-0"> {/* Changed to flex-col for list display */}
+        <Section title="People" itemClassName="!flex-col !space-y-3 !space-x-0 !overflow-visible !pb-0">
           {combinedUserResults.map(userRes => (
             <UserSearchResultCard
               key={userRes.uid}

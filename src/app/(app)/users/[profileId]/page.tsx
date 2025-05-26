@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -121,7 +120,13 @@ export default function UserProfilePage() {
   
   const profileId = params.profileId as string;
 
-  const [profileData, setProfileData] = useState<ProfilePageData | null>(null);
+  const [profileData, setProfileData] = useState<ProfilePageData>({
+    userProfile: null,
+    userPosts: [],
+    userStats: null,
+    isViewerFollowing: null,
+    friendshipStatusWithViewer: null
+  });
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
   const [friendshipStatusWithViewer, setFriendshipStatusWithViewer] = useState<FriendStatus | 'not_friends' | 'is_self' | null>(null);
@@ -146,7 +151,13 @@ export default function UserProfilePage() {
     if (!profileId) {
       setLoadingProfile(false);
       toast({ title: "Error", description: "Profile ID missing.", variant: "destructive" });
-      setProfileData({ userProfile: null, userPosts: [], userStats: null, isViewerFollowing: null, friendshipStatusWithViewer: null });
+      setProfileData({
+        userProfile: null,
+        userPosts: [],
+        userStats: null,
+        isViewerFollowing: null,
+        friendshipStatusWithViewer: null
+      });
       return;
     }
     setLoadingProfile(true);
@@ -158,20 +169,28 @@ export default function UserProfilePage() {
 
       if (result.error || !result.userProfile) {
         toast({ title: "Profile Not Found", description: result.error || "This user's profile could not be loaded.", variant: "destructive" });
-        setProfileData({ userProfile: null, userPosts: [], userStats: null, isViewerFollowing: null, friendshipStatusWithViewer: null });
-      } else {
         setProfileData({
-          userProfile: result.userProfile,
-          userPosts: result.userPosts || [],
-          userStats: result.userStats,
+          userProfile: null,
+          userPosts: [],
+          userStats: null,
+          isViewerFollowing: null,
+          friendshipStatusWithViewer: null
         });
+      } else {
+        setProfileData(result);
         setIsFollowing(result.isViewerFollowing === undefined ? null : result.isViewerFollowing);
         setFriendshipStatusWithViewer(result.friendshipStatusWithViewer === undefined ? 'not_friends' : result.friendshipStatusWithViewer);
       }
     } catch (error: any) {
       console.error("[UserProfilePage] Error in fetchProfileData:", error);
       toast({ title: "Error Loading Profile", description: error.message || "Could not load profile.", variant: "destructive" });
-      setProfileData({ userProfile: null, userPosts: [], userStats: null, isViewerFollowing: null, friendshipStatusWithViewer: null });
+      setProfileData({
+        userProfile: null,
+        userPosts: [],
+        userStats: null,
+        isViewerFollowing: null,
+        friendshipStatusWithViewer: null
+      });
     } finally {
       setLoadingProfile(false);
     }
@@ -181,9 +200,8 @@ export default function UserProfilePage() {
     fetchProfileData();
   }, [fetchProfileData]);
 
-  const userProfile = profileData?.userProfile;
-  // const userPosts = profileData?.userPosts || []; // Original line
-  const userStats = profileData?.userStats;
+  const userProfile = profileData.userProfile;
+  const userStats = profileData.userStats;
   const isOwnProfile = currentUser?.uid === userProfile?.uid;
 
   const userPostsArray = useMemo(() => {
@@ -268,8 +286,8 @@ export default function UserProfilePage() {
     }
   }, [currentUser, userProfile, isOwnProfile, isFollowing, toast, fetchProfileData, authenticatedUserProfile]);
 
-  const handleFriendRequestButtonAction = useCallback(async (actionType: 'accept' | 'decline' | 'cancel' | 'send') => {
-    if (!currentUser || !userProfile || isOwnProfile) {
+  const handleFriendRequestButtonAction = useCallback(async (actionType: 'accept' | 'decline' | 'cancel' | 'send' | 'remove') => {
+    if (!currentUser || !profileData.userProfile || isOwnProfile) {
       toast({ title: "Action Failed", description: "User data missing or not logged in.", variant: "destructive" });
       if (!currentUser) router.push('/login');
       return;
@@ -278,18 +296,28 @@ export default function UserProfilePage() {
     try {
       await currentUser.getIdToken(true);
       const idToken = await currentUser.getIdToken();
-      if (!idToken) throw new Error("Authentication token not available.");
+      if (!idToken) {
+        toast({ title: "Auth Error", description: "Could not get authentication token.", variant: "destructive" });
+        setActionLoading(false);
+        return;
+      }
 
-      let result;
-      const targetUserInfoForAction: SearchedUser = { 
-        uid: userProfile.uid, name: userProfile.name, avatarUrl: userProfile.avatarUrl,
-        role: userProfile.role, isVerified: userProfile.isVerified,
-      };
+      let result: { success: boolean; error?: string; message?: string };
 
-      if (actionType === 'accept') result = await acceptFriendRequestAction(targetUserInfoForAction, idToken);
-      else if (actionType === 'decline' || actionType === 'cancel') result = await declineFriendRequestAction(userProfile.uid, idToken);
-      else if (actionType === 'send') result = await sendFriendRequestAction(targetUserInfoForAction, idToken);
-      else { setActionLoading(false); return; }
+      switch (actionType) {
+        case 'send':
+        case 'accept':
+          result = await (actionType === 'send' ? sendFriendRequestAction : acceptFriendRequestAction)(profileData.userProfile.uid, idToken);
+          break;
+        case 'decline':
+        case 'cancel':
+        case 'remove':
+          result = await (actionType === 'remove' ? removeFriendAction : declineFriendRequestAction)(profileData.userProfile.uid, idToken);
+          break;
+        default:
+          setActionLoading(false);
+          return;
+      }
 
       if (result.success) {
         toast({ title: "Success", description: result.message || "Friend action successful." });
@@ -302,7 +330,7 @@ export default function UserProfilePage() {
     } finally {
       setActionLoading(false);
     }
-  }, [currentUser, userProfile, isOwnProfile, toast, fetchProfileData, router]);
+  }, [currentUser, profileData.userProfile, isOwnProfile, toast, fetchProfileData, router]);
 
   const handleInitiateChat = useCallback(async () => {
     if (!currentUser || !authenticatedUserProfile || !userProfile || isOwnProfile) {
@@ -430,14 +458,14 @@ export default function UserProfilePage() {
         toast({ title: "Avatar Updated!" });
 
         // Optimistic update for the current page's display if it's the user's own profile
-        if (isOwnProfile && profileData?.userProfile) { // Ensure isOwnProfile and profileData.userProfile are available
+        if (isOwnProfile && profileData.userProfile) {
           setProfileData(prev => {
-            if (!prev || !prev.userProfile) return prev; // Should not happen if isOwnProfile is true
+            if (!prev || !prev.userProfile) return prev;
             return {
               ...prev,
               userProfile: {
                 ...prev.userProfile,
-                avatarUrl: result.newAvatarUrl // Use the new URL directly
+                avatarUrl: result.newAvatarUrl
               }
             };
           });
@@ -481,7 +509,7 @@ export default function UserProfilePage() {
   const handleNextPostInModal = () => { if (userPostsArray && selectedPostIndex !== null && selectedPostIndex < userPostsArray.length - 1) setSelectedPostIndex(selectedPostIndex + 1); };
   const handlePreviousPostInModal = () => { if (selectedPostIndex !== null && selectedPostIndex > 0) setSelectedPostIndex(selectedPostIndex - 1); };
 
-  if (loadingProfile || (authLoading && !profileData)) { 
+  if (loadingProfile || (authLoading && !profileData.userProfile)) { 
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background text-foreground">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -603,14 +631,19 @@ export default function UserProfilePage() {
                   <Button variant="outline" className="w-full xs:flex-1 h-9 text-sm" disabled={actionLoading || followActionLoading} onClick={() => handleFriendRequestButtonAction('cancel')}>
                     {(actionLoading) ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <XIcon className="mr-2 h-4 w-4" />} Request Sent
                   </Button>
-                ) : friendshipStatusWithViewer === 'friends' ? ( // They are mutual follows
-                   <Button variant={'outline'} className={cn("w-full xs:flex-1 h-9 text-sm border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive")} disabled={followActionLoading} onClick={handleFollowToggle}>
-                     {(followActionLoading) ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4"/>} 
-                     Unfollow
-                   </Button>
-                ) : ( // not_friends or null (which defaults to not_friends)
+                ) : friendshipStatusWithViewer === 'friends' ? (
                   <Button 
-                    variant={'default'} 
+                    variant="outline" 
+                    className={cn("w-full xs:flex-1 h-9 text-sm border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive")} 
+                    disabled={actionLoading || followActionLoading} 
+                    onClick={() => handleFriendRequestButtonAction('remove')}
+                  >
+                    {(actionLoading) ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4"/>} 
+                    Unfriend
+                  </Button>
+                ) : (
+                  <Button 
+                    variant="default" 
                     className={cn("w-full xs:flex-1 h-9 text-sm")} 
                     disabled={followActionLoading || isFollowing === null} 
                     onClick={handleFollowToggle}
