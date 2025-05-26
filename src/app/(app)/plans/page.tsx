@@ -1,4 +1,3 @@
-
 'use client';
 
 import {
@@ -236,7 +235,7 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
                 sizes="(max-width: 768px) 25vw, 80px"
                 style={{ objectFit: 'cover' }}
                 data-ai-hint={imageHint}
-                unoptimized={!planImageSrc || !planImageSrc.startsWith('https') || planImageSrc.includes('placehold.co') || (planImageSrc.includes('maps.googleapis.com') && !plan.itinerary?.[0]?.googlePhotoReference && !plan.photoHighlights?.[0])}
+                unoptimized={planImageSrc.includes('maps.googleapis.com')}
                 onError={() => {
                   setImageError(true);
                 }}

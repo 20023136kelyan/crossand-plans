@@ -778,7 +778,7 @@ export default function PlanDetailPage() {
             style={{ objectFit: 'cover' }}
             data-ai-hint={mainPlanImageHint}
             priority
-            unoptimized={!mainPlanImage.startsWith('https') || mainPlanImage.includes('placehold.co')}
+            unoptimized={mainPlanImage.includes('maps.googleapis.com')}
           />
           <div className="absolute top-3 right-3 flex flex-col gap-2 items-end">
             {plan.eventType && (
@@ -902,7 +902,7 @@ export default function PlanDetailPage() {
                               fill
                               style={{ objectFit: 'cover' }}
                               data-ai-hint={itemPhotoHint}
-                              unoptimized={!itemPhotoUrl.startsWith('https') || itemPhotoUrl.includes('placehold.co')}
+                              unoptimized={itemPhotoUrl.includes('maps.googleapis.com')}
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center bg-muted text-xs text-muted-foreground p-2 text-center" data-ai-hint={itemPhotoHint}>

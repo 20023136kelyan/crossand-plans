@@ -418,7 +418,7 @@ const EditableItineraryItemCardImpl = ({
                 />
               ) : itemPhotoUrl.startsWith('https://') ? (
                 <Image 
-                  key={itemPhotoUrl} // This key is already present in user's code
+                  key={itemPhotoUrl}
                   src={itemPhotoUrl} 
                   alt={`Image of ${placeName || 'itinerary stop'}`} 
                   fill
@@ -426,9 +426,8 @@ const EditableItineraryItemCardImpl = ({
                   style={{ objectFit: 'cover' }}
                   className="rounded-md"
                   data-ai-hint={types?.[0] || 'activity location'}
-                  unoptimized={itemPhotoUrl.includes('placehold.co')}
+                  unoptimized={itemPhotoUrl.includes('maps.googleapis.com')}
                   onError={() => {
-                    // Check if the failing URL is not already a placeholder to prevent potential loops if placeholder itself had issues
                     if (!itemPhotoUrl.includes('placehold.co')) {
                       setImageError(true);
                     }

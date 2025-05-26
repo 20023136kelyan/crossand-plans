@@ -230,7 +230,7 @@ export default function PublicPlanPage() {
             style={{ objectFit: 'cover' }}
             data-ai-hint={mainPlanImageHint}
             priority
-            unoptimized={!mainPlanImage.startsWith('http') || mainPlanImage.includes('placehold.co') || (mainPlanImage.includes('maps.googleapis.com') && !mainPlanImage.includes('photoreference')) || mainPlanImage.includes('firebasestorage.googleapis.com')}
+            unoptimized={mainPlanImage.includes('maps.googleapis.com')}
           />
         </div>
 
@@ -286,7 +286,7 @@ export default function PublicPlanPage() {
                                 fill 
                                 style={{objectFit: 'cover'}} 
                                 data-ai-hint={itemPhotoHint} 
-                                unoptimized={!itemPhotoUrl.startsWith('http') || itemPhotoUrl.includes('placehold.co') || (itemPhotoUrl.includes('maps.googleapis.com') && !itemPhotoUrl.includes('photoreference')) || itemPhotoUrl.includes('firebasestorage.googleapis.com')}
+                                unoptimized={itemPhotoUrl.includes('maps.googleapis.com')}
                             />
                             ) : <div className="w-full h-full flex items-center justify-center bg-muted text-xs text-muted-foreground">Invalid image URL</div>
                            }
