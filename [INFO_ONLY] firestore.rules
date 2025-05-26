@@ -1,0 +1,146 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Rules for the 'users' collection
+    match /users/{userId} {
+      allow read: if request.auth.uid == userId || isSignedIn();
+      allow create, update: if request.auth.uid == userId;
+      allow delete: if false;
+
+      match /friendships/{friendUserId} {
+        allow read, write, delete: if request.auth.uid == userId;
+      }
+    }
+
+    // Rules for the 'chats' collection
+    match /chats/{chatId} {
+      allow read: if isSignedIn() && request.auth.uid in resource.data.participants;
+
+      allow update: if isSignedIn() && request.auth.uid in resource.data.participants &&
+      (
+        // Case 1: Sending a message
+        (
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['lastMessageText', 'lastMessageSenderId', 'lastMessageTimestamp', 'updatedAt', 'participantReadTimestamps']) &&
+          request.resource.data.lastMessageSenderId == request.auth.uid &&
+          request.resource.data.lastMessageTimestamp == request.time &&
+          request.resource.data.updatedAt == request.time &&
+          request.resource.data.participantReadTimestamps[request.auth.uid] == request.time &&
+          // Integrity checks for participantReadTimestamps map:
+          (
+            // If the old participantReadTimestamps map did not exist at all,
+            // the new one must ONLY contain the sender's UID as a key.
+            (!('participantReadTimestamps' in resource.data) &&
+             request.resource.data.participantReadTimestamps.keys().hasOnly([request.auth.uid])) ||
+            // OR, if the old map existed:
+            (
+              ('participantReadTimestamps' in resource.data) &&
+              // 1. No keys were removed from the original map (unless it was the sender's key and the map became empty, but this check is simpler)
+              resource.data.participantReadTimestamps.keys().toSet()
+                .difference(request.resource.data.participantReadTimestamps.keys().toSet()).size() == 0 &&
+              // 2. Any new keys added to the map must ONLY be the sender's UID
+              request.resource.data.participantReadTimestamps.keys().toSet()
+                .difference(resource.data.participantReadTimestamps.keys().toSet()).hasOnly([request.auth.uid]) &&
+              // 3. For all keys that existed in the old map (excluding the sender), their values must be unchanged
+              (forall keyInOldMap in resource.data.participantReadTimestamps.keys() :
+                keyInOldMap == request.auth.uid ||
+                request.resource.data.participantReadTimestamps[keyInOldMap] == resource.data.participantReadTimestamps[keyInOldMap]
+              )
+            )
+          )
+        ) ||
+        // Case 2: Marking chat as read
+        (
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['participantReadTimestamps', 'updatedAt']) &&
+          request.resource.data.updatedAt == request.time &&
+          request.resource.data.participantReadTimestamps[request.auth.uid] == request.time &&
+          // This ensures only the authenticated user's key in the participantReadTimestamps map has changed.
+          // It implicitly handles the case where the key might be new for the user.
+          request.resource.data.participantReadTimestamps.diff(resource.data.participantReadTimestamps).affectedKeys()
+            .hasOnly([request.auth.uid])
+        )
+      );
+
+      allow create: if isSignedIn() &&
+        request.auth.uid in request.resource.data.participants &&
+        request.resource.data.participants.size() > 0 &&
+        request.resource.data.type != null &&
+        request.resource.data.participantInfo.size() == request.resource.data.participants.size() &&
+        (
+          (request.resource.data.type == 'direct' && request.resource.data.participants.size() == 2) ||
+          request.resource.data.type == 'group'
+        );
+
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn() &&
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        allow create: if isSignedIn() &&
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.text.size() > 0 &&
+          request.resource.data.timestamp == request.time;
+        allow update, delete: if false;
+      }
+    }
+
+    // Rules for the 'plans' collection
+    match /plans/{planId} {
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.hostId;
+      allow read: if isSignedIn() &&
+        (
+          request.auth.uid == resource.data.hostId ||
+          (resource.data.invitedParticipantUserIds != null &&
+           request.auth.uid in resource.data.invitedParticipantUserIds) ||
+          resource.data.status == 'published'
+        );
+      allow update: if request.auth.uid == resource.data.hostId || 
+        (
+          isSignedIn() &&
+          resource.data.invitedParticipantUserIds != null &&
+          request.auth.uid in resource.data.invitedParticipantUserIds &&
+          request.resource.data.participantResponses[request.auth.uid] != resource.data.participantResponses[request.auth.uid] &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participantResponses', 'updatedAt']) &&
+          request.resource.data.participantResponses.diff(resource.data.participantResponses).affectedKeys().hasOnly([request.auth.uid]) &&
+          request.resource.data.participantResponses[request.auth.uid] in ['going', 'maybe', 'declined', 'pending'] &&
+          request.resource.data.updatedAt == request.time
+        );
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.hostId;
+       
+      // Rules for 'ratings' subcollection
+      match /ratings/{userId} {
+        allow read: if isSignedIn();
+        allow write: if isSignedIn() && request.auth.uid == userId &&
+                       (get(/databases/$(database)/documents/plans/$(planId)).data.hostId == request.auth.uid ||
+                        (get(/databases/$(database)/documents/plans/$(planId)).data.invitedParticipantUserIds != null &&
+                         request.auth.uid in get(/databases/$(database)/documents/plans/$(planId)).data.invitedParticipantUserIds)) &&
+                       request.resource.data.value >= 1 && request.resource.data.value <= 5 &&
+                       request.resource.data.createdAt == request.time;
+      }
+
+      // Rules for 'comments' subcollection
+      match /comments/{commentId} {
+        allow read: if true; // Or isSignedIn()
+        allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid &&
+                        (get(/databases/$(database)/documents/plans/$(planId)).data.hostId == request.auth.uid ||
+                         (get(/databases/$(database)/documents/plans/$(planId)).data.invitedParticipantUserIds != null &&
+                          request.auth.uid in get(/databases/$(database)/documents/plans/$(planId)).data.invitedParticipantUserIds)) &&
+                        request.resource.data.text.size() > 0 &&
+                        request.resource.data.createdAt == request.time;
+        // allow update, delete: if false;
+      }
+    }
+
+    // Reusable function
+    function isSignedIn() {
+      return request.auth != null;
+    }
+  }
+}
+
+    

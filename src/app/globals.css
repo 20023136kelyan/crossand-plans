@@ -1,0 +1,185 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 15% 2%; /* Deep black with a hint of blue/purple */
+    --foreground: 0 0% 98%;
+
+    --card: 240 10% 6%; 
+    --card-foreground: 0 0% 98%;
+
+    --popover: 240 10% 5%; 
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 200 60% 54%; /* Lighter Blue - NEW */
+    --primary-foreground: 0 0% 100%; /* White text on blue gradient */
+
+    /* New blue gradient for buttons */
+    --button-primary-gradient-start: 200 60% 54%; /* #3FAAD5 */
+    --button-primary-gradient-end: 217 100% 57%;  /* #2383FF */
+    --button-primary-gradient-start-hover: 200 60% 49%; /* Darker version of #3FAAD5 */
+    --button-primary-gradient-end-hover: 217 100% 52%; /* Darker version of #2383FF */
+
+    --secondary: 220 20% 25%; /* Darker, slightly desaturated blue - NEW */
+    --secondary-foreground: 220 15% 92%;
+
+    --muted: 240 10% 15%;
+    --muted-foreground: 240 5% 70%;
+
+    --accent: 217 100% 57%;  /* Darker/Brighter Blue - NEW (was purple) */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 70% 50%; 
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 10% 12%;
+    --input: 240 10% 10%;
+    --ring: 217 100% 62%; /* Brighter blue for focus rings - NEW */
+
+    --radius: 0.5rem;
+
+    --chart-1: hsl(var(--primary)); /* Lighter Blue */
+    --chart-2: hsl(var(--accent));  /* Darker/Brighter Blue */
+    --chart-3: hsl(var(--secondary)); /* Dark Desaturated Blue */
+    --chart-4: 210 80% 70%; /* Another distinct blue for charts */
+    --chart-5: 300 70% 70%; /* Pink/Magenta for contrast */
+
+    /* Sidebar specific variables */
+    --sidebar-background: 240 10% 4%; 
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: hsl(var(--primary));
+    --sidebar-primary-foreground: hsl(var(--primary-foreground));
+    --sidebar-accent: hsl(var(--accent));
+    --sidebar-accent-foreground: hsl(var(--accent-foreground));
+    --sidebar-border: 240 10% 8%;
+    --sidebar-ring: hsl(var(--ring));
+  }
+
+  html:not(.dark) {
+    /* Apply the same dark theme as default */
+    --background: 240 15% 2%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 6%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 5%;
+    --popover-foreground: 0 0% 98%;
+    
+    --primary: 200 60% 54%;
+    --primary-foreground: 0 0% 100%;
+    
+    --button-primary-gradient-start: 200 60% 54%;
+    --button-primary-gradient-end: 217 100% 57%;
+    --button-primary-gradient-start-hover: 200 60% 49%;
+    --button-primary-gradient-end-hover: 217 100% 52%;
+    
+    --secondary: 220 20% 25%;
+    --secondary-foreground: 220 15% 92%;
+    
+    --muted: 240 10% 15%;
+    --muted-foreground: 240 5% 70%;
+    
+    --accent: 217 100% 57%;
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 98%;
+    
+    --border: 240 10% 12%;
+    --input: 240 10% 10%;
+    --ring: 217 100% 62%;
+    
+    --sidebar-background: 240 10% 4%;
+    --sidebar-foreground: 0 0% 96%;
+    --sidebar-border: 240 10% 8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1,"calt" 1;
+  }
+}
+
+/* Custom Scrollbar Styles */
+@layer utilities {
+  .custom-scrollbar-horizontal::-webkit-scrollbar {
+    height: 6px;
+  }
+  .custom-scrollbar-horizontal::-webkit-scrollbar-track {
+    background-color: hsl(var(--card) / 0.1); 
+    border-radius: 3px;
+  }
+  .custom-scrollbar-horizontal::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.3); 
+    border-radius: 3px;
+    border: 1px solid transparent;
+    background-clip: content-box;
+  }
+  .custom-scrollbar-horizontal::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.5);
+  }
+   .custom-scrollbar-horizontal::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  .custom-scrollbar-horizontal {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.3) hsl(var(--card) / 0.1);
+  }
+
+  .custom-scrollbar-vertical::-webkit-scrollbar {
+    width: 6px; 
+  }
+  .custom-scrollbar-vertical::-webkit-scrollbar-track {
+    background: transparent; 
+    border-radius: 3px;
+  }
+  .custom-scrollbar-vertical::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.3); 
+    border-radius: 3px;
+  }
+  .custom-scrollbar-vertical::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.5);
+  }
+  .custom-scrollbar-vertical::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  .custom-scrollbar-vertical {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
+  }
+
+  @keyframes slideInFromRightMessages {
+    from {
+      transform: translateX(100vw);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+  .animate-slide-in-messages {
+    animation: slideInFromRightMessages 0.35s ease-out forwards;
+  }
+
+  @keyframes slideInFromBottomAppPage {
+    from {
+      transform: translateY(30px); 
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+  .animate-slide-in-from-bottom {
+    animation: slideInFromBottomAppPage 0.3s ease-out;
+  }
+}
