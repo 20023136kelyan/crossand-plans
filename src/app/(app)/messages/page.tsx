@@ -1,4 +1,3 @@
-
 'use client';
 
 import {
@@ -33,7 +32,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import Link from 'next/link';
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef, useReducer } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { getUserChats } from '@/services/chatService'; 
 import { getFriendships } from '@/services/userService'; 
@@ -58,6 +57,19 @@ import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 
+interface RawBasicUserInfo {
+  uid: string;
+  name: string | null;
+  avatarUrl: string | null;
+}
+
+// Add type definition for friendship status
+type FriendStatus = 'friends' | 'pending_sent' | 'pending_received';
+type ExtendedFriendStatus = FriendStatus | 'not_friends' | 'is_self';
+
+interface SearchedUserWithStatus extends SearchedUser {
+  friendshipStatus: ExtendedFriendStatus;
+}
 
 const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, isVerified: boolean }) => {
   if (role === 'admin') {
@@ -68,6 +80,268 @@ const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, is
   }
   return null;
 };
+
+// Define action types for the search reducer
+type SearchAction =
+  | { type: 'START_SEARCH' }
+  | { type: 'SEARCH_SUCCESS'; results: SearchedUserWithStatus[] }
+  | { type: 'SEARCH_ERROR'; error: string }
+  | { type: 'CLEAR_SEARCH' };
+
+type SearchState = {
+  results: SearchedUserWithStatus[];
+  loading: boolean;
+  error: string | null;
+};
+
+// Search reducer function
+function searchReducer(state: SearchState, action: SearchAction): SearchState {
+  switch (action.type) {
+    case 'START_SEARCH':
+      return { ...state, loading: true, error: null };
+    case 'SEARCH_SUCCESS':
+      return { loading: false, results: action.results, error: null };
+    case 'SEARCH_ERROR':
+      return { ...state, loading: false, error: action.error };
+    case 'CLEAR_SEARCH':
+      return { loading: false, results: [], error: null };
+    default:
+      return state;
+  }
+}
+
+type SearchResult = {
+  success: boolean;
+  users?: SearchedUser[];
+  error?: string;
+};
+
+// Separate component for the manage friends dialog
+function ManageFriendsDialog({
+  open,
+  onOpenChange,
+  friends,
+  pendingReceived,
+  pendingSent,
+  friendshipsLoading,
+  onFriendAction,
+  friendActionLoading,
+  searchTerm,
+  onSearchTermChange,
+  searchResults,
+  searchLoading
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  friends: FriendEntry[];
+  pendingReceived: FriendEntry[];
+  pendingSent: FriendEntry[];
+  friendshipsLoading: boolean;
+  onFriendAction: (action: 'send' | 'accept' | 'decline' | 'cancel' | 'remove', user: SearchedUser | FriendEntry) => Promise<void>;
+  friendActionLoading: boolean;
+  searchTerm: string;
+  onSearchTermChange: (term: string) => void;
+  searchResults: SearchedUserWithStatus[];
+  searchLoading: boolean;
+}) {
+  const { user } = useAuth();
+
+  // Memoize the dialog content to prevent unnecessary re-renders
+  const dialogContent = useMemo(() => (
+    <DialogContent className="sm:max-w-md max-h-[80vh] flex flex-col p-0">
+      <DialogHeader className="p-6 pb-4 border-b">
+        <DialogTitle>Manage Contacts</DialogTitle>
+        <DialogDescription>Find new people or manage existing connections.</DialogDescription>
+      </DialogHeader>
+      <div className="flex-grow overflow-y-auto p-6 space-y-6 custom-scrollbar-vertical">
+        <section>
+          <h4 className="text-md font-semibold mb-1.5 text-foreground/80">Find New People</h4>
+          <div className="flex gap-2 mb-3">
+            <Input
+              type="search"
+              placeholder="Search by email or phone..."
+              value={searchTerm}
+              onChange={(e) => onSearchTermChange(e.target.value)}
+              className="h-9 text-sm"
+            />
+          </div>
+          {searchLoading ? (
+            <div className="flex justify-center py-4">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : searchResults.length > 0 ? (
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar-vertical">
+              {searchResults.map(su => (
+                <div key={su.uid} className="flex items-center justify-between p-2 rounded-md bg-secondary/30 hover:bg-secondary/50">
+                  <Link href={`/users/${su.uid}`} className="flex items-center gap-2 flex-grow min-w-0 hover:opacity-80 transition-opacity" onClick={() => onOpenChange(false)}>
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={su.avatarUrl || undefined} alt={su.name || 'User'} data-ai-hint="person avatar" />
+                      <AvatarFallback>{su.name ? su.name.charAt(0).toUpperCase() : (su.email ? su.email.charAt(0).toUpperCase() : 'U')}</AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm font-medium truncate max-w-[150px] sm:max-w-xs" title={su.name || su.email || undefined}>{su.name || su.email}</span>
+                    <VerificationBadge role={su.role || null} isVerified={su.isVerified || false} />
+                  </Link>
+                  <div className="ml-2 flex-shrink-0">
+                    {su.uid === user?.uid ? (
+                      <Badge variant="outline" className="text-xs whitespace-nowrap">You</Badge>
+                    ) : su.friendshipStatus === 'friends' ? (
+                      <Badge variant="default" className="text-xs whitespace-nowrap">Friends</Badge>
+                    ) : su.friendshipStatus === 'pending_sent' ? (
+                      <Button size="sm" variant="outline" onClick={() => onFriendAction('cancel', su)} disabled={friendActionLoading}>
+                        <XCircle className="mr-1.5 h-3.5 w-3.5" /> Cancel
+                      </Button>
+                    ) : su.friendshipStatus === 'pending_received' ? (
+                      <Button size="sm" onClick={() => onFriendAction('accept', su)} disabled={friendActionLoading}>
+                        <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Accept
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="outline" onClick={() => onFriendAction('send', su)} disabled={friendActionLoading}>
+                        <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Add
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : searchTerm.trim().length >= 2 && !searchLoading && (
+            <p className="text-sm text-muted-foreground text-center py-2">No users found matching "{searchTerm}"</p>
+          )}
+        </section>
+
+        <Separator />
+
+        {friendshipsLoading ? (
+          <div className="flex justify-center items-center py-6">
+            <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />
+          </div>
+        ) : (
+          <>
+            {pendingReceived.length > 0 && (
+              <section>
+                <h4 className="text-md font-semibold mb-2 text-foreground/80">Friend Requests ({pendingReceived.length})</h4>
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar-vertical">
+                  {pendingReceived.map(req => (
+                    <div key={req.friendUid} className="flex items-center justify-between p-2 rounded-md bg-secondary/30 hover:bg-secondary/50">
+                      <Link href={`/users/${req.friendUid}`} className="flex items-center gap-2 flex-grow min-w-0 hover:opacity-80 transition-opacity" onClick={() => onOpenChange(false)}>
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={req.avatarUrl || undefined} alt={req.name || 'User'} data-ai-hint="person avatar"/>
+                          <AvatarFallback>{req.name ? req.name.charAt(0).toUpperCase() : 'U'}</AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm font-medium truncate max-w-[120px] sm:max-w-xs" title={req.name || undefined}>{req.name || 'User'}</span>
+                        <VerificationBadge role={req.role || null} isVerified={req.isVerified || false} />
+                      </Link>
+                      <div className="flex gap-2 flex-shrink-0 ml-2">
+                        <Button size="sm" onClick={() => onFriendAction('accept', req)} disabled={friendActionLoading}>
+                          <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Accept
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => onFriendAction('decline', req)} disabled={friendActionLoading}>
+                          <XCircle className="mr-1.5 h-3.5 w-3.5" /> Decline
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {(pendingReceived.length > 0 && (friends.length > 0 || pendingSent.length > 0)) && <Separator />}
+
+            {friends.length > 0 && (
+              <section>
+                <h4 className="text-md font-semibold mb-2 text-foreground/80">Your Friends ({friends.length})</h4>
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar-vertical">
+                  {friends.map(friend => (
+                    <div key={friend.friendUid} className="flex items-center justify-between p-2 rounded-md bg-secondary/30 hover:bg-secondary/50">
+                      <Link href={`/users/${friend.friendUid}`} className="flex items-center gap-2 flex-grow min-w-0 hover:opacity-80 transition-opacity" onClick={() => onOpenChange(false)}>
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={friend.avatarUrl || undefined} alt={friend.name || 'User'} data-ai-hint="person avatar"/>
+                          <AvatarFallback>{friend.name ? friend.name.charAt(0).toUpperCase() : 'U'}</AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm font-medium truncate max-w-[150px] sm:max-w-xs" title={friend.name || undefined}>{friend.name || 'User'}</span>
+                        <VerificationBadge role={friend.role || null} isVerified={friend.isVerified || false} />
+                      </Link>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10 ml-2 flex-shrink-0"
+                        onClick={() => onFriendAction('remove', friend)}
+                        disabled={friendActionLoading}
+                      >
+                        <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Unfriend
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {((friends.length > 0 && pendingSent.length > 0) || (pendingReceived.length > 0 && pendingSent.length > 0 && friends.length === 0)) && <Separator />}
+
+            {pendingSent.length > 0 && (
+              <section>
+                <h4 className="text-md font-semibold mb-2 text-foreground/80">Sent Requests ({pendingSent.length})</h4>
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar-vertical">
+                  {pendingSent.map(req => (
+                    <div key={req.friendUid} className="flex items-center justify-between p-2 rounded-md bg-secondary/30 hover:bg-secondary/50">
+                      <Link href={`/users/${req.friendUid}`} className="flex items-center gap-2 flex-grow min-w-0 hover:opacity-80 transition-opacity" onClick={() => onOpenChange(false)}>
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={req.avatarUrl || undefined} alt={req.name || 'User'} data-ai-hint="person avatar"/>
+                          <AvatarFallback>{req.name ? req.name.charAt(0).toUpperCase() : 'U'}</AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm font-medium truncate max-w-[150px] sm:max-w-xs" title={req.name || undefined}>{req.name || 'User'}</span>
+                        <VerificationBadge role={req.role || null} isVerified={req.isVerified || false} />
+                      </Link>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="ml-2 flex-shrink-0"
+                        onClick={() => onFriendAction('cancel', req)}
+                        disabled={friendActionLoading}
+                      >
+                        <XCircle className="mr-1.5 h-3.5 w-3.5" /> Cancel
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {friends.length === 0 && pendingReceived.length === 0 && pendingSent.length === 0 && !friendshipsLoading && (
+              <p className="text-sm text-muted-foreground text-center py-4">Your contact list is empty. Search for users to connect!</p>
+            )}
+          </>
+        )}
+      </div>
+      <DialogFooter className="p-6 pt-4 border-t">
+        <DialogClose asChild>
+          <Button type="button" variant="outline">Close</Button>
+        </DialogClose>
+      </DialogFooter>
+    </DialogContent>
+  ), [
+    searchTerm,
+    searchResults,
+    searchLoading,
+    friends,
+    pendingReceived,
+    pendingSent,
+    friendshipsLoading,
+    friendActionLoading,
+    user,
+    onOpenChange,
+    onSearchTermChange,
+    onFriendAction
+  ]);
+
+  // Use a basic dialog without animations
+  if (!open) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange} modal>
+      {dialogContent}
+    </Dialog>
+  );
+}
 
 export default function MessagesPage() {
   const { user, currentUserProfile, loading: authLoading } = useAuth();
@@ -88,13 +362,16 @@ export default function MessagesPage() {
   const [friends, setFriends] = useState<FriendEntry[]>([]);
   const [pendingReceived, setPendingReceived] = useState<FriendEntry[]>([]);
   const [pendingSent, setPendingSent] = useState<FriendEntry[]>([]);
-  const [friendshipsLoading, setFriendshipsLoading] = useState(true);
-  const [searchTermUsers, setSearchTermUsers] = useState('');
-  const [debouncedSearchTermUsers, setDebouncedSearchTermUsers] = useState('');
-  const [userSearchResults, setUserSearchResults] = useState<SearchedUser[]>([]);
-  const [userSearchLoading, setUserSearchLoading] = useState(false);
+  const [friendshipsLoading, setFriendshipsLoading] = useState(false);
   const [friendActionLoading, setFriendActionLoading] = useState(false);
+  const unsubFriendshipsRef = useRef<(() => void) | null>(null);
 
+  // Search state
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchedUserWithStatus[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout>();
+  const unsubFriendshipsSearchRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (authLoading) {
@@ -116,86 +393,149 @@ export default function MessagesPage() {
     }
   }, [user, authLoading]);
 
-  const fetchFriendships = useCallback(async () => {
-    if (user && user.uid && isManageFriendsDialogOpen) {
-      setFriendshipsLoading(true);
-      try {
-        const allFriendships = await getFriendships(user.uid);
-        setFriends(allFriendships.filter(f => f.status === 'friends'));
-        setPendingReceived(allFriendships.filter(f => f.status === 'pending_received'));
-        setPendingSent(allFriendships.filter(f => f.status === 'pending_sent'));
-      } catch (error) {
-        console.error("Error fetching friendships", error);
-        toast({ title: "Error", description: "Could not fetch friendships.", variant: "destructive" });
-      } finally {
-        setFriendshipsLoading(false);
-      }
+  // Effect to handle friendships subscription
+  useEffect(() => {
+    if (!user?.uid || !isManageFriendsDialogOpen) {
+      return;
     }
-  }, [user, toast, isManageFriendsDialogOpen]);
 
-  useEffect(() => {
-    if (isManageFriendsDialogOpen) {
-      fetchFriendships();
+    setFriendshipsLoading(true);
+
+    try {
+      const unsubscribe = getFriendships(
+        user.uid,
+        (allFriendships: FriendEntry[]) => {
+          setFriends(allFriendships.filter(f => f.status === 'friends'));
+          setPendingReceived(allFriendships.filter(f => f.status === 'pending_received'));
+          setPendingSent(allFriendships.filter(f => f.status === 'pending_sent'));
+          setFriendshipsLoading(false);
+        },
+        (error: Error) => {
+          console.error("Error fetching friendships", error);
+          toast({ title: "Error", description: "Could not fetch friendships.", variant: "destructive" });
+          setFriendshipsLoading(false);
+        }
+      );
+
+      unsubFriendshipsRef.current = unsubscribe;
+
+      // Cleanup subscription when dialog closes or component unmounts
+      return () => {
+        if (unsubFriendshipsRef.current) {
+          unsubFriendshipsRef.current();
+          unsubFriendshipsRef.current = null;
+        }
+        // Reset states when dialog closes
+        setFriends([]);
+        setPendingReceived([]);
+        setPendingSent([]);
+      };
+    } catch (error) {
+      console.error("Error setting up friendships listener", error);
+      toast({ title: "Error", description: "Could not fetch friendships.", variant: "destructive" });
+      setFriendshipsLoading(false);
     }
-  }, [isManageFriendsDialogOpen, fetchFriendships]);
+  }, [user?.uid, isManageFriendsDialogOpen, toast]);
 
+  // Effect for search
   useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearchTermUsers(searchTermUsers);
-    }, 500);
-    return () => clearTimeout(handler);
-  }, [searchTermUsers]);
+    if (!isManageFriendsDialogOpen) {
+      setSearchResults([]);
+      setSearchTerm('');
+      return;
+    }
 
-  useEffect(() => {
-    const performUserSearch = async () => {
-      if (!debouncedSearchTermUsers.trim() || debouncedSearchTermUsers.length < 2) {
-        setUserSearchResults([]);
+    const performSearch = async () => {
+      if (!searchTerm.trim() || searchTerm.length < 2 || !user) {
+        setSearchResults([]);
         return;
       }
-      if (!user) {
-        setUserSearchResults([]);
-        return;
-      }
 
-      setUserSearchLoading(true);
+      setSearchLoading(true);
       try {
-        await user.getIdToken(true);
-        const idToken = await user.getIdToken();
-        if (!idToken) {
-          toast({ title: "Authentication Error", description: "Could not get authentication token for search.", variant: "destructive" });
-          setUserSearchLoading(false);
+        const idToken = await user.getIdToken(true);
+        const result = await searchUsersAction(searchTerm, idToken);
+        
+        if (!result.success || !Array.isArray(result.users) || !result.users) {
+          setSearchResults([]);
+          if (result.error) {
+            toast({ title: "Search Failed", description: result.error, variant: "destructive" });
+          }
           return;
         }
-        const result = await searchUsersAction(debouncedSearchTermUsers, idToken);
-        if (result.success && result.users) {
-          const currentFriendships = await getFriendships(user.uid);
-          const friendsMap = new Map(currentFriendships.map(f => [f.friendUid, f.status]));
-          const usersWithStatus = result.users.map(su => ({
-            ...su,
-            friendshipStatus: su.uid === user.uid ? 'is_self' : (friendsMap.get(su.uid) || 'not_friends')
-          }));
-          setUserSearchResults(usersWithStatus);
-           if (usersWithStatus.length === 0 && debouncedSearchTermUsers.trim()) {
-             // toast({ title: "User Search", description: `No users found matching "${debouncedSearchTermUsers}".`, variant: "default" });
-           }
-        } else {
-          setUserSearchResults([]);
-          if (result.error) toast({ title: "User Search Failed", description: result.error, variant: "destructive" });
+
+        const searchUsers = result.users;
+
+        // Clean up previous subscription if exists
+        if (unsubFriendshipsSearchRef.current) {
+          unsubFriendshipsSearchRef.current();
+          unsubFriendshipsSearchRef.current = null;
         }
+
+        // Get current friendships
+        unsubFriendshipsSearchRef.current = getFriendships(
+          user.uid,
+          (currentFriendships: FriendEntry[]) => {
+            const friendsMap = new Map(currentFriendships.map((f: FriendEntry) => [f.friendUid, f.status as FriendStatus]));
+            const usersWithStatus = searchUsers.map(su => ({
+              ...su,
+              friendshipStatus: su.uid === user.uid ? 'is_self' : (friendsMap.get(su.uid) as ExtendedFriendStatus || 'not_friends')
+            }));
+            setSearchResults(usersWithStatus);
+            
+            // Cleanup subscription after getting results
+            if (unsubFriendshipsSearchRef.current) {
+              unsubFriendshipsSearchRef.current();
+              unsubFriendshipsSearchRef.current = null;
+            }
+          },
+          (error: Error) => {
+            console.error("Error fetching friendships for search", error);
+            const usersWithoutStatus = searchUsers.map(su => ({
+              ...su,
+              friendshipStatus: (su.uid === user.uid ? 'is_self' : 'not_friends') as ExtendedFriendStatus
+            }));
+            setSearchResults(usersWithoutStatus);
+          }
+        );
       } catch (error: any) {
-        setUserSearchResults([]);
-        toast({ title: "User Search Error", description: error.message || "Could not search users.", variant: "destructive" });
+        setSearchResults([]);
+        toast({ title: "Search Error", description: error.message || "Could not search users.", variant: "destructive" });
       } finally {
-        setUserSearchLoading(false);
+        setSearchLoading(false);
       }
     };
-    if (isManageFriendsDialogOpen) { 
-        performUserSearch();
-    } else {
-        setUserSearchResults([]); 
-    }
-  }, [debouncedSearchTermUsers, user, toast, isManageFriendsDialogOpen]);
 
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    // Set new timeout
+    searchTimeoutRef.current = setTimeout(performSearch, 500);
+
+    // Cleanup function
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+      if (unsubFriendshipsSearchRef.current) {
+        unsubFriendshipsSearchRef.current();
+      }
+    };
+  }, [searchTerm, user, isManageFriendsDialogOpen, toast]);
+
+  // Cleanup subscriptions on unmount
+  useEffect(() => {
+    return () => {
+      if (unsubFriendshipsRef.current) {
+        unsubFriendshipsRef.current();
+      }
+      if (unsubFriendshipsSearchRef.current) {
+        unsubFriendshipsSearchRef.current();
+      }
+    };
+  }, []);
 
   const filteredChats = useMemo(() => {
     if (!searchTermChats.trim()) return chats;
@@ -234,41 +574,37 @@ export default function MessagesPage() {
     };
   };
 
-  const handleFriendSelectForChat = async (selectedFriend: FriendEntry) => {
+  const handleFriendSelectForChat = useCallback(async (selectedFriend: FriendEntry) => {
     if (!currentUserProfile || !user) {
       toast({ title: "Error", description: "User profile not loaded. Please try again shortly.", variant: "destructive" });
       return;
     }
     setIsInitiatingChat(true);
     try {
-      const idToken = await user.getIdToken(true);
-      if (!idToken) throw new Error("Authentication token not available.");
-      
-      const result = await initiateDirectChatAction(
-        {
-          uid: selectedFriend.friendUid,
-          name: selectedFriend.name,
-          avatarUrl: selectedFriend.avatarUrl,
-          role: selectedFriend.role,
-          isVerified: selectedFriend.isVerified || false,
-        }, 
-        idToken
-      );
+      const chatUserInfo: RawBasicUserInfo = {
+        uid: selectedFriend.friendUid,
+        name: selectedFriend.name,
+        avatarUrl: selectedFriend.avatarUrl
+      };
 
+      const currentUserInfo: RawBasicUserInfo = {
+        uid: user.uid,
+        name: currentUserProfile.name,
+        avatarUrl: currentUserProfile.avatarUrl
+      };
+
+      const result = await initiateDirectChatAction(chatUserInfo, currentUserInfo);
       if (result.success && result.chatId) {
-        toast({ title: "Success!", description: `Chat with ${selectedFriend.name || 'friend'} is ready.` });
         router.push(`/messages/${result.chatId}`);
       } else {
         toast({ title: "Error", description: result.error || "Could not start chat.", variant: "destructive" });
       }
     } catch (error: any) {
-      console.error("Error initiating chat from picker:", error);
-      toast({ title: "Error", description: error.message || "An unexpected error occurred while starting chat.", variant: "destructive" });
+      toast({ title: "Error", description: error.message || "Could not start chat.", variant: "destructive" });
     } finally {
       setIsInitiatingChat(false);
-      setIsFriendPickerOpen(false);
     }
-  };
+  }, [user, currentUserProfile, router, toast]);
 
   const handleDeleteChatRequest = (chat: Chat) => {
     setChatToDelete(chat);
@@ -298,50 +634,39 @@ export default function MessagesPage() {
     }
   };
   
-  const handleFriendAction = async (actionType: 'send' | 'accept' | 'decline' | 'remove' | 'cancel', targetUser: SearchedUser | FriendEntry) => {
-    if (!user || !currentUserProfile) {
-      toast({ title: "Error", description: "User not authenticated.", variant: "destructive" });
+  const handleFriendAction = useCallback(async (action: 'send' | 'accept' | 'decline' | 'cancel' | 'remove', targetUser: SearchedUser | FriendEntry) => {
+    if (!user) {
+      toast({ title: "Error", description: "You must be logged in to perform this action.", variant: "destructive" });
       return;
     }
-    setFriendActionLoading(true);
-    const targetUid = 'uid' in targetUser ? targetUser.uid : targetUser.friendUid;
-    const targetUserInfoForAction = {
-        uid: targetUid,
-        name: targetUser.name || null,
-        avatarUrl: targetUser.avatarUrl || null,
-        role: ('role' in targetUser ? targetUser.role : null) as UserRoleType | null,
-        isVerified: ('isVerified' in targetUser ? targetUser.isVerified : false) || false,
-    };
-
     try {
-      await user.getIdToken(true);
-      const idToken = await user.getIdToken();
-      if (!idToken) {
-        toast({ title: "Authentication Error", description: "Could not perform friend action.", variant: "destructive" });
-        setFriendActionLoading(false);
-        return;
-      }
-      let result: { success: boolean; error?: string; message?: string };
+      setFriendActionLoading(true);
+      const targetUid = 'uid' in targetUser ? targetUser.uid : targetUser.friendUid;
+      const idToken = await user.getIdToken(true);
+      if (!idToken) throw new Error("Authentication token not available.");
 
-      switch (actionType) {
-        case 'send': result = await sendFriendRequestAction(targetUserInfoForAction, idToken); break;
-        case 'accept': result = await acceptFriendRequestAction(targetUserInfoForAction, idToken); break;
+      let result;
+      switch (action) {
+        case 'send':
+          result = await sendFriendRequestAction(targetUid, idToken);
+          break;
+        case 'accept':
+          result = await acceptFriendRequestAction(targetUid, idToken);
+          break;
         case 'decline':
-        case 'cancel': result = await declineFriendRequestAction(targetUid, idToken); break;
-        case 'remove': result = await removeFriendAction(targetUid, idToken); break;
-        default: setFriendActionLoading(false); return;
+        case 'cancel':
+          result = await declineFriendRequestAction(targetUid, idToken);
+          break;
+        case 'remove':
+          result = await removeFriendAction(targetUid, idToken);
+          break;
+        default:
+          throw new Error("Invalid friend action");
       }
 
       if (result.success) {
-        toast({ title: "Success", description: result.message || "Action completed." });
-        fetchFriendships(); 
-         if (actionType === 'send') {
-             setUserSearchResults(prev => prev.map(su => su.uid === targetUid ? { ...su, friendshipStatus: 'pending_sent' } : su));
-        } else if (['cancel', 'decline', 'remove'].includes(actionType)) {
-             setUserSearchResults(prev => prev.map(su => su.uid === targetUid ? { ...su, friendshipStatus: 'not_friends' } : su));
-        } else if (actionType === 'accept') {
-             setUserSearchResults(prev => prev.map(su => su.uid === targetUid ? { ...su, friendshipStatus: 'friends' } : su));
-        }
+        toast({ title: "Success", description: result.message || "Friend action successful." });
+        // The real-time listener will update the state
       } else {
         toast({ title: "Error", description: result.error || "Could not complete action.", variant: "destructive" });
       }
@@ -350,8 +675,7 @@ export default function MessagesPage() {
     } finally {
       setFriendActionLoading(false);
     }
-  };
-
+  }, [user, toast]);
 
   if (authLoading || (loadingChats && user)) {
     return (
@@ -369,13 +693,13 @@ export default function MessagesPage() {
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              size="icon"
               onClick={() => setIsFriendPickerOpen(true)}
-              aria-label="Start new chat with existing friend"
-              className="hover:bg-primary hover:text-primary-foreground active:bg-primary active:text-primary-foreground h-9 w-9"
+              aria-label="Start new chat"
+              className="hover:bg-primary hover:text-primary-foreground active:bg-primary active:text-primary-foreground h-9"
               disabled={isInitiatingChat}
             >
-              {isInitiatingChat ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {isInitiatingChat ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+              New Chat
             </Button>
             <Button
               variant="outline"
@@ -491,7 +815,7 @@ export default function MessagesPage() {
                 onClick={() => setIsFriendPickerOpen(true)}
                 disabled={isInitiatingChat}
               >
-                 {isInitiatingChat ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                {isInitiatingChat ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                 Start New Chat
               </Button>
             </div>
@@ -511,125 +835,20 @@ export default function MessagesPage() {
         onFriendSelect={handleFriendSelectForChat}
       />
 
-      <Dialog open={isManageFriendsDialogOpen} onOpenChange={setIsManageFriendsDialogOpen}>
-        <DialogContent className="sm:max-w-md max-h-[80vh] flex flex-col p-0">
-          <DialogHeader className="p-6 pb-4 border-b">
-            <DialogTitle>Manage Contacts</DialogTitle>
-            <DialogDescription>Find new people or manage existing connections.</DialogDescription>
-          </DialogHeader>
-          <div className="flex-grow overflow-y-auto p-6 space-y-6 custom-scrollbar-vertical">
-            <section>
-              <h4 className="text-md font-semibold mb-1.5 text-foreground/80">Find New People</h4>
-              <div className="flex gap-2 mb-3">
-                <Input
-                  type="search"
-                  placeholder="Search by email or phone..."
-                  value={searchTermUsers}
-                  onChange={(e) => setSearchTermUsers(e.target.value)}
-                  className="h-9 text-sm"
-                />
-                <Button onClick={() => setDebouncedSearchTermUsers(searchTermUsers)} disabled={userSearchLoading || !searchTermUsers.trim()} size="sm" className="h-9">
-                  {userSearchLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                </Button>
-              </div>
-              {userSearchResults.length > 0 && (
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar-vertical">
-                  <p className="text-xs text-muted-foreground mb-1">Search Results ({userSearchResults.length}):</p>
-                  {userSearchResults.map(su => (
-                    <div key={su.uid} className="flex items-center justify-between p-2 rounded-md bg-secondary/30 hover:bg-secondary/50">
-                      <Link href={`/users/${su.uid}`} className="flex items-center gap-2 flex-grow min-w-0 hover:opacity-80 transition-opacity" onClick={() => setIsManageFriendsDialogOpen(false)}>
-                        <Avatar className="h-8 w-8"><AvatarImage src={su.avatarUrl || undefined} alt={su.name || 'User'} data-ai-hint="person avatar" /><AvatarFallback>{su.name ? su.name.charAt(0).toUpperCase() : (su.email ? su.email.charAt(0).toUpperCase() : 'U')}</AvatarFallback></Avatar>
-                        <span className="text-sm font-medium truncate max-w-[150px] sm:max-w-xs" title={su.name || su.email || undefined}>{su.name || su.email}</span>
-                        <VerificationBadge role={su.role || null} isVerified={su.isVerified || false} />
-                      </Link>
-                      <div className="ml-2 flex-shrink-0">
-                        {su.uid === user?.uid ? <Badge variant="outline" className="text-xs whitespace-nowrap">You</Badge>
-                        : su.friendshipStatus === 'friends' ? <Badge variant="default" className="text-xs whitespace-nowrap">Friends</Badge>
-                        : su.friendshipStatus === 'pending_sent' ? <Button size="xs" variant="outline" onClick={() => handleFriendAction('cancel', su)} disabled={friendActionLoading}><XCircle className="mr-1.5 h-3.5 w-3.5" /> Cancel</Button>
-                        : su.friendshipStatus === 'pending_received' ? <Button size="xs" onClick={() => handleFriendAction('accept', su)} disabled={friendActionLoading}><CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Accept</Button>
-                        : <Button size="xs" variant="outline" onClick={() => handleFriendAction('send', su)} disabled={friendActionLoading}><UserPlus className="mr-1.5 h-3.5 w-3.5" /> Add</Button>
-                        }
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-            <Separator />
-            {friendshipsLoading ? (
-              <div className="flex justify-center items-center py-6"><Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" /></div>
-            ) : (
-              <>
-              {pendingReceived.length > 0 && (
-                <section>
-                  <h4 className="text-md font-semibold mb-2 text-foreground/80">Friend Requests ({pendingReceived.length})</h4>
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar-vertical">
-                    {pendingReceived.map(req => (
-                      <div key={req.friendUid} className="flex items-center justify-between p-2 rounded-md bg-secondary/30 hover:bg-secondary/50">
-                         <Link href={`/users/${req.friendUid}`} className="flex items-center gap-2 flex-grow min-w-0 hover:opacity-80 transition-opacity" onClick={() => setIsManageFriendsDialogOpen(false)}>
-                          <Avatar className="h-8 w-8"><AvatarImage src={req.avatarUrl || undefined} alt={req.name || 'User'} data-ai-hint="person avatar"/><AvatarFallback>{req.name ? req.name.charAt(0).toUpperCase() : 'U'}</AvatarFallback></Avatar>
-                          <span className="text-sm font-medium truncate max-w-[120px] sm:max-w-xs" title={req.name || undefined}>{req.name || 'User'}</span>
-                           <VerificationBadge role={req.role || null} isVerified={req.isVerified || false} />
-                        </Link>
-                        <div className="flex gap-2 flex-shrink-0 ml-2">
-                          <Button size="xs" onClick={() => handleFriendAction('accept', req)} disabled={friendActionLoading}><CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Accept</Button>
-                          <Button size="xs" variant="ghost" onClick={() => handleFriendAction('decline', req)} disabled={friendActionLoading}><XCircle className="mr-1.5 h-3.5 w-3.5" /> Decline</Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
-              {(pendingReceived.length > 0 && (friends.length > 0 || pendingSent.length > 0)) && <Separator />}
-              {friends.length > 0 && (
-                <section>
-                    <h4 className="text-md font-semibold mb-2 text-foreground/80">Your Friends ({friends.length})</h4>
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar-vertical">
-                    {friends.map(friend => (
-                        <div key={friend.friendUid} className="flex items-center justify-between p-2 rounded-md bg-secondary/30 hover:bg-secondary/50">
-                         <Link href={`/users/${friend.friendUid}`} className="flex items-center gap-2 flex-grow min-w-0 hover:opacity-80 transition-opacity" onClick={() => setIsManageFriendsDialogOpen(false)}>
-                            <Avatar className="h-8 w-8"><AvatarImage src={friend.avatarUrl || undefined} alt={friend.name || 'User'} data-ai-hint="person avatar"/><AvatarFallback>{friend.name ? friend.name.charAt(0).toUpperCase() : 'U'}</AvatarFallback></Avatar>
-                            <span className="text-sm font-medium truncate max-w-[150px] sm:max-w-xs" title={friend.name || undefined}>{friend.name || 'User'}</span>
-                            <VerificationBadge role={friend.role || null} isVerified={friend.isVerified || false} />
-                        </Link>
-                        <Button size="xs" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10 ml-2 flex-shrink-0" onClick={() => handleFriendAction('remove', friend)} disabled={friendActionLoading}><Trash2 className="mr-1.5 h-3.5 w-3.5" /> Unfriend</Button>
-                        </div>
-                    ))}
-                    </div>
-                </section>
-              )}
-              {((friends.length > 0 && pendingSent.length > 0) || (pendingReceived.length > 0 && pendingSent.length >0 && friends.length === 0)) && <Separator />}
-              {pendingSent.length > 0 && (
-                <section>
-                  <h4 className="text-md font-semibold mb-2 text-foreground/80">Sent Requests ({pendingSent.length})</h4>
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar-vertical">
-                    {pendingSent.map(req => (
-                      <div key={req.friendUid} className="flex items-center justify-between p-2 rounded-md bg-secondary/30 hover:bg-secondary/50">
-                        <Link href={`/users/${req.friendUid}`} className="flex items-center gap-2 flex-grow min-w-0 hover:opacity-80 transition-opacity" onClick={() => setIsManageFriendsDialogOpen(false)}>
-                          <Avatar className="h-8 w-8"><AvatarImage src={req.avatarUrl || undefined} alt={req.name || 'User'} data-ai-hint="person avatar"/><AvatarFallback>{req.name ? req.name.charAt(0).toUpperCase() : 'U'}</AvatarFallback></Avatar>
-                          <span className="text-sm font-medium truncate max-w-[150px] sm:max-w-xs" title={req.name || undefined}>{req.name || 'User'}</span>
-                           <VerificationBadge role={req.role || null} isVerified={req.isVerified || false} />
-                        </Link>
-                        <Button size="xs" variant="ghost" className="ml-2 flex-shrink-0" onClick={() => handleFriendAction('cancel', req)} disabled={friendActionLoading}><XCircle className="mr-1.5 h-3.5 w-3.5" /> Cancel</Button>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
-              {friends.length === 0 && pendingReceived.length === 0 && pendingSent.length === 0 && !friendshipsLoading && (
-                <p className="text-sm text-muted-foreground text-center py-4">Your contact list is empty. Search for users to connect!</p>
-              )}
-             </>
-            )}
-          </div>
-          <DialogFooter className="p-6 pt-4 border-t">
-            <DialogClose asChild>
-              <Button type="button" variant="outline">Close</Button>
-            </DialogClose>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
+      <ManageFriendsDialog
+        open={isManageFriendsDialogOpen}
+        onOpenChange={setIsManageFriendsDialogOpen}
+        friends={friends}
+        pendingReceived={pendingReceived}
+        pendingSent={pendingSent}
+        friendshipsLoading={friendshipsLoading}
+        onFriendAction={handleFriendAction}
+        friendActionLoading={friendActionLoading}
+        searchTerm={searchTerm}
+        onSearchTermChange={setSearchTerm}
+        searchResults={searchResults}
+        searchLoading={searchLoading}
+      />
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent>

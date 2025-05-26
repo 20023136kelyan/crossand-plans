@@ -31,11 +31,12 @@ import {
   updateUserAvatarAction,
 } from '@/app/actions/userActions';
 import { initiateDirectChatAction } from '@/app/actions/chatActions';
-import type { UserProfile, FeedPost, UserStats, FriendStatus, UserRoleType, SearchedUser } from "@/types/user";
+import type { UserProfile, FeedPost, UserStats, FriendStatus, UserRoleType, FriendEntry } from "@/types/user";
 import { cn, commonImageExtensions } from "@/lib/utils";
 import { PostDetailModal } from '@/components/feed/PostDetailModal';
 import ReactCrop, { type Crop, type PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
+import { getFriendships } from '@/services/userService';
 
 const VerificationBadgeInline = ({ role, isVerified }: { role: UserProfile['role'], isVerified: UserProfile['isVerified'] }) => {
   if (!role && !isVerified) return null;
@@ -54,6 +55,14 @@ interface ProfilePageData {
   userStats: UserStats | null;
   isViewerFollowing?: boolean | null;
   friendshipStatusWithViewer?: FriendStatus | 'not_friends' | 'is_self' | null;
+}
+
+interface RawBasicUserInfo {
+  uid: string;
+  name: string | null;
+  avatarUrl: string | null;
+  role: UserRoleType;
+  isVerified: boolean;
 }
 
 // Canvas preview helper function (ensure this is robust)
@@ -143,8 +152,12 @@ export default function UserProfilePage() {
   const [croppedImageFile, setCroppedImageFile] = useState<File | null>(null);
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
-  const imgRef = useRef<HTMLImageElement>(null);
+  const [currentImage, setCurrentImage] = useState<HTMLImageElement | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  const [unsubFriendships, setUnsubFriendships] = useState<(() => void) | null>(null);
 
   const fetchProfileData = useCallback(async () => {
     console.log('[UserProfilePage] fetchProfileData called for profileId:', profileId, 'Current user:', currentUser?.uid);
@@ -200,6 +213,27 @@ export default function UserProfilePage() {
     fetchProfileData();
   }, [fetchProfileData]);
 
+  useEffect(() => {
+    if (currentUser?.uid && profileId) {
+      // Set up real-time listener for friendships
+      const unsubscribe = getFriendships(
+        currentUser.uid,
+        (friendships: FriendEntry[]) => {
+          const friendEntry = friendships.find(f => f.friendUid === profileId);
+          setFriendshipStatusWithViewer(friendEntry ? friendEntry.status : 'not_friends');
+        },
+        (error: Error) => {
+          console.error("Error in friendships listener:", error);
+          toast({ title: "Error", description: "Could not update friendship status.", variant: "destructive" });
+        }
+      );
+      setUnsubFriendships(() => unsubscribe);
+      return () => {
+        if (unsubscribe) unsubscribe();
+      };
+    }
+  }, [currentUser?.uid, profileId, toast]);
+
   const userProfile = profileData.userProfile;
   const userStats = profileData.userStats;
   const isOwnProfile = currentUser?.uid === userProfile?.uid;
@@ -218,26 +252,22 @@ export default function UserProfilePage() {
     }
     setFollowActionLoading(true);
     const originalIsFollowing = isFollowing;
+    
     // Optimistic UI update
     setIsFollowing(!originalIsFollowing);
+    
     // Update local counts optimistically
     setProfileData(prev => {
-        if (!prev || !prev.userProfile || !prev.userStats) return prev;
-        const currentFollowers = prev.userStats.followersCount || 0;
-        return {
-            ...prev,
-            userStats: {
-                ...prev.userStats,
-                followersCount: !originalIsFollowing ? currentFollowers + 1 : Math.max(0, currentFollowers - 1),
-            }
-        };
+      if (!prev || !prev.userProfile || !prev.userStats) return prev;
+      const currentFollowers = prev.userStats.followersCount || 0;
+      return {
+        ...prev,
+        userStats: {
+          ...prev.userStats,
+          followersCount: !originalIsFollowing ? currentFollowers + 1 : Math.max(0, currentFollowers - 1)
+        }
+      };
     });
-    if(authenticatedUserProfile && authenticatedUserProfile.uid === currentUser.uid) {
-        const currentFollowing = authenticatedUserProfile.followingCount || 0;
-        // This part is tricky as authenticatedUserProfile is not directly mutable here
-        // For now, we rely on fetchProfileData to refresh the viewer's following count if they are the viewer.
-    }
-
 
     try {
       await currentUser.getIdToken(true);
@@ -252,39 +282,40 @@ export default function UserProfilePage() {
         // Re-fetch to get authoritative data, this will also update friendshipStatus
         await fetchProfileData(); 
       } else {
-        setIsFollowing(originalIsFollowing); // Revert optimistic update
-         // Revert optimistic count update
+        // Revert optimistic updates
+        setIsFollowing(originalIsFollowing);
         setProfileData(prev => {
-            if (!prev || !prev.userProfile || !prev.userStats) return prev;
-            const currentFollowers = prev.userStats.followersCount || 0;
-            return {
-                ...prev,
-                userStats: {
-                    ...prev.userStats,
-                    followersCount: !originalIsFollowing ? Math.max(0, currentFollowers -1) : currentFollowers + 1,
-                }
-            };
+          if (!prev || !prev.userProfile || !prev.userStats) return prev;
+          const currentFollowers = prev.userStats.followersCount || 0;
+          return {
+            ...prev,
+            userStats: {
+              ...prev.userStats,
+              followersCount: originalIsFollowing ? currentFollowers + 1 : Math.max(0, currentFollowers - 1)
+            }
+          };
         });
         toast({ title: "Error", description: result.error || "Action failed.", variant: "destructive" });
       }
     } catch (error: any) {
-      setIsFollowing(originalIsFollowing); // Revert optimistic update
-       setProfileData(prev => {
-            if (!prev || !prev.userProfile || !prev.userStats) return prev;
-            const currentFollowers = prev.userStats.followersCount || 0;
-            return {
-                ...prev,
-                userStats: {
-                    ...prev.userStats,
-                    followersCount: !originalIsFollowing ? Math.max(0, currentFollowers -1) : currentFollowers + 1,
-                }
-            };
-        });
+      // Revert optimistic updates
+      setIsFollowing(originalIsFollowing);
+      setProfileData(prev => {
+        if (!prev || !prev.userProfile || !prev.userStats) return prev;
+        const currentFollowers = prev.userStats.followersCount || 0;
+        return {
+          ...prev,
+          userStats: {
+            ...prev.userStats,
+            followersCount: originalIsFollowing ? currentFollowers + 1 : Math.max(0, currentFollowers - 1)
+          }
+        };
+      });
       toast({ title: "Error", description: error.message || "Failed to perform action.", variant: "destructive" });
     } finally {
-      setFollowActionLoading(false); // Ensure this is always called
+      setFollowActionLoading(false);
     }
-  }, [currentUser, userProfile, isOwnProfile, isFollowing, toast, fetchProfileData, authenticatedUserProfile]);
+  }, [currentUser, userProfile, isOwnProfile, isFollowing, toast, fetchProfileData]);
 
   const handleFriendRequestButtonAction = useCallback(async (actionType: 'accept' | 'decline' | 'cancel' | 'send' | 'remove') => {
     if (!currentUser || !profileData.userProfile || isOwnProfile) {
@@ -308,11 +339,37 @@ export default function UserProfilePage() {
         case 'send':
         case 'accept':
           result = await (actionType === 'send' ? sendFriendRequestAction : acceptFriendRequestAction)(profileData.userProfile.uid, idToken);
+          if (result.success) {
+            // When sending or accepting friend request, we're automatically following the user
+            setIsFollowing(true);
+            // Note: We don't need to set friendshipStatus here as it will be updated by the real-time listener
+            // Update local counts optimistically
+            setProfileData(prev => ({
+              ...prev,
+              userStats: prev.userStats ? {
+                ...prev.userStats,
+                followersCount: (prev.userStats.followersCount || 0) + 1
+              } : null
+            }));
+          }
           break;
         case 'decline':
         case 'cancel':
         case 'remove':
           result = await (actionType === 'remove' ? removeFriendAction : declineFriendRequestAction)(profileData.userProfile.uid, idToken);
+          if (result.success && actionType === 'remove') {
+            // When removing friend, we're also unfollowing
+            setIsFollowing(false);
+            // Note: We don't need to set friendshipStatus here as it will be updated by the real-time listener
+            // Update local counts optimistically
+            setProfileData(prev => ({
+              ...prev,
+              userStats: prev.userStats ? {
+                ...prev.userStats,
+                followersCount: Math.max(0, (prev.userStats.followersCount || 0) - 1)
+              } : null
+            }));
+          }
           break;
         default:
           setActionLoading(false);
@@ -321,16 +378,16 @@ export default function UserProfilePage() {
 
       if (result.success) {
         toast({ title: "Success", description: result.message || "Friend action successful." });
-        await fetchProfileData();
+        // Note: No need to manually fetch profile data as the real-time listener will update the state
       } else {
-        toast({ title: "Error", description: result.error || "Friend action failed.", variant: "destructive" });
+        toast({ title: "Error", description: result.error || "Could not complete action.", variant: "destructive" });
       }
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to perform friend action.", variant: "destructive" });
+      toast({ title: "Error", description: error.message || "Failed to perform action.", variant: "destructive" });
     } finally {
       setActionLoading(false);
     }
-  }, [currentUser, profileData.userProfile, isOwnProfile, toast, fetchProfileData, router]);
+  }, [currentUser, profileData.userProfile, isOwnProfile, toast, router]);
 
   const handleInitiateChat = useCallback(async () => {
     if (!currentUser || !authenticatedUserProfile || !userProfile || isOwnProfile) {
@@ -344,16 +401,24 @@ export default function UserProfilePage() {
       const idToken = await currentUser.getIdToken();
       if (!idToken) throw new Error("Authentication token not available for chat.");
 
-      const result = await initiateDirectChatAction(
-        { 
-          uid: userProfile.uid, 
-          name: userProfile.name, 
-          avatarUrl: userProfile.avatarUrl,
-          role: userProfile.role,
-          isVerified: userProfile.isVerified,
-        }, 
-        idToken
-      );
+      const chatUserInfo: RawBasicUserInfo = {
+        uid: userProfile.uid,
+        name: userProfile.name,
+        avatarUrl: userProfile.avatarUrl,
+        role: userProfile.role || 'user',
+        isVerified: userProfile.isVerified
+      };
+
+      const currentUserInfo: RawBasicUserInfo = {
+        uid: currentUser.uid,
+        name: authenticatedUserProfile.name,
+        avatarUrl: authenticatedUserProfile.avatarUrl,
+        role: authenticatedUserProfile.role || 'user',
+        isVerified: authenticatedUserProfile.isVerified
+      };
+
+      const result = await initiateDirectChatAction(chatUserInfo, currentUserInfo);
+
       if (result.success && result.chatId) {
         router.push(`/messages/${result.chatId}`);
       } else {
@@ -403,8 +468,8 @@ export default function UserProfilePage() {
   };
 
   const onImageLoadInCropper = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
-    imgRef.current = e.currentTarget;
-    const { width, height } = e.currentTarget;
+    const img = e.currentTarget;
+    const { width, height } = img;
     setCrop(centerCrop(makeAspectCrop({ unit: '%', width: 90 }, 1 / 1, width, height), width, height));
   }, []);
 
@@ -436,6 +501,7 @@ export default function UserProfilePage() {
     setImageSrcForCropper(null);
     setCrop(undefined);
     setCompletedCrop(null);
+    setCurrentImage(null);
     if (avatarFileInputRef.current) avatarFileInputRef.current.value = "";
   };
 
@@ -459,13 +525,13 @@ export default function UserProfilePage() {
 
         // Optimistic update for the current page's display if it's the user's own profile
         if (isOwnProfile && profileData.userProfile) {
-          setProfileData(prev => {
+          setProfileData((prev: ProfilePageData) => {
             if (!prev || !prev.userProfile) return prev;
             return {
               ...prev,
               userProfile: {
                 ...prev.userProfile,
-                avatarUrl: result.newAvatarUrl
+                avatarUrl: result.newAvatarUrl || null
               }
             };
           });
@@ -474,8 +540,7 @@ export default function UserProfilePage() {
         // Refresh global AuthContext state
         await refreshProfileStatus(); 
         
-        // Re-fetch full profile data for the page for consistency and to get any other server-side changes.
-        // This is important if not viewing own profile, or to ensure all data is fresh.
+        // Re-fetch full profile data for the page for consistency
         await fetchProfileData();
 
         handleCancelAvatarChangeOnProfile(); // Clear local preview states
@@ -620,41 +685,48 @@ export default function UserProfilePage() {
               </>
             ) : (
               <>
-                {friendshipStatusWithViewer === 'pending_received' ? (
+                {friendshipStatusWithViewer === 'friends' ? (
+                  <>
+                    <Button 
+                      variant="outline" 
+                      className={cn("w-full xs:flex-1 h-9 text-sm border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive")} 
+                      disabled={actionLoading || followActionLoading} 
+                      onClick={() => handleFriendRequestButtonAction('remove')}
+                    >
+                      {(actionLoading) ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4"/>} 
+                      Unfriend
+                    </Button>
+                    <Button variant="outline" className="w-full xs:flex-1 h-9 text-sm border-border/50 hover:bg-accent/50" onClick={handleInitiateChat} disabled={actionLoading || isInitiatingChat}>
+                      {isInitiatingChat ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <MessageSquare className="mr-2 h-4 w-4" />} Message
+                    </Button>
+                  </>
+                ) : friendshipStatusWithViewer === 'pending_sent' ? (
+                  <Button variant="outline" className="w-full xs:flex-1 h-9 text-sm" disabled={actionLoading || followActionLoading} onClick={() => handleFriendRequestButtonAction('cancel')}>
+                    {(actionLoading) ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <XIcon className="mr-2 h-4 w-4" />} Request Sent
+                  </Button>
+                ) : friendshipStatusWithViewer === 'pending_received' ? (
                   <>
                     <Button className="w-full xs:flex-1 h-9 text-sm" disabled={actionLoading || followActionLoading} onClick={() => handleFriendRequestButtonAction('accept')}>
                       {(actionLoading) ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Check className="mr-2 h-4 w-4" />} Accept
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => handleFriendRequestButtonAction('decline')} disabled={actionLoading || followActionLoading} className="w-full xs:flex-1 h-9 text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10">Decline</Button>
                   </>
-                ) : friendshipStatusWithViewer === 'pending_sent' ? (
-                  <Button variant="outline" className="w-full xs:flex-1 h-9 text-sm" disabled={actionLoading || followActionLoading} onClick={() => handleFriendRequestButtonAction('cancel')}>
-                    {(actionLoading) ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <XIcon className="mr-2 h-4 w-4" />} Request Sent
-                  </Button>
-                ) : friendshipStatusWithViewer === 'friends' ? (
-                  <Button 
-                    variant="outline" 
-                    className={cn("w-full xs:flex-1 h-9 text-sm border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive")} 
-                    disabled={actionLoading || followActionLoading} 
-                    onClick={() => handleFriendRequestButtonAction('remove')}
-                  >
-                    {(actionLoading) ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4"/>} 
-                    Unfriend
-                  </Button>
                 ) : (
-                  <Button 
-                    variant="default" 
-                    className={cn("w-full xs:flex-1 h-9 text-sm")} 
-                    disabled={followActionLoading || isFollowing === null} 
-                    onClick={handleFollowToggle}
-                  >
-                    {(followActionLoading) ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4" />}
-                    {isFollowing === null ? "Loading..." : (isFollowing ? 'Unfollow' : 'Add Friend')}
-                  </Button>
+                  <>
+                    <Button 
+                      variant="default" 
+                      className={cn("w-full xs:flex-1 h-9 text-sm")} 
+                      disabled={followActionLoading || isFollowing === null} 
+                      onClick={() => handleFriendRequestButtonAction('send')}
+                    >
+                      {(followActionLoading) ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4" />}
+                      {isFollowing === null ? "Loading..." : 'Add Friend'}
+                    </Button>
+                    <Button variant="outline" className="w-full xs:flex-1 h-9 text-sm border-border/50 hover:bg-accent/50" onClick={handleInitiateChat} disabled={actionLoading || isInitiatingChat}>
+                      {isInitiatingChat ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <MessageSquare className="mr-2 h-4 w-4" />} Message
+                    </Button>
+                  </>
                 )}
-                <Button variant="outline" className="w-full xs:flex-1 h-9 text-sm border-border/50 hover:bg-accent/50" onClick={handleInitiateChat} disabled={actionLoading || isInitiatingChat}>
-                  {isInitiatingChat ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <MessageSquare className="mr-2 h-4 w-4" />} Message
-                </Button>
               </>
             )}
           </div>
@@ -726,10 +798,10 @@ export default function UserProfilePage() {
                 crop={crop}
                 onChange={(_, percentCrop) => setCrop(percentCrop)}
                 onComplete={(c) => setCompletedCrop(c)}
-                aspect={1} // Enforce square aspect ratio
-                minWidth={100} // Example min dimension
-                minHeight={100} // Example min dimension
-                circularCrop={true} // For circular avatar preview
+                aspect={1}
+                minWidth={100}
+                minHeight={100}
+                circularCrop={true}
               >
                 <Image
                   ref={imgRef}
