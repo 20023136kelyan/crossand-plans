@@ -1,4 +1,3 @@
-
 'use client';
 
 import React from 'react';
@@ -23,7 +22,8 @@ import { cn } from '@/lib/utils';
 
 interface PostDetailModalProps {
   post: FeedPost;
-  authorProfile: UserProfile; 
+  authorProfile: UserProfile | null; 
+  isLoadingAuthor?: boolean;
   isOpen: boolean;
   onClose: () => void;
   onNext?: () => void;
@@ -45,6 +45,7 @@ const VerificationBadgeModal = ({ role, isVerified }: { role: UserProfile['role'
 export function PostDetailModal({
   post,
   authorProfile,
+  isLoadingAuthor,
   isOpen,
   onClose,
   onNext,
@@ -54,7 +55,7 @@ export function PostDetailModal({
 }: PostDetailModalProps) {
   if (!isOpen || !post) return null;
 
-  const authorInitial = authorProfile.name ? authorProfile.name.charAt(0).toUpperCase() : 'U';
+  const authorInitial = authorProfile?.name ? authorProfile.name.charAt(0).toUpperCase() : 'U';
   let postedAtRelative = 'just now';
   const createdAtValid = post.createdAt && (typeof post.createdAt === 'string' || post.createdAt instanceof Date) && isValid(parseISO(post.createdAt as string));
   if (createdAtValid) {
@@ -100,7 +101,7 @@ export function PostDetailModal({
                     {post.mediaUrl ? (
                         <Image
                         src={post.mediaUrl}
-                        alt={post.text || `Post by ${authorProfile.name}`}
+                        alt={post.text || `Post by ${authorProfile?.name || 'user'}`}
                         fill
                         style={{ objectFit: 'contain' }} 
                         data-ai-hint="feed post media"
@@ -119,24 +120,36 @@ export function PostDetailModal({
                     "w-full h-2/5 sm:h-full sm:w-2/5 md:w-1/3"
                 )}>
                     <DialogHeader className="flex flex-row items-center p-3 sm:p-4 border-b border-border/30 shrink-0">
-                        <Avatar className="h-9 w-9 sm:h-10 sm:w-10">
-                            <AvatarImage src={authorProfile.avatarUrl || undefined} alt={authorProfile.name || 'User'} data-ai-hint="person avatar" />
-                            <AvatarFallback>{authorInitial}</AvatarFallback>
-                        </Avatar>
-                        <div className="ml-3 flex-grow">
-                            <div className="flex items-center">
-                                <DialogTitle className="text-sm sm:text-md font-semibold text-foreground/90">{authorProfile.name || 'Macaroom User'}</DialogTitle>
-                                <VerificationBadgeModal role={authorProfile.role} isVerified={authorProfile.isVerified} />
+                        {isLoadingAuthor ? (
+                            <div className="flex items-center space-x-3">
+                                <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-muted animate-pulse" />
+                                <div className="space-y-2">
+                                    <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+                                    <div className="h-3 w-32 bg-muted animate-pulse rounded" />
+                                </div>
                             </div>
-                            <DialogDescription className="sr-only">
-                                Detailed view of the post by {authorProfile.name || 'Macaroom User'}, including image, caption, and interaction options. Shared from plan: {post.planName || 'Not specified'}.
-                            </DialogDescription>
-                            {post.planName && (
-                                <Link href={`/plans/${post.planId}`} className="text-xs text-muted-foreground hover:underline line-clamp-1" onClick={onClose}>
-                                    from <span className="font-medium text-primary">{post.planName}</span>
-                                </Link>
-                            )}
-                        </div>
+                        ) : (
+                            <>
+                                <Avatar className="h-9 w-9 sm:h-10 sm:w-10">
+                                    <AvatarImage src={authorProfile?.avatarUrl || undefined} alt={authorProfile?.name || 'User'} data-ai-hint="person avatar" />
+                                    <AvatarFallback>{authorInitial}</AvatarFallback>
+                                </Avatar>
+                                <div className="ml-3 flex-grow">
+                                    <div className="flex items-center">
+                                        <DialogTitle className="text-sm sm:text-md font-semibold text-foreground/90">{authorProfile?.name || 'Macaroom User'}</DialogTitle>
+                                        {authorProfile && <VerificationBadgeModal role={authorProfile.role} isVerified={authorProfile.isVerified} />}
+                                    </div>
+                                    <DialogDescription className="sr-only">
+                                        Detailed view of the post by {authorProfile?.name || 'Macaroom User'}, including image, caption, and interaction options. Shared from plan: {post.planName || 'Not specified'}.
+                                    </DialogDescription>
+                                    {post.planName && (
+                                        <Link href={`/plans/${post.planId}`} className="text-xs text-muted-foreground hover:underline line-clamp-1" onClick={onClose}>
+                                            from <span className="font-medium text-primary">{post.planName}</span>
+                                        </Link>
+                                    )}
+                                </div>
+                            </>
+                        )}
                     </DialogHeader>
 
                     <div className="flex-1 p-3 sm:p-4 overflow-y-auto custom-scrollbar-vertical space-y-2">

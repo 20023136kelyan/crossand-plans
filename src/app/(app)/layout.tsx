@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Header } from '@/components/layout/Header';
@@ -110,8 +109,8 @@ async function canvasPreview(
   });
 }
 
-const SIDEBAR_MARGIN_CLASS_MD = "md:ml-60";
-const SIDEBAR_MARGIN_CLASS_LG = "lg:ml-64";
+const SIDEBAR_MARGIN_CLASS_MD = "md:ml-[60px]";
+const SIDEBAR_MARGIN_CLASS_LG = "lg:ml-[64px]";
 
 export default function AppLayout({
   children,
@@ -475,7 +474,8 @@ export default function AppLayout({
 
   const mainContentWrapperClasses = cn(
     "flex-1 flex flex-col",
-    !isMobile ? (isUserProfilePage || isUserSettingsPage ? SIDEBAR_MARGIN_CLASS_LG : SIDEBAR_MARGIN_CLASS_MD) : "ml-0"
+    !isMobile && "md:pl-[60px] lg:pl-[64px]",
+    !useFullWidthLayout && "container mx-auto px-4 sm:px-6 lg:px-8"
   );
 
   const mainContentContainerClasses = cn(

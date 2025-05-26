@@ -1,4 +1,3 @@
-
 'use client';
 
 import Link from 'next/link';
@@ -70,7 +69,7 @@ export function Sidebar(props: SidebarProps) {
         side="left"
         variant="sidebar"
         collapsible="icon"
-        className="hidden md:flex md:flex-col md:w-60 lg:w-64 bg-sidebar-background text-sidebar-foreground border-r border-sidebar-border p-3 space-y-3 shrink-0 h-full fixed left-0 top-0 z-30 overflow-y-auto custom-scrollbar-vertical"
+        className="hidden md:flex md:flex-col md:w-[60px] lg:w-[64px] bg-sidebar-background text-sidebar-foreground border-r border-sidebar-border p-3 space-y-3 shrink-0 h-full fixed left-0 top-0 z-30 overflow-y-auto custom-scrollbar-vertical"
       >
         <SidebarHeader className="flex items-center gap-2 p-2 mb-2">
           <svg viewBox="0 0 64 64" className="h-8 w-8 text-primary" fill="currentColor" xmlns="http://www.w3.org/2000/svg">

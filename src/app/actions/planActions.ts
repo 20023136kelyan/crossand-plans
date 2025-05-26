@@ -471,28 +471,32 @@ export async function copyPlanToMyAccountAction(
   }
 
   try {
-    const originalPlan = await getPlanByIdAdminService(originalPlanId); // Use Admin Service
+    const originalPlan = await getPlanByIdAdminService(originalPlanId);
     if (!originalPlan) return { success: false, error: 'Original plan not found.' };
+    
+    if (originalPlan.status !== 'published') {
+      return { success: false, error: 'This plan is not available for copying.' };
+    }
 
     const newPlanDataForService: Omit<Plan, 'id' | 'createdAt' | 'updatedAt' | 'hostName' | 'hostAvatarUrl'> = {
       name: `Copy of ${originalPlan.name}`,
       description: originalPlan.description,
-      eventTime: originalPlan.eventTime, 
+      eventTime: originalPlan.eventTime,
       location: originalPlan.location,
       city: originalPlan.city,
       eventType: originalPlan.eventType,
       priceRange: originalPlan.priceRange,
-      hostId: newHostId, 
-      invitedParticipantUserIds: [], 
-      participantResponses: {},      
-      itinerary: originalPlan.itinerary.map(item => ({ ...item, id: crypto.randomUUID() })), 
-      status: 'draft', 
+      hostId: newHostId,
+      invitedParticipantUserIds: [],
+      participantResponses: {},
+      itinerary: originalPlan.itinerary.map(item => ({ ...item, id: crypto.randomUUID() })),
+      status: 'draft',
       planType: originalPlan.planType,
       originalPlanId: originalPlan.id,
-      sharedByUid: originalPlan.hostId, 
-      averageRating: null,  
-      reviewCount: 0,      
-      photoHighlights: [], 
+      sharedByUid: originalPlan.hostId,
+      averageRating: null,
+      reviewCount: 0,
+      photoHighlights: [],
     };
     
     const newPlanId = await createPlanAdmin(newPlanDataForService, newHostId);
