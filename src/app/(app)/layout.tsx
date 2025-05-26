@@ -480,7 +480,7 @@ export default function AppLayout({
   const mainContentContainerClasses = cn(
     "flex-1",
     useFullWidthLayout ? "h-full" : (hideBottomNav ? "py-6" : "py-6 mb-16 md:mb-0"),
-    !useFullWidthLayout && "container mx-auto px-4 sm:px-6 lg:px-8",
+    !useFullWidthLayout && "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
     pageAnimationClass
   );
 
