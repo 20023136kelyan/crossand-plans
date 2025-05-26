@@ -474,8 +474,7 @@ export default function AppLayout({
 
   const mainContentWrapperClasses = cn(
     "flex-1 flex flex-col",
-    !isMobile && "md:pl-[60px] lg:pl-[64px]",
-    !useFullWidthLayout && "container mx-auto px-4 sm:px-6 lg:px-8"
+    !isMobile && "md:ml-[240px] lg:ml-[256px]"
   );
 
   const mainContentContainerClasses = cn(
@@ -500,7 +499,6 @@ export default function AppLayout({
         <Sidebar
           plansNotificationCount={plansNotificationCount}
           profileNotificationCount={profileNotificationCount}
-          openQuickAddMenu={openQuickAddMenu}
           handleOpenCreatePostDialog={handleOpenCreatePostDialog}
         />
       )}
