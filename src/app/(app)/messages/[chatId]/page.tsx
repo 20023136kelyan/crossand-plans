@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -24,6 +23,7 @@ import { parseISO, isValid, formatDistanceToNowStrict } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn, commonImageExtensions } from "@/lib/utils";
+import Link from 'next/link';
 
 const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, isVerified: boolean }) => {
   if (role === 'admin') {
@@ -351,23 +351,38 @@ export default function ChatPage() {
           <ChevronLeft className="h-6 w-6" />
         </Button>
         {otherParticipant ? (
-           <Avatar className="h-9 w-9 mr-3">
-            {otherParticipant.avatarUrl ? (
-              <AvatarImage src={otherParticipant.avatarUrl} alt={otherParticipantFirstName} />
-            ) : (
-              <AvatarFallback className="text-sm bg-muted text-muted-foreground">{otherParticipantInitial}</AvatarFallback>
-            )}
-          </Avatar>
-        ) : (
-           <Avatar className="h-9 w-9 mr-3"><AvatarFallback className="text-sm bg-muted text-muted-foreground">?</AvatarFallback></Avatar>
-        )}
-        <div className="flex-1 min-w-0">
-            <div className="font-semibold flex items-center text-foreground text-md truncate">
+          <Link 
+            href={`/users/${otherParticipant.uid}`}
+            className="flex items-center flex-1 min-w-0 group transition-transform hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <Avatar className="h-9 w-9 mr-3 transition-shadow group-hover:shadow-md">
+              {otherParticipant.avatarUrl ? (
+                <AvatarImage src={otherParticipant.avatarUrl} alt={otherParticipantFirstName} />
+              ) : (
+                <AvatarFallback className="text-sm bg-muted text-muted-foreground">{otherParticipantInitial}</AvatarFallback>
+              )}
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold flex items-center text-foreground text-md truncate group-hover:text-primary transition-colors">
                 {otherParticipantFirstName}
                 {otherParticipant && <VerificationBadge role={otherParticipant.role} isVerified={otherParticipant.isVerified} />}
+              </div>
+              <p className="text-xs text-muted-foreground">Last seen recently</p>
             </div>
-            <p className="text-xs text-muted-foreground">Last seen recently</p>
-        </div>
+          </Link>
+        ) : (
+          <div className="flex items-center flex-1 min-w-0">
+            <Avatar className="h-9 w-9 mr-3">
+              <AvatarFallback className="text-sm bg-muted text-muted-foreground">?</AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold flex items-center text-foreground text-md truncate">
+                Unknown User
+              </div>
+              <p className="text-xs text-muted-foreground">Last seen recently</p>
+            </div>
+          </div>
+        )}
         <div className="flex items-center gap-1">
             <Button variant="ghost" size="icon" className="text-foreground hover:bg-foreground/10" aria-label="Call">
                 <Phone className="h-5 w-5" />
@@ -468,10 +483,10 @@ export default function ChatPage() {
 
       <footer 
         ref={footerRef}
-        className="absolute bottom-0 left-0 right-0 shrink-0 px-2.5 pt-2.5 pb-0 border-t border-muted-foreground/50 bg-background z-20 rounded-t-xl"
+        className="absolute bottom-0 left-0 right-0 shrink-0 px-2.5 py-2 border-t border-muted-foreground/20 bg-background/80 backdrop-blur-md z-20"
       >
         {filePreviewUrl && (
-          <div className="mb-2 px-1 py-1.5 border border-border/30 rounded-md bg-card/50 relative w-fit shadow-sm">
+          <div className="mb-2 px-1 py-1.5 border border-border/30 rounded-md bg-card/30 relative w-fit shadow-sm">
             <NextImage src={filePreviewUrl} alt="Preview" width={50} height={50} className="rounded object-cover" data-ai-hint="upload preview"/>
             <Button
               variant="ghost" size="icon"
@@ -480,14 +495,14 @@ export default function ChatPage() {
             ><XIcon className="h-4 w-4" /></Button>
           </div>
         )}
-        <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="flex items-end gap-2 pb-1.5"> {/* Added pb-1.5 to form */}
+        <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="flex items-end gap-2">
           <Button 
             type="button" 
             variant="ghost" 
             size="icon" 
             onClick={() => fileInputRef.current?.click()} 
             disabled={sendingMessage}
-            className="h-10 w-10 rounded-full flex-shrink-0 text-muted-foreground hover:text-primary" 
+            className="h-10 w-10 rounded-full flex-shrink-0 text-muted-foreground hover:text-primary bg-transparent" 
             aria-label={selectedFile ? "Change image" : "Attach image"}
           >
             {selectedFile ? <XIcon className="h-5 w-5 text-destructive" onClick={(e) => { e.stopPropagation(); removeSelectedFile(); }} /> : <Paperclip className="h-5 w-5" />}
@@ -496,7 +511,7 @@ export default function ChatPage() {
           <Textarea
             ref={textareaRef} value={newMessage} onChange={handleTextareaInput}
             placeholder="Write a message" disabled={sendingMessage}
-            className="text-sm flex-1 rounded-full py-2.5 px-4 min-h-[44px] max-h-[120px] resize-none custom-scrollbar-vertical bg-muted border-transparent focus:border-primary focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/70" 
+            className="text-sm flex-1 rounded-full py-2.5 px-4 min-h-[44px] max-h-[120px] resize-none custom-scrollbar-vertical bg-muted/30 border-transparent focus:border-primary/30 focus:ring-1 focus:ring-primary/30 placeholder:text-muted-foreground/50" 
             rows={1}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); }}}
           />
@@ -504,7 +519,7 @@ export default function ChatPage() {
             type="submit" 
             disabled={(!newMessage.trim() && !selectedFile) || sendingMessage} 
             size="icon"
-            className="h-10 w-10 rounded-full flex-shrink-0 bg-gradient-to-r from-[hsl(var(--button-primary-gradient-start))] to-[hsl(var(--button-primary-gradient-end))] hover:opacity-90 text-primary-foreground" 
+            className="h-10 w-10 rounded-full flex-shrink-0 bg-gradient-to-r from-[hsl(var(--button-primary-gradient-start))] to-[hsl(var(--button-primary-gradient-end))] hover:opacity-90 text-primary-foreground shadow-sm" 
             aria-label="Send message"
           >
             {sendingMessage ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}

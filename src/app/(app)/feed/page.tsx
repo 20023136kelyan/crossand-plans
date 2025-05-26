@@ -1,4 +1,3 @@
-
 'use client';
 
 import {
@@ -33,9 +32,24 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  ThumbsUp, MessageSquare, Share2, ExternalLink, MoreVertical, Globe, Lock as LockIcon,
-  Loader2, Send, X as XIcon, ShieldCheck as AdminIcon, CheckCircle as CheckCircleIcon, Edit3, EyeOff, Trash2, AlertTriangle,
-  UserCircle as UserCircleIcon, Sparkles, PackageOpen,
+  MessageSquare,
+  ThumbsUp,
+  Share2,
+  Send,
+  Loader2,
+  X as XIcon,
+  UserCircle as UserCircleIcon,
+  ExternalLink,
+  MoreVertical,
+  Trash2,
+  CheckCircle,
+  ShieldCheck as AdminIcon,
+  Lock as LockIcon,
+  EyeOff,
+  AlertTriangle,
+  Edit3,
+  PackageOpen,
+  Globe
 } from "lucide-react";
 import Link from "next/link";
 import Image from 'next/image';
@@ -45,7 +59,8 @@ import {
   toggleLikePostServerAction,
   addCommentToPostServerAction,
   incrementPostSharesAction,
-  deleteFeedPostAction
+  deleteFeedPostAction,
+  deleteFeedCommentAction
 } from '@/app/actions/feedActions';
 import { createPlanShareInviteAction } from '@/app/actions/planActions'; // For sharing plan from post
 import type { FeedPost, UserRoleType, FeedPostVisibility, FeedComment, UserProfile, FriendEntry, AppTimestamp } from '@/types/user';
@@ -67,14 +82,18 @@ const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, is
     return <AdminIcon className="ml-1.5 h-4 w-4 text-amber-400 fill-amber-500 shrink-0" aria-label="Admin" />;
   }
   if (isVerified) {
-    return <CheckCircleIcon className="ml-1.5 h-4 w-4 text-blue-500 fill-blue-200 shrink-0" aria-label="Verified" />;
+    return <CheckCircle className="ml-1.5 h-4 w-4 text-blue-500 fill-blue-200 shrink-0" aria-label="Verified" />;
   }
   return null;
 };
 
 const VisibilityBadge = ({ visibility, isOwnPost }: { visibility: FeedPostVisibility, isOwnPost: boolean }) => {
   if (visibility === 'private' && isOwnPost) {
-    return <LockIcon className="ml-1.5 h-3.5 w-3.5 text-muted-foreground" title="Private Post" aria-label="Private Post" />;
+    return (
+      <div className="inline-flex items-center" title="Private Post">
+        <LockIcon className="ml-1.5 h-3.5 w-3.5 text-muted-foreground" aria-label="Private Post" />
+      </div>
+    );
   }
   return null;
 };
@@ -572,21 +591,24 @@ interface CommentsModalProps {
   isOpen: boolean;
   onClose: () => void;
   loading: boolean;
-  onCommentSubmitModal: (postId: string, text: string) => Promise<boolean>; // Changed name for clarity
-  currentUserProfile: UserProfile | null; // Pass full profile
+  onCommentSubmitModal: (postId: string, text: string) => Promise<boolean>;
+  currentUserProfile: UserProfile | null;
 }
 
 const CommentsModal: React.FC<CommentsModalProps> = ({
   post,
-  commentsData: initialCommentsData, // Renamed to avoid conflict with internal state
+  commentsData: initialCommentsData,
   isOpen,
   onClose,
-  loading: loadingCommentsProp, // Renamed to avoid conflict
+  loading: loadingCommentsProp,
   onCommentSubmitModal,
   currentUserProfile,
 }) => {
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [newModalComment, setNewModalComment] = useState('');
   const [isSubmittingModalComment, setIsSubmittingModalComment] = useState(false);
+  const [isDeletingComment, setIsDeletingComment] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   // Sort comments once when data changes
@@ -626,19 +648,54 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
 
   const authorInitial = post.userName ? post.userName.charAt(0).toUpperCase() : 'U';
 
+  const handleDeleteComment = async (commentId: string) => {
+    if (!user || !post) return;
+    setIsDeletingComment(true);
+    try {
+      const idToken = await user.getIdToken(true);
+      if (!idToken) throw new Error("Authentication token not available.");
+      const result = await deleteFeedCommentAction(post.id, commentId, idToken);
+      if (result.success) {
+        toast({ title: "Comment deleted" });
+      } else {
+        let description = result.error || "Could not delete comment.";
+        switch (result.errorCode) {
+          case "POST_NOT_FOUND":
+            description = "The post this comment belongs to no longer exists.";
+            break;
+          case "COMMENT_NOT_FOUND":
+            description = "This comment no longer exists.";
+            break;
+          case "UNAUTHORIZED":
+            description = "You are not authorized to delete this comment.";
+            break;
+          case "AUTH_TOKEN_EXPIRED":
+            description = "Your session has expired. Please log in again.";
+            break;
+        }
+        throw new Error(description);
+      }
+    } catch (error: any) {
+      toast({ title: "Delete Error", description: error.message || "Could not delete comment.", variant: "destructive" });
+    } finally {
+      setIsDeletingComment(false);
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="sm:max-w-md p-0 flex flex-col h-[85vh] sm:h-[75vh] bg-card border-border/30 rounded-t-xl sm:rounded-xl shadow-2xl">
-        <DialogHeader className="p-4 border-b border-border/30 relative"> {/* Added relative for absolute positioning of close button */}
-          <div className="flex flex-col items-center w-full">
+      <DialogContent className="sm:max-w-md p-0 flex flex-col h-[85vh] sm:h-[75vh] bg-card border-border/30 rounded-t-xl sm:rounded-xl shadow-2xl overflow-hidden" hideCloseButton>
+        <DialogHeader className="p-4 border-b border-border/30">
+          <div className="flex flex-col items-center w-full pr-8">
             <DialogTitle className="text-lg font-semibold text-center">Comments on {post.userName}'s post</DialogTitle>
-            <DialogDescription className="text-sm text-muted-foreground text-center mt-1 px-4">
+            <DialogDescription className="text-sm text-muted-foreground text-center mt-1">
               Read and add comments below. The original post text is shown for context.
             </DialogDescription>
           </div>
           <DialogClose asChild className="absolute top-3 right-3">
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground">
-              <XIcon className="h-4 w-4" />
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:bg-muted/80">
+              <XIcon className="h-4 w-4" aria-hidden="true" />
+              <span className="sr-only">Close comments</span>
             </Button>
           </DialogClose>
         </DialogHeader>
@@ -656,46 +713,64 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
           </div>
         </div>
 
-        <ScrollArea className="flex-1 px-4 py-2 custom-scrollbar-vertical" ref={scrollAreaRef}>
-          {loadingCommentsProp ? (
-            <div className="flex justify-center items-center h-32">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            </div>
-          ) : sortedCommentsData.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">No comments yet. Be the first!</p>
-          ) : (
-            <div className="space-y-3">
-              {sortedCommentsData.map((comment) => {
-                let commentTimestampRelative = 'just now';
-                if (comment.createdAt) {
-                    const dateValue = parseISO(comment.createdAt as string);
-                    if (isValid(dateValue)) {
-                        commentTimestampRelative = formatDistanceToNowStrict(dateValue, { addSuffix: true });
+        <div className="flex-1 min-h-0">
+          <ScrollArea className="h-full" ref={scrollAreaRef}>
+            <div className="px-4 py-2">
+              {loadingCommentsProp ? (
+                <div className="flex justify-center items-center h-32">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                </div>
+              ) : sortedCommentsData.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No comments yet. Be the first!</p>
+              ) : (
+                <div className="space-y-3 pb-2">
+                  {sortedCommentsData.map((comment) => {
+                    let commentTimestampRelative = 'just now';
+                    if (comment.createdAt) {
+                        const dateValue = parseISO(comment.createdAt as string);
+                        if (isValid(dateValue)) {
+                            commentTimestampRelative = formatDistanceToNowStrict(dateValue, { addSuffix: true });
+                        }
                     }
-                }
-                const commenterInitial = comment.userName ? comment.userName.charAt(0).toUpperCase() : 'U';
-                return (
-                  <div key={comment.id} className="flex items-start gap-2.5">
-                    <Avatar className="h-7 w-7">
-                      <AvatarImage src={comment.userAvatarUrl || undefined} alt={comment.userName || 'User'} data-ai-hint="person avatar"/>
-                      <AvatarFallback className="text-xs">{commenterInitial}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 text-xs bg-muted/50 p-2 rounded-lg">
-                      <div className="flex items-baseline justify-between">
-                        <span className="font-semibold text-foreground/90">{comment.userName || 'User'}</span>
-                        <span className="text-muted-foreground/70 text-[10px]">{commentTimestampRelative}</span>
+                    const commenterInitial = comment.userName ? comment.userName.charAt(0).toUpperCase() : 'U';
+                    const isCommentOwner = user?.uid === comment.userId;
+
+                    return (
+                      <div key={comment.id} className="flex items-start gap-2.5 group">
+                        <Avatar className="h-7 w-7">
+                          <AvatarImage src={comment.userAvatarUrl || undefined} alt={comment.userName || 'User'} data-ai-hint="person avatar"/>
+                          <AvatarFallback className="text-xs">{commenterInitial}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 text-xs bg-muted/50 p-2 rounded-lg">
+                          <div className="flex items-baseline justify-between">
+                            <span className="font-semibold text-foreground/90">{comment.userName || 'User'}</span>
+                            <span className="text-muted-foreground/70 text-[10px]">{commentTimestampRelative}</span>
+                          </div>
+                          <p className="text-foreground/80 mt-0.5 whitespace-pre-line">{comment.text}</p>
+                        </div>
+                        {isCommentOwner && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity -ml-1"
+                            onClick={() => handleDeleteComment(comment.id)}
+                            disabled={isDeletingComment}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            <span className="sr-only">Delete comment</span>
+                          </Button>
+                        )}
                       </div>
-                      <p className="text-foreground/80 mt-0.5 whitespace-pre-line">{comment.text}</p>
-                    </div>
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
-        </ScrollArea>
+          </ScrollArea>
+        </div>
 
         {currentUserProfile && (
-          <form onSubmit={handleSubmitModalComment} className="p-3 border-t border-border/30 flex items-center gap-2 shrink-0 bg-background sm:rounded-b-xl">
+          <form onSubmit={handleSubmitModalComment} className="p-3 border-t border-border/30 flex items-center gap-2 shrink-0 bg-background/95 backdrop-blur-sm">
             <Avatar className="h-8 w-8">
               <AvatarImage src={currentUserProfile.avatarUrl || undefined} alt={currentUserProfile.name || 'User'} data-ai-hint="person avatar"/>
               <AvatarFallback className="text-xs">{currentUserProfile.name ? currentUserProfile.name.charAt(0).toUpperCase() : <UserCircleIcon className="h-4 w-4"/>}</AvatarFallback>
@@ -705,7 +780,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
               placeholder="Add a comment..."
               value={newModalComment}
               onChange={(e) => setNewModalComment(e.target.value)}
-              className="h-9 text-sm flex-1 bg-muted border-transparent focus:border-primary placeholder:text-muted-foreground/70 rounded-full px-3.5"
+              className="h-9 text-sm flex-1 bg-muted/50 border-transparent focus:border-primary placeholder:text-muted-foreground/70 rounded-full px-3.5"
               disabled={isSubmittingModalComment}
             />
             {newModalComment.trim() && (

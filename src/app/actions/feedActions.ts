@@ -9,6 +9,7 @@ import {
     addCommentToPostAdmin as addCommentToPostAdminService,
     incrementPostSharesAdmin as incrementPostSharesAdminService,
     deleteFeedPostAdmin as deleteFeedPostAdminService,
+    deleteCommentFromPostAdmin,
 } from '@/services/feedService.server'; 
 import type { FeedPost, FeedPostVisibility, UserRoleType, FeedComment } from '@/types/user';
 import { FieldValue } from 'firebase-admin/firestore';
@@ -273,5 +274,36 @@ export async function deleteFeedPostAction(
     return result;
   } catch (error: any) {
     return { success: false, error: error.message || "Failed to delete post." };
+  }
+}
+
+export async function deleteFeedCommentAction(
+  postId: string,
+  commentId: string,
+  idToken: string
+): Promise<{ success: boolean; error?: string; errorCode?: string; originalError?: string }> {
+  if (!authAdmin) return { success: false, error: "Server error: Auth service not available.", errorCode: "SERVER_CONFIG_ERROR" };
+  let decodedToken;
+  try {
+    decodedToken = await authAdmin.verifyIdToken(idToken);
+  } catch (error: any) {
+    console.error("[deleteFeedCommentAction] ID Token verification error:", error);
+    let e = 'Authentication failed. Invalid or expired token.';
+    let eCode = "AUTH_ERROR";
+    if (error.code === 'auth/id-token-expired') { e = 'Your session has expired. Please log in again.'; eCode = "AUTH_TOKEN_EXPIRED"; }
+    else if (error.code === 'auth/argument-error') { e = 'Authentication token is malformed.'; eCode = "AUTH_MALFORMED_TOKEN"; }
+    return { success: false, error: e, errorCode: eCode, originalError: error.message || String(error) };
+  }
+  const requestingUserId = decodedToken.uid;
+
+  try {
+    const result = await deleteCommentFromPostAdmin(postId, commentId, requestingUserId);
+    if (result.success) {
+      revalidatePath('/feed');
+    }
+    return result;
+  } catch (error: any) {
+    console.error("[deleteFeedCommentAction] Unexpected error:", error);
+    return { success: false, error: "An unexpected server error occurred while deleting comment.", errorCode: "UNEXPECTED_SERVER_ERROR", originalError: error.message || String(error) };
   }
 }

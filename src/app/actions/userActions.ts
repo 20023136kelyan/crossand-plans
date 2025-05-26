@@ -238,7 +238,7 @@ export async function fetchPublicUserProfileDataAction(
       return { userProfile: null, userPosts: [], userStats: null, error: "User profile not found." };
     }
     
-    const userPosts = await getFeedPostsAdmin(currentViewerId, 50, profileId); 
+    const { posts: userPosts } = await getFeedPostsAdmin(currentViewerId, 50, profileId); 
     const userStats = await getUserStatsAdminService(profileId);
 
     let isViewerFollowing: boolean = false; // Initialize to false

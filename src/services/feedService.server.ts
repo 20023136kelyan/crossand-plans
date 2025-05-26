@@ -1,4 +1,3 @@
-
 // src/services/feedService.server.ts
 import 'server-only';
 import { firestoreAdmin } from '@/lib/firebaseAdmin';
@@ -79,35 +78,25 @@ export const getFeedPostsAdmin = async (
     }
 
     if (forUserId) {
-      // Fetch public posts by the target user
-      let publicPostsQuery = firestoreAdmin
+      // Fetch all posts by the target user
+      let userPostsQuery = firestoreAdmin
         .collection(FEED_POSTS_COLLECTION)
         .where('userId', '==', forUserId)
-        .where('visibility', '==', 'public' as FeedPostVisibility)
         .orderBy('createdAt', 'desc');
-      if (lastPostFirestoreTimestamp) {
-        publicPostsQuery = publicPostsQuery.where('createdAt', '<', lastPostFirestoreTimestamp);
-      }
-      const publicSnapshot = await publicPostsQuery.limit(limitCount).get();
-      publicSnapshot.forEach(doc => {
-        if (!postsMap.has(doc.id)) postsMap.set(doc.id, mapDocToFeedPost(doc));
-      });
 
-      // If current viewer is the target user, also fetch their private posts
-      if (currentUserId && currentUserId === forUserId) {
-        let privatePostsQuery = firestoreAdmin
-          .collection(FEED_POSTS_COLLECTION)
-          .where('userId', '==', forUserId)
-          .where('visibility', '==', 'private' as FeedPostVisibility)
-          .orderBy('createdAt', 'desc');
-        if (lastPostFirestoreTimestamp) {
-          privatePostsQuery = privatePostsQuery.where('createdAt', '<', lastPostFirestoreTimestamp);
-        }
-        const privateSnapshot = await privatePostsQuery.limit(limitCount).get();
-        privateSnapshot.forEach(doc => {
-          if (!postsMap.has(doc.id)) postsMap.set(doc.id, mapDocToFeedPost(doc));
-        });
+      if (lastPostFirestoreTimestamp) {
+        userPostsQuery = userPostsQuery.where('createdAt', '<', lastPostFirestoreTimestamp);
       }
+
+      const userPostsSnapshot = await userPostsQuery.limit(limitCount).get();
+      userPostsSnapshot.forEach(doc => {
+        const post = mapDocToFeedPost(doc);
+        // Only include public posts or private posts if the viewer is the owner or a friend
+        if (post.visibility === 'public' || 
+            (post.visibility === 'private' && currentUserId === forUserId)) {
+          postsMap.set(doc.id, post);
+        }
+      });
       mainQueryProcessed = true;
     } else {
       // General feed: Public posts from everyone
@@ -168,22 +157,15 @@ export const getFeedPostsAdmin = async (
     const combinedPosts = Array.from(postsMap.values());
     if(mainQueryProcessed) {
         combinedPosts.sort((a, b) => {
-        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return timeB - timeA;
+          const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return timeB - timeA;
         });
         
         const limitedPosts = combinedPosts.slice(0, limitCount);
         let nextCursor: string | undefined = undefined;
         if (limitedPosts.length > 0 && limitedPosts.length === limitCount) { 
-            // If we fetched a full page, there might be more posts.
-            // The createdAt of the last post in this page becomes the cursor for the next page.
             const lastFetchedPost = limitedPosts[limitedPosts.length - 1];
-            // Check if this last post is also the very last post in the combined list (after sorting all pages from all queries)
-            // This check is a bit tricky because we are merging multiple queries.
-            // A simpler heuristic: if the number of combined posts (before slicing) is greater than limitCount,
-            // it's safer to assume there might be more. Or, if any individual query returned limitCount items.
-            // For now, we'll use the provided logic: if limitedPosts.length === limitCount, set nextCursor.
             nextCursor = lastFetchedPost.createdAt;
         }
         
@@ -501,5 +483,76 @@ export const deleteFeedPostAdmin = async (postId: string, requestingUserId: stri
   } catch (error: any) {
     console.error(`[deleteFeedPostAdmin] Error deleting post ${postId}:`, error);
     throw error;
+  }
+};
+
+export const deleteCommentFromPostAdmin = async (
+  postId: string,
+  commentId: string,
+  requestingUserId: string
+): Promise<{ success: boolean; error?: string; errorCode?: string; originalError?: string }> => {
+  if (!firestoreAdmin) {
+    console.error("[deleteCommentFromPostAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
+    return { success: false, error: "Server configuration error: Database service not available.", errorCode: "SERVER_CONFIG_ERROR" };
+  }
+
+  const postRef = firestoreAdmin.collection(FEED_POSTS_COLLECTION).doc(postId);
+  const commentRef = postRef.collection(COMMENTS_SUBCOLLECTION).doc(commentId);
+
+  try {
+    let finalUpdatedPost: FeedPost | undefined = undefined;
+
+    await firestoreAdmin.runTransaction(async (transaction) => {
+      const [postDoc, commentDoc] = await Promise.all([
+        transaction.get(postRef),
+        transaction.get(commentRef)
+      ]);
+
+      if (!postDoc.exists) {
+        throw { customError: true, message: "Post not found.", code: "POST_NOT_FOUND_IN_TRANSACTION" };
+      }
+
+      if (!commentDoc.exists) {
+        throw { customError: true, message: "Comment not found.", code: "COMMENT_NOT_FOUND_IN_TRANSACTION" };
+      }
+
+      const commentData = commentDoc.data();
+      if (commentData.userId !== requestingUserId) {
+        throw { customError: true, message: "User not authorized to delete this comment.", code: "UNAUTHORIZED_COMMENT_DELETE" };
+      }
+
+      transaction.delete(commentRef);
+      transaction.update(postRef, { 
+        commentsCount: FieldValue.increment(-1),
+        updatedAt: FieldValue.serverTimestamp()
+      });
+
+      const mappedPost = mapDocToFeedPost(postDoc);
+      finalUpdatedPost = {
+        ...mappedPost,
+        commentsCount: Math.max(0, (postDoc.data()?.commentsCount || 1) - 1),
+        updatedAt: new Date().toISOString()
+      };
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    console.error(`[deleteCommentFromPostAdmin] Error deleting comment ${commentId} from post ${postId}:`, error);
+    if (error.customError) {
+      switch (error.code) {
+        case "POST_NOT_FOUND_IN_TRANSACTION":
+          return { success: false, error: "Post not found.", errorCode: "POST_NOT_FOUND" };
+        case "COMMENT_NOT_FOUND_IN_TRANSACTION":
+          return { success: false, error: "Comment not found.", errorCode: "COMMENT_NOT_FOUND" };
+        case "UNAUTHORIZED_COMMENT_DELETE":
+          return { success: false, error: "You are not authorized to delete this comment.", errorCode: "UNAUTHORIZED" };
+      }
+    }
+    return { 
+      success: false, 
+      error: "Database operation failed. Please try again.", 
+      errorCode: "TRANSACTION_FAILED", 
+      originalError: error.message || String(error) 
+    };
   }
 };
