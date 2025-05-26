@@ -1,25 +1,24 @@
-
 // src/app/actions/planActions.ts
 'use server';
 
 import {
   createPlanAdmin,
   updatePlanAdmin as updatePlanAdminService,
-  getPlanByIdAdminService,
+  getPlanByIdAdminService, // Renamed to getPlanByIdAdmin in the instructions, using current name from file
   setRatingAdmin,
   addCommentAdmin,
   deletePlanAdmin as deletePlanAdminService,
   createPlanShareInviteAdmin,
   getPlanShareByIdAdmin,
   updatePlanShareStatusAdmin,
-  deleteRatingAdmin as deleteRatingAdminService,     // New import
-  updateCommentAdmin as updateCommentAdminService,    // New import
-  deleteCommentAdmin as deleteCommentAdminService     // New import
+  deleteRatingAdmin as deleteRatingAdminService,
+  updateCommentAdmin as updateCommentAdminService,
+  deleteCommentAdmin as deleteCommentAdminService
 } from '@/services/planService.server';
-import { 
-  getUserProfileAdmin, 
-  getUsersProfilesAdmin 
-} from '@/services/userService.server'; 
+import {
+  getUserProfileAdmin,
+  getUsersProfilesAdmin
+} from '@/services/userService.server';
 import type { PlanFormValues } from '@/components/plans/PlanForm';
 import type {
   Plan,
@@ -909,27 +908,8 @@ export async function addPhotoHighlightAction(
   }
 }
 
-
-export async function getPublicPlanByIdAction(planId: string): Promise<{success: boolean, plan?: Plan, error?: string}> {
-    if (!planId) return { success: false, error: "Plan ID is missing." };
-    if (!firestoreAdmin) { 
-      console.error("[getPublicPlanByIdAction] Firestore Admin SDK not available.");
-      return { success: false, error: "Database service not available." };
-    }
-    try {
-        const plan = await getPlanByIdAdminService(planId);
-        if (plan && plan.status === 'published') {
-            return { success: true, plan };
-        } else if (plan) { 
-            return { success: false, error: "This plan is not public." };
-        } else { 
-            return { success: false, error: "Plan not found." };
-        }
-    } catch (error: any) {
-        console.error("[getPublicPlanByIdAction] Error fetching public plan:", error);
-        return { success: false, error: error.message || "Could not retrieve plan." };
-    }
-}
+// The first definition of getPublicPlanByIdAction (with return type Promise<{success: boolean, ...}>) has been removed.
+// The definition at the end of the file (with return type Promise<{plan: Plan | null, ...}>) is kept.
 
 export async function deletePlanAction(planId: string, idToken: string): Promise<{ success: boolean; error?: string }> {
   if (!authAdmin || !firestoreAdmin) {
@@ -1168,3 +1148,23 @@ const ensureAdminServices = () => {
 // Actually, it's better to check within each action just before use
 // to ensure the console log points to the specific action if there's an issue.
 // For now, individual checks within actions like addPhotoHighlightAction are preferred.
+
+export async function getPublicPlanByIdAction(planId: string): Promise<{ plan: Plan | null; error?: string; notFound?: boolean; notPublic?: boolean; }> {
+  try {
+    const plan = await getPlanByIdAdminService(planId); // Using getPlanByIdAdminService as per file content
+
+    if (!plan) {
+      return { plan: null, notFound: true, error: "Plan not found." };
+    }
+
+    if (plan.status !== 'published') {
+      return { plan: null, notPublic: true, error: "This plan is not public." };
+    }
+    
+    return { plan: plan, error: undefined };
+
+  } catch (error: any) {
+    console.error(`[getPublicPlanByIdAction] Error fetching plan ${planId}:`, error);
+    return { plan: null, error: error.message || "Failed to fetch plan details." };
+  }
+}

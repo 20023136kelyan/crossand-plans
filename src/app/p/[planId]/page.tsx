@@ -28,8 +28,7 @@ import type { Plan as PlanType } from '@/types/user';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { format, parseISO, isValid } from 'date-fns';
-import { copyPlanToMyAccountAction } from '@/app/actions/planActions';
-import { getPlanByIdAdmin as getPlanByIdAdminService } from '@/services/planService.server'; // For fetching plan data server-side
+import { copyPlanToMyAccountAction, getPublicPlanByIdAction } from '@/app/actions/planActions'; // Updated import
 
 const MacaronLogo = ({ className }: { className?: string }) => (
   <svg viewBox="0 0 64 64" className={className} fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -65,27 +64,26 @@ export default function PublicPlanPage() {
     setLoading(true);
     setErrorMsg(null);
     try {
-      // This page is client-rendered after initial load, so an action is appropriate
-      // if we want to ensure only published plans are shown via server-side check.
-      // Or, it could call a client-side service if rules are set for public reads.
-      // For consistency with Admin SDK usage for other plan reads, let's keep it via action for now.
-      // In a real app, this would ideally be a server component fetching data.
-      const result = await getPlanByIdAdminService(planId); // This service uses Admin SDK
-      if (result && result.status === 'published') {
-        setPlan(result);
-      } else if (result) {
+      const result = await getPublicPlanByIdAction(planId);
+      if (result.plan) {
+        setPlan(result.plan);
+      } else if (result.notFound) {
         setPlan(null);
-        setErrorMsg("This plan is not public or has been removed.");
-        toast({ title: "Not Public", description: "This plan is not currently available for public viewing.", variant: "default" });
-      } else {
+        setErrorMsg(result.error || "Plan not found.");
+        toast({ title: "Error", description: result.error || "Plan not found.", variant: "destructive" });
+      } else if (result.notPublic) {
         setPlan(null);
-        setErrorMsg("Plan not found.");
-        toast({ title: "Error", description: "Plan not found.", variant: "destructive" });
+        setErrorMsg(result.error || "This plan is not public or has been removed.");
+        toast({ title: "Not Public", description: result.error || "This plan is not currently available for public viewing.", variant: "default" });
+      } else { // Generic error
+        setPlan(null);
+        setErrorMsg(result.error || "Failed to load plan details.");
+        toast({ title: "Error", description: result.error || "Failed to load plan details.", variant: "destructive" });
       }
-    } catch (error: any) {
-      console.error("Error fetching public plan:", error);
-      setErrorMsg(error.message || "Failed to load plan details.");
-      toast({ title: "Error", description: error.message || "Failed to load plan details.", variant: "destructive" });
+    } catch (error: any) { // Catch unexpected client-side errors during the action call itself
+      console.error("Error calling getPublicPlanByIdAction:", error);
+      setErrorMsg(error.message || "An unexpected error occurred.");
+      toast({ title: "Error", description: error.message || "An unexpected error occurred.", variant: "destructive" });
       setPlan(null);
     } finally {
       setLoading(false);

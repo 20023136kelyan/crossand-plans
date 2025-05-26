@@ -7,6 +7,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription, // Added
   DialogClose,
   DialogPortal,
   DialogOverlay
@@ -122,11 +123,14 @@ export function PostDetailModal({
                             <AvatarImage src={authorProfile.avatarUrl || undefined} alt={authorProfile.name || 'User'} data-ai-hint="person avatar" />
                             <AvatarFallback>{authorInitial}</AvatarFallback>
                         </Avatar>
-                        <div className="ml-3">
+                        <div className="ml-3 flex-grow">
                             <div className="flex items-center">
                                 <DialogTitle className="text-sm sm:text-md font-semibold text-foreground/90">{authorProfile.name || 'Macaroom User'}</DialogTitle>
                                 <VerificationBadgeModal role={authorProfile.role} isVerified={authorProfile.isVerified} />
                             </div>
+                            <DialogDescription className="sr-only">
+                                Detailed view of the post by {authorProfile.name || 'Macaroom User'}, including image, caption, and interaction options. Shared from plan: {post.planName || 'Not specified'}.
+                            </DialogDescription>
                             {post.planName && (
                                 <Link href={`/plans/${post.planId}`} className="text-xs text-muted-foreground hover:underline line-clamp-1" onClick={onClose}>
                                     from <span className="font-medium text-primary">{post.planName}</span>

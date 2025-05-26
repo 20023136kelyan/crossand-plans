@@ -20,6 +20,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription, // Added
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -628,9 +629,14 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="sm:max-w-md p-0 flex flex-col h-[85vh] sm:h-[75vh] bg-card border-border/30 rounded-t-xl sm:rounded-xl shadow-2xl">
-        <DialogHeader className="p-4 border-b border-border/30 flex flex-row items-center justify-between shrink-0">
-          <DialogTitle className="text-lg font-semibold text-center flex-1">Comments on {post.userName}'s post</DialogTitle>
-          <DialogClose asChild>
+        <DialogHeader className="p-4 border-b border-border/30 relative"> {/* Added relative for absolute positioning of close button */}
+          <div className="flex flex-col items-center w-full">
+            <DialogTitle className="text-lg font-semibold text-center">Comments on {post.userName}'s post</DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground text-center mt-1 px-4">
+              Read and add comments below. The original post text is shown for context.
+            </DialogDescription>
+          </div>
+          <DialogClose asChild className="absolute top-3 right-3">
             <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground">
               <XIcon className="h-4 w-4" />
             </Button>
@@ -891,25 +897,36 @@ export default function FeedPage() {
             id: postId,
             commentsCount: result.updatedPostFields.commentsCount,
         });
-
-        if (activePostForCommentsModal?.id === postId) {
-             setCommentsForActivePost(prevComments =>
-                [...(prevComments || []), result.comment!].sort((a, b) => {
-                    const timeA = a.createdAt && isValid(parseISO(a.createdAt as string)) ? parseISO(a.createdAt as string).getTime() : 0;
-                    const timeB = b.createdAt && isValid(parseISO(b.createdAt as string)) ? parseISO(b.createdAt as string).getTime() : 0;
-                    return timeA - timeB;
-                })
-            );
-        }
+        // Optimistic update for commentsForActivePost removed.
+        // The listener (getPostCommentsClient) will handle fetching the new comment.
         return true;
       } else {
-        throw new Error(result.error || "Failed to add comment or comment data missing.");
+        // Handle error case based on new error structure from server action if needed
+        let description = result.error || "Failed to add comment or comment data missing.";
+        switch (result.errorCode) {
+            case "POST_NOT_FOUND":
+                description = "This post may have been deleted or is no longer available to comment on.";
+                break;
+            case "TRANSACTION_FAILED":
+                description = "There was a temporary issue posting your comment. Please try again.";
+                break;
+            case "AUTH_TOKEN_EXPIRED":
+                description = "Your session has expired. Please log in again to comment.";
+                break;
+            case "VALIDATION_ERROR":
+                description = "Your comment seems to be invalid. Please check and try again.";
+                 break;
+        }
+        toast({ title: "Comment Error", description, variant: "destructive" });
+        console.error(`Add Comment Error: ${result.errorCode} - ${result.error}. Original: ${result.originalError}`);
+        return false; // Ensure we return false on failure
       }
-    } catch (error: any) {
-      toast({ title: "Comment Error", description: error.message || "Could not add comment.", variant: "destructive" });
+    } catch (error: any) { // Catch for network errors or other issues not from the action's structured response
+      toast({ title: "Comment Error", description: error.message || "An unexpected network or client error occurred.", variant: "destructive" });
+      console.error("Client-side error during add comment operation:", error);
       return false;
     }
-  }, [user, currentUserProfile, toast, updateFeedPostInList, activePostForCommentsModal?.id]);
+  }, [user, currentUserProfile, toast, updateFeedPostInList]); // Removed activePostForCommentsModal?.id from dependencies
 
   // Effect for fetching comments when modal opens
   useEffect(() => {
