@@ -474,13 +474,13 @@ export default function AppLayout({
 
   const mainContentWrapperClasses = cn(
     "flex-1 flex flex-col",
-    !isMobile && "md:ml-[240px] lg:ml-[256px]"
+    !isMobile && "md:pl-[240px] lg:pl-[256px]"
   );
 
   const mainContentContainerClasses = cn(
     "flex-1",
     useFullWidthLayout ? "h-full" : (hideBottomNav ? "py-6" : "py-6 mb-16 md:mb-0"),
-    !useFullWidthLayout && "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+    !useFullWidthLayout && "max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8",
     pageAnimationClass
   );
 
@@ -494,26 +494,39 @@ export default function AppLayout({
   }
 
   return (
-    <div className="flex h-full">
-      {!isMobile && user && currentUserProfile && (
-        <Sidebar
-          plansNotificationCount={plansNotificationCount}
-          profileNotificationCount={profileNotificationCount}
-          handleOpenCreatePostDialog={handleOpenCreatePostDialog}
-        />
-      )}
-
-      <div className={mainContentWrapperClasses}>
-        {showHeader && user && (
-          <Header
-            messagesNotificationCount={messagesNotificationCount}
-          />
+    <div className="min-h-screen bg-background">
+      <div className="flex">
+        {!isMobile && user && currentUserProfile && (
+          <div className="fixed inset-y-0 left-0 z-30">
+            <Sidebar
+              plansNotificationCount={plansNotificationCount}
+              profileNotificationCount={profileNotificationCount}
+              handleOpenCreatePostDialog={handleOpenCreatePostDialog}
+            />
+          </div>
         )}
-        <main className={mainContentContainerClasses}>
-          {children}
-        </main>
+
+        <div className={cn(
+          "flex-1 min-h-screen",
+          !isMobile && "md:pl-[240px] lg:pl-[256px]"
+        )}>
+          {showHeader && user && (
+            <Header
+              messagesNotificationCount={messagesNotificationCount}
+            />
+          )}
+          <main className={cn(
+            "flex-1 mx-auto w-full",
+            useFullWidthLayout ? "h-full" : (hideBottomNav ? "py-6" : "py-6 mb-16 md:mb-0"),
+            !useFullWidthLayout && "max-w-5xl px-4 sm:px-6 lg:px-8",
+            pageAnimationClass
+          )}>
+            {children}
+          </main>
+        </div>
       </div>
 
+      {/* Mobile bottom nav and dialogs */}
       {isMobile && !hideBottomNav && user && (
         <BottomNav
           plansNotificationCount={plansNotificationCount}
