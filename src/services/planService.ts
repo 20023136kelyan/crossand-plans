@@ -15,6 +15,7 @@ import {
   // type QuerySnapshot, // Explicit type alias removed, direct import used below
 } from 'firebase/firestore';
 import { parseISO, isValid, isPast } from 'date-fns';
+import { debounce } from 'lodash';
 
 const PLANS_COLLECTION = 'plans';
 const RATINGS_SUBCOLLECTION = 'ratings';
@@ -127,15 +128,14 @@ export const getUserPlans = (
   onPlansUpdate: (plans: Plan[], initialLoadComplete: boolean) => void
 ): (() => void) => {
   if (!db) {
-    console.error("[planService.ts client] Firestore (db) is not initialized for getUserPlans.");
+    console.error("[planService.ts client] Firestore (db) not initialized for getUserPlans.");
     return () => {};
   }
   if (!userId) {
     console.warn("[planService.ts client] getUserPlans called with no userId.");
-    onPlansUpdate([], true); // Signal completion with empty data
+    onPlansUpdate([], true);
     return () => {};
   }
-  // console.log(`[planService.ts client] Subscribing to plans for user: ${userId}`);
 
   const plansRef = collection(db, PLANS_COLLECTION);
   const allPlansMap = new Map<string, Plan>();
@@ -144,93 +144,97 @@ export const getUserPlans = (
   let initialHostedSnapshotProcessed = false;
   let initialInvitedSnapshotProcessed = false;
   
-  const tryFinalUpdate = () => {
+  // Create a debounced version of the final update
+  const debouncedFinalUpdate = debounce(() => {
     if (initialHostedSnapshotProcessed && initialInvitedSnapshotProcessed) {
       const finalPlansArray = Array.from(allPlansMap.values()).sort((a, b) => {
-          const timeA = a.eventTime && isValid(parseISO(a.eventTime)) ? parseISO(a.eventTime).getTime() : 0;
-          const timeB = b.eventTime && isValid(parseISO(b.eventTime)) ? parseISO(b.eventTime).getTime() : 0;
-          return timeB - timeA; 
+        const timeA = a.eventTime && isValid(parseISO(a.eventTime)) ? parseISO(a.eventTime).getTime() : 0;
+        const timeB = b.eventTime && isValid(parseISO(b.eventTime)) ? parseISO(b.eventTime).getTime() : 0;
+        return timeB - timeA;
       });
-      // console.log(`[planService.ts client tryFinalUpdate] Calling onPlansUpdate with ${finalPlansArray.length} plans. InitialLoadComplete: true.`);
-      onPlansUpdate(finalPlansArray, true); // Signal that initial loading for both streams is done
-    } else {
-      // console.log(`[planService.ts client tryFinalUpdate] Not all initial snapshots processed yet. Hosted: ${initialHostedSnapshotProcessed}, Invited: ${initialInvitedSnapshotProcessed}`);
+      onPlansUpdate(finalPlansArray, true);
     }
-  };
+  }, 100);
 
   const processSnapshot = (
-    snapshot: import('firebase/firestore').QuerySnapshot<DocumentData>, 
-    queryDesc: string,
+    snapshot: import('firebase/firestore').QuerySnapshot<DocumentData>,
     isInitialCallChecker: () => boolean,
     markInitialCallDone: () => void
   ) => {
-    // console.log(`[planService.ts client processSnapshot for ${queryDesc}] Docs: ${snapshot.docs.length}, Changes: ${snapshot.docChanges().length}. IsInitial: ${isInitialCallChecker()}`);
     let changedSinceLastMapUpdate = false;
+    
     snapshot.docChanges().forEach((change) => {
-        const plan = mapDocToPlan(change.doc);
-        // console.log(`[planService.ts client processSnapshot for ${queryDesc}] Plan: ${plan.name}, Type: ${change.type}`);
-        if (change.type === "added" || change.type === "modified") {
-            const existingPlan = allPlansMap.get(plan.id);
-            if (JSON.stringify(existingPlan) !== JSON.stringify(plan)) { // Basic check for actual data change
-                allPlansMap.set(plan.id, plan);
-                changedSinceLastMapUpdate = true;
-            }
-        } else if (change.type === "removed") {
-            if (allPlansMap.has(plan.id)) {
-                allPlansMap.delete(plan.id);
-                changedSinceLastMapUpdate = true;
-            }
+      const plan = mapDocToPlan(change.doc);
+      if (change.type === "added" || change.type === "modified") {
+        const existingPlan = allPlansMap.get(plan.id);
+        if (JSON.stringify(existingPlan) !== JSON.stringify(plan)) {
+          allPlansMap.set(plan.id, plan);
+          changedSinceLastMapUpdate = true;
         }
+      } else if (change.type === "removed") {
+        if (allPlansMap.has(plan.id)) {
+          allPlansMap.delete(plan.id);
+          changedSinceLastMapUpdate = true;
+        }
+      }
     });
 
     if (isInitialCallChecker()) {
       markInitialCallDone();
-      // console.log(`[planService.ts client processSnapshot for ${queryDesc}] Initial snapshot processed.`);
-      changedSinceLastMapUpdate = true; // Force update after initial load of this stream
+      changedSinceLastMapUpdate = true;
     }
     
-    // Always call tryFinalUpdate, which will decide if it's time to send the full update
-    tryFinalUpdate();
+    if (changedSinceLastMapUpdate) {
+      debouncedFinalUpdate();
+    }
   };
   
-  // console.log(`[planService.ts client] Setting up snapshot listener for hosted plans for user ${userId}...`);
   const hostedPlansQuery = query(
     plansRef,
     where('hostId', '==', userId),
-    orderBy('eventTime', 'desc') 
+    orderBy('eventTime', 'desc')
   );
+  
   const unsubscribeHosted = onSnapshot(
-    hostedPlansQuery, 
-    (snapshot) => processSnapshot(snapshot, "hosted plans", () => !initialHostedSnapshotProcessed, () => { initialHostedSnapshotProcessed = true; }), 
+    hostedPlansQuery,
+    (snapshot) => processSnapshot(
+      snapshot,
+      () => !initialHostedSnapshotProcessed,
+      () => { initialHostedSnapshotProcessed = true; }
+    ),
     (error) => {
-      console.error(`[planService.ts client] Error fetching hosted plans for ${userId}:`, error);
-      initialHostedSnapshotProcessed = true; 
-      tryFinalUpdate(); 
+      console.error(`[planService.ts client] Error fetching hosted plans:`, error);
+      initialHostedSnapshotProcessed = true;
+      debouncedFinalUpdate();
     }
   );
   unsubscribes.push(unsubscribeHosted);
 
-  // console.log(`[planService.ts client] Setting up snapshot listener for invited plans for user ${userId}...`);
   const invitedPlansQuery = query(
     plansRef,
     where('invitedParticipantUserIds', 'array-contains', userId),
-    orderBy('eventTime', 'desc') 
+    orderBy('eventTime', 'desc')
   );
+  
   const unsubscribeInvited = onSnapshot(
-    invitedPlansQuery, 
-    (snapshot) => processSnapshot(snapshot, "invited plans", () => !initialInvitedSnapshotProcessed, () => { initialInvitedSnapshotProcessed = true; }), 
+    invitedPlansQuery,
+    (snapshot) => processSnapshot(
+      snapshot,
+      () => !initialInvitedSnapshotProcessed,
+      () => { initialInvitedSnapshotProcessed = true; }
+    ),
     (error) => {
-      console.error(`[planService.ts client] Error fetching invited plans for ${userId}:`, error);
-      initialInvitedSnapshotProcessed = true; 
-      tryFinalUpdate();
+      console.error(`[planService.ts client] Error fetching invited plans:`, error);
+      initialInvitedSnapshotProcessed = true;
+      debouncedFinalUpdate();
     }
   );
   unsubscribes.push(unsubscribeInvited);
   
   return () => {
-    // console.log(`[planService.ts client] Unsubscribing from plan listeners for user: ${userId}`);
+    debouncedFinalUpdate.cancel();
     unsubscribes.forEach(unsub => unsub());
-    allPlansMap.clear(); 
+    allPlansMap.clear();
   };
 };
 

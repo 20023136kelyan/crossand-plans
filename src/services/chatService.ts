@@ -16,6 +16,7 @@ import {
   // type QuerySnapshot, // Explicit type alias removed, direct import used below
 } from 'firebase/firestore';
 import { parseISO, isValid } from 'date-fns';
+import { debounce } from 'lodash';
 
 const CHATS_COLLECTION = 'chats';
 const MESSAGES_SUBCOLLECTION = 'messages';
@@ -116,7 +117,7 @@ export const getChatMessages = (
   onMessagesUpdate: (messages: ChatMessage[]) => void
 ): Unsubscribe => { 
   if (!db) {
-    console.warn("[chatService.ts client] Firestore (db) is not initialized for getChatMessages.");
+    console.warn("[chatService.ts client] Firestore (db) not initialized for getChatMessages.");
     return () => {}; 
   }
   if (!chatId) {
@@ -124,28 +125,31 @@ export const getChatMessages = (
     onMessagesUpdate([]);
     return () => {};
   }
+
+  // Create a debounced version of onMessagesUpdate
+  const debouncedUpdate = debounce(onMessagesUpdate, 100);
+  
   const messagesRef = collection(db, CHATS_COLLECTION, chatId, MESSAGES_SUBCOLLECTION);
   const q = query(messagesRef, orderBy('timestamp', 'asc'));
 
   const unsubscribe = onSnapshot(q, (querySnapshot) => {
-    const messages: ChatMessage[] = [];
-    querySnapshot.forEach((docSnap) => { 
+    const messages: ChatMessage[] = querySnapshot.docs.map(docSnap => {
       const data = docSnap.data();
       let timestampStr = new Date(0).toISOString(); 
+      
+      // Simplified timestamp handling
       const ts = data.timestamp;
-      if (ts instanceof ClientTimestamp) {
+      if (ts) {
+        if (ts instanceof ClientTimestamp || (ts && typeof ts.toDate === 'function')) {
           timestampStr = ts.toDate().toISOString();
-      } else if (typeof ts === 'string' && isValid(parseISO(ts))) {
-          timestampStr = ts;
-      } else if (ts && typeof ts.toDate === 'function') { // From Admin SDK or serialized
-          try { timestampStr = ts.toDate().toISOString(); } catch (e) { /* ignore */ }
-      } else if (ts instanceof Date) {
+        } else if (ts instanceof Date) {
           timestampStr = ts.toISOString();
-      } else {
-          // console.warn(`[getChatMessages] Invalid timestamp for message ${docSnap.id} in chat ${chatId}:`, data.timestamp);
+        } else if (typeof ts === 'string' && isValid(parseISO(ts))) {
+          timestampStr = ts;
+        }
       }
 
-      messages.push({ 
+      return { 
         id: docSnap.id, 
         senderId: data.senderId,
         text: data.text || undefined,
@@ -153,15 +157,19 @@ export const getChatMessages = (
         mediaContentType: data.mediaContentType || undefined,
         timestamp: timestampStr,
         hiddenBy: Array.isArray(data.hiddenBy) ? data.hiddenBy : [],
-       } as ChatMessage);
+      } as ChatMessage;
     });
-    onMessagesUpdate(messages);
+
+    debouncedUpdate(messages);
   }, (error) => {
-    console.error(`[chatService.ts client] Error fetching messages for chat ${chatId} in real-time: `, error);
-    onMessagesUpdate([]);
+    console.error(`[chatService.ts client] Error fetching messages for chat ${chatId}:`, error);
+    debouncedUpdate([]);
   });
 
-  return unsubscribe; 
+  return () => {
+    debouncedUpdate.cancel();
+    unsubscribe();
+  };
 };
 
 export const getUserChats = (
