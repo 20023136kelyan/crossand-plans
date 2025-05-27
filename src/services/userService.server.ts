@@ -2,7 +2,7 @@
 import 'server-only';
 import { firestoreAdmin } from '@/lib/firebaseAdmin';
 import type { UserProfile, OnboardingProfileData, FriendEntry, SearchedUser, UserRoleType, UserStats, FriendStatus, AppTimestamp } from '@/types/user';
-import { Timestamp as AdminTimestamp, FieldValue } from 'firebase-admin/firestore';
+import { Timestamp as AdminTimestamp, FieldValue, DocumentSnapshot, QueryDocumentSnapshot, Firestore } from 'firebase-admin/firestore';
 import admin from 'firebase-admin'; // For FieldPath.documentId()
 import { updateUserAvatarInFeedAdmin } from './feedService.server';
 
@@ -253,12 +253,28 @@ export const searchUsersAdmin = async (searchTerm: string, currentUserId: string
     console.error("[searchUsersAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
     throw new Error("Server configuration error: Database service not available.");
   }
+
+  const db = firestoreAdmin as Firestore;
   const trimmedSearchTerm = searchTerm.trim();
   if (!trimmedSearchTerm) return [];
 
-  const usersRef = firestoreAdmin.collection(USER_COLLECTION);
+  const usersRef = db.collection(USER_COLLECTION);
   const resultsMap = new Map<string, SearchedUser>();
-  const FINAL_LIMIT = 10; 
+  const FINAL_LIMIT = 10;
+
+  // Get current user's friendships from their subcollection
+  const currentUserFriendshipsRef = usersRef.doc(currentUserId).collection(FRIENDSHIPS_SUBCOLLECTION);
+  const friendshipsSnapshot = await currentUserFriendshipsRef.get();
+  
+  const friendshipStatuses = new Map<string, FriendStatus>();
+  
+  friendshipsSnapshot.forEach((doc: QueryDocumentSnapshot) => {
+    const data = doc.data();
+    if (!data.status) return;
+    
+    const otherUserId = doc.id;
+    friendshipStatuses.set(otherUserId, data.status as FriendStatus);
+  });
 
   // Search by Email (exact match, case-insensitive)
   if (isEmailAdmin(trimmedSearchTerm)) {
@@ -267,12 +283,19 @@ export const searchUsersAdmin = async (searchTerm: string, currentUserId: string
         .where("email", "==", trimmedSearchTerm.toLowerCase())
         .limit(FINAL_LIMIT)
         .get();
-      emailQuerySnapshot.forEach((docSnap) => {
+      emailQuerySnapshot.forEach((docSnap: QueryDocumentSnapshot) => {
         if (docSnap.id !== currentUserId) { 
           const data = docSnap.data() as UserProfile;
           resultsMap.set(docSnap.id, {
-            uid: docSnap.id, name: data.name, email: data.email, avatarUrl: data.avatarUrl,
-            role: data.role || 'user', isVerified: data.isVerified || false
+            uid: docSnap.id,
+            name: data.name,
+            email: data.email,
+            avatarUrl: data.avatarUrl,
+            role: data.role || 'user',
+            isVerified: data.isVerified || false,
+            friendshipStatus: docSnap.id === currentUserId 
+              ? 'is_self' 
+              : friendshipStatuses.get(docSnap.id) || 'not_friends'
           });
         }
       });
@@ -286,12 +309,19 @@ export const searchUsersAdmin = async (searchTerm: string, currentUserId: string
         .where("phoneNumber", "==", trimmedSearchTerm) 
         .limit(FINAL_LIMIT - resultsMap.size)
         .get();
-      phoneQuerySnapshot.forEach((docSnap) => {
+      phoneQuerySnapshot.forEach((docSnap: QueryDocumentSnapshot) => {
         if (docSnap.id !== currentUserId && !resultsMap.has(docSnap.id)) { 
           const data = docSnap.data() as UserProfile;
           resultsMap.set(docSnap.id, {
-            uid: docSnap.id, name: data.name, email: data.email, avatarUrl: data.avatarUrl,
-            role: data.role || 'user', isVerified: data.isVerified || false
+            uid: docSnap.id,
+            name: data.name,
+            email: data.email,
+            avatarUrl: data.avatarUrl,
+            role: data.role || 'user',
+            isVerified: data.isVerified || false,
+            friendshipStatus: docSnap.id === currentUserId 
+              ? 'is_self' 
+              : friendshipStatuses.get(docSnap.id) || 'not_friends'
           });
         }
       });
@@ -308,12 +338,19 @@ export const searchUsersAdmin = async (searchTerm: string, currentUserId: string
         .endAt(lowerSearchTermForName + '\uf8ff')
         .limit(FINAL_LIMIT - resultsMap.size)
         .get();
-      nameQuerySnapshot.forEach((docSnap) => {
+      nameQuerySnapshot.forEach((docSnap: QueryDocumentSnapshot) => {
         if (docSnap.id !== currentUserId && !resultsMap.has(docSnap.id)) { 
           const data = docSnap.data() as UserProfile;
           resultsMap.set(docSnap.id, {
-            uid: docSnap.id, name: data.name, email: data.email, avatarUrl: data.avatarUrl,
-            role: data.role || 'user', isVerified: data.isVerified || false
+            uid: docSnap.id,
+            name: data.name,
+            email: data.email,
+            avatarUrl: data.avatarUrl,
+            role: data.role || 'user',
+            isVerified: data.isVerified || false,
+            friendshipStatus: docSnap.id === currentUserId 
+              ? 'is_self' 
+              : friendshipStatuses.get(docSnap.id) || 'not_friends'
           });
         }
       });

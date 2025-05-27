@@ -40,6 +40,12 @@ import { generateFullPlan, type GenerateFullPlanInput } from '@/ai/flows/generat
 import { authAdmin, firestoreAdmin, storageAdmin } from '@/lib/firebaseAdmin'; 
 import { FieldValue } from 'firebase-admin/firestore';
 import { parseISO, isValid, addHours, isPast } from 'date-fns'; 
+import {
+  generateVenuePlanQR,
+  recordPlanCompletion,
+  getAffinityScore,
+  getUserAffinities
+} from '@/services/planCompletionService.server';
 
 const PLANS_COLLECTION = 'plans';
 
@@ -318,6 +324,7 @@ export async function createPlanAction(
       location: planFormData.primaryLocation,
       city: planFormData.city,
       eventType: planFormData.eventType || null,
+      eventTypeLowercase: (planFormData.eventType || '').toLowerCase(),
       priceRange: planFormData.priceRange || 'Free',
       hostId: hostId, 
       invitedParticipantUserIds: planFormData.invitedParticipantUserIds || [],
@@ -428,6 +435,7 @@ export async function updatePlanAction(
             location: planFormData.primaryLocation,
             city: planFormData.city,
             eventType: planFormData.eventType || null,
+            eventTypeLowercase: (planFormData.eventType || '').toLowerCase(),
             priceRange: planFormData.priceRange || 'Free',
             invitedParticipantUserIds: planFormData.invitedParticipantUserIds || [],
             itinerary: finalItinerary,
@@ -1174,63 +1182,192 @@ export async function getPublicPlanByIdAction(planId: string): Promise<{ plan: P
 }
 
 export async function getPublishedPlansByCityAction(cityName: string): Promise<{ success: boolean; plans?: Plan[]; error?: string }> {
-  ensureAdminServices();
-
   try {
-    const plansRef = firestoreAdmin.collection(PLANS_COLLECTION);
-    const q = plansRef
+    const plansRef = firestoreAdmin.collection('plans');
+    const snapshot = await plansRef
       .where('status', '==', 'published')
       .where('city', '==', cityName)
-      .orderBy('eventTime', 'desc');
-    
-    const querySnapshot = await q.get();
-    const plans: Plan[] = [];
-    
-    querySnapshot.forEach(doc => {
+      .orderBy('createdAt', 'desc')
+      .limit(20)
+      .get();
+
+    const plans = snapshot.docs.map(doc => {
       const data = doc.data();
-      plans.push({
+      return {
         id: doc.id,
         ...data,
-        createdAt: data.createdAt?.toDate().toISOString() || new Date(0).toISOString(),
-        updatedAt: data.updatedAt?.toDate().toISOString() || new Date(0).toISOString(),
-        eventTime: data.eventTime?.toDate().toISOString() || null,
-      } as Plan);
+        createdAt: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
+        updatedAt: data.updatedAt?.toDate().toISOString() || new Date().toISOString(),
+        eventTime: data.eventTime?.toDate().toISOString() || new Date().toISOString(),
+      } as Plan;
     });
 
     return { success: true, plans };
-  } catch (error: any) {
-    console.error('[getPublishedPlansByCityAction] Error:', error);
-    return { success: false, error: error.message || 'Failed to fetch plans.' };
+  } catch (error) {
+    console.error('Error fetching plans by city:', error);
+    return { success: false, error: 'Failed to fetch plans' };
   }
 }
 
 export async function getPublishedPlansByCategoryAction(categoryName: string): Promise<{ success: boolean; plans?: Plan[]; error?: string }> {
-  ensureAdminServices();
-
   try {
-    const plansRef = firestoreAdmin.collection(PLANS_COLLECTION);
-    const q = plansRef
+    if (!firestoreAdmin) {
+      throw new Error('Firestore Admin not initialized');
+    }
+
+    console.log(`[getPublishedPlansByCategoryAction] Searching for category: ${categoryName}`);
+
+    // First try exact match on eventType
+    const exactMatchQuery = await firestoreAdmin.collection('plans')
       .where('status', '==', 'published')
-      .where('category', '==', categoryName)
-      .orderBy('eventTime', 'desc');
-    
-    const querySnapshot = await q.get();
+      .where('eventType', '==', categoryName)
+      .get();
+
+    // Then try lowercase match
+    const lowercaseQuery = await firestoreAdmin.collection('plans')
+      .where('status', '==', 'published')
+      .where('eventTypeLowercase', '==', categoryName.toLowerCase())
+      .get();
+
+    // Combine results, removing duplicates
+    const seenIds = new Set<string>();
     const plans: Plan[] = [];
-    
-    querySnapshot.forEach(doc => {
-      const data = doc.data();
-      plans.push({
-        id: doc.id,
-        ...data,
-        createdAt: data.createdAt?.toDate().toISOString() || new Date(0).toISOString(),
-        updatedAt: data.updatedAt?.toDate().toISOString() || new Date(0).toISOString(),
-        eventTime: data.eventTime?.toDate().toISOString() || null,
-      } as Plan);
+
+    const convertTimestamp = (timestamp: any): string => {
+      if (!timestamp) return new Date().toISOString();
+      // Handle Firestore Timestamp
+      if (typeof timestamp.toDate === 'function') {
+        return timestamp.toDate().toISOString();
+      }
+      // Handle ISO string
+      if (typeof timestamp === 'string') {
+        return new Date(timestamp).toISOString();
+      }
+      // Handle seconds timestamp
+      if (typeof timestamp === 'number') {
+        return new Date(timestamp * 1000).toISOString();
+      }
+      // Default fallback
+      return new Date().toISOString();
+    };
+
+    [exactMatchQuery, lowercaseQuery].forEach(snapshot => {
+      snapshot.docs.forEach(doc => {
+        if (!seenIds.has(doc.id)) {
+          seenIds.add(doc.id);
+          const data = doc.data();
+          plans.push({
+            id: doc.id,
+            ...data,
+            createdAt: convertTimestamp(data.createdAt),
+            updatedAt: convertTimestamp(data.updatedAt),
+            eventTime: convertTimestamp(data.eventTime),
+          } as Plan);
+        }
+      });
     });
 
+    console.log(`[getPublishedPlansByCategoryAction] Found ${plans.length} plans for category: ${categoryName}`);
     return { success: true, plans };
-  } catch (error: any) {
+  } catch (error) {
     console.error('[getPublishedPlansByCategoryAction] Error:', error);
-    return { success: false, error: error.message || 'Failed to fetch plans.' };
+    return { success: false, error: 'Failed to fetch plans' };
+  }
+}
+
+export async function generatePlanQRAction(planId: string, idToken: string): Promise<{ success: boolean; qrData?: string; error?: string }> {
+  try {
+    const decodedToken = await authAdmin.auth().verifyIdToken(idToken);
+    const userId = decodedToken.uid;
+
+    // Get the plan to verify ownership/permissions
+    const plan = await getPlanByIdAdminService(planId);
+    if (!plan) {
+      return { success: false, error: 'Plan not found' };
+    }
+
+    // Only allow host or admin to generate QR code
+    const userRole = decodedToken.role as UserRoleType | undefined;
+    if (plan.hostId !== userId && userRole !== 'admin') {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    const qrData = await generateVenuePlanQR(planId);
+    if (!qrData) {
+      return { success: false, error: 'Failed to generate QR code' };
+    }
+
+    return { success: true, qrData };
+  } catch (error: any) {
+    console.error('Error in generatePlanQRAction:', error);
+    return { success: false, error: error.message || 'Failed to generate QR code' };
+  }
+}
+
+export async function completePlanAction(
+  planId: string,
+  verificationMethod: 'qr_code' | 'manual' | 'auto',
+  qrCodeData: string | undefined,
+  idToken: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const decodedToken = await authAdmin.auth().verifyIdToken(idToken);
+    const userId = decodedToken.uid;
+
+    const completion = await recordPlanCompletion(planId, userId, verificationMethod, qrCodeData);
+    if (!completion) {
+      return { success: false, error: 'Failed to record plan completion' };
+    }
+
+    // Update plan status to completed
+    await updatePlanAdminService(planId, { status: 'completed' as const });
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error in completePlanAction:', error);
+    return { success: false, error: error.message || 'Failed to complete plan' };
+  }
+}
+
+export async function getAffinityScoreAction(
+  userId1: string,
+  userId2: string,
+  idToken: string
+): Promise<{ success: boolean; score?: number; error?: string }> {
+  try {
+    const decodedToken = await authAdmin.auth().verifyIdToken(idToken);
+    const userRole = decodedToken.role as UserRoleType | undefined;
+    
+    // Only allow users to get their own affinity scores or admins to get any
+    if (decodedToken.uid !== userId1 && decodedToken.uid !== userId2 && userRole !== 'admin') {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    const score = await getAffinityScore(userId1, userId2);
+    return { success: true, score };
+  } catch (error: any) {
+    console.error('Error in getAffinityScoreAction:', error);
+    return { success: false, error: error.message || 'Failed to get affinity score' };
+  }
+}
+
+export async function getUserAffinitiesAction(
+  userId: string,
+  idToken: string
+): Promise<{ success: boolean; affinities?: UserAffinity[]; error?: string }> {
+  try {
+    const decodedToken = await authAdmin.auth().verifyIdToken(idToken);
+    const userRole = decodedToken.role as UserRoleType | undefined;
+    
+    // Only allow users to get their own affinities or admins to get any
+    if (decodedToken.uid !== userId && userRole !== 'admin') {
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    const affinities = await getUserAffinities(userId);
+    return { success: true, affinities };
+  } catch (error: any) {
+    console.error('Error in getUserAffinitiesAction:', error);
+    return { success: false, error: error.message || 'Failed to get user affinities' };
   }
 }

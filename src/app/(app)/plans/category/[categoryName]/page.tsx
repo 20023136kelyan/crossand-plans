@@ -21,28 +21,41 @@ import {
   Loader2
 } from "lucide-react";
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { PlanCard } from '../../../plans/page'; 
+import { ExploreCard } from '@/components/explore/ExploreCard';
 import type { Plan as PlanType } from '@/types/user';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from "@/lib/utils";
 import { format, isSameDay, startOfMonth, parseISO, isValid } from 'date-fns';
 import { getPublishedPlansByCategoryAction } from '@/app/actions/planActions';
 import { useToast } from '@/hooks/use-toast';
+import { PlansPageProvider } from '@/context/PlansPageContext';
 
 export default function CategoryPlansPage() {
   const params = useParams();
   const router = useRouter();
   const { toast } = useToast();
-  const categoryName = params.categoryName as string;
+  const rawCategoryName = params.categoryName as string;
+  const categoryName = decodeURIComponent(rawCategoryName);
   const { user: currentUser } = useAuth();
   const [plans, setPlans] = useState<PlanType[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [decodedCategoryName, setDecodedCategoryName] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: 'date' | 'name'; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [currentMonth, setCurrentMonth] = useState<Date>(startOfMonth(new Date()));
+
+  // Add delete handler
+  const handleDeleteRequest = useCallback((planId: string, planName: string) => {
+    // For the category view, we'll just show a toast since deletion is not allowed here
+    toast({
+      title: "Action Not Allowed",
+      description: "Plans can only be deleted from your personal plans page.",
+      variant: "default"
+    });
+  }, [toast]);
 
   // Filter and sort plans
   const filteredAndSortedPlans = useMemo(() => {
@@ -71,34 +84,40 @@ export default function CategoryPlansPage() {
   useEffect(() => {
     const fetchPlans = async () => {
       setLoading(true);
+      setError(null);
       try {
+        console.log('Fetching plans for category:', categoryName);
         const result = await getPublishedPlansByCategoryAction(categoryName);
+        console.log('Fetch result:', result);
+        
         if (result.success && result.plans) {
           setPlans(result.plans);
           setDecodedCategoryName(categoryName);
         } else {
+          setError(result.error || 'Failed to fetch plans');
           toast({
-            title: "Error",
-            description: result.error || "Failed to load plans",
-            variant: "destructive"
+            title: 'Error',
+            description: result.error || 'Failed to fetch plans',
+            variant: 'destructive',
           });
-          router.push('/plans');
         }
-      } catch (err: any) {
-        console.error('Error fetching category plans:', err);
+      } catch (err) {
+        console.error('Error fetching plans:', err);
+        setError('An unexpected error occurred');
         toast({
-          title: "Error",
-          description: "Failed to load plans",
-          variant: "destructive"
+          title: 'Error',
+          description: 'An unexpected error occurred while fetching plans',
+          variant: 'destructive',
         });
-        router.push('/plans');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchPlans();
-  }, [categoryName, toast, router]);
+    if (categoryName) {
+      fetchPlans();
+    }
+  }, [categoryName, toast]);
 
   // Extract event dates from plans
   const eventDates = useMemo(() => {
@@ -146,7 +165,7 @@ export default function CategoryPlansPage() {
         <h4 className="font-medium">Plans for {format(selectedDate!, 'MMMM d, yyyy')}</h4>
         <div className="space-y-2">
           {plansForSelectedDate.map(plan => (
-            <PlanCard key={plan.id} plan={plan} currentUserUid={currentUser?.uid} />
+            <ExploreCard key={plan.id} plan={plan} />
           ))}
         </div>
       </div>
@@ -183,99 +202,119 @@ export default function CategoryPlansPage() {
     );
   }
 
-  return (
-    <div className="container max-w-7xl mx-auto p-4 space-y-4">
-      <div className="flex items-center gap-4 mb-6">
-        <Button variant="ghost" size="icon" onClick={() => router.back()} className="shrink-0">
-          <ChevronLeft className="h-5 w-5" />
-        </Button>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Plans in {decodedCategoryName}
-        </h1>
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center p-4">
+        <div className="text-red-500 mb-4">{error}</div>
+        <Button onClick={() => router.back()}>Go Back</Button>
       </div>
+    );
+  }
 
-      <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as 'list' | 'calendar')} className="w-full">
-        <div className="sticky top-0 z-20 bg-background flex items-center justify-between gap-3 w-full py-2 border-b border-border shadow-sm mb-6 group">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className="relative flex-1 min-w-0">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                type="search"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search plans..."
-                className="pl-10 bg-card border-border text-sm h-9 rounded-lg"
-              />
-            </div>
-          </div>
+  if (!plans.length) {
+    return (
+      <div className="flex flex-col items-center justify-center p-4">
+        <div className="text-gray-500 mb-4">No plans found for category: {categoryName}</div>
+        <Button onClick={() => router.back()}>Go Back</Button>
+      </div>
+    );
+  }
 
-          <div className="flex items-center gap-3">
-            {viewMode === 'list' && (
-              <Button 
-                variant="outline" 
-                onClick={() => setSortConfig(prev => ({ ...prev, direction: prev.direction === 'asc' ? 'desc' : 'asc' }))} 
-                size="sm" 
-                className="bg-card border-border hover:bg-secondary/50 text-sm rounded-lg h-9 whitespace-nowrap"
-              >
-                {sortConfig.key === 'date' ? 'Date' : 'Name'}
-                <ArrowUpDown className="ml-1.5 h-4 w-4" />
-              </Button>
-            )}
-
-            <div className="whitespace-nowrap">
-              <TabsList className="bg-muted p-1 rounded-lg inline-flex h-9">
-                <TabsTrigger value="list" className="px-2.5 py-1 text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded data-[state=active]:shadow-sm">
-                  <List className="h-4 w-4 mr-1" />
-                  List
-                </TabsTrigger>
-                <TabsTrigger value="calendar" className="px-2.5 py-1 text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded data-[state=active]:shadow-sm">
-                  <CalendarDays className="h-4 w-4 mr-1" />
-                  Calendar
-                </TabsTrigger>
-              </TabsList>
-            </div>
-          </div>
+  return (
+    <PlansPageProvider handleDeleteRequest={handleDeleteRequest}>
+      <div className="container max-w-7xl mx-auto p-4 space-y-4">
+        <div className="flex items-center gap-4 mb-6">
+          <Button variant="ghost" size="icon" onClick={() => router.back()} className="shrink-0">
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Plans in {decodedCategoryName}
+          </h1>
         </div>
 
-        {viewMode === 'list' ? (
-          <TabsContent value="list" className="mt-0">
-            {filteredAndSortedPlans.length === 0 ? (
-              <EmptyState 
-                title={`No Plans in ${decodedCategoryName}`} 
-                message={searchTerm ? `Your search for "${searchTerm}" did not match any plans in this category.` : `There are no plans listed under "${decodedCategoryName}".`}
-              />
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {filteredAndSortedPlans.map(plan => (
-                  <PlanCard key={plan.id} plan={plan} currentUserUid={currentUser?.uid} />
-                ))}
+        <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as 'list' | 'calendar')} className="w-full">
+          <div className="sticky top-0 z-20 bg-background flex items-center justify-between gap-3 w-full py-2 border-b border-border shadow-sm mb-6 group">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <div className="relative flex-1 min-w-0">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Input
+                  type="search"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search plans..."
+                  className="pl-10 bg-card border-border text-sm h-9 rounded-lg"
+                />
               </div>
-            )}
-          </TabsContent>
-        ) : (
-          <TabsContent value="calendar" className="space-y-4">
-            <div className="flex flex-col space-y-4">
-              <CalendarComponent
-                mode="single"
-                selected={selectedDate}
-                onSelect={(date) => setSelectedDate(date || undefined)}
-                month={currentMonth}
-                onMonthChange={setCurrentMonth}
-                className="rounded-md border shadow"
-                classNames={{
-                  day_selected: 'bg-primary text-primary-foreground hover:bg-primary/90 focus:bg-primary focus:text-primary-foreground',
-                  day_today: 'bg-accent text-accent-foreground',
-                }}
-                components={{
-                  DayContent: renderCalendarDay
-                }}
-                modifiers={{ hasEvent: eventDates }}
-              />
-              {calendarFooter}
             </div>
-          </TabsContent>
-        )}
-      </Tabs>
-    </div>
+
+            <div className="flex items-center gap-3">
+              {viewMode === 'list' && (
+                <Button 
+                  variant="outline" 
+                  onClick={() => setSortConfig(prev => ({ ...prev, direction: prev.direction === 'asc' ? 'desc' : 'asc' }))} 
+                  size="sm" 
+                  className="bg-card border-border hover:bg-secondary/50 text-sm rounded-lg h-9 whitespace-nowrap"
+                >
+                  {sortConfig.key === 'date' ? 'Date' : 'Name'}
+                  <ArrowUpDown className="ml-1.5 h-4 w-4" />
+                </Button>
+              )}
+
+              <div className="whitespace-nowrap">
+                <TabsList className="bg-muted p-1 rounded-lg inline-flex h-9">
+                  <TabsTrigger value="list" className="px-2.5 py-1 text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded data-[state=active]:shadow-sm">
+                    <List className="h-4 w-4 mr-1" />
+                    List
+                  </TabsTrigger>
+                  <TabsTrigger value="calendar" className="px-2.5 py-1 text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded data-[state=active]:shadow-sm">
+                    <CalendarDays className="h-4 w-4 mr-1" />
+                    Calendar
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+            </div>
+          </div>
+
+          {viewMode === 'list' ? (
+            <TabsContent value="list" className="mt-0">
+              {filteredAndSortedPlans.length === 0 ? (
+                <EmptyState 
+                  title={`No Plans in ${decodedCategoryName}`} 
+                  message={searchTerm ? `Your search for "${searchTerm}" did not match any plans in this category.` : `There are no plans listed under "${decodedCategoryName}".`}
+                />
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {filteredAndSortedPlans.map(plan => (
+                    <ExploreCard key={plan.id} plan={plan} />
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          ) : (
+            <TabsContent value="calendar" className="space-y-4">
+              <div className="flex flex-col space-y-4">
+                <CalendarComponent
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => setSelectedDate(date || undefined)}
+                  month={currentMonth}
+                  onMonthChange={setCurrentMonth}
+                  className="rounded-md border shadow"
+                  classNames={{
+                    day_selected: 'bg-primary text-primary-foreground hover:bg-primary/90 focus:bg-primary focus:text-primary-foreground',
+                    day_today: 'bg-accent text-accent-foreground',
+                  }}
+                  components={{
+                    DayContent: renderCalendarDay
+                  }}
+                  modifiers={{ hasEvent: eventDates }}
+                />
+                {calendarFooter}
+              </div>
+            </TabsContent>
+          )}
+        </Tabs>
+      </div>
+    </PlansPageProvider>
   );
 }

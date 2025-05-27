@@ -69,13 +69,13 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import ExploreTabContent from '@/components/explore/ExploreTabContent';
+import { ExploreContent } from '@/components/explore/ExploreContent';
 import { cn } from "@/lib/utils";
 import { getPostComments } from "@/services/feedService"; // Client SDK for comments listener
 import { getUserProfile } from "@/services/userService"; // Added for PostDetailModal author fetching
 import { FriendPickerDialog } from '@/components/messages/FriendPickerDialog';
 import { PostDetailModal } from '@/components/feed/PostDetailModal'; // Added for PostDetailModal
-
+import { useRouter, useSearchParams } from 'next/navigation';
 
 const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, isVerified: boolean }) => {
   if (role === 'admin') {
@@ -430,7 +430,7 @@ const FeedPostCard = React.memo(({
               <VisibilityBadge visibility={item.visibility} isOwnPost={isOwnPost} />
             </div>
             <CardDescription className="text-xs text-muted-foreground/80 mt-0.5">
-              shared an experience from <Link href={`/plans/${item.planId}`} className="text-primary hover:underline font-medium">{item.planName}</Link> - {postedAtRelative}
+              shared an experience from <Link href={`/p/${item.planId}`} className="text-primary hover:underline font-medium">{item.planName}</Link> - {postedAtRelative}
             </CardDescription>
           </div>
         </div>
@@ -501,7 +501,7 @@ const FeedPostCard = React.memo(({
 
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
            <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-primary text-xs">
-              <Link href={`/plans/${item.planId}`}>
+              <Link href={`/p/${item.planId}`}>
                   <ExternalLink className="mr-1.5 h-4 w-4" /> View Plan
               </Link>
             </Button>
@@ -802,9 +802,22 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
 export default function FeedPage() {
   const { user, currentUserProfile, loading: authLoading } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
   const [loadingFeed, setLoadingFeed] = useState(true);
-  const [activeTab, setActiveTab] = useState("forYou");
+  const activeTab = searchParams.get('tab') || 'forYou';
+
+  // Function to update tab in URL
+  const handleTabChange = (value: string) => {
+    if (value === 'explore') {
+      router.push('/explore');
+      return;
+    }
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', value);
+    router.push(`?${params.toString()}`, { scroll: false });
+  };
 
   // New state variables for pagination
   const [nextCursor, setNextCursor] = useState<string | null | undefined>(undefined);
@@ -1128,7 +1141,7 @@ export default function FeedPage() {
 
   return (
     <div className="space-y-0">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
          <div
           className={cn(
             "sticky top-0 z-30 flex justify-center items-center transition-all duration-300 ease-in-out h-12 sm:h-14",
@@ -1148,6 +1161,7 @@ export default function FeedPage() {
             <TabsTrigger
               value="explore"
               className="text-xs sm:text-sm data-[state=active]:bg-primary/20 data-[state=active]:text-primary data-[state=active]:shadow-sm rounded h-full px-3 py-1.5 transition-colors duration-150"
+              onClick={() => router.push('/explore')}
             >
               Explore
             </TabsTrigger>
@@ -1171,7 +1185,7 @@ export default function FeedPage() {
                 <p>Share your plan highlights or explore to find content!</p>
               </div>
             )}
-            {!loadingFeed && visibleFeedPosts.length > 0 && (
+            {visibleFeedPosts.length > 0 && (
               <>
                 <div className="space-y-8 sm:space-y-10">
                   {visibleFeedPosts.map(item => (
@@ -1184,7 +1198,7 @@ export default function FeedPage() {
                       onUpdatePostInList={updateFeedPostInList}
                       onHidePost={hidePostLocally}
                       onRequestDeletePost={handleRequestDeletePost}
-                      onOpenDetailModal={handleOpenPostDetailModal} // Pass handler
+                      onOpenDetailModal={handleOpenPostDetailModal}
                     />
                   ))}
                 </div>
@@ -1209,7 +1223,7 @@ export default function FeedPage() {
             )}
           </TabsContent>
           <TabsContent value="explore" className="mt-0">
-            <ExploreTabContent />
+            <ExploreContent />
           </TabsContent>
         </div>
       </Tabs>

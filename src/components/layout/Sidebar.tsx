@@ -52,16 +52,23 @@ export function Sidebar(props: SidebarProps) {
     return 0;
   };
 
+  // Define base navigation items - only include profile/login if we have user data
   const navItems: NavItem[] = [
     { href: '/feed', label: 'Feed', icon: LayoutGrid, id: 'feed', ariaLabel: "Feed & Explore" },
     { href: '/wallet', label: 'Wallet', icon: WalletIcon, id: 'wallet', ariaLabel: "My Wallet"},
     { action: () => setIsQuickAddPopoverOpen(true), label: 'Create', icon: PlusCircle, id: 'quick-add', ariaLabel: "Quick Add Menu" },
     { href: '/plans', label: 'Plans', icon: LayoutList, id: 'plans', ariaLabel: "My Plans" },
-    user
-      ? { href: `/users/${user.uid}`, label: 'Profile', icon: Avatar, id: 'profile', ariaLabel: "My Profile" }
-      : { href: '/login', label: 'Login', icon: UserIcon, id: 'login', ariaLabel: "Login" },
-    { href: '/admin/dashboard', label: 'Admin Dashboard', icon: Shield, id: 'admin-dashboard', ariaLabel: "Admin Dashboard", adminOnly: true },
   ];
+
+  // Only add the profile/login item if we have definitive user state
+  if (user) {
+    navItems.push({ href: `/users/${user.uid}`, label: 'Profile', icon: Avatar, id: 'profile', ariaLabel: "My Profile" });
+    if (currentUserProfile?.role === 'admin') {
+      navItems.push({ href: '/admin/management', label: 'Admin', icon: Shield, id: 'admin', ariaLabel: "Admin Management", adminOnly: true });
+    }
+  } else if (user === null) { // Only show login if we're sure user is not authenticated
+    navItems.push({ href: '/login', label: 'Login', icon: UserIcon, id: 'login', ariaLabel: "Login" });
+  }
 
   return (
     <SidebarProvider>
@@ -188,15 +195,15 @@ export function Sidebar(props: SidebarProps) {
         </SidebarContent>
         {user && (
           <SidebarFooter className="mt-auto pt-3 border-t border-sidebar-border">
-             <SidebarMenuItem> {/* Ensure Settings is also a SidebarMenuItem for consistent structure */}
+             <SidebarMenuItem>
                 <SidebarMenuButton
-                isActive={pathname === '/profile'}
+                isActive={pathname === '/users/settings'}
                 asChild
                 >
                 <Link
-                    href="/profile"
+                    href="/users/settings"
                     aria-label="Settings"
-                    aria-current={pathname === '/profile' ? "page" : undefined}
+                    aria-current={pathname === '/users/settings' ? "page" : undefined}
                 >
                     <Settings className="h-5 w-5 mr-3" />
                     Settings

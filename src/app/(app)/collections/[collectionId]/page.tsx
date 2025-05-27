@@ -1,61 +1,45 @@
-
 // src/app/(app)/collections/[collectionId]/page.tsx
 'use server';
 
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { getCollectionByIdAdmin } from '@/services/exploreService.server'; // Updated import
-import { getPlansByIdsAdmin } from '@/services/planService.server'; 
+import { getCollectionByIdAdmin } from '@/services/exploreService.server';
+import { getPlansByIdsAdmin } from '@/services/planService.server';
 import type { Plan, PlanCollection } from '@/types/user';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { PlanCard } from '@/app/(app)/plans/page'; 
+import { ExploreCard } from '@/components/explore/ExploreCard';
 import { ChevronLeft, Users, Tag, Palette } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 export default async function CollectionDetailPage({ params }: { params: { collectionId: string } }) {
   const collectionId = params.collectionId;
-  const collection: PlanCollection | null = await getCollectionByIdAdmin(collectionId); // Updated function call
+  const collection: PlanCollection | null = await getCollectionByIdAdmin(collectionId);
 
   if (!collection) {
-    notFound(); 
+    notFound();
   }
 
   let plansInCollection: Plan[] = [];
   if (collection.planIds && collection.planIds.length > 0) {
     plansInCollection = await getPlansByIdsAdmin(collection.planIds);
   }
-  
-  const currentUserUid = undefined; 
 
   return (
-    <div className="space-y-8 pb-16">
-      <Button variant="outline" asChild className="mb-4">
-        <Link href="/explore">
-          <ChevronLeft className="mr-2 h-4 w-4" /> Back to Explore
-        </Link>
-      </Button>
-
-      <header className="mb-8">
-        <div className="relative w-full h-48 md:h-64 rounded-lg overflow-hidden shadow-lg mb-4 border border-border/30">
-          <Image
-            src={collection.coverImageUrl || `https://placehold.co/800x400.png?text=${encodeURIComponent(collection.title.substring(0,20))}`}
-            alt={collection.title}
-            fill
-            style={{ objectFit: 'cover' }}
-            data-ai-hint={collection.dataAiHint || 'collection abstract'}
-            priority
-            unoptimized={!collection.coverImageUrl?.startsWith('http')} 
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
-          <div className="absolute bottom-0 left-0 p-4 md:p-6">
-            <h1 className="text-3xl md:text-4xl font-bold text-white shadow-text">{collection.title}</h1>
-          </div>
+    <div className="container mx-auto py-6 px-4 sm:px-6 lg:px-8 space-y-6">
+      <header className="space-y-3">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/explore" className="text-muted-foreground hover:text-foreground">
+              <ChevronLeft className="h-5 w-5" />
+            </Link>
+          </Button>
+          <h1 className="text-2xl font-bold text-primary">{collection.title}</h1>
         </div>
-        
+
         {collection.description && (
-          <p className="text-md text-muted-foreground mt-2 max-w-2xl">{collection.description}</p>
+          <p className="text-muted-foreground">{collection.description}</p>
         )}
 
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
@@ -70,11 +54,11 @@ export default async function CollectionDetailPage({ params }: { params: { colle
             {collection.planIds.length} Plan{collection.planIds.length !== 1 ? 's' : ''}
           </div>
           {collection.tags && collection.tags.length > 0 && (
-             <div className="flex items-center">
-                <Tag className="h-4 w-4 mr-1.5 text-primary" />
-                <div className="flex flex-wrap gap-1">
-                    {collection.tags.map(tag => <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>)}
-                </div>
+            <div className="flex items-center">
+              <Tag className="h-4 w-4 mr-1.5 text-primary" />
+              <div className="flex flex-wrap gap-1">
+                {collection.tags.map(tag => <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>)}
+              </div>
             </div>
           )}
         </div>
@@ -83,7 +67,7 @@ export default async function CollectionDetailPage({ params }: { params: { colle
       {plansInCollection.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {plansInCollection.map(plan => (
-            <PlanCard key={plan.id} plan={plan} currentUserUid={currentUserUid} /> 
+            <ExploreCard key={plan.id} plan={plan} />
           ))}
         </div>
       ) : (

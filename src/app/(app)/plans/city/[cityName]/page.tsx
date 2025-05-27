@@ -21,7 +21,7 @@ import {
   Loader2,
 } from "lucide-react";
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { PlanCard, UserPlanViewStatus } from '../../../plans/page'; 
+import { ExploreCard } from '@/components/explore/ExploreCard';
 import type { Plan as PlanType } from '@/types/user';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from "@/lib/utils";
@@ -194,7 +194,7 @@ export default function CityPlansPage() {
         <h4 className="font-medium">Plans for {format(selectedDate!, 'MMMM d, yyyy')}</h4>
         <div className="space-y-2">
           {plansForSelectedDate.map(plan => (
-            <PlanCard key={plan.id} plan={plan} currentUserUid={currentUser?.uid} />
+            <ExploreCard key={plan.id} plan={plan} />
           ))}
         </div>
       </div>
@@ -322,7 +322,7 @@ export default function CityPlansPage() {
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {upcomingPlans.map(plan => (
-                        <PlanCard key={plan.id} plan={plan} currentUserUid={currentUser?.uid} />
+                        <ExploreCard key={plan.id} plan={plan} />
                     ))}
                     </div>
                 )}
@@ -337,7 +337,7 @@ export default function CityPlansPage() {
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {pastPlans.map(plan => (
-                        <PlanCard key={plan.id} plan={plan} currentUserUid={currentUser?.uid} />
+                        <ExploreCard key={plan.id} plan={plan} />
                     ))}
                     </div>
                 )}
@@ -368,6 +368,7 @@ export default function CityPlansPage() {
                         }}
                         modifiers={{ hasEvent: eventDates }}
                         />
+                        {calendarFooter}
                     </div>
                 )}
             </TabsContent>

@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -10,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { 
     User, Loader2, CalendarDays, Smartphone, Home, ListChecks, Palette, Sparkles as GamificationIcon, 
     Wallet, MessagesSquare as SocialInteractionIcon, Heart, Activity, AlertTriangle, ChefHat, ChevronDown, 
-    ChevronUp, UsersRound, ChevronLeft, Edit3, MessageSquare, ShieldCheck as AdminIcon, CheckCircle 
+    ChevronUp, UsersRound, ChevronLeft, Edit3, MessageSquare, ShieldCheck as AdminIcon, CheckCircle, UserPlus, X as XIcon, Check 
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -21,6 +20,7 @@ import { format } from 'date-fns';
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { initiateDirectChatAction } from '@/app/actions/chatActions';
+import { sendFriendRequestAction, acceptFriendRequestAction, declineFriendRequestAction, removeFriendAction } from '@/app/actions/friendActions';
 
 const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, isVerified: boolean }) => {
   if (role === 'admin') {
@@ -109,7 +109,8 @@ export default function FriendProfilePage() {
 
   const [viewedUserProfile, setViewedUserProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
-  const [isFriend, setIsFriend] = useState(false);
+  const [friendshipStatus, setFriendshipStatus] = useState<FriendStatus | 'not_friends' | 'is_self' | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
   const [isInitiatingChat, setIsInitiatingChat] = useState(false);
 
   const fetchProfileAndFriendshipStatus = useCallback(async () => {
@@ -119,15 +120,18 @@ export default function FriendProfilePage() {
         const profile = await getUserProfile(friendUserId); 
         setViewedUserProfile(profile);
         if (!profile) {
-            toast({ title: "Profile Not Found", description: "This user's profile could not be loaded.", variant: "destructive" });
+          toast({ title: "Profile Not Found", description: "This user's profile could not be loaded.", variant: "destructive" });
         }
 
         if (currentUser && currentUser.uid && profile) {
-          const friendships = await getFriendships(currentUser.uid); 
-          const friendEntry = friendships.find(f => f.friendUid === friendUserId);
-          setIsFriend(friendEntry?.status === 'friends');
+          if (currentUser.uid === profile.uid) {
+            setFriendshipStatus('is_self');
+          } else {
+            const friendships = await getFriendships(currentUser.uid); 
+            const friendEntry = friendships.find(f => f.friendUid === friendUserId);
+            setFriendshipStatus(friendEntry?.status || 'not_friends');
+          }
         }
-
       } catch (error) {
         console.error("Error fetching friend profile", error);
         toast({ title: "Error", description: "Could not fetch user profile.", variant: "destructive" });
@@ -140,6 +144,67 @@ export default function FriendProfilePage() {
   useEffect(() => {
     fetchProfileAndFriendshipStatus();
   }, [fetchProfileAndFriendshipStatus]);
+
+  const handleFriendAction = async (actionType: 'send' | 'accept' | 'decline' | 'cancel' | 'remove') => {
+    if (!currentUser || !viewedUserProfile) {
+      toast({ title: "Action Failed", description: "User data missing or not logged in.", variant: "destructive" });
+      if (!currentUser) router.push('/login');
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await currentUser.getIdToken(true);
+      const idToken = await currentUser.getIdToken();
+      if (!idToken) {
+        toast({ title: "Auth Error", description: "Could not get authentication token.", variant: "destructive" });
+        setActionLoading(false);
+        return;
+      }
+
+      let result: { success: boolean; error?: string; message?: string };
+
+      switch (actionType) {
+        case 'send':
+          result = await sendFriendRequestAction(viewedUserProfile.uid, idToken);
+          if (result.success) {
+            setFriendshipStatus('pending_sent');
+          }
+          break;
+        case 'accept':
+          result = await acceptFriendRequestAction(viewedUserProfile.uid, idToken);
+          if (result.success) {
+            setFriendshipStatus('friends');
+          }
+          break;
+        case 'decline':
+        case 'cancel':
+          result = await declineFriendRequestAction(viewedUserProfile.uid, idToken);
+          if (result.success) {
+            setFriendshipStatus('not_friends');
+          }
+          break;
+        case 'remove':
+          result = await removeFriendAction(viewedUserProfile.uid, idToken);
+          if (result.success) {
+            setFriendshipStatus('not_friends');
+          }
+          break;
+        default:
+          setActionLoading(false);
+          return;
+      }
+
+      if (result.success) {
+        toast({ title: "Success", description: result.message || `Action successful.` });
+      } else {
+        toast({ title: "Error", description: result.error || "Could not complete action.", variant: "destructive" });
+      }
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to perform action.", variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const handleInitiateChat = async () => {
     if (!currentUser || !currentUserProfile || !viewedUserProfile) {
@@ -210,7 +275,7 @@ export default function FriendProfilePage() {
         <Button variant="outline" onClick={() => router.back()}>
           <ChevronLeft className="mr-2 h-4 w-4" /> Back
         </Button>
-        {isFriend && currentUser && currentUser.uid !== viewedUserProfile.uid && (
+        {friendshipStatus === 'friends' && currentUser && currentUser.uid !== viewedUserProfile?.uid && (
           <Button onClick={handleInitiateChat} disabled={isInitiatingChat}>
             {isInitiatingChat ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageSquare className="mr-2 h-4 w-4" />}
             Message
@@ -223,15 +288,81 @@ export default function FriendProfilePage() {
         <CardHeader className="p-6">
           <div className="flex items-center gap-4">
             <Avatar className="h-24 w-24 border-2 border-background shadow-md">
-              {viewedUserProfile.avatarUrl && <AvatarImage src={viewedUserProfile.avatarUrl} alt={viewedUserProfile.name || 'User Avatar'} data-ai-hint="person portrait"/>}
+              {viewedUserProfile?.avatarUrl && <AvatarImage src={viewedUserProfile.avatarUrl} alt={viewedUserProfile.name || 'User Avatar'} data-ai-hint="person portrait"/>}
               <AvatarFallback className="text-3xl">{userInitial}</AvatarFallback>
             </Avatar>
             <div className="flex-grow">
               <div className="flex items-center">
-                 <CardTitle className="text-2xl font-bold text-primary opacity-60">{viewedUserProfile.name || 'Macaroom User'}</CardTitle>
-                 <VerificationBadge role={viewedUserProfile.role} isVerified={viewedUserProfile.isVerified} />
+                 <CardTitle className="text-2xl font-bold text-primary opacity-60">{viewedUserProfile?.name || 'Macaroom User'}</CardTitle>
+                 <VerificationBadge role={viewedUserProfile?.role} isVerified={viewedUserProfile?.isVerified || false} />
               </div>
-              <CardDescription className="text-md text-muted-foreground">{viewedUserProfile.email}</CardDescription>
+              <CardDescription className="text-md text-muted-foreground">{viewedUserProfile?.email}</CardDescription>
+              {friendshipStatus !== 'is_self' && (
+                <div className="mt-4">
+                  {friendshipStatus === 'friends' ? (
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={handleInitiateChat} disabled={isInitiatingChat}>
+                        {isInitiatingChat ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageSquare className="mr-2 h-4 w-4" />}
+                        Message
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        className="text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
+                        onClick={() => handleFriendAction('remove')}
+                        disabled={actionLoading}
+                      >
+                        {actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+                        Unfriend
+                      </Button>
+                    </div>
+                  ) : friendshipStatus === 'pending_sent' ? (
+                    <Button 
+                      variant="outline" 
+                      onClick={() => handleFriendAction('cancel')}
+                      disabled={actionLoading}
+                    >
+                      {actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XIcon className="mr-2 h-4 w-4" />}
+                      Request Sent
+                    </Button>
+                  ) : friendshipStatus === 'pending_received' ? (
+                    <div className="flex gap-2">
+                      <Button 
+                        onClick={() => handleFriendAction('accept')}
+                        disabled={actionLoading}
+                      >
+                        {actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                        Accept
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        onClick={() => handleFriendAction('decline')}
+                        disabled={actionLoading}
+                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      >
+                        Decline
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Button 
+                        onClick={() => handleFriendAction('send')}
+                        disabled={actionLoading}
+                      >
+                        {actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+                        Add Friend
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        onClick={handleInitiateChat}
+                        disabled={isInitiatingChat}
+                      >
+                        {isInitiatingChat ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageSquare className="mr-2 h-4 w-4" />}
+                        Message
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </CardHeader>

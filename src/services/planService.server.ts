@@ -1,9 +1,8 @@
-
 // src/services/planService.server.ts (Admin SDK functions for plans)
 import 'server-only';
 import { firestoreAdmin } from '@/lib/firebaseAdmin';
 import type { Plan, Rating, Comment, PlanShare, PlanShareStatus, UserProfile } from '@/types/user'; 
-import { FieldValue, Timestamp as AdminTimestamp } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp as AdminTimestamp, type Firestore, type DocumentSnapshot, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { getUserProfileAdmin } from './userService.server'; // For fetching host profile
 import admin from 'firebase-admin'; // For FieldPath.documentId()
 
@@ -12,6 +11,8 @@ const RATINGS_SUBCOLLECTION = 'ratings';
 const COMMENTS_SUBCOLLECTION = 'comments';
 const PLAN_SHARES_COLLECTION = 'planShares';
 
+// Ensure Firestore is properly typed
+const db = firestoreAdmin as Firestore;
 
 export const createPlanAdmin = async (
   planData: Omit<Plan, 'id' | 'createdAt' | 'updatedAt' | 'hostName' | 'hostAvatarUrl'>,
@@ -124,12 +125,29 @@ export const updatePlanAdmin = async (
 };
 
 const convertAdminTimestampToISO = (ts: any): string => {
-  if (!ts) return new Date(0).toISOString(); 
+  if (!ts) return new Date(0).toISOString();
+  
+  // Handle Firestore Timestamp
   if (ts instanceof AdminTimestamp) return ts.toDate().toISOString();
-  if (ts && typeof ts.toDate === 'function') return ts.toDate().toISOString(); 
+  
+  // Handle server timestamp from Firestore
+  if (ts && typeof ts.toDate === 'function') return ts.toDate().toISOString();
+  
+  // Handle JavaScript Date
   if (ts instanceof Date) return ts.toISOString();
-  if (typeof ts === 'string' && !isNaN(Date.parse(ts))) return ts; 
-  // console.warn(`[planService.server convertAdminTimestampToISO] Unexpected timestamp type: ${typeof ts}, value: ${JSON.stringify(ts)}. Returning epoch.`);
+  
+  // Handle ISO string
+  if (typeof ts === 'string') {
+    const date = new Date(ts);
+    if (!isNaN(date.getTime())) return date.toISOString();
+  }
+  
+  // Handle numeric timestamp (milliseconds since epoch)
+  if (typeof ts === 'number' && !isNaN(ts)) {
+    return new Date(ts).toISOString();
+  }
+  
+  console.warn(`[convertAdminTimestampToISO] Unexpected timestamp type: ${typeof ts}, value:`, ts);
   return new Date(0).toISOString();
 };
 
@@ -274,21 +292,23 @@ export const getPublishedPlansByCategoryAdmin = async (categoryName: string): Pr
     console.error("[getPublishedPlansByCategoryAdmin] Firestore Admin SDK is not initialized.");
     return [];
   }
-   if (!categoryName || typeof categoryName !== 'string') {
+  if (!categoryName || typeof categoryName !== 'string') {
     console.error("[getPublishedPlansByCategoryAdmin] Invalid categoryName provided.");
     return [];
   }
   try {
+    console.log(`[getPublishedPlansByCategoryAdmin] Fetching plans for category: ${categoryName}`);
     const plansRef = firestoreAdmin.collection(PLANS_COLLECTION);
     const q = plansRef
       .where('status', '==', 'published')
-      .where('eventType', '==', categoryName) 
+      .where('eventTypeLowercase', '==', categoryName.toLowerCase())
       .orderBy('eventTime', 'desc');
     const querySnapshot = await q.get();
     
+    console.log(`[getPublishedPlansByCategoryAdmin] Found ${querySnapshot.size} plans`);
     const plans: Plan[] = [];
     querySnapshot.forEach(docSnap => {
-       plans.push(mapAdminDocToPlan(docSnap));
+      plans.push(mapAdminDocToPlan(docSnap));
     });
     return plans;
   } catch (error) {
@@ -652,4 +672,55 @@ export const updatePlanShareStatusAdmin = async (planShareId: string, newStatus:
     status: newStatus,
     updatedAt: FieldValue.serverTimestamp(),
   });
+};
+
+export const getCompletedPlansAdmin = async (): Promise<Plan[]> => {
+  if (!firestoreAdmin) {
+    console.error("[getCompletedPlansAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
+    return [];
+  }
+  try {
+    console.log("[getCompletedPlansAdmin] Starting to fetch completed plans...");
+    const plansRef = firestoreAdmin.collection(PLANS_COLLECTION);
+    const now = new Date().toISOString();
+    
+    // Query for plans that are:
+    // 1. Published AND
+    // 2. Either have no eventTime OR eventTime is in the past
+    const [noEventTimePlans, pastEventPlans] = await Promise.all([
+      // Get plans with no eventTime
+      plansRef
+        .where('status', '==', 'published')
+        .where('eventTime', '==', null)
+        .get(),
+      
+      // Get plans with past eventTime
+      plansRef
+        .where('status', '==', 'published')
+        .where('eventTime', '<=', new Date())
+        .get()
+    ]);
+
+    const plans: Plan[] = [];
+
+    // Process plans with no eventTime
+    noEventTimePlans.forEach(docSnap => {
+      const plan = mapAdminDocToPlan(docSnap);
+      console.log(`[getCompletedPlansAdmin] Including plan with no eventTime: ${plan.id}, name: ${plan.name}`);
+      plans.push(plan);
+    });
+
+    // Process plans with past eventTime
+    pastEventPlans.forEach(docSnap => {
+      const plan = mapAdminDocToPlan(docSnap);
+      console.log(`[getCompletedPlansAdmin] Including past plan: ${plan.id}, name: ${plan.name}, eventTime: ${plan.eventTime}`);
+      plans.push(plan);
+    });
+
+    console.log(`[getCompletedPlansAdmin] Successfully processed ${plans.length} completed plans`);
+    return plans;
+  } catch (error) {
+    console.error('[getCompletedPlansAdmin] Error fetching completed plans (Admin SDK):', error);
+    return [];
+  }
 };

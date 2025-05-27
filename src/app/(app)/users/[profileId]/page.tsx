@@ -334,38 +334,31 @@ export default function UserProfilePage() {
 
       switch (actionType) {
         case 'send':
-        case 'accept':
-          result = await (actionType === 'send' ? sendFriendRequestAction : acceptFriendRequestAction)(profileData.userProfile.uid, idToken);
+          result = await sendFriendRequestAction(profileData.userProfile.uid, idToken);
           if (result.success) {
-            // When sending or accepting friend request, we're automatically following the user
+            setFriendshipStatusWithViewer('pending_sent');
             setIsFollowing(true);
-            // Note: We don't need to set friendshipStatus here as it will be updated by the real-time listener
-            // Update local counts optimistically
-            setProfileData(prev => ({
-              ...prev,
-              userStats: prev.userStats ? {
-                ...prev.userStats,
-                followersCount: (prev.userStats.followersCount || 0) + 1
-              } : null
-            }));
+          }
+          break;
+        case 'accept':
+          result = await acceptFriendRequestAction(profileData.userProfile.uid, idToken);
+          if (result.success) {
+            setFriendshipStatusWithViewer('friends');
+            setIsFollowing(true);
           }
           break;
         case 'decline':
         case 'cancel':
+          result = await declineFriendRequestAction(profileData.userProfile.uid, idToken);
+          if (result.success) {
+            setFriendshipStatusWithViewer('not_friends');
+          }
+          break;
         case 'remove':
-          result = await (actionType === 'remove' ? removeFriendAction : declineFriendRequestAction)(profileData.userProfile.uid, idToken);
-          if (result.success && actionType === 'remove') {
-            // When removing friend, we're also unfollowing
+          result = await removeFriendAction(profileData.userProfile.uid, idToken);
+          if (result.success) {
+            setFriendshipStatusWithViewer('not_friends');
             setIsFollowing(false);
-            // Note: We don't need to set friendshipStatus here as it will be updated by the real-time listener
-            // Update local counts optimistically
-            setProfileData(prev => ({
-              ...prev,
-              userStats: prev.userStats ? {
-                ...prev.userStats,
-                followersCount: Math.max(0, (prev.userStats.followersCount || 0) - 1)
-              } : null
-            }));
           }
           break;
         default:
@@ -374,8 +367,25 @@ export default function UserProfilePage() {
       }
 
       if (result.success) {
-        toast({ title: "Success", description: result.message || "Friend action successful." });
-        // Note: No need to manually fetch profile data as the real-time listener will update the state
+        toast({ title: "Success", description: result.message || `Action successful.` });
+        // Update local counts optimistically
+        if (actionType === 'send' || actionType === 'accept') {
+          setProfileData(prev => ({
+            ...prev,
+            userStats: prev.userStats ? {
+              ...prev.userStats,
+              followersCount: (prev.userStats.followersCount || 0) + 1
+            } : null
+          }));
+        } else if (actionType === 'remove') {
+          setProfileData(prev => ({
+            ...prev,
+            userStats: prev.userStats ? {
+              ...prev.userStats,
+              followersCount: Math.max(0, (prev.userStats.followersCount || 0) - 1)
+            } : null
+          }));
+        }
       } else {
         toast({ title: "Error", description: result.error || "Could not complete action.", variant: "destructive" });
       }

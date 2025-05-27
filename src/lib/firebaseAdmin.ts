@@ -7,153 +7,134 @@ if (typeof window !== 'undefined') {
 
 import admin from 'firebase-admin';
 import type { ServiceAccount } from 'firebase-admin';
+import type { Firestore } from 'firebase-admin/firestore';
 
 let adminAppInstance: admin.app.App | null = null;
-let firestoreAdminInstance: admin.firestore.Firestore | null = null;
+let firestoreAdminInstance: Firestore | null = null;
 let authAdminInstance: admin.auth.Auth | null = null;
 let storageAdminInstance: admin.storage.Storage | null = null;
 let appInitialized = false;
 
-const SERVICE_ACCOUNT_KEY_PATH_FALLBACK = './palplanai-firebase.json'; // Or your specific path
+function initializeFirebaseServices(app: admin.app.App): boolean {
+  try {
+    if (!app) throw new Error('App instance is null');
 
-function initializeAdminApp() {
-  if (admin.apps.length > 0 && admin.apps.some(app => app?.name === 'MACAROOM_ADMIN_APP_INSTANCE')) {
-    adminAppInstance = admin.app('MACAROOM_ADMIN_APP_INSTANCE');
-    // console.log("[firebaseAdmin] Using existing Firebase Admin app instance:", adminAppInstance.name);
-    appInitialized = true;
-  } else {
-    // console.log("[firebaseAdmin] Attempting Firebase Admin SDK initialization...");
-    const serviceAccountString = process.env.FIREBASE_SERVICE_ACCOUNT;
-    let serviceAccountJson: ServiceAccount | undefined = undefined;
-    let credentialsSource = "None";
+    // Initialize Firestore
+    const firestore = app.firestore();
+    if (!firestore) throw new Error('Failed to initialize Firestore');
+    firestoreAdminInstance = firestore;
+    console.log('[firebaseAdmin] Firestore initialized successfully');
+    
+    // Initialize Auth
+    const auth = app.auth();
+    if (!auth) throw new Error('Failed to initialize Auth');
+    authAdminInstance = auth;
+    console.log('[firebaseAdmin] Auth initialized successfully');
+    
+    // Initialize Storage
+    const storage = app.storage();
+    if (!storage) throw new Error('Failed to initialize Storage');
+    storageAdminInstance = storage;
+    console.log('[firebaseAdmin] Storage initialized successfully');
+    
+    return true;
+  } catch (error: any) {
+    console.error('[firebaseAdmin] Error initializing Firebase services:', error.message);
+    return false;
+  }
+}
 
-    if (serviceAccountString && serviceAccountString.trim() !== "" && serviceAccountString.trim() !== "{}") {
-      // console.log("[firebaseAdmin] FIREBASE_SERVICE_ACCOUNT environment variable found.");
-      try {
-        const parsedJson = JSON.parse(serviceAccountString);
-        if (!parsedJson.projectId || !parsedJson.privateKey || !parsedJson.clientEmail) {
-          console.error("[firebaseAdmin] CRITICAL: Parsed service account JSON from env var is missing essential fields (projectId, privateKey, clientEmail).");
-          serviceAccountJson = undefined;
-        } else {
-          // console.log("[firebaseAdmin] Successfully parsed FIREBASE_SERVICE_ACCOUNT for project:", parsedJson.projectId);
-          serviceAccountJson = {
-            projectId: parsedJson.projectId,
-            privateKey: parsedJson.privateKey,
-            clientEmail: parsedJson.clientEmail
-          };
-          credentialsSource = "Environment Variable (FIREBASE_SERVICE_ACCOUNT)";
-        }
-      } catch (e: any) {
-        console.error('[firebaseAdmin] CRITICAL: Error parsing FIREBASE_SERVICE_ACCOUNT JSON string:', e.message);
-        console.error('[firebaseAdmin] Detail: Ensure the env var is a valid JSON. For multi-line private keys, newlines must be escaped (e.g., \\n). Check for trailing commas.');
-        serviceAccountJson = undefined;
-      }
-    } else {
-      // console.warn(`[firebaseAdmin] WARNING: FIREBASE_SERVICE_ACCOUNT environment variable is NOT set or is empty/default.`);
+function getServiceAccount(): ServiceAccount {
+  if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
+    throw new Error('Missing FIREBASE_SERVICE_ACCOUNT environment variable');
+  }
+
+  try {
+    const serviceAccountJson = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    
+    if (!serviceAccountJson.project_id && !serviceAccountJson.projectId) {
+      throw new Error('Service account missing project_id/projectId');
+    }
+    if (!serviceAccountJson.client_email && !serviceAccountJson.clientEmail) {
+      throw new Error('Service account missing client_email/clientEmail');
+    }
+    if (!serviceAccountJson.private_key && !serviceAccountJson.privateKey) {
+      throw new Error('Service account missing private_key/privateKey');
     }
 
-    if (!serviceAccountJson && SERVICE_ACCOUNT_KEY_PATH_FALLBACK) {
-      // console.warn(`[firebaseAdmin] Credentials not loaded from env var. Attempting to load from fallback file: ${SERVICE_ACCOUNT_KEY_PATH_FALLBACK}`);
-      try {
-        const fs = require('fs');
-        const path = require('path');
-        const absolutePath = path.resolve(SERVICE_ACCOUNT_KEY_PATH_FALLBACK);
-        if (fs.existsSync(absolutePath)) {
-          const rawFileContent = fs.readFileSync(absolutePath, 'utf8');
-          const parsedJson = JSON.parse(rawFileContent);
-          if (!parsedJson.projectId || !parsedJson.privateKey || !parsedJson.clientEmail) {
-            console.error(`[firebaseAdmin] CRITICAL: Parsed service account JSON from file ${absolutePath} is missing essential fields.`);
-            serviceAccountJson = undefined;
-          } else {
-            // console.log(`[firebaseAdmin] Successfully loaded and parsed service account from file: ${absolutePath}. Project ID: ${parsedJson.projectId}`);
-            serviceAccountJson = {
-              projectId: parsedJson.projectId,
-              privateKey: parsedJson.privateKey,
-              clientEmail: parsedJson.clientEmail
-            };
-            credentialsSource = `File Path (${absolutePath})`;
-          }
-        } else {
-          // console.warn(`[firebaseAdmin] Fallback service account file not found at: ${absolutePath}`);
-        }
-      } catch (fileError: any) {
-        // console.warn(`[firebaseAdmin] Could not load service account from fallback path ${SERVICE_ACCOUNT_KEY_PATH_FALLBACK}. Error: ${fileError.message}`);
-        serviceAccountJson = undefined;
-      }
+    // Normalize the keys to match ServiceAccount interface
+    return {
+      projectId: serviceAccountJson.project_id || serviceAccountJson.projectId,
+      clientEmail: serviceAccountJson.client_email || serviceAccountJson.clientEmail,
+      privateKey: serviceAccountJson.private_key || serviceAccountJson.privateKey
+    };
+  } catch (e) {
+    if (e instanceof SyntaxError) {
+      throw new Error('Failed to parse FIREBASE_SERVICE_ACCOUNT. Ensure it contains valid JSON.');
     }
+    throw e;
+  }
+}
 
-    if (!serviceAccountJson && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-      // console.warn("[firebaseAdmin] No service account JSON loaded, and GOOGLE_APPLICATION_CREDENTIALS not set. Attempting to initialize with Application Default Credentials (ADC)...");
-      credentialsSource = "Application Default Credentials (Attempt)";
-    } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS && !serviceAccountJson) {
-      credentialsSource = "GOOGLE_APPLICATION_CREDENTIALS environment variable";
-      // console.log("[firebaseAdmin] Using GOOGLE_APPLICATION_CREDENTIALS environment variable.");
-    }
-
-    const appOptions: admin.AppOptions = {};
-    if (serviceAccountJson) {
-      appOptions.credential = admin.credential.cert(serviceAccountJson);
-    }
-
-    let effectiveStorageBucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-    if (!effectiveStorageBucket) {
-      const inferredProjectId = serviceAccountJson?.projectId || process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
-      if (inferredProjectId) {
-        effectiveStorageBucket = `${inferredProjectId}.appspot.com`;
-        // console.log(`[firebaseAdmin] Inferred storage bucket: ${effectiveStorageBucket}`);
+function initializeAdminApp(): void {
+  try {
+    // Check if app is already initialized
+    const existingApp = admin.apps.find(app => app?.name === 'MACAROOM_ADMIN_APP_INSTANCE');
+    if (existingApp) {
+      adminAppInstance = existingApp;
+      console.log('[firebaseAdmin] Using existing Firebase Admin app instance');
+      if (initializeFirebaseServices(existingApp)) {
+        appInitialized = true;
+        return;
       }
     }
-    if (effectiveStorageBucket) {
-      appOptions.storageBucket = effectiveStorageBucket;
-      // console.log(`[firebaseAdmin] Using storage bucket in appOptions: ${effectiveStorageBucket}`);
-    } else {
-      // console.warn("[firebaseAdmin] WARNING: Could not determine storage bucket for appOptions. Storage operations might rely on default or fail.");
-    }
 
-    try {
-      adminAppInstance = admin.initializeApp(appOptions, 'MACAROOM_ADMIN_APP_INSTANCE');
-      // console.log(`[firebaseAdmin] Initialized new Firebase Admin app instance: MACAROOM_ADMIN_APP_INSTANCE. Credentials via: ${credentialsSource}. Project ID: ${adminAppInstance.options.projectId}`);
+    // Get and validate service account
+    const serviceAccountJson = getServiceAccount();
+    console.log(`[firebaseAdmin] Successfully loaded service account for project: ${serviceAccountJson.projectId}`);
+
+    // Initialize app with credentials
+    const appOptions: admin.AppOptions = {
+      credential: admin.credential.cert(serviceAccountJson),
+      storageBucket: `${serviceAccountJson.projectId}.appspot.com`
+    };
+
+    // Initialize the app
+    const app = admin.initializeApp(appOptions, 'MACAROOM_ADMIN_APP_INSTANCE');
+    if (!app) throw new Error('Failed to initialize Firebase Admin app');
+    
+    adminAppInstance = app;
+    console.log(`[firebaseAdmin] Successfully initialized Firebase Admin app for project: ${serviceAccountJson.projectId}`);
+
+    // Initialize services
+    if (initializeFirebaseServices(app)) {
       appInitialized = true;
-    } catch (error: any) {
-      console.error('[firebaseAdmin] CRITICAL: Error during admin.initializeApp():', error.message);
-      // console.error('[firebaseAdmin] Credentials source attempted:', credentialsSource);
-      // if (credentialsSource.startsWith("Environment Variable") && serviceAccountString) console.error('[firebaseAdmin] FIREBASE_SERVICE_ACCOUNT (partial):', serviceAccountString.substring(0, 250) + "...");
-      adminAppInstance = null;
-      appInitialized = false;
+      console.log('[firebaseAdmin] All Firebase services initialized successfully');
+    } else {
+      throw new Error('Failed to initialize Firebase services');
     }
-  }
 
-  if (adminAppInstance && appInitialized) {
-    try {
-      firestoreAdminInstance = admin.firestore(adminAppInstance);
-      // console.log("[firebaseAdmin] Firestore service instance obtained. Has collection method:", typeof firestoreAdminInstance?.collection === 'function');
-    } catch (e: any) {
-      console.error("[firebaseAdmin] CRITICAL: Failed to obtain Firestore service instance:", e.message);
-      firestoreAdminInstance = null;
-    }
-    try {
-      authAdminInstance = admin.auth(adminAppInstance);
-      // console.log("[firebaseAdmin] Auth service instance obtained. Has verifyIdToken method:", typeof authAdminInstance?.verifyIdToken === 'function');
-    } catch (e: any) {
-      console.error("[firebaseAdmin] CRITICAL: Failed to obtain Auth service instance:", e.message);
-      authAdminInstance = null;
-    }
-    try {
-      storageAdminInstance = admin.storage(adminAppInstance);
-      // console.log("[firebaseAdmin] Storage service instance obtained. Has bucket method:", typeof storageAdminInstance?.bucket === 'function');
-    } catch (e: any) {
-      console.error("[firebaseAdmin] CRITICAL: Failed to obtain Storage service instance:", e.message);
-      storageAdminInstance = null;
-    }
-  } else if (!adminAppInstance && !appInitialized) {
-    // console.error("[firebaseAdmin] CRITICAL: Firebase Admin App instance is null AND appInitialized is false after attempting initialization. Services will NOT be available.");
+  } catch (error: any) {
+    console.error('[firebaseAdmin] Critical error initializing Firebase Admin:', error.message);
+    adminAppInstance = null;
+    firestoreAdminInstance = null;
+    authAdminInstance = null;
+    storageAdminInstance = null;
+    appInitialized = false;
+    throw error;
   }
 }
 
-if (!appInitialized) {
-  initializeAdminApp();
+// Initialize the app
+try {
+  if (!appInitialized) {
+    initializeAdminApp();
+  }
+} catch (error) {
+  console.error('[firebaseAdmin] Failed to initialize Firebase Admin SDK:', error);
 }
 
+// Export instances
 export const firestoreAdmin = firestoreAdminInstance;
 export const authAdmin = authAdminInstance;
 export const storageAdmin = storageAdminInstance;

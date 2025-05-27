@@ -27,7 +27,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { 
   CalendarDays, MapPin, Users, Edit3, Trash2, Share2, QrCode,
   MessageSquare, Send, CheckCircle, XCircle, ChevronLeft, Grid2X2, Star as StarIconLucide, 
-  Loader2, Clock, ExternalLink, ThumbsUp, UserCheck, UserX, ThumbsDown, CircleHelp, CopyPlus,
+  Loader2, Clock, ExternalLink, ThumbsUp, UserCheck, UserX, ThumbsDown, HelpCircle, CopyPlus,
   Camera, UploadCloud, Lock, Globe, Link as LinkIcon, MoreVertical, EyeOff, FileText, DollarSign, ListChecks, ShieldCheck as AdminShieldIcon, CheckCircle as VerifiedIcon, UserCircle as UserCircleIcon
 } from "lucide-react";
 import {
@@ -69,7 +69,7 @@ const firestoreStatusDisplayConfig: Record<FirestorePlanStatus, { label: string;
 
 const rsvpButtonConfig: { status: RSVPStatusType; label: string; icon: React.ElementType; variant: "default" | "secondary" | "outline" | "ghost" }[] = [
     { status: 'going', label: 'Going', icon: ThumbsUp, variant: 'default'},
-    { status: 'maybe', label: 'Maybe', icon: CircleHelp, variant: 'secondary'},
+    { status: 'maybe', label: 'Maybe', icon: HelpCircle, variant: 'secondary'},
     { status: 'declined', label: 'Not Going', icon: ThumbsDown, variant: 'outline'},
 ];
 

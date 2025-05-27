@@ -1,4 +1,3 @@
-
 'use client';
 
 import type { User } from 'firebase/auth';
@@ -19,6 +18,7 @@ import { auth, googleProvider } from '@/lib/firebase';
 import { checkUserProfileExists, getUserProfile } from '@/services/userService';
 import type { UserProfile } from '@/types/user';
 import { useToast } from '@/hooks/use-toast';
+import { setSessionCookie, clearSessionCookie } from '@/lib/sessionCookie';
 
 interface AuthContextType {
   user: User | null;
@@ -158,72 +158,71 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // Routing logic
   useEffect(() => {
     const logPrefix = "[AuthContext Routing Effect]";
+    console.log(`${logPrefix} Triggered. Pathname: ${pathname}, Loading: ${loading}, User: ${!!user}, ProfileExists: ${profileExists}`);
+
     const isAuthRoute = pathname === '/login' || pathname === '/signup';
     const isOnboardingRoute = pathname === '/onboarding';
     const isPublicPlanRoute = pathname.startsWith('/p/');
-    const isPublicUserProfileRoute = pathname.startsWith('/u/'); // Using new public profile path
-
-    // // console.log(`${logPrefix} Path: ${pathname}, Loading: ${loading}, User: ${user?.uid}, ProfileExists: ${profileExists}, IsNewUser: ${isNewUserJustSignedUp}`);
+    const isPublicUserProfileRoute = pathname.startsWith('/u/');
+    const isExploreRoute = pathname.startsWith('/explore');
+    const isUserRoute = pathname.startsWith('/users/');
 
     if (loading) {
-      // // console.log(`${logPrefix} Auth/profile state still loading, no redirection decisions yet.`);
+      console.log(`${logPrefix} Still loading, returning.`);
       return;
     }
 
-    if (!user) { // No user authenticated
-      if (!isAuthRoute && pathname !== '/' && !isPublicPlanRoute && !isPublicUserProfileRoute) {
-        // // console.log(`${logPrefix} No user, not on auth/landing/public. Redirecting to /login.`);
+    // Handle unauthenticated users
+    if (!user) {
+      const isPublicRoute = isAuthRoute || pathname === '/' || isPublicPlanRoute || isPublicUserProfileRoute || isExploreRoute;
+      if (!isPublicRoute) {
+        console.log(`${logPrefix} No user & not public route. Redirecting to /login.`);
         router.push('/login');
       }
       return;
     }
 
-    // User IS authenticated
-    if (profileExists === null) { 
-      // // console.log(`${logPrefix} User authenticated, profile existence check PENDING.`);
-      // If they are on login/signup, they just authenticated, let AuthStateChanged effect handle profile check and subsequent routing.
-      // If already on an app page, wait for profile check.
-      if (isAuthRoute) { // Just logged in/signed up, but profile check not done.
-        // // console.log(`${logPrefix} User authenticated, profile check PENDING, on auth route. Tentatively pushing to /feed to avoid being stuck on auth page.`);
-        // This helps if refreshProfileData is slow for some reason after auth.
-        // router.push('/feed'); // Let's remove this to avoid potential race conditions. onAuthStateChanged and subsequent profileExists update should handle it.
-      }
+    // Handle authenticated users
+    console.log(`${logPrefix} User is authenticated.`);
+    if (profileExists === null) {
+      console.log(`${logPrefix} ProfileExists is null, returning.`);
       return;
     }
 
-    if (profileExists === false) { // Profile does NOT exist
-      if (!isOnboardingRoute) {
-        // // console.log(`${logPrefix} User authenticated, profile DOES NOT exist, not on onboarding. Redirecting to /onboarding.`);
-        router.push('/onboarding');
-      }
-      // Else, they are already on /onboarding (or the welcome dialog part), so they stay.
-    } else { // profileExists === true
-      if (isAuthRoute) {
-        // Profile exists, but they are on /login or /signup. Redirect to feed.
-        // // console.log(`${logPrefix} User authenticated, profile EXISTS, on auth route. Redirecting to /feed.`);
-        router.push('/feed');
-      } else if (isOnboardingRoute && !isNewUserJustSignedUp) {
-        // Profile exists, on /onboarding, AND it's not the "new user welcome" phase.
-        // This means they are either editing, or just finished onboarding and acknowledged the welcome.
-        // The OnboardingPage itself is responsible for pushing to /feed after a successful save.
-        // AuthContext should NOT redirect them away from /onboarding here if they are editing.
-        // // console.log(`${logPrefix} User has profile, on /onboarding, not new user welcome. Allowing OnboardingPage to control navigation.`);
-      }
-      // In all other cases where profileExists is true and user is on an app page (not auth, not onboarding in new user phase), they stay.
+    // Redirect to onboarding if no profile exists
+    if (profileExists === false && !isOnboardingRoute) {
+      console.log(`${logPrefix} Profile does not exist & not on onboarding. Redirecting to /onboarding.`);
+      router.push('/onboarding');
+      return;
     }
-  }, [user, loading, profileExists, router, pathname, isNewUserJustSignedUp, acknowledgeNewUserWelcome]);
+
+    // Only redirect from auth routes to feed, never from other routes
+    if (isAuthRoute && profileExists === true) {
+      console.log(`${logPrefix} On auth route & profile exists. Redirecting to /feed.`);
+      router.push('/feed');
+      return;
+    }
+
+    // Ensure settings route is protected
+    if (pathname === '/profile') {
+      console.log(`${logPrefix} On old profile route. Redirecting to /users/settings.`);
+      router.push('/users/settings');
+      return;
+    }
+
+    console.log(`${logPrefix} No redirect conditions met.`);
+  }, [user, loading, profileExists, router, pathname]);
 
 
   const signOutFunc = async () => {
     if (!auth) return;
     try {
       await firebaseSignOut(auth);
-      // onAuthStateChanged will set user to null, and the routing useEffect will redirect to /login.
+      await clearSessionCookie();
       toast({ title: "Signed Out", description: "You have been successfully signed out." });
     } catch (error: any) {
       console.error('[AuthContext] Error signing out: ', error);
       toast({ title: "Sign Out Error", description: error.message || "Could not sign out.", variant: "destructive" });
-      throw error;
     }
   };
 
@@ -236,7 +235,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       if (userCredential.user) {
         await firebaseUpdateProfile(userCredential.user, { displayName });
-        // onAuthStateChanged will be triggered, leading to profile check and potential redirect to onboarding.
+        await setSessionCookie(userCredential.user);
         return userCredential.user;
       }
       return null;
@@ -253,8 +252,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will be triggered.
-      return userCredential.user;
+      if (userCredential.user) {
+        await setSessionCookie(userCredential.user);
+        return userCredential.user;
+      }
+      return null;
     } catch (error: any) {
       console.error("[AuthContext] Error signing in with email:", error);
       throw error;
@@ -268,8 +270,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      // onAuthStateChanged will be triggered.
-      return result.user;
+      if (result.user) {
+        await setSessionCookie(result.user);
+        return result.user;
+      }
+      return null;
     } catch (error: any) {
       console.error("[AuthContext] Error signing in with Google:", error);
       if (error.code === 'auth/popup-closed-by-user') {

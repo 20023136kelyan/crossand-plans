@@ -40,12 +40,13 @@ import React, { useState, useMemo, useEffect, useCallback, useContext } from 're
 import { cn } from "@/lib/utils";
 import { format, isSameDay, startOfMonth, parseISO, isFuture, isPast, isValid } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
-import { getUserPlans, getPendingPlanSharesForUser } from '@/services/planService.ts';
+import { getUserPlans, getPendingPlanSharesForUser } from '@/services/planService';
 import { deletePlanAction, acceptPlanShareAction, declinePlanShareAction } from '@/app/actions/planActions';
 import type { Plan as PlanType, PlanShare, RSVPStatusType, UserRoleType } from '@/types/user';
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { useRouter } from "next/navigation";
+import { PlansPageProvider, usePlansPageContext } from '@/context/PlansPageContext';
 
 // Define UserPlanViewStatus enum and its configuration
 export enum UserPlanViewStatus {
@@ -64,20 +65,6 @@ export const userPlanViewStatusConfig: Record<UserPlanViewStatus, { label: strin
   [UserPlanViewStatus.COMPLETED]: { label: 'Completed', icon: History, badgeVariant: 'outline' },
 };
 
-// Context for passing delete handler
-const PlansPageContext = React.createContext<{
-  handleDeleteRequest: (planId: string, planName: string) => void;
-} | undefined>(undefined);
-
-const usePlansPageContext = () => {
-  const context = React.useContext(PlansPageContext);
-  if (!context) {
-    throw new Error("usePlansPageContext must be used within a PlansPageContextProvider");
-  }
-  return context;
-};
-
-
 interface PlanCardProps {
   plan: PlanType;
   currentUserUid: string | undefined;
@@ -93,6 +80,9 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
   const [itineraryBrief, setItineraryBrief] = useState<string | null>(null);
   const [imageError, setImageError] = useState(false);
 
+  const isHost = plan.hostId === currentUserUid;
+  const isInvited = (plan.invitedParticipantUserIds || []).includes(currentUserUid || '');
+  const isParticipant = isHost || isInvited;
 
   useEffect(() => {
     setIsClient(true);
@@ -108,8 +98,6 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
       month = format(planEventDate, 'MMM').toUpperCase();
       time = format(planEventDate, 'p');
 
-      const isHost = currentUserUid === plan.hostId;
-      const isInvited = (plan.invitedParticipantUserIds || []).includes(currentUserUid || '');
       const allRelevantUidsPlusHost = Array.from(new Set([plan.hostId, ...(plan.invitedParticipantUserIds || [])])).filter(Boolean);
       const isEveryoneGoing = allRelevantUidsPlusHost.length > 0 && allRelevantUidsPlusHost.every(uid => plan.participantResponses?.[uid] === 'going');
 
@@ -216,8 +204,8 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
   const placeholderImageUrl = `https://placehold.co/80x80.png?text=${encodeURIComponent(plan.name ? plan.name.substring(0,10) : 'Img')}&font=Montserrat`;
 
   return (
-    <Card className="overflow-hidden shadow-md hover:shadow-primary/10 transition-shadow duration-300 bg-card text-card-foreground flex flex-col h-full rounded-lg border border-border/30">
-      <div className="flex p-3 items-start gap-3 flex-grow group">
+    <div className="group relative bg-card rounded-lg border border-border p-4 transition-shadow hover:shadow-md">
+      <div className="flex p-3 items-start gap-3 flex-grow">
         <div className="flex flex-col items-center shrink-0 w-20">
           <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-border/20 group-hover:opacity-90 transition-opacity shadow-sm">
             {imageError ? (
@@ -313,22 +301,26 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40">
               <DropdownMenuItem asChild>
-                <Link href={`/plans/${plan.id}`} className="flex items-center text-xs cursor-pointer">
+                <Link href={`/p/${plan.id}`} className="flex items-center text-xs cursor-pointer">
                   <Eye className="mr-1.5 h-3.5 w-3.5" /> View Details
                 </Link>
               </DropdownMenuItem>
-              {currentUserUid === plan.hostId && (
+              {isHost && (
                 <DropdownMenuItem asChild>
                   <Link href={`/plans/create?editId=${plan.id}`} className="flex items-center text-xs cursor-pointer">
                     <Edit3 className="mr-1.5 h-3.5 w-3.5" /> Edit Plan
                   </Link>
                 </DropdownMenuItem>
               )}
-              {currentUserUid === plan.hostId && (
+              {isHost && handleDeleteRequest && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    onClick={(e) => { e.stopPropagation(); handleDeleteRequest(plan.id, plan.name);}}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleDeleteRequest(plan.id, plan.name);
+                    }}
                     className="flex items-center text-xs text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
                   >
                     <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete Plan
@@ -339,7 +331,7 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
           </DropdownMenu>
         </div>
       </div>
-    </Card>
+    </div>
   );
 });
 PlanCard.displayName = 'PlanCard';
@@ -481,7 +473,6 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
   );
 });
 PlanStackSection.displayName = 'PlanStackSection';
-
 
 export default function PlansPage() {
   const { user, loading: authLoading } = useAuth();
@@ -738,7 +729,7 @@ export default function PlansPage() {
           <ul className="space-y-1.5">
             {plansForSelectedDate.map(plan => (
               <li key={plan.id} className="text-xs">
-                <Link href={`/plans/${plan.id}`} className="hover:underline text-primary flex items-center gap-1.5">
+                <Link href={currentUserId && (currentUserId === plan.hostId || plan.invitedParticipantUserIds?.includes(currentUserId)) ? `/plans/${plan.id}` : `/p/${plan.id}`} className="hover:underline text-primary flex items-center gap-1.5">
                   <span className="truncate">{plan.name}</span>
                   <Badge variant="outline" className="text-xs px-1 py-0 leading-tight">{plan.eventTime && isValid(parseISO(plan.eventTime)) ? format(parseISO(plan.eventTime), 'p') : 'No time'}</Badge>
                 </Link>
@@ -881,7 +872,7 @@ export default function PlansPage() {
   }
 
   return (
-    <PlansPageContext.Provider value={{ handleDeleteRequest }}>
+    <PlansPageProvider handleDeleteRequest={handleDeleteRequest}>
       <div className="space-y-0"> 
         <div className="px-4 sm:px-0">
             <h1 className="text-3xl sm:text-4xl font-bold text-foreground/60 opacity-60 mb-2 sm:mb-4">My Plans</h1>
@@ -1179,6 +1170,6 @@ export default function PlansPage() {
           </AlertDialogContent>
         </AlertDialog>
       </div>
-    </PlansPageContext.Provider>
+    </PlansPageProvider>
   );
 }

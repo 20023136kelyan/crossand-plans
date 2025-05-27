@@ -16,12 +16,13 @@ import {
   updateUserProfileAvatarAdmin,
 } from '@/services/userService.server';
 import { getFeedPostsAdmin } from '@/services/feedService.server';
-import type { OnboardingProfileData, SearchedUser, UserProfile, UserStats, FriendStatus, FeedPost } from '@/types/user'; // Added FeedPost
+import type { OnboardingProfileData, SearchedUser, UserProfile, UserStats, FriendStatus, FeedPost, UserPreferences } from '@/types/user'; // Added FeedPost and UserPreferences
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { authAdmin, storageAdmin, firestoreAdmin } from '@/lib/firebaseAdmin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { commonImageExtensions } from '@/lib/utils';
+import { Firestore } from 'firebase-admin/firestore';
 
 
 interface AuthUserData {
@@ -316,142 +317,138 @@ export async function searchUsersAction(
 }
 
 export async function sendFriendRequestAction(
-    targetUserUid: string, 
-    idToken: string
-): Promise<{ success: boolean; error?: string, message?: string }> {
-    if (!authAdmin) return { success: false, error: "Server error: Authentication service not available." };
-    if (!idToken) return { success: false, error: 'Authentication token missing.' };
-    
-    let decodedToken;
-    try {
-        decodedToken = await authAdmin.verifyIdToken(idToken);
-    } catch (authError: any) {
-        let e = 'Authentication failed. Invalid or expired token.'; if (authError.code === 'auth/id-token-expired') e = 'Session expired.';
-        return { success: false, error: e };
-    }
+  targetUserId: string,
+  idToken: string
+): Promise<{ success: boolean; error?: string; message?: string }> {
+  if (!authAdmin) {
+    return { success: false, error: "Server error: Auth service not available." };
+  }
+
+  try {
+    const decodedToken = await authAdmin.verifyIdToken(idToken);
     const currentUserId = decodedToken.uid;
-    
-    if (currentUserId === targetUserUid) {
-        return { success: false, error: "Cannot send friend request to yourself." };
+
+    if (currentUserId === targetUserId) {
+      return { success: false, error: "You cannot send a friend request to yourself." };
     }
 
-    try {
-        const [fromUserProfile, toUserProfile] = await Promise.all([
-            getUserProfileAdminService(currentUserId),
-            getUserProfileAdminService(targetUserUid)
-        ]);
+    // Get both user profiles
+    const [currentUserProfile, targetUserProfile] = await Promise.all([
+      getUserProfileAdminService(currentUserId),
+      getUserProfileAdminService(targetUserId)
+    ]);
 
-        if (!fromUserProfile || !toUserProfile) {
-            return { success: false, error: "Could not find user profiles for friend request." };
-        }
-
-        await sendFriendRequestAdminService(fromUserProfile, toUserProfile);
-        revalidatePath('/profile'); 
-        revalidatePath(`/users/${targetUserUid}`); 
-        revalidatePath(`/users/${currentUserId}`);
-        revalidatePath('/messages'); 
-        revalidatePath('/explore');
-        return { success: true, message: `Friend request sent to ${toUserProfile.name || 'user'}.` };
-    } catch (error: any) {
-        return { success: false, error: error.message || "Failed to send friend request." };
+    if (!currentUserProfile || !targetUserProfile) {
+      return { success: false, error: "Could not find one or both user profiles." };
     }
+
+    // Send friend request using admin service
+    await sendFriendRequestAdminService(currentUserProfile, targetUserProfile);
+
+    return {
+      success: true,
+      message: `Friend request sent to ${targetUserProfile.name || 'user'}.`
+    };
+  } catch (error: any) {
+    console.error('Error in sendFriendRequestAction:', error);
+    return {
+      success: false,
+      error: error.message || "Failed to send friend request."
+    };
+  }
 }
 
 export async function acceptFriendRequestAction(
-    requesterUid: string, 
-    idToken: string
-): Promise<{ success: boolean; error?: string, message?: string }> {
-    if (!authAdmin) return { success: false, error: "Server error: Authentication service not available." };
-    if (!idToken) return { success: false, error: 'Authentication token missing.' };
-    
-    let decodedToken;
-    try {
-        decodedToken = await authAdmin.verifyIdToken(idToken);
-    } catch (authError: any) {
-        let e = 'Authentication failed. Invalid or expired token.'; if (authError.code === 'auth/id-token-expired') e = 'Session expired.';
-        return { success: false, error: e };
-    }
+  requesterId: string,
+  idToken: string
+): Promise<{ success: boolean; error?: string; message?: string }> {
+  if (!authAdmin) {
+    return { success: false, error: "Server error: Auth service not available." };
+  }
+
+  try {
+    const decodedToken = await authAdmin.verifyIdToken(idToken);
     const currentUserId = decodedToken.uid;
 
-    try {
-        const [currentUserProfile, requesterProfile] = await Promise.all([
-            getUserProfileAdminService(currentUserId),
-            getUserProfileAdminService(requesterUid)
-        ]);
+    // Get both user profiles
+    const [currentUserProfile, requesterProfile] = await Promise.all([
+      getUserProfileAdminService(currentUserId),
+      getUserProfileAdminService(requesterId)
+    ]);
 
-        if (!currentUserProfile || !requesterProfile) {
-            return { success: false, error: "Could not find user profiles for accepting request." };
-        }
-
-        await acceptFriendRequestAdminService(currentUserProfile, requesterProfile);
-        revalidatePath('/profile');
-        revalidatePath('/messages');
-        revalidatePath(`/users/${requesterUid}`);
-        revalidatePath(`/users/${currentUserId}`);
-        revalidatePath('/explore');
-        return { success: true, message: `You are now friends with ${requesterProfile.name || 'user'}.` };
-    } catch (error: any) {
-        return { success: false, error: error.message || "Failed to accept friend request." };
+    if (!currentUserProfile || !requesterProfile) {
+      return { success: false, error: "Could not find one or both user profiles." };
     }
+
+    // Accept friend request using admin service
+    await acceptFriendRequestAdminService(currentUserProfile, requesterProfile);
+
+    return {
+      success: true,
+      message: `You are now friends with ${requesterProfile.name || 'user'}.`
+    };
+  } catch (error: any) {
+    console.error('Error in acceptFriendRequestAction:', error);
+    return {
+      success: false,
+      error: error.message || "Failed to accept friend request."
+    };
+  }
 }
 
+export async function declineFriendRequestAction(
+  targetUserId: string,
+  idToken: string
+): Promise<{ success: boolean; error?: string; message?: string }> {
+  if (!authAdmin) {
+    return { success: false, error: "Server error: Auth service not available." };
+  }
 
-export async function declineFriendRequestAction( 
-    otherUserUid: string,
-    idToken: string
-): Promise<{ success: boolean; error?: string, message?: string }> {
-    if (!authAdmin) return { success: false, error: "Server error: Authentication service not available." };
-    if (!idToken) return { success: false, error: 'Authentication token missing.' };
-
-    let decodedToken;
-    try {
-        decodedToken = await authAdmin.verifyIdToken(idToken);
-    } catch (authError: any) {
-        let e = 'Authentication failed. Invalid or expired token.'; if (authError.code === 'auth/id-token-expired') e = 'Session expired.';
-        return { success: false, error: e };
-    }
+  try {
+    const decodedToken = await authAdmin.verifyIdToken(idToken);
     const currentUserId = decodedToken.uid;
-    try {
-        await declineOrCancelFriendRequestAdminService(currentUserId, otherUserUid); 
-        revalidatePath('/profile');
-        revalidatePath('/messages');
-        revalidatePath(`/users/${otherUserUid}`);
-        revalidatePath(`/users/${currentUserId}`);
-        revalidatePath('/explore');
-        return { success: true, message: "Friend request action completed." };
-    } catch (error: any) {
-        return { success: false, error: error.message || "Failed to decline/cancel." };
-    }
+
+    await declineOrCancelFriendRequestAdminService(currentUserId, targetUserId);
+
+    return {
+      success: true,
+      message: "Friend request declined."
+    };
+  } catch (error: any) {
+    console.error('Error in declineFriendRequestAction:', error);
+    return {
+      success: false,
+      error: error.message || "Failed to decline friend request."
+    };
+  }
 }
 
 export async function removeFriendAction(
-    friendUid: string,
-    idToken: string
-): Promise<{ success: boolean; error?: string, message?: string }> {
-    if (!authAdmin) return { success: false, error: "Server error: Authentication service not available." };
-    if (!idToken) return { success: false, error: 'Authentication token missing.' };
-    
-    let decodedToken;
-    try {
-        decodedToken = await authAdmin.verifyIdToken(idToken);
-    } catch (authError: any) {
-        let e = 'Authentication failed. Invalid or expired token.'; if (authError.code === 'auth/id-token-expired') e = 'Session expired.';
-        return { success: false, error: e };
-    }
-    const currentUserId = decodedToken.uid;
-    try {
-        await removeFriendAdminService(currentUserId, friendUid); 
-        revalidatePath('/profile');
-        revalidatePath('/messages');
-        revalidatePath(`/users/${friendUid}`);
-        revalidatePath(`/users/${currentUserId}`);
-        revalidatePath('/explore');
-        return { success: true, message: "Friend removed." };
-    } catch (error: any) {
-        return { success: false, error: error.message || "Failed to remove friend." };
-    }
-}
+  targetUserId: string,
+  idToken: string
+): Promise<{ success: boolean; error?: string; message?: string }> {
+  if (!authAdmin) {
+    return { success: false, error: "Server error: Auth service not available." };
+  }
 
+  try {
+    const decodedToken = await authAdmin.verifyIdToken(idToken);
+    const currentUserId = decodedToken.uid;
+
+    await removeFriendAdminService(currentUserId, targetUserId);
+
+    return {
+      success: true,
+      message: "Friend removed."
+    };
+  } catch (error: any) {
+    console.error('Error in removeFriendAction:', error);
+    return {
+      success: false,
+      error: error.message || "Failed to remove friend."
+    };
+  }
+}
 
 export async function followUserAction(
   targetUserId: string,
@@ -510,5 +507,65 @@ export async function unfollowUserAction(
     return { success: true, message: "Successfully unfollowed user." };
   } catch (error: any) {
     return { success: false, error: error.message || "Failed to unfollow user." };
+  }
+}
+
+export async function getUserLocationAction(userId: string): Promise<{ 
+  success: boolean; 
+  data?: { city: string; country: string; }; 
+  error?: string; 
+}> {
+  if (!firestoreAdmin) {
+    return { success: false, error: 'Database not initialized' };
+  }
+
+  try {
+    const userDoc = await (firestoreAdmin as Firestore)
+      .collection('userProfiles')
+      .doc(userId)
+      .get();
+
+    const userData = userDoc.data();
+    
+    if (!userData?.physicalAddress?.city || !userData?.physicalAddress?.country) {
+      return { success: false, error: 'Location not found' };
+    }
+
+    return {
+      success: true,
+      data: {
+        city: userData.physicalAddress.city,
+        country: userData.physicalAddress.country
+      }
+    };
+  } catch (error) {
+    console.error('[getUserLocationAction] Error:', error);
+    return { success: false, error: 'Failed to fetch user location' };
+  }
+}
+
+export async function getUserPreferencesAction(userId: string): Promise<UserPreferences | null> {
+  if (!firestoreAdmin) {
+    console.error('Firestore admin not initialized');
+    return null;
+  }
+
+  try {
+    const userDoc = await firestoreAdmin.collection('users').doc(userId).get();
+    if (!userDoc.exists) return null;
+
+    const userData = userDoc.data();
+    if (!userData?.preferences) return null;
+
+    return {
+      preferredCategories: userData.preferences.categories || [],
+      preferredLocations: userData.preferences.locations || [],
+      preferredPriceRange: userData.preferences.priceRange || '',
+      preferredDayOfWeek: userData.preferences.dayOfWeek || [],
+      preferredTimeOfDay: userData.preferences.timeOfDay || []
+    };
+  } catch (error) {
+    console.error('Error fetching user preferences:', error);
+    return null;
   }
 }

@@ -167,61 +167,96 @@ export type RSVPStatusType = 'going' | 'maybe' | 'declined' | 'pending';
 export interface ItineraryItem {
   id: string;
   placeName: string;
-  address?: string | null;
-  city?: string | null;
-  startTime: string; // ISO String
-  endTime?: string | null; // ISO String
-  description?: string | null;
-  googlePlaceId?: string | null;
-  lat?: number | null;
-  lng?: number | null;
-  googlePhotoReference?: string | null; 
-  googleMapsImageUrl?: string | null; 
-  rating?: number | null;
-  reviewCount?: number | null;
-  activitySuggestions?: string[] | null;
-  isOperational?: boolean | null;
-  statusText?: string | null;
-  openingHours?: string[] | null;
-  phoneNumber?: string | null;
-  website?: string | null;
-  priceLevel?: number | null;
-  types?: string[] | null;
-  notes?: string | null;
-  durationMinutes?: number | null;
-  transitMode?: TransitMode | null;
-  transitTimeFromPreviousMinutes?: number | null;
+  description: string | null;
+  address: string | null;
+  googlePhotoReference: string | null;
+  googleMapsImageUrl: string | null;
+  types: string[] | null;
+  rating: number | null;
+  reviewCount: number | null;
+  priceLevel: number | null;
+  phoneNumber: string | null;
+  isOperational: boolean | null;
+  statusText: string | null;
+  activitySuggestions: string[] | null;
+  startTime: string | null;
+  endTime: string | null;
+  durationMinutes: number | null;
+  transitMode: 'driving' | 'walking' | 'bicycling' | 'transit' | null;
 }
+
+export interface FirestoreTimestamp {
+  toDate(): Date;
+  seconds: number;
+  nanoseconds: number;
+}
+
+export type GeoPoint = {
+  latitude: number;
+  longitude: number;
+};
+
+export interface UserPreferences {
+  preferredCategories: string[];
+  preferredLocations: string[];
+  preferredPriceRange: string;
+  preferredDayOfWeek?: string[];
+  preferredTimeOfDay?: string[];
+}
+
+export type PlanStatus = 'draft' | 'published' | 'archived';
+export type PlanType = 'single-stop' | 'multi-stop';
+export type ParticipantResponse = 'going' | 'maybe' | 'not-going' | 'pending';
 
 export interface Plan {
   id: string;
   name: string;
-  description?: string | null;
-  eventTime: string; // ISO String
-  location: string; 
-  city: string; 
-  eventType?: string | null;
-  // tags?: string[]; // Future use
-  priceRange?: PriceRangeType | null;
+  description: string | null;
+  eventTime: string;
+  location: string;
+  city: string;
+  eventType: string | null;
+  eventTypeLowercase: string;
+  priceRange: string;
   hostId: string;
-  hostName?: string | null; // Denormalized
-  hostAvatarUrl?: string | null; // Denormalized
-  invitedParticipantUserIds?: string[] | null;
-  participantResponses?: { [userId: string]: RSVPStatusType };
+  hostName?: string;
+  hostAvatarUrl?: string;
+  creatorName?: string;
+  creatorAvatarUrl?: string;
+  creatorIsVerified?: boolean;
+  invitedParticipantUserIds: string[];
   itinerary: ItineraryItem[];
-  status: PlanStatusType;
-  planType: PlanTypeType;
-  
-  originalPlanId?: string | null; // If this plan was copied from another
-  sharedByUid?: string | null;    // UID of the user who shared the original plan
-  
-  averageRating?: number | null;  
-  reviewCount?: number; 
-  
-  photoHighlights?: string[] | null; // Array of image URLs
-
-  createdAt: string; // ISO String
-  updatedAt: string; // ISO String
+  status: PlanStatus;
+  planType: PlanType;
+  originalPlanId: string | null;
+  sharedByUid: string | null;
+  averageRating: number | null;
+  reviewCount: number;
+  photoHighlights: string[];
+  participantResponses: Record<string, ParticipantResponse>;
+  createdAt: string;
+  updatedAt: string;
+  coordinates?: GeoPoint;
+  recentSaves?: string[];
+  recentViews?: string[];
+  recentCompletions?: string[];
+  ratings?: Array<{
+    value: number;
+    isVerified: boolean;
+  }>;
+  featured?: boolean;
+  isPremiumOnly?: boolean;
+  minimumActivityScore?: number;
+  venues?: Array<{
+    id: string;
+    name: string;
+    discount: number;
+  }>;
+  participantsCount?: number;
+  likesCount?: number;
+  sharesCount?: number;
+  savesCount?: number;
+  type?: 'dayInLife' | 'regular';
 }
 
 export interface Rating {
@@ -299,6 +334,10 @@ export interface Influencer { // Used for Explore Page display
   id: string; // User UID
   name: string;
   avatarUrl?: string | null;
+  imageUrl?: string;
+  date?: string;
+  location?: string;
+  type?: string;
   bio?: string | null;
   dataAiHint?: string;
   role: UserRoleType | null; // Added
@@ -322,3 +361,50 @@ export interface PlanShare {
 
 // To ensure ClientTimestamp from firebase/firestore is usable where AppTimestamp is expected
 export type FirebaseClientTimestamp = ClientTimestamp;
+
+export interface Profile {
+  id: string;
+  name: string;
+  email?: string;
+  avatarUrl?: string;
+  imageUrl?: string;
+  bio?: string;
+  isVerified?: boolean;
+  tags?: string[];
+  type?: string;
+  date?: string;
+  location?: string;
+}
+
+export interface Category {
+  name: string;
+  description?: string;
+  iconUrl?: string;
+}
+
+export interface City {
+  name: string;
+  date: string;
+  location: string;
+  imageUrl?: string;
+}
+
+export interface PlanCompletion {
+  id: string;
+  planId: string;
+  userId: string;
+  completedAt: string;
+  verificationMethod: 'qr_code' | 'manual' | 'auto';
+  qrCodeData?: string;
+  participantIds: string[];
+  venueVerified?: boolean;
+}
+
+export interface UserAffinity {
+  userId1: string;
+  userId2: string;
+  score: number;
+  lastUpdated: string;
+  completedPlansCount: number;
+  lastPlanCompletedAt: string;
+}

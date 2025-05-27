@@ -1,4 +1,3 @@
-
 'use client';
 
 import Link from 'next/link';
@@ -87,7 +86,7 @@ function LinkItem({ navItem, currentPathname, notificationCount, currentUserProf
 export function BottomNav(props: BottomNavProps) {
   const pathname = usePathname();
   const { user, currentUserProfile } = useAuth();
-  const [isQuickAddPopoverOpen, setIsQuickAddPopoverOpen] = useState(false); // Local state for popover
+  const [isQuickAddPopoverOpen, setIsQuickAddPopoverOpen] = useState(false);
 
   const getNotificationCount = (itemId: string): number => {
     if (itemId === 'plans') return props.plansNotificationCount;
@@ -95,17 +94,20 @@ export function BottomNav(props: BottomNavProps) {
     return 0;
   };
 
-  // Define base navigation items
+  // Define base navigation items - only include profile/login if we have user data
   const navItems: NavItem[] = [
     { href: '/feed', label: 'Feed', icon: LayoutGrid, id: 'feed', ariaLabel: "Feed & Explore" },
     { href: '/wallet', label: 'Wallet', icon: WalletIcon, id: 'wallet', ariaLabel: "My Wallet"},
     { action: () => setIsQuickAddPopoverOpen(true), label: 'Create', icon: PlusCircle, id: 'quick-add', ariaLabel: "Quick Add Menu" },
     { href: '/plans', label: 'Plans', icon: LayoutList, id: 'plans', ariaLabel: "My Plans" },
-    user
-      ? { href: `/users/${user.uid}`, label: 'Profile', icon: Avatar, id: 'profile', ariaLabel: "My Profile" }
-      : { href: '/login', label: 'Login', icon: UserIcon, id: 'login', ariaLabel: "Login" },
   ];
 
+  // Only add the profile/login item if we have definitive user state
+  if (user) {
+    navItems.push({ href: `/users/${user.uid}`, label: 'Profile', icon: Avatar, id: 'profile', ariaLabel: "My Profile" });
+  } else if (user === null) { // Only show login if we're sure user is not authenticated
+    navItems.push({ href: '/login', label: 'Login', icon: UserIcon, id: 'login', ariaLabel: "Login" });
+  }
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border/30 bg-background/95 backdrop-blur-sm md:hidden">
@@ -138,12 +140,19 @@ export function BottomNav(props: BottomNavProps) {
                   onOpenAutoFocus={(e) => e.preventDefault()}
                 >
                   <div className="grid gap-1">
-                    <Button variant="ghost" className="w-full justify-start text-sm h-9" asChild onClick={() => setIsQuickAddPopoverOpen(false)}>
+                    <Button variant="ghost" className="w-full justify-start text-sm h-9" asChild onClick={(e) => {
+                      e.stopPropagation();
+                      setIsQuickAddPopoverOpen(false);
+                    }}>
                       <Link href="/plans/generate">
                         <Sparkles className="mr-2 h-4 w-4" /> New Plan (AI)
                       </Link>
                     </Button>
-                    <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() => { props.handleOpenCreatePostDialog(); setIsQuickAddPopoverOpen(false); }}>
+                    <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={(e) => {
+                      e.stopPropagation();
+                      props.handleOpenCreatePostDialog();
+                      setIsQuickAddPopoverOpen(false);
+                    }}>
                       <Edit3 className="mr-2 h-4 w-4" /> New Post
                     </Button>
                   </div>

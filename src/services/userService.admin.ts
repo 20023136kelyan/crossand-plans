@@ -1,38 +1,108 @@
 // src/services/userService.admin.ts
 import { firestoreAdmin } from '@/lib/firebaseAdmin';
 import type { UserProfile, OnboardingProfileData, FriendEntry, FriendStatus, SearchedUser } from '@/types/user';
-import { Timestamp as AdminTimestamp, FieldValue } from 'firebase-admin/firestore';
+import { Timestamp as AdminTimestamp, FieldValue, Firestore } from 'firebase-admin/firestore';
 
 const USER_COLLECTION = 'users';
 const FRIENDSHIPS_SUBCOLLECTION = 'friendships';
 
-export const getUserProfileAdmin = async (uid: string): Promise<UserProfile | null> => {
-  if (!firestoreAdmin) {
-    console.error("Firestore Admin SDK is not initialized for getUserProfileAdmin.");
-    return null;
-  }
-  try {
-    const userDocRef = firestoreAdmin.collection(USER_COLLECTION).doc(uid);
-    const userDocSnap = await userDocRef.get();
+interface UserStats {
+  plansCreatedCount: number;
+  plansSharedOrExperiencedCount: number;
+  totalRatingsReceived: number;
+  averageRating: number;
+  lastActivityDate: Date;
+}
 
-    if (userDocSnap.exists) {
-      const data = userDocSnap.data() as any; 
-      return { 
-        uid, 
-        ...data,
-        birthDate: data.birthDate instanceof AdminTimestamp ? data.birthDate : (data.birthDate && typeof data.birthDate.toDate === 'function' ? data.birthDate.toDate() : null),
-        createdAt: data.createdAt instanceof AdminTimestamp ? data.createdAt : (data.createdAt && typeof data.createdAt.toDate === 'function' ? data.createdAt.toDate() : AdminTimestamp.now()),
-        updatedAt: data.updatedAt instanceof AdminTimestamp ? data.updatedAt : (data.updatedAt && typeof data.updatedAt.toDate === 'function' ? data.updatedAt.toDate() : AdminTimestamp.now()),
-      } as UserProfile;
-    } else {
-      console.warn('No such user profile document for UID (admin SDK):', uid);
+interface UserProfile {
+  userId: string;
+  displayName: string;
+  email: string;
+  photoURL: string;
+  eventAttendanceScore: number;
+  levelTitle: string;
+  levelStars: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export const getUserStatsAdmin = async (userId: string): Promise<UserStats | null> => {
+  if (!firestoreAdmin) {
+    throw new Error('Firestore Admin SDK not initialized');
+  }
+
+  const db = firestoreAdmin as Firestore;
+
+  try {
+    const statsDoc = await db.collection('userStats').doc(userId).get();
+    
+    if (!statsDoc.exists) {
       return null;
     }
+
+    const data = statsDoc.data();
+    return {
+      plansCreatedCount: data?.plansCreatedCount || 0,
+      plansSharedOrExperiencedCount: data?.plansSharedOrExperiencedCount || 0,
+      totalRatingsReceived: data?.totalRatingsReceived || 0,
+      averageRating: data?.averageRating || 0,
+      lastActivityDate: data?.lastActivityDate?.toDate() || new Date(),
+    };
   } catch (error) {
-    console.error('Error fetching user profile (admin SDK):', error);
+    console.error('[getUserStatsAdmin] Error fetching user stats:', error);
     return null;
   }
 };
+
+export const getUserProfileAdmin = async (userId: string): Promise<UserProfile | null> => {
+  if (!firestoreAdmin) {
+    throw new Error('Firestore Admin SDK not initialized');
+  }
+
+  const db = firestoreAdmin as Firestore;
+
+  try {
+    const profileDoc = await db.collection('users').doc(userId).get();
+    
+    if (!profileDoc.exists) {
+      return null;
+    }
+
+    const data = profileDoc.data();
+    return {
+      userId: profileDoc.id,
+      displayName: data?.displayName || '',
+      email: data?.email || '',
+      photoURL: data?.photoURL || '',
+      eventAttendanceScore: data?.eventAttendanceScore || 0,
+      levelTitle: calculateLevelTitle(data?.eventAttendanceScore || 0),
+      levelStars: calculateLevelStars(data?.eventAttendanceScore || 0),
+      createdAt: data?.createdAt?.toDate() || new Date(),
+      updatedAt: data?.updatedAt?.toDate() || new Date(),
+    };
+  } catch (error) {
+    console.error('[getUserProfileAdmin] Error fetching user profile:', error);
+    return null;
+  }
+};
+
+function calculateLevelTitle(score: number): string {
+  if (score >= 90) return "Master Planner";
+  if (score >= 70) return "Expert Planner";
+  if (score >= 50) return "Advanced Planner";
+  if (score >= 30) return "Intermediate Planner";
+  if (score >= 10) return "Beginner Planner";
+  return "Newbie Planner";
+}
+
+function calculateLevelStars(score: number): number {
+  if (score >= 90) return 5;
+  if (score >= 70) return 4;
+  if (score >= 50) return 3;
+  if (score >= 30) return 2;
+  if (score >= 10) return 1;
+  return 0;
+}
 
 export const getUsersProfilesAdmin = async (uids: string[]): Promise<UserProfile[]> => {
   if (!firestoreAdmin) {
@@ -264,5 +334,64 @@ export const searchUsersAdmin = async (searchTerm: string, currentUserId: string
   } catch (error) {
     console.error("Error searching users (Admin SDK):", error);
     throw error;
+  }
+};
+
+export const calculateUserPremiumStatus = async (userId: string): Promise<boolean> => {
+  if (!firestoreAdmin) {
+    console.error("[calculateUserPremiumStatus] CRITICAL: Firestore Admin SDK is not initialized.");
+    return false;
+  }
+
+  try {
+    // Get user's subscription data from a subscriptions collection
+    const subscriptionDoc = await firestoreAdmin
+      .collection('subscriptions')
+      .where('userId', '==', userId)
+      .where('status', '==', 'active')
+      .orderBy('createdAt', 'desc')
+      .limit(1)
+      .get();
+
+    return !subscriptionDoc.empty;
+  } catch (error) {
+    console.error('[calculateUserPremiumStatus] Error checking premium status:', error);
+    return false;
+  }
+};
+
+export const calculateUserActivityScore = async (userId: string): Promise<number> => {
+  if (!firestoreAdmin) {
+    console.error("[calculateUserActivityScore] CRITICAL: Firestore Admin SDK is not initialized.");
+    return 0;
+  }
+
+  try {
+    const userStats = await getUserStatsAdmin(userId);
+    const userProfile = await getUserProfileAdmin(userId);
+
+    if (!userStats || !userProfile) {
+      return 0;
+    }
+
+    // Base score calculation
+    let activityScore = 0;
+
+    // Plans contribution (40% of total score)
+    const plansScore = (userStats.plansCreatedCount * 2) + userStats.plansSharedOrExperiencedCount;
+    activityScore += Math.min(40, (plansScore / 10) * 40); // Cap at 40 points
+
+    // Social engagement (30% of total score)
+    const socialScore = userStats.postCount + (userStats.followersCount * 0.5) + (userStats.followingCount * 0.5);
+    activityScore += Math.min(30, (socialScore / 20) * 30); // Cap at 30 points
+
+    // Event attendance (30% of total score)
+    const attendanceScore = userProfile.eventAttendanceScore;
+    activityScore += Math.min(30, (attendanceScore / 100) * 30); // Cap at 30 points
+
+    return Math.round(activityScore);
+  } catch (error) {
+    console.error('[calculateUserActivityScore] Error calculating activity score:', error);
+    return 0;
   }
 };

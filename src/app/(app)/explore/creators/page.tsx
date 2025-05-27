@@ -1,15 +1,18 @@
-
 // src/app/(app)/explore/creators/page.tsx
 'use client';
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, Loader2, PackageOpen, ShieldCheck as AdminIcon, CheckCircle } from 'lucide-react';
+import { ChevronLeft, Loader2, PackageOpen, ShieldCheck as AdminIcon, CheckCircle, ArrowLeft, BadgeCheck, Search, Users } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { fetchAllFeaturedCreatorsAction } from '@/app/actions/exploreActions';
-import type { Influencer, UserRoleType } from '@/types/user';
+import { fetchAllFeaturedCreatorsAction, fetchExplorePageDataAction } from '@/app/actions/exploreActions';
+import type { Influencer, UserRoleType, Profile } from '@/types/user';
 import Image from 'next/image';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 
 const PAGINATION_PAGE_SIZE = 12; // Define locally
 
@@ -55,113 +58,115 @@ const InfluencerGridCard = ({ influencer }: { influencer: Influencer }) => (
   </Link>
 );
 
-export default function AllCreatorsPage() {
-  const { toast } = useToast();
-  const [creators, setCreators] = useState<Influencer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  const [lastVisibleName, setLastVisibleName] = useState<string | undefined>(undefined);
-  
-  const observer = useRef<IntersectionObserver | null>(null);
-  const loadMoreRef = useCallback((node: HTMLDivElement | null) => {
-    if (loadingMore || !hasMore || !node) return;
-    if (observer.current) observer.current.disconnect();
-    observer.current = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && hasMore && !loadingMore) {
-        loadMoreCreators();
-      }
-    });
-    observer.current.observe(node);
-  }, [loadingMore, hasMore]); // Removed loadMoreCreators from dependency array
-
-  const loadMoreCreators = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
-    setLoadingMore(true);
-    try {
-      const result = await fetchAllFeaturedCreatorsAction(lastVisibleName);
-      if (result.success && result.creators) {
-        setCreators(prev => [...prev, ...result.creators!]);
-        setHasMore(result.hasMore || false);
-        setLastVisibleName(result.newLastVisibleName);
-        if (!result.hasMore) {
-          if (observer.current) observer.current.disconnect();
-        }
-      } else {
-        toast({ title: "Error Loading More Creators", description: result.error || "Could not load more creators.", variant: "destructive" });
-        setHasMore(false); 
-      }
-    } catch (error: any) {
-        toast({ title: "Error", description: error.message || "Failed to load more creators.", variant: "destructive" });
-        setHasMore(false);
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [lastVisibleName, toast, loadingMore, hasMore]); 
-
-  useEffect(() => {
-    async function fetchInitialData() {
-      setLoading(true);
-      setHasMore(true); 
-      setLastVisibleName(undefined); 
-      setCreators([]); 
-      try {
-        const result = await fetchAllFeaturedCreatorsAction();
-        if (result.success && result.creators) {
-          setCreators(result.creators);
-          setHasMore(result.hasMore || false);
-          setLastVisibleName(result.newLastVisibleName);
-        } else {
-          toast({ title: "Error Loading Creators", description: result.error || "Could not load creators.", variant: "destructive" });
-          setHasMore(false);
-        }
-      } catch (error: any) {
-          toast({ title: "Error", description: error.message || "Failed to load creators.", variant: "destructive" });
-          setHasMore(false);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchInitialData();
-  }, [toast]);
+function CreatorCard({ profile }: { profile: Profile }) {
+  const creatorInitial = profile.name ? profile.name.charAt(0).toUpperCase() : '?';
 
   return (
-    <div className="space-y-6 pb-16">
-      <div className="flex items-center justify-between">
-        <Button variant="outline" asChild>
-          <Link href="/feed?tab=explore"> {/* Updated link to point to the explore tab */}
-            <ChevronLeft className="mr-2 h-4 w-4" /> Back to Explore
-          </Link>
-        </Button>
-        <h1 className="text-2xl sm:text-3xl font-bold text-foreground/80 opacity-80">All Featured Creators</h1>
-        <div className="w-24"></div> {/* Spacer for balance */}
+    <div className="bg-card rounded-lg border border-border/50 hover:bg-accent/10 p-6 transition-colors">
+      <div className="flex items-center gap-4">
+        <Avatar className="h-16 w-16">
+          <AvatarImage src={profile.avatarUrl} alt={profile.name} />
+          <AvatarFallback>{creatorInitial}</AvatarFallback>
+        </Avatar>
+        <div className="flex-grow min-w-0">
+          <h3 className="text-lg font-semibold truncate">{profile.name}</h3>
+          {profile.type && (
+            <Badge variant="secondary" className="mt-1">
+              {profile.type}
+            </Badge>
+          )}
+          {profile.location && (
+            <p className="text-sm text-muted-foreground mt-1 truncate">
+              {profile.location}
+            </p>
+          )}
+          {profile.bio && (
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+              {profile.bio}
+            </p>
+          )}
+        </div>
       </div>
-
-      {loading && creators.length === 0 ? (
-        <div className="flex justify-center items-center py-20">
-          <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        </div>
-      ) : !loading && creators.length === 0 ? (
-        <div className="text-center py-20">
-          <PackageOpen className="mx-auto h-24 w-24 text-muted-foreground/30 mb-4" />
-          <p className="text-lg font-semibold text-foreground">No Creators Found</p>
-          <p className="text-muted-foreground">There are no featured creators to display at the moment.</p>
-        </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {creators.map(creator => (
-              <InfluencerGridCard key={creator.id} influencer={creator} />
-            ))}
-          </div>
-          <div ref={loadMoreRef} className="flex justify-center py-6">
-            {loadingMore && <Loader2 className="h-8 w-8 animate-spin text-primary" />}
-            {!loadingMore && !hasMore && creators.length > 0 && (
-              <p className="text-sm text-muted-foreground">You've reached the end!</p>
-            )}
-          </div>
-        </>
-      )}
     </div>
   );
+}
+
+function CreatorsExploreContent({ profiles }: { profiles: Profile[] }) {
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Filter profiles based on search term
+  const filteredProfiles = profiles.filter(profile => {
+    if (!searchTerm) return true;
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      profile.name.toLowerCase().includes(searchLower) ||
+      profile.type?.toLowerCase().includes(searchLower) ||
+      profile.location?.toLowerCase().includes(searchLower) ||
+      profile.bio?.toLowerCase().includes(searchLower)
+    );
+  });
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b">
+        <div className="container mx-auto px-4 py-3">
+          <div className="flex items-center gap-2 mb-3">
+            <Link href="/explore">
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            </Link>
+            <h1 className="text-2xl font-bold">Creators</h1>
+          </div>
+
+          {/* Search Bar */}
+          <div className="relative max-w-2xl">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              type="search"
+              placeholder="Search creators..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 h-10 rounded-xl w-full"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="container mx-auto px-4 py-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredProfiles.map((profile) => (
+            <Link 
+              key={profile.id} 
+              href={`/users/${profile.id}`}
+            >
+              <CreatorCard profile={profile} />
+            </Link>
+          ))}
+        </div>
+
+        {filteredProfiles.length === 0 && (
+          <div className="text-center py-12">
+            <Users className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No Creators Found</h3>
+            <p className="text-muted-foreground">
+              {searchTerm 
+                ? `No creators match your search for "${searchTerm}"`
+                : "No creators available at the moment."}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Server component for data fetching
+export default async function ExploreCreatorsPage() {
+  const result = await fetchExplorePageDataAction();
+  const profiles = result.success ? result.data?.featuredProfiles || [] : [];
+  
+  return <CreatorsExploreContent profiles={profiles} />;
 }
