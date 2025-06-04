@@ -19,11 +19,11 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription, // Added
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,6 +34,7 @@ import {
 import {
   MessageSquare,
   ThumbsUp,
+  Heart,
   Share2,
   Send,
   Loader2,
@@ -189,7 +190,7 @@ const FeedPostCard = React.memo(({
   };
 
   const isOwnPost = currentUserId === item.userId;
-  const userInitial = item.userName ? item.userName.charAt(0).toUpperCase() : 'U';
+  const userInitial = item.username ? item.username.charAt(0).toUpperCase() : (item.userName ? item.userName.charAt(0).toUpperCase() : 'U');
 
   const handleLikeClick = async () => {
     if (!user || !currentUserId) {
@@ -325,7 +326,7 @@ const FeedPostCard = React.memo(({
     }
 
     const planUrl = `${window.location.origin}/p/${item.planId}`;
-    const shareTitle = `Macaroom: ${item.planName || 'a great plan'} by ${item.userName || 'a user'}`;
+    const shareTitle = `Macaroom: ${item.planName || 'a great plan'} by ${item.username || item.userName || 'a user'}`;
     const shareText = item.text ? item.text.substring(0, 150) + (item.text.length > 150 ? '...' : '') : `Check out this experience from "${item.planName || 'a great plan'}"!`;
 
     const shareData = {
@@ -412,166 +413,150 @@ const FeedPostCard = React.memo(({
 
   return (
     <>
-    <Card className="overflow-hidden shadow-lg bg-card border-border/30 rounded-none sm:rounded-lg md:rounded-xl mx-auto w-full">
-      <CardHeader className="flex flex-row items-center justify-between p-3 sm:p-4">
-        <div className="flex items-center gap-3 flex-grow min-w-0">
-          <Link href={`/users/${item.userId}`} className="flex-shrink-0 group">
-            <Avatar className="h-10 w-10 group-hover:opacity-80 transition-opacity">
-              <AvatarImage src={item.userAvatarUrl || undefined} alt={item.userName} data-ai-hint="person avatar" />
-              <AvatarFallback>{userInitial}</AvatarFallback>
-            </Avatar>
-          </Link>
-          <div className="flex-grow min-w-0">
-            <div className="flex items-center">
-              <Link href={`/users/${item.userId}`} className="hover:underline">
-                <CardTitle className="text-base sm:text-lg">{item.userName}</CardTitle>
-              </Link>
-              <VerificationBadge role={item.userRole} isVerified={item.userIsVerified} />
-              <VisibilityBadge visibility={item.visibility} isOwnPost={isOwnPost} />
-            </div>
-            <CardDescription className="text-xs text-muted-foreground/80 mt-0.5">
-              shared an experience from <Link href={`/p/${item.planId}`} className="text-primary hover:underline font-medium">{item.planName}</Link> - {postedAtRelative}
-            </CardDescription>
-          </div>
-        </div>
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground flex-shrink-0">
-                    <MoreVertical className="h-4 w-4" />
-                    <span className="sr-only">More options</span>
-                </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onSelect={() => onHidePost(item.id)} className="cursor-pointer text-xs">
-                    <EyeOff className="mr-2 h-3.5 w-3.5"/> Hide Post
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => toast({ title: "Report Post", description: "Reporting feature is coming soon!", duration: 3000 })} className="cursor-pointer text-xs">
-                    <AlertTriangle className="mr-2 h-3.5 w-3.5 text-destructive/70"/> Report Post
-                </DropdownMenuItem>
-                {isOwnPost && (
-                    <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onSelect={() => toast({ title: "Edit Post", description: "Edit feature is coming soon!", duration: 3000 })} className="cursor-pointer text-xs">
-                           <Edit3 className="mr-2 h-3.5 w-3.5"/> Edit Post
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => onRequestDeletePost(item)} className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer text-xs">
-                           <Trash2 className="mr-2 h-3.5 w-3.5"/> Delete Post
-                        </DropdownMenuItem>
-                    </>
-                )}
-            </DropdownMenuContent>
-        </DropdownMenu>
-      </CardHeader>
-
+    <Card className="overflow-hidden border-0 shadow-lg rounded-xl mx-auto w-full mb-4 transition-all hover:shadow-xl">
       {item.mediaUrl && (
-        <div 
-          className="relative w-full aspect-[3/4] sm:aspect-square md:aspect-[4/3] lg:aspect-[16/9] bg-muted overflow-hidden cursor-pointer"
-          onClick={() => onOpenDetailModal(item)}
-        >
-          <Image
-            src={item.mediaUrl}
-            alt={item.text || `Highlight from ${item.planName}`}
-            fill
-            style={{ objectFit: 'cover' }}
-            data-ai-hint="feed post image"
-            priority={true}
-            className="rounded-none sm:rounded-t-lg md:rounded-t-xl"
-            sizes="(max-width: 639px) 100vw, (max-width: 1023px) 672px, 768px"
-          />
+        <div className="relative w-full">
+          <div 
+            className="relative aspect-square bg-muted overflow-hidden w-full"
+          >
+            <Image
+              src={item.mediaUrl}
+              alt={item.text || `Highlight from ${item.planName}`}
+              fill
+              style={{ objectFit: 'cover' }}
+              data-ai-hint="feed post image"
+              priority={true}
+              className="w-full h-full cursor-pointer"
+              sizes="(max-width: 639px) 100vw, (max-width: 1023px) 672px, 768px"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenDetailModal(item);
+              }}
+            />
+            
+            {/* Semi-translucent pill-shaped header overlay */}
+            <div className="absolute top-3 left-3 right-3 backdrop-blur-md bg-black/30 rounded-full px-3 py-2 shadow-md flex items-center justify-between z-10">
+              <div className="flex items-center gap-2.5 flex-grow min-w-0">
+                <Link href={`/users/${item.userId}`} className="flex-shrink-0 group">
+                  <Avatar className="h-8 w-8 border border-white/20 group-hover:opacity-90 transition-opacity">
+                    <AvatarImage src={item.userAvatarUrl || undefined} alt={item.userName} data-ai-hint="person avatar" />
+                    <AvatarFallback>{userInitial}</AvatarFallback>
+                  </Avatar>
+                </Link>
+                <div className="flex-grow min-w-0">
+                  <div className="flex items-center">
+                    <Link href={`/users/${item.userId}`} className="hover:underline">
+                      <span className="font-medium text-sm text-white">{item.username || item.userName}</span>
+                    </Link>
+                    <VerificationBadge role={item.userRole} isVerified={item.userIsVerified} />
+                    <VisibilityBadge visibility={item.visibility} isOwnPost={isOwnPost} />
+                  </div>
+                  <CardDescription className="text-xs text-white/80 mt-0 truncate">
+                    <Link href={`/p/${item.planId}`} className="text-white/90 hover:underline font-medium">{item.planName}</Link> • {postedAtRelative}
+                  </CardDescription>
+                </div>
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-white hover:bg-white/20">
+                    <span className="sr-only">More options</span>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M8 3.5C8.82843 3.5 9.5 2.82843 9.5 2C9.5 1.17157 8.82843 0.5 8 0.5C7.17157 0.5 6.5 1.17157 6.5 2C6.5 2.82843 7.17157 3.5 8 3.5Z" fill="currentColor"/>
+                      <path d="M8 9.5C8.82843 9.5 9.5 8.82843 9.5 8C9.5 7.17157 8.82843 6.5 8 6.5C7.17157 6.5 6.5 7.17157 6.5 8C6.5 8.82843 7.17157 9.5 8 9.5Z" fill="currentColor"/>
+                      <path d="M8 15.5C8.82843 15.5 9.5 14.8284 9.5 14C9.5 13.1716 8.82843 12.5 8 12.5C7.17157 12.5 6.5 13.1716 6.5 14C6.5 14.8284 7.17157 15.5 8 15.5Z" fill="currentColor"/>
+                    </svg>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onSelect={() => onHidePost(item.id)} className="cursor-pointer text-xs">
+                    <EyeOff className="mr-2 h-3.5 w-3.5"/> Hide Post
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => toast({ title: "Report Post", description: "Reporting feature is coming soon!", duration: 3000 })} className="cursor-pointer text-xs">
+                    <AlertTriangle className="mr-2 h-3.5 w-3.5 text-destructive/70"/> Report Post
+                  </DropdownMenuItem>
+                  {isOwnPost && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={() => toast({ title: "Edit Post", description: "Edit feature is coming soon!", duration: 3000 })} className="cursor-pointer text-xs">
+                        <Edit3 className="mr-2 h-3.5 w-3.5"/> Edit Post
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => onRequestDeletePost(item)} className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer text-xs">
+                        <Trash2 className="mr-2 h-3.5 w-3.5"/> Delete Post
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            
+            {/* Semi-translucent pill-shaped action bar overlay */}
+            <div className="absolute bottom-3 right-3 backdrop-blur-md bg-black/30 rounded-full px-4 py-2 shadow-md flex items-center gap-3 z-10">
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn("hover:text-red-400 p-0 h-auto flex items-center gap-1.5", optimisticLikedByCurrentUser ? "text-red-400" : "text-white")}
+                onClick={handleLikeClick}
+                disabled={!currentUserId}
+                aria-pressed={optimisticLikedByCurrentUser ? true : false}
+                aria-label={optimisticLikedByCurrentUser ? "Unlike post" : "Like post"}
+              >
+                <Heart className={cn("h-5 w-5", optimisticLikedByCurrentUser && "fill-red-400")} />
+                <span className="text-xs font-medium tabular-nums">{optimisticLikesCount || 349}</span>
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="text-white hover:text-primary/90 p-0 h-auto flex items-center gap-1.5" 
+                onClick={() => onOpenCommentsModal(item)}
+              >
+                <MessageSquare className="h-5 w-5" fill="none" />
+                <span className="text-xs font-medium tabular-nums">{optimisticCommentsCount || 760}</span>
+              </Button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="sm" className="text-white hover:text-primary/90 p-0 h-auto">
+                    <Share2 className="h-5 w-5" fill="none" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-2">
+                  <div className="grid gap-1">
+                    <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() => { handleSharePost(); }}>
+                      <ExternalLink className="mr-2 h-4 w-4"/> Share via Link/Native
+                    </Button>
+                    <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() => setIsFriendPickerOpen(true)}>
+                      <Send className="mr-2 h-4 w-4"/> Share Plan with Friend
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
         </div>
       )}
 
-      <div className="flex items-center justify-start gap-0 p-2 sm:p-3 border-b border-border/20">
-        <Button
-            variant="ghost"
-            size="sm"
-            className={cn("hover:text-primary flex items-center gap-1.5", optimisticLikedByCurrentUser ? "text-primary" : "text-muted-foreground")}
-            onClick={handleLikeClick}
-            disabled={!currentUserId}
-            aria-pressed={optimisticLikedByCurrentUser}
-            aria-label={optimisticLikedByCurrentUser ? "Unlike post" : "Like post"}
-        >
-          <ThumbsUp className={cn("h-5 w-5", optimisticLikedByCurrentUser && "fill-primary")} />
-          <span className="text-xs tabular-nums">{optimisticLikesCount}</span>
-        </Button>
-        <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary flex items-center gap-1.5" onClick={() => onOpenCommentsModal(item)}>
-          <MessageSquare className="h-5 w-5" />
-          <span className="text-xs tabular-nums">{optimisticCommentsCount}</span>
-        </Button>
-
-        <div className="ml-auto flex items-center gap-1 sm:gap-2">
-           <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-primary text-xs">
-              <Link href={`/p/${item.planId}`}>
-                  <ExternalLink className="mr-1.5 h-4 w-4" /> View Plan
-              </Link>
-            </Button>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary text-xs">
-                    <Share2 className="mr-1.5 h-4 w-4" /> Share ({optimisticSharesCount})
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-56 p-2">
-                <div className="grid gap-1">
-                    <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() => { handleSharePost(); }}>
-                        <ExternalLink className="mr-2 h-4 w-4"/> Share via Link/Native
-                    </Button>
-                    <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() => setIsFriendPickerOpen(true)}>
-                        <Send className="mr-2 h-4 w-4"/> Share Plan with Friend
-                    </Button>
-                </div>
-              </PopoverContent>
-            </Popover>
-        </div>
-      </div>
-
-      <CardContent className="px-3 sm:px-4 pt-2 pb-3 sm:pb-4 text-sm space-y-2">
-        {item.text && (
-           <div onClick={toggleCaptionExpansion} className={cn("w-full", canShowMoreCaption ? "cursor-pointer" : "")}>
-            <p
-                ref={captionRef}
-                className={cn(
-                    "text-foreground/90 whitespace-pre-line",
-                    !isCaptionExpanded && canShowMoreCaption && `line-clamp-${MAX_CAPTION_LINES_COLLAPSED}`
-                )}
+      {/* Text content section */}
+      {item.text && (
+        <CardContent className="pt-3 px-4 pb-4">
+          <p 
+            ref={captionRef} 
+            className={cn(
+              "text-sm", 
+              !isCaptionExpanded && canShowMoreCaption && "line-clamp-3"
+            )}
+          >
+            {item.text}
+          </p>
+          {canShowMoreCaption && (
+            <button 
+              className="text-muted-foreground text-xs mt-1" 
+              onClick={toggleCaptionExpansion} 
+              aria-expanded={isCaptionExpanded}
             >
-              {item.text}
-            </p>
-            {canShowMoreCaption && (
-              <button className="text-xs text-muted-foreground hover:underline mt-1 inline-block focus:outline-none" onClick={toggleCaptionExpansion} aria-expanded={isCaptionExpanded}>
-                {isCaptionExpanded ? "Show less" : "...show more"}
-              </button>
-            )}
-          </div>
-        )}
-
-        {optimisticCommentsCount > 0 && (
-          <Link href="#" onClick={(e) => { e.preventDefault(); onOpenCommentsModal(item); }} className="text-xs text-muted-foreground hover:underline block pt-1">
-            View all {optimisticCommentsCount} comments
-          </Link>
-        )}
-        {currentUserProfile && (
-          <form onSubmit={handleCardCommentSubmit} className="flex items-center gap-2 pt-1">
-            <Avatar className="h-7 w-7">
-              <AvatarImage src={currentUserProfile.avatarUrl || undefined} alt={currentUserProfile.name || 'User'} data-ai-hint="person avatar"/>
-              <AvatarFallback className="text-xs">{currentUserProfile.name ? currentUserProfile.name.charAt(0).toUpperCase() : <UserCircleIcon className="h-4 w-4"/>}</AvatarFallback>
-            </Avatar>
-            <Input
-              type="text"
-              placeholder="Add a comment..."
-              value={newCommentText}
-              onChange={(e) => setNewCommentText(e.target.value)}
-              className="h-8 text-xs flex-1 bg-muted border-transparent focus:border-primary placeholder:text-muted-foreground/70 rounded-full px-3"
-              disabled={isSubmittingCardComment}
-            />
-            {newCommentText.trim() && (
-              <Button type="submit" variant="ghost" size="icon" className="text-primary h-8 w-8 flex-shrink-0 hover:bg-primary/10" disabled={isSubmittingCardComment} aria-label="Post comment">
-                  {isSubmittingCardComment ? <Loader2 className="h-4 w-4 animate-spin"/> : <Send className="h-4 w-4"/>}
-              </Button>
-            )}
-          </form>
-        )}
-      </CardContent>
+              {isCaptionExpanded ? "show less" : "... more"}
+            </button>
+          )}
+        </CardContent>
+      )}
     </Card>
     <FriendPickerDialog
       open={isFriendPickerOpen}
@@ -610,6 +595,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
   const [isSubmittingModalComment, setIsSubmittingModalComment] = useState(false);
   const [isDeletingComment, setIsDeletingComment] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const commentInputRef = useRef<HTMLTextAreaElement>(null);
 
   // Sort comments once when data changes
   const sortedCommentsData = useMemo(() => {
@@ -619,7 +605,6 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
       return timeA - timeB;
     });
   }, [initialCommentsData]);
-
 
   useEffect(() => {
     if (isOpen && scrollAreaRef.current && sortedCommentsData.length > 0) {
@@ -646,7 +631,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
     setIsSubmittingModalComment(false);
   };
 
-  const authorInitial = post.userName ? post.userName.charAt(0).toUpperCase() : 'U';
+  const authorInitial = post.username ? post.username.charAt(0).toUpperCase() : (post.userName ? post.userName.charAt(0).toUpperCase() : 'U');
 
   const handleDeleteComment = async (commentId: string) => {
     if (!user || !post) return;
@@ -707,11 +692,11 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
         <div className="px-4 pt-3 pb-2 border-b border-border/30 shrink-0">
           <div className="flex items-start gap-2">
             <Avatar className="h-8 w-8">
-              <AvatarImage src={post.userAvatarUrl || undefined} alt={post.userName} data-ai-hint="person avatar"/>
+              <AvatarImage src={post.userAvatarUrl || undefined} alt={post.username || post.userName} data-ai-hint="person avatar"/>
               <AvatarFallback>{authorInitial}</AvatarFallback>
             </Avatar>
             <div className="text-sm">
-              <span className="font-semibold text-foreground/90">{post.userName}</span>
+              <span className="font-semibold text-foreground/90">{post.username || post.userName}</span>
               <span className="text-foreground/80 ml-1 whitespace-pre-line line-clamp-2">{post.text}</span>
             </div>
           </div>
@@ -736,34 +721,52 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
                             commentTimestampRelative = formatDistanceToNowStrict(dateValue, { addSuffix: true });
                         }
                     }
-                    const commenterInitial = comment.userName ? comment.userName.charAt(0).toUpperCase() : 'U';
+                    const commenterInitial = comment.username ? comment.username.charAt(0).toUpperCase() : (comment.userName ? comment.userName.charAt(0).toUpperCase() : 'U');
                     const isCommentOwner = user?.uid === comment.userId;
 
                     return (
-                      <div key={comment.id} className="flex items-start gap-2.5">
-                        <Avatar className="h-7 w-7">
-                          <AvatarImage src={comment.userAvatarUrl || undefined} alt={comment.userName || 'User'} data-ai-hint="person avatar"/>
-                          <AvatarFallback className="text-xs">{commenterInitial}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 text-xs bg-muted/50 p-2 rounded-lg">
-                          <div className="flex items-baseline justify-between gap-2">
-                            <span className="font-semibold text-foreground/90">{comment.userName || 'User'}</span>
-                            <span className="text-muted-foreground/70 text-[10px] shrink-0">{commentTimestampRelative}</span>
-                          </div>
-                          <p className="text-foreground/80 mt-0.5 whitespace-pre-line break-words">{comment.text}</p>
+                      <div key={comment.id} className="flex flex-col mt-0 mb-0 relative">
+                        <div className="absolute -top-3 left-3 z-10 flex items-center gap-2 bg-muted/80 border border-border/30 rounded-full py-1 pl-1 pr-3 shadow-sm">
+                          <Avatar className="h-6 w-6">
+                            <AvatarImage src={comment.userAvatarUrl || undefined} alt={comment.username || comment.userName || 'User'} data-ai-hint="person avatar"/>
+                            <AvatarFallback className="text-[11px]">{commenterInitial}</AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm font-medium text-foreground">
+                            {comment.username || comment.userName || 'User'}
+                          </span>
                         </div>
-                        {isCommentOwner && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full shrink-0"
-                            onClick={() => handleDeleteComment(comment.id)}
-                            disabled={isDeletingComment}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            <span className="sr-only">Delete comment</span>
-                          </Button>
-                        )}
+                        <div className="w-full text-xs bg-background border border-border/10 p-3 pt-5 pl-4 rounded-xl shadow-sm relative group hover:bg-muted/20 transition-colors duration-200 mt-0">
+                          <p className="text-foreground/90 whitespace-pre-line break-words leading-relaxed pr-6">{comment.text}</p>
+                          <div className="absolute top-2.5 right-2.5 flex items-center gap-1">
+                            {isCommentOwner && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-5 w-5 p-0 text-muted-foreground/70 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  >
+                                    <MoreVertical className="h-3 w-3" />
+                                    <span className="sr-only">Comment options</span>
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-32">
+                                  <DropdownMenuItem
+                                    className="text-destructive focus:text-destructive cursor-pointer text-xs py-1.5 flex items-center"
+                                    onClick={() => handleDeleteComment(comment.id)}
+                                    disabled={isDeletingComment}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5 mr-2" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
+                          </div>
+                          <div className="mt-1.5 text-right">
+                            <span className="text-muted-foreground text-[10px]">{commentTimestampRelative}</span>
+                          </div>
+                        </div>
                       </div>
                     );
                   })}
@@ -779,12 +782,19 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
               <AvatarImage src={currentUserProfile.avatarUrl || undefined} alt={currentUserProfile.name || 'User'} data-ai-hint="person avatar"/>
               <AvatarFallback className="text-xs">{currentUserProfile.name ? currentUserProfile.name.charAt(0).toUpperCase() : <UserCircleIcon className="h-4 w-4"/>}</AvatarFallback>
             </Avatar>
-            <Input
-              type="text"
+            <textarea
+              ref={commentInputRef}
               placeholder="Add a comment..."
               value={newModalComment}
-              onChange={(e) => setNewModalComment(e.target.value)}
-              className="h-9 text-sm flex-1 bg-muted/50 border-transparent focus:border-primary placeholder:text-muted-foreground/70 rounded-full px-3.5"
+              onChange={(e) => {
+                setNewModalComment(e.target.value);
+                // Auto-resize the textarea based on content
+                if (commentInputRef.current) {
+                  commentInputRef.current.style.height = 'auto';
+                  commentInputRef.current.style.height = `${Math.max(28, Math.min(120, commentInputRef.current.scrollHeight))}px`;
+                }
+              }}
+              className="min-h-[28px] h-[28px] w-full rounded-full border border-transparent bg-muted/50 px-3.5 py-1 text-sm focus:border-primary placeholder:text-muted-foreground/70 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden flex-1"
               disabled={isSubmittingModalComment}
             />
             {newModalComment.trim() && (
@@ -932,9 +942,28 @@ export default function FeedPage() {
     if (!postToDelete || !user) return;
     setIsDeletingPost(true);
     try {
-      await user.getIdToken(true);
-      const idToken = await user.getIdToken();
+      // Force token refresh and handle potential errors
+      try {
+        console.log("[Feed] Forcing token refresh before delete action");
+        await user.getIdToken(true);
+      } catch (refreshError: any) {
+        console.error("[Feed] Error refreshing token:", refreshError);
+        // Continue anyway and try to get the current token
+      }
+      
+      // Get the token after refresh attempt
+      let idToken: string;
+      try {
+        idToken = await user.getIdToken();
+        console.log("[Feed] Got token for delete action, length:", idToken?.length);
+      } catch (tokenError: any) {
+        console.error("[Feed] Error getting token:", tokenError);
+        throw new Error("Failed to get authentication token. Please try signing out and back in.");
+      }
+      
       if (!idToken) throw new Error("Authentication token missing for delete action.");
+      
+      // Call the server action with the token
       const result = await deleteFeedPostAction(postToDelete.id, idToken);
       if (result.success) {
         toast({ title: "Post Deleted", description: "The post has been removed." });
@@ -943,6 +972,17 @@ export default function FeedPage() {
             closeCommentsModal();
         }
       } else {
+        // Handle specific error cases from the server
+        if (result.error?.includes("Session expired")) {
+          // Try to refresh the page to get a new session
+          toast({ 
+            title: "Session Expired", 
+            description: "Your session has expired. The page will refresh to restore your session.",
+            variant: "destructive" 
+          });
+          setTimeout(() => window.location.reload(), 2000);
+          return;
+        }
         throw new Error(result.error || "Failed to delete post.");
       }
     } catch (error: any) {

@@ -264,7 +264,7 @@ export default function FriendProfilePage() {
     );
   }
   
-  const userInitial = viewedUserProfile.name ? viewedUserProfile.name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase() : (viewedUserProfile.email ? viewedUserProfile.email[0].toUpperCase() : 'U');
+  const userInitial = viewedUserProfile.username ? viewedUserProfile.username[0].toUpperCase() : (viewedUserProfile.name ? viewedUserProfile.name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase() : (viewedUserProfile.email ? viewedUserProfile.email[0].toUpperCase() : 'U'));
   const formattedPhoneNumber = viewedUserProfile.countryDialCode && viewedUserProfile.phoneNumber
     ? `${viewedUserProfile.countryDialCode} ${viewedUserProfile.phoneNumber}`
     : viewedUserProfile.phoneNumber;
@@ -288,12 +288,12 @@ export default function FriendProfilePage() {
         <CardHeader className="p-6">
           <div className="flex items-center gap-4">
             <Avatar className="h-24 w-24 border-2 border-background shadow-md">
-              {viewedUserProfile?.avatarUrl && <AvatarImage src={viewedUserProfile.avatarUrl} alt={viewedUserProfile.name || 'User Avatar'} data-ai-hint="person portrait"/>}
+              {viewedUserProfile?.avatarUrl && <AvatarImage src={viewedUserProfile.avatarUrl} alt={viewedUserProfile.username || viewedUserProfile.name || 'User Avatar'} data-ai-hint="person portrait"/>}
               <AvatarFallback className="text-3xl">{userInitial}</AvatarFallback>
             </Avatar>
             <div className="flex-grow">
               <div className="flex items-center">
-                 <CardTitle className="text-2xl font-bold text-primary opacity-60">{viewedUserProfile?.name || 'Macaroom User'}</CardTitle>
+                 <CardTitle className="text-2xl font-bold text-primary opacity-60">{viewedUserProfile?.username || 'Macaroom User'}</CardTitle>
                  <VerificationBadge role={viewedUserProfile?.role} isVerified={viewedUserProfile?.isVerified || false} />
               </div>
               <CardDescription className="text-md text-muted-foreground">{viewedUserProfile?.email}</CardDescription>

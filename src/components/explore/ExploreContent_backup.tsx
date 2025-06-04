@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from "@/components/ui/input";
 import { format } from 'date-fns';
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { fetchExplorePageDataAction } from '@/app/actions/exploreActions';
 import { getUserLocationAction, searchUsersAction, sendFriendRequestAction, acceptFriendRequestAction, declineFriendRequestAction, removeFriendAction } from '@/app/actions/userActions';
 import { useToast } from '@/hooks/use-toast';
@@ -723,6 +723,7 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
   const [selectedCity, setSelectedCity] = useState<string | undefined>();
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
   const [viewMode, setViewMode] = useState<'all' | 'cities' | 'categories' | 'creators' | 'dayInLife'>('all');
+  const [feedView, setFeedView] = useState<'forYou' | 'explore'>('explore');
   const [isTabsHeaderVisible, setIsTabsHeaderVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
   const scrollThreshold = 50;
@@ -732,11 +733,13 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
   const [plans, setPlans] = useState<Plan[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchedUser[]>([]);
   const [filteredPlans, setFilteredPlans] = useState<Plan[]>([]);
   const [featuredPlans, setFeaturedPlans] = useState<Plan[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [locationRequested, setLocationRequested] = useState(false);
-  const [searchLoading, setSearchLoading] = useState(false);
+  const [isSearchActive, setIsSearchActive] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Category images mapping with proper typing
@@ -854,86 +857,70 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
     }
   };
 
-  // Replace the geolocation useEffect with a check for saved location
+  // Fetch user location on component mount
   useEffect(() => {
-    async function getUserLocation() {
-      if (!user?.uid) return;
-      try {
-        const location = await getUserLocationAction(user.uid);
-        if (location.success && location.data) {
-          setUserLocation({ 
-            city: location.data.city, 
-            country: location.data.country 
-          });
-        } else {
-          // This is an expected case for new users - no need to show error
-          if (!locationRequested) {
-            toast({
-              title: 'Enable Location',
-              description: 'Enable location access to see personalized recommendations',
-              action: (
-                <Button variant="default" size="sm" onClick={requestLocation}>
-                  Enable Location
-                </Button>
-              ),
-              duration: 0 // Keep until user acts
-            });
-          }
-        }
-      } catch (error) {
-        // Only log actual errors, not the "Location not found" case
-        if (error instanceof Error && error.message !== 'Location not found') {
-          console.error('Error getting user location:', {
-            error,
-            message: error instanceof Error ? error.message : String(error)
-          });
-          toast({
-            title: 'Location Error',
-            description: 'Could not retrieve your saved location',
-            variant: 'default',
-            duration: 5000
-          });
-        }
+    async function fetchUserLocation() {
+      if (!user?.uid) {
+        console.log('[ExploreContent] No user ID available for location fetch');
+        return;
       }
-    }
 
-    getUserLocation();
-  }, [user, toast, locationRequested]);
-
-  // Fetch user location and initial data
-  useEffect(() => {
-    async function getUserLocation() {
-      if (!user?.uid) return;
       try {
-        const location = await getUserLocationAction(user.uid);
-        if (location.success && location.data) {
-          setUserLocation({ 
-            city: location.data.city, 
-            country: location.data.country 
+        console.log('[ExploreContent] Fetching user location for:', user.uid);
+        const result = await getUserLocationAction(user.uid);
+        console.log('[ExploreContent] Location fetch result:', result);
+        
+        if (result.success && result.data) {
+          console.log('[ExploreContent] Setting user location:', result.data);
+          setUserLocation({
+            city: result.data.city,
+            country: result.data.country
           });
         } else {
-          console.error('Failed to get user location:', location.error);
+          console.warn('[ExploreContent] Failed to fetch user location:', result.error);
+          // Set default location even on error
+          setUserLocation({
+            city: 'Unknown',
+            country: 'Unknown'
+          });
+          
           toast({
-            title: 'Location Error',
-            description: location.error || 'Could not retrieve your saved location',
+            title: 'Location Notice',
+            description: 'Using default location. You can update your location in settings.',
             variant: 'default',
             duration: 5000
           });
         }
       } catch (error) {
-        console.error('Error getting user location:', {
+        // Handle unexpected errors
+        console.error('[ExploreContent] Error getting user location:', {
           error,
           message: error instanceof Error ? error.message : String(error)
         });
+        
+        // Set default location on error
+        setUserLocation({
+          city: 'Unknown',
+          country: 'Unknown'
+        });
+        
         toast({
           title: 'Location Error',
-          description: error instanceof Error ? error.message : 'Could not retrieve your saved location',
+          description: error instanceof Error ? 
+            `Could not retrieve your location: ${error.message}` : 
+            'Could not retrieve your saved location',
           variant: 'default',
           duration: 5000
         });
       }
     }
+    
+    // Call the function to fetch user location
+    fetchUserLocation();
+  }, [user?.uid, toast]);
 
+  // Fetch explore data when user location changes
+  useEffect(() => {
     async function fetchData() {
       setLoading(true);
       try {
@@ -981,9 +968,9 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
       }
     }
 
-    getUserLocation();
+    // Call the function to fetch data
     fetchData();
-  }, [toast, userLocation, user]);
+  }, [userLocation, toast]);
 
   // Handle scroll effect for header
   useEffect(() => {
@@ -1040,6 +1027,9 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
           plan.creatorName?.toLowerCase().includes(term) ||
           plan.creatorUsername?.toLowerCase().includes(term)
         );
+        
+        // Set search loading to false after filtering is complete
+        setSearchLoading(false);
       }
     }
     
@@ -1129,24 +1119,6 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
     }
   };
 
-  // Handle search input changes without causing continuous refreshes
-  const handleSearchChange = (value: string) => {
-    setSearchTerm(value);
-    
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-    
-    if (value.trim().length > 0) {
-      setSearchLoading(true);
-      searchTimeoutRef.current = setTimeout(() => {
-        setSearchLoading(false);
-      }, 300);
-    } else {
-      setSearchLoading(false);
-    }
-  };
-
   // Initialize data from props
   useEffect(() => {
     if (initialData) {
@@ -1158,7 +1130,7 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
   }, [initialData]);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col overflow-x-hidden">
       {/* Header */}
       <div className={cn(
         "sticky top-0 z-50 w-full bg-background/80 backdrop-blur-sm border-b border-border/30",
@@ -1169,7 +1141,7 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
           {/* For You / Explore Toggle - Centered at the top */}
           <div
             className={cn(
-              "sticky top-0 z-30 flex justify-center items-center transition-all duration-300 ease-in-out h-12 sm:h-14 py-2",
+              "sticky top-0 z-30 flex justify-center items-center transition-all duration-300 ease-in-out h-12 sm:h-14",
               isTabsHeaderVisible ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0 pointer-events-none"
             )}
           >
@@ -1178,7 +1150,7 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
               "bg-card/70 backdrop-blur-md shadow-md",
             )}>
               <Button
-                variant="ghost"
+                variant={feedView === 'forYou' ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => {
                   // Redirect to feed page with forYou tab active
@@ -1186,37 +1158,64 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
                 }}
                 className={cn(
                   "text-xs sm:text-sm rounded h-full px-3 py-1.5 transition-colors duration-150",
-                  "hover:bg-muted"
+                  feedView === 'forYou' ? "bg-primary/20 text-primary shadow-sm" : "hover:bg-muted"
                 )}
               >
                 For You
               </Button>
               <Button
-                variant="default"
+                variant={feedView === 'explore' ? 'default' : 'ghost'}
                 size="sm"
+                onClick={() => setFeedView('explore')}
                 className={cn(
                   "text-xs sm:text-sm rounded h-full px-3 py-1.5 transition-colors duration-150",
-                  "bg-primary/20 text-primary shadow-sm"
+                  feedView === 'explore' ? "bg-primary/20 text-primary shadow-sm" : "hover:bg-muted"
                 )}
               >
                 Explore
               </Button>
             </div>
           </div>
-
+          
           <div className="px-4 py-3">
-            <h2 className="text-lg font-semibold mb-2 text-center">Discover</h2>
+            <h1 className="text-xl font-semibold text-center mb-3">Discover</h1>
+            
             <div className="relative max-w-2xl mx-auto">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
                 placeholder="Search plans, people, places..."
-                className="pl-9 h-10 rounded-xl w-full pr-10"
+                className="pl-9 h-10 rounded-xl w-full"
                 value={searchTerm}
-                onChange={(e) => handleSearchChange(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSearchTerm(value);
+                  
+                  // Clear any existing timeout
+                  if (searchTimeoutRef.current) {
+                    clearTimeout(searchTimeoutRef.current);
+                  }
+                  
+                  // Set search active state
+                  setIsSearchActive(value.trim().length > 0);
+                  
+                  // Debounce search to avoid excessive filtering
+                  searchTimeoutRef.current = setTimeout(() => {
+                    // Perform search after debounce
+                    if (value.trim().length > 0) {
+                      setSearchLoading(true);
+                      // The actual filtering happens in the useEffect
+                    } else {
+                      setSearchResults([]);
+                      setSearchLoading(false);
+                    }
+                  }, 300);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') {
-                    handleSearchChange('');
+                    setSearchTerm('');
+                    setIsSearchActive(false);
+                    setSearchResults([]);
                   }
                 }}
               />
@@ -1224,9 +1223,11 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6"
                   onClick={() => {
-                    handleSearchChange('');
+                    setSearchTerm('');
+                    setIsSearchActive(false);
+                    setSearchResults([]);
                   }}
                 >
                   <X className="h-4 w-4" />
@@ -1234,8 +1235,6 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
               )}
             </div>
           </div>
-
-
 
           {/* Navigation Tabs */}
           <div className="px-4">
@@ -1302,37 +1301,45 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
       <main className="flex-1 overflow-auto">
         <div className="max-w-screen-2xl mx-auto w-full">
           <div className="px-4 py-6 relative">
-            {/* Search loading and no results states */}
-            {searchTerm.trim().length > 0 && !loading && (
-              <div className="mb-6">
-                {searchLoading ? (
-                  <div className="flex justify-center items-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  </div>
-                ) : filteredPlans.length === 0 && (
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground">No results found for "{searchTerm}"</p>
-                  </div>
-                )}
+              </div>
+            ) : (
+              <div className="bg-muted/30 rounded-lg p-6 text-center">
+                <h2 className="text-xl font-semibold mb-2">Sign in to see personalized recommendations</h2>
+                <p className="text-muted-foreground mb-4">Create an account to get plans tailored to your interests.</p>
+                <Button asChild>
+                  <Link href="/login">Sign In</Link>
+                </Button>
               </div>
             )}
-            {loading ? (
-              <div className="absolute inset-0 flex justify-center items-center min-h-[50vh] bg-background/80">
-                <Loader2 className="h-8 w-8 animate-spin" />
-              </div>
-            ) : viewMode === 'all' && (
-              <>
+          </div>
+        ) : loading ? (
+          <div className="absolute inset-0 flex justify-center items-center min-h-[50vh] bg-background/80">
+            <Loader2 className="h-8 w-8 animate-spin" />
+          </div>
+        ) : viewMode === 'all' && (
+          <>
+            {/* Featured Plan Panels */}
+            {featuredPlans.length > 0 && (
+              <Section 
+                title="Featured Plans"
+                viewAllHref="/plans/featured"
+                className="mb-12 overflow-hidden"
+              >
+                <div className="relative -mx-4 sm:mx-0">
+                  <div className="flex overflow-x-auto gap-4 px-4 pb-4 snap-x snap-mandatory hide-scrollbar">
+                    {featuredPlans.map((plan: Plan) => (
+                      <div key={plan.id} className="flex-none w-[calc(100vw-2rem)] sm:w-[500px] md:w-[600px] lg:w-[800px] max-w-[1000px] snap-center">
                 {/* Featured Plan Panels */}
                 {featuredPlans.length > 0 && (
                   <Section 
                     title="Featured Plans"
                     viewAllHref="/plans/featured"
-                    className="mb-12 -mx-4"
+                    className="mb-12 overflow-hidden"
                   >
-                    <div className="relative">
-                      <div className="flex overflow-x-auto gap-6 px-4 pb-4 snap-x snap-mandatory hide-scrollbar">
+                    <div className="relative -mx-4 sm:mx-0">
+                      <div className="flex overflow-x-auto gap-4 px-4 pb-4 snap-x snap-mandatory hide-scrollbar">
                         {featuredPlans.map((plan: Plan) => (
-                          <div key={plan.id} className="flex-none w-[calc(100vw-2rem)] max-w-[1000px] snap-center">
+                          <div key={plan.id} className="flex-none w-[calc(100vw-2rem)] sm:w-[500px] md:w-[600px] lg:w-[800px] max-w-[1000px] snap-center">
                             <FeaturedPlanPanel
                               plan={plan}
                               isAdmin={isAdmin}
@@ -1420,18 +1427,20 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
                   <Section
                     title="Popular Cities"
                     viewAllHref="/explore/cities"
-                    className="overflow-x-auto hide-scrollbar"
+                    className="overflow-hidden"
                   >
-                    <div className="flex gap-4 pb-4 md:grid md:grid-cols-4 lg:grid-cols-6">
-                      {cities.slice(0, 6).map(city => (
-                        <Link key={city.name} href={`/plans/city/${city.name}`} className="w-full">
-                          <CityCard
-                            city={city}
-                            onSelect={() => {}}
-                            isSelected={false}
-                          />
-                        </Link>
-                      ))}
+                    <div className="relative -mx-4 sm:mx-0">
+                      <div className="flex gap-4 px-4 pb-4 overflow-x-auto snap-x snap-mandatory hide-scrollbar sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+                        {cities.slice(0, 6).map(city => (
+                          <Link key={city.name} href={`/plans/city/${city.name}`} className="w-[160px] flex-none sm:w-full">
+                            <CityCard
+                              city={city}
+                              onSelect={() => {}}
+                              isSelected={false}
+                            />
+                          </Link>
+                        ))}
+                      </div>
                     </div>
                   </Section>
                 )}
@@ -1441,17 +1450,19 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
                   <Section
                     title="Popular Categories"
                     viewAllHref="/explore/categories"
-                    className="grid grid-cols-2 md:grid-cols-4 gap-4"
+                    className="overflow-hidden"
                   >
-                    {categories.slice(0, 4).map(category => (
-                      <Link key={category.name} href={`/plans/category/${encodeURIComponent(category.name)}`}>
-                        <CategoryCard
-                          name={category.name}
-                          iconUrl={category.iconUrl}
-                          isSelected={false}
-                        />
-                      </Link>
-                    ))}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                      {categories.slice(0, 4).map(category => (
+                        <Link key={category.name} href={`/plans/category/${encodeURIComponent(category.name)}`}>
+                          <CategoryCard
+                            name={category.name}
+                            iconUrl={category.iconUrl}
+                            isSelected={false}
+                          />
+                        </Link>
+                      ))}
+                    </div>
                   </Section>
                 )}
 
@@ -1460,14 +1471,16 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
                   <Section
                     title="A Day in the Life Of"
                     viewAllHref="/explore/celebrity"
-                    className="overflow-x-auto hide-scrollbar"
+                    className="overflow-hidden"
                   >
-                    <div className="flex gap-4 pb-4 md:grid md:grid-cols-5 lg:grid-cols-8">
-                      {profiles.map(profile => (
-                        <Link key={profile.id} href={`/plans/celebrity/${profile.id}`} className="w-full">
-                          <ProfileCard profile={profile} />
-                        </Link>
-                      ))}
+                    <div className="relative -mx-4 sm:mx-0">
+                      <div className="flex gap-4 px-4 pb-4 overflow-x-auto snap-x snap-mandatory hide-scrollbar sm:grid sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-8">
+                        {profiles.map(profile => (
+                          <Link key={profile.id} href={`/plans/celebrity/${profile.id}`} className="w-[140px] flex-none sm:w-full">
+                            <ProfileCard profile={profile} />
+                          </Link>
+                        ))}
+                      </div>
                     </div>
                   </Section>
                 )}

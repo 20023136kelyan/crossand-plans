@@ -1059,13 +1059,13 @@ export default function PlanDetailPage() {
                     {comments.map((comment, idx) => (
                       <div key={comment.id} className={cn("flex items-start gap-3 p-3", idx < comments.length -1 && "border-b border-border/20")}>
                         <Avatar className="h-8 w-8 mt-0.5">
-                          <AvatarImage src={comment.userAvatarUrl || undefined} alt={comment.userName || 'User'} data-ai-hint="person avatar"/>
-                          <AvatarFallback className="text-xs">{comment.userName ? comment.userName.charAt(0).toUpperCase() : <UserCircleIcon className="h-4 w-4"/>}</AvatarFallback>
+                          <AvatarImage src={comment.userAvatarUrl || undefined} alt={comment.username || comment.userName || 'User'} data-ai-hint="person avatar"/>
+                          <AvatarFallback className="text-xs">{comment.username ? comment.username.charAt(0).toUpperCase() : (comment.userName ? comment.userName.charAt(0).toUpperCase() : <UserCircleIcon className="h-4 w-4"/>)}</AvatarFallback>
                         </Avatar>
                         <div className="flex-1">
                           <div className="flex items-baseline justify-between text-xs">
                             <div className="flex items-center">
-                                <p className="font-semibold text-foreground/90">{comment.userName || 'Anonymous'}</p>
+                                <p className="font-semibold text-foreground/90">{comment.username || comment.userName || 'Anonymous'}</p>
                                 <VerificationBadge role={comment.role} isVerified={comment.isVerified || false} />
                             </div>
                             <p className="text-muted-foreground/80">{comment.createdAt && isValid(parseISO(comment.createdAt as string)) ? formatDistanceToNowStrict(parseISO(comment.createdAt as string), { addSuffix: true }) : 'some time ago'}</p>

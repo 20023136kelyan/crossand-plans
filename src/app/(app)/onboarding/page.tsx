@@ -310,7 +310,8 @@ const getCountryFlagEmoji = (countryCode: string | null | undefined): string => 
 
 const onboardingFormSchema = z.object({
   name: z.string().min(1, "Name is required.").max(100).nullable(),
-  bio: z.string().max(160, { message: "Bio cannot exceed 160 characters." }).optional().nullable(),
+  username: z.string().min(3, "Username must be at least 3 characters").max(30, "Username cannot exceed 30 characters").regex(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores").optional().nullable(),
+  bio: z.string().max(160, { message: "Bio cannot exceed 160 characters."}).optional().nullable(),
   selectedCountryCode: z.string().optional().nullable(),
   phoneNumber: z.string().optional().nullable(),
   birthDate: z.string().optional().refine(val => !val || /^\d{4}-\d{2}-\d{2}$/.test(val), {
@@ -343,7 +344,7 @@ const onboardingFormSchema = z.object({
 type OnboardingFormValues = z.infer<typeof onboardingFormSchema>;
 
 const steps = [
-  { id: 1, title: 'Personal Details', icon: User, fields: ['name', 'bio', 'selectedCountryCode', 'phoneNumber', 'birthDate', 'physicalAddress.street', 'physicalAddress.city', 'physicalAddress.state', 'physicalAddress.zipCode', 'physicalAddress.country'] },
+  { id: 1, title: 'Personal Details', icon: User, fields: ['name', 'username', 'bio', 'selectedCountryCode', 'phoneNumber', 'birthDate', 'physicalAddress.street', 'physicalAddress.city', 'physicalAddress.state', 'physicalAddress.zipCode', 'physicalAddress.country'] },
   { id: 2, title: 'Health & Culinary', icon: Heart, fields: ['allergies', 'dietaryRestrictions', 'favoriteCuisines', 'generalPreferences'] },
   { id: 3, title: 'Activity & Lifestyle', icon: Activity, fields: ['physicalLimitations', 'activityTypePreferences', 'activityTypeDislikes', 'environmentalSensitivities', 'travelTolerance', 'budgetFlexibilityNotes'] },
   { id: 4, title: 'Social & Availability', icon: UsersIcon, fields: ['socialPreferences.preferredGroupSize', 'socialPreferences.interactionLevel', 'availabilityNotes'] }
@@ -596,6 +597,7 @@ export default function OnboardingPage() {
     resolver: zodResolver(onboardingFormSchema),
     defaultValues: {
       name: currentUserProfile?.name || user?.displayName || '',
+      username: currentUserProfile?.username || user?.email?.split('@')[0] || '',
       bio: currentUserProfile?.bio || '',
       selectedCountryCode: countries.find(c => c.dialCode === currentUserProfile?.countryDialCode)?.code ||
                            countries.find(c => c.code === currentUserProfile?.countryDialCode)?.code || // Fallback if dialCode wasn't stored but country code was
@@ -854,6 +856,18 @@ export default function OnboardingPage() {
                             <FormItem className="space-y-1">
                                 <FormLabel className="text-xs">Full Name*</FormLabel>
                                 <FormControl><Input placeholder="Your full name" {...field} value={field.value || ''} className="h-9 text-sm" /></FormControl>
+                                <FormMessage className="text-xs" />
+                            </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={form.control}
+                            name="username"
+                            render={({ field }) => (
+                            <FormItem className="space-y-1">
+                                <FormLabel className="text-xs">Username*</FormLabel>
+                                <FormControl><Input placeholder="Choose a unique username" {...field} value={field.value || ''} className="h-9 text-sm" /></FormControl>
+                                <FormDescription className="text-xs">This will be used in your profile URL and mentions.</FormDescription>
                                 <FormMessage className="text-xs" />
                             </FormItem>
                             )}

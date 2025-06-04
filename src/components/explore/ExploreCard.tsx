@@ -25,7 +25,7 @@ export const ExploreCard = React.memo(({ plan }: ExploreCardProps) => {
   const planLink = isParticipant ? `/plans/${plan.id}` : `/p/${plan.id}`;
 
   const [imageError, setImageError] = React.useState(false);
-  const creatorInitial = plan.creatorName ? plan.creatorName.charAt(0).toUpperCase() : '?';
+  const creatorInitial = plan.creatorUsername ? plan.creatorUsername.charAt(0).toUpperCase() : (plan.creatorName ? plan.creatorName.charAt(0).toUpperCase() : '?');
   const placeholderImageUrl = `https://placehold.co/80x80.png?text=${encodeURIComponent(plan.name ? plan.name.substring(0,10) : 'Img')}&font=Montserrat`;
 
   const formatDate = (dateString?: string) => {
@@ -94,11 +94,11 @@ export const ExploreCard = React.memo(({ plan }: ExploreCardProps) => {
             <Avatar className="h-6 w-6">
               <AvatarImage src={plan.creatorAvatarUrl} />
               <AvatarFallback>
-                {plan.creatorName?.[0]?.toUpperCase() || 'U'}
+                {creatorInitial}
               </AvatarFallback>
             </Avatar>
             <div className="flex items-center gap-1">
-              <span className="text-sm font-medium">{plan.creatorName}</span>
+              <span className="text-sm font-medium">{plan.creatorUsername || plan.creatorName}</span>
               {plan.creatorIsVerified && (
                 <BadgeCheck className="h-4 w-4 text-primary" />
               )}

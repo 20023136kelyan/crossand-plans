@@ -49,6 +49,8 @@ const convertClientProfileTimestamps = (data: any): Pick<UserProfile, 'birthDate
 
 
 export const getUserProfile = async (uid: string): Promise<UserProfile | null> => {
+  console.log(`[userService.ts client] getUserProfile called for UID: ${uid}`);
+  
   if (!db) {
     console.warn("[userService.ts client] Firestore (db) is not initialized for getUserProfile.");
     return null;
@@ -58,13 +60,24 @@ export const getUserProfile = async (uid: string): Promise<UserProfile | null> =
     return null;
   }
   try {
+    // Log the collection and document path we're trying to access
+    console.log(`[userService.ts client] Attempting to fetch profile from collection '${USER_COLLECTION}' with ID '${uid}'`);
+    
     const userDocRef = doc(db, USER_COLLECTION, uid);
     const userDocSnap = await getDoc(userDocRef);
 
     if (userDocSnap.exists()) {
       const data = userDocSnap.data();
+      console.log(`[userService.ts client] Profile found for UID ${uid}:`, {
+        hasName: !!data.name,
+        hasUsername: !!data.username,
+        hasEmail: !!data.email,
+        hasPhysicalAddress: !!data.physicalAddress,
+        dataKeys: Object.keys(data)
+      });
+      
       const timestamps = convertClientProfileTimestamps(data);
-      return { 
+      const profile = { 
         uid, 
         ...data,
         ...timestamps,
@@ -82,10 +95,15 @@ export const getUserProfile = async (uid: string): Promise<UserProfile | null> =
         preferences: data.preferences || [], // Ensure this is populated based on other arrays if needed
         followers: data.followers || [],
         following: data.following || [],
+        // Make sure username is included (based on the memory about username consistency)
+        username: data.username || null
         // 'friends' array is deprecated from UserProfile, use getFriendships for friend status
       } as UserProfile;
+      
+      console.log(`[userService.ts client] Successfully processed profile for UID ${uid}`);
+      return profile;
     } else {
-      // console.log(`[userService.ts client] No profile found for UID: ${uid}`);
+      console.warn(`[userService.ts client] No profile document found for UID: ${uid}`);
       return null;
     }
   } catch (error) {

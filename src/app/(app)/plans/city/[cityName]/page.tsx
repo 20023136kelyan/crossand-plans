@@ -73,13 +73,16 @@ export default function CityPlansPage() {
   const [currentMonth, setCurrentMonth] = useState<Date>(startOfMonth(new Date()));
 
   useEffect(() => {
+    // Properly decode the city name from URL parameter
+    const decoded = decodeURIComponent(cityName);
+    setDecodedCityName(decoded);
+    
     const fetchPlans = async () => {
       setLoading(true);
       try {
         const result = await getPublishedPlansByCityAction(cityName);
         if (result.success && result.plans) {
           setPlans(result.plans);
-          setDecodedCityName(cityName);
         } else {
           toast({
             title: "Error",

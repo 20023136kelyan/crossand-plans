@@ -62,6 +62,32 @@ service cloud.firestore {
         allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
       }
     }
+    
+    // --- User Profiles Collection ---
+    match /userProfiles/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+    }
+    
+    // --- User Stats Collection ---
+    match /userStats/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      // Only admins and system can write to stats
+      allow write: if isAdmin();
+    }
+    
+    // --- User Notification Preferences Collection ---
+    match /userNotificationPreferences/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+    }
+    
+    // --- User Security Collection (for 2FA) ---
+    match /userSecurity/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      // Only allow reads by the user, writes should go through the API for security
+      allow write: if isAdmin();
+    }
 
     // --- Chats Collection ---
     match /chats/{chatId} {
@@ -165,22 +191,6 @@ service cloud.firestore {
                        request.resource.data.text.size() > 0 &&
                        request.resource.data.updatedAt == request.time;
         allow delete: if isSignedIn() && request.auth.uid == resource.data.userId; // Owner can delete their comment
-      }
-
-      // Index for plans with no eventTime
-      index noEventTimePlans {
-        fields {
-          status: ASC,
-          eventTime: ASC
-        }
-      }
-
-      // Index for plans with past eventTime
-      index pastEventPlans {
-        fields {
-          status: ASC,
-          eventTime: ASC
-        }
       }
     }
     

@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -81,33 +80,40 @@ const PreferenceGroupCard: React.FC<PreferenceGroupCardProps> = ({ title, icon: 
   if (!hasContent) return null;
 
   return (
-    <div className="bg-card/50 backdrop-blur-sm border border-border/20 rounded-xl p-3 min-w-[220px] md:min-w-[240px] h-full flex flex-col shadow-sm flex-shrink-0">
-      <div className="flex items-center mb-2">
-        <Icon className="h-4 w-4 text-primary mr-1.5" />
-        <h4 className="text-sm font-semibold text-foreground/90">{title}</h4>
+    <div className="bg-card/70 backdrop-blur-sm border border-border/20 rounded-xl p-4 w-full h-full flex flex-col shadow-sm">
+      <div className="flex items-center mb-3">
+        <Icon className="h-4 w-4 text-primary flex-shrink-0" />
+        <h4 className="text-sm font-semibold text-foreground/90 ml-2 truncate">{title}</h4>
       </div>
-      <div className="space-y-1.5 flex-grow">
+      <div className="space-y-3 flex-grow">
         {items.map(item => {
           const isListExpanded = expandedLists[item.label] || false;
-          const valuesArray = Array.isArray(item.values) ? item.values.filter(v => v && v.trim() !== '') : [];
 
-          if (valuesArray.length > 0) {
-            const displayValues = isListExpanded ? valuesArray : valuesArray.slice(0, 3);
+          if (Array.isArray(item.values) && item.values.length > 0) {
+            const displayValues = isListExpanded ? item.values : item.values.slice(0, 3);
             return (
               <div key={item.label}>
-                <p className="text-xs font-medium text-muted-foreground/80 mb-0.5">{item.label}:</p>
-                <div className="flex flex-wrap gap-1">
-                  {displayValues.map((val, idx) => <Badge key={idx} variant="secondary" className="text-xs px-1.5 py-0.5">{val}</Badge>)}
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">{item.label}:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {displayValues.map((val, idx) => (
+                    <Badge key={idx} variant="secondary" className="text-xs px-2 py-0.5 leading-relaxed">
+                      {val}
+                    </Badge>
+                  ))}
                 </div>
-                {valuesArray.length > 3 && (
+                {item.values.length > 3 && (
                   <button
                     onClick={() => toggleListExpansion(item.label)}
-                    className="text-xs text-primary hover:underline mt-1 flex items-center"
+                    className="text-xs text-primary hover:text-primary/80 hover:underline mt-2 flex items-center"
                     aria-expanded={isListExpanded}
-                    aria-label={isListExpanded ? `Show less ${item.label.toLowerCase()}` : `Show ${valuesArray.length - 3} more ${item.label.toLowerCase()}`}
+                    aria-label={isListExpanded ? `Show less ${item.label.toLowerCase()}` : `Show ${item.values.length - 3} more ${item.label.toLowerCase()}`}
                   >
-                    {isListExpanded ? "Show less" : `(+${valuesArray.length - 3} more)`}
-                    {isListExpanded ? <ChevronUp className="h-3 w-3 ml-0.5" /> : <ChevronDown className="h-3 w-3 ml-0.5" />}
+                    {isListExpanded ? "Show less" : `Show ${item.values.length - 3} more`}
+                    {isListExpanded ? (
+                      <ChevronUp className="h-3 w-3 ml-0.5" />
+                    ) : (
+                      <ChevronDown className="h-3 w-3 ml-0.5" />
+                    )}
                   </button>
                 )}
               </div>
@@ -116,8 +122,8 @@ const PreferenceGroupCard: React.FC<PreferenceGroupCardProps> = ({ title, icon: 
           if (typeof item.values === 'string' && item.values.trim() !== '') {
             return (
               <div key={item.label}>
-                <p className="text-xs font-medium text-muted-foreground/80 mb-0.5">{item.label}:</p>
-                <p className="text-xs text-foreground/80">{item.values}</p>
+                <p className="text-xs font-medium text-muted-foreground mb-1">{item.label}:</p>
+                <p className="text-sm text-foreground/90 break-words">{item.values}</p>
               </div>
             );
           }
@@ -171,10 +177,8 @@ export default function ProfileSettingsPage() {
       ].filter(Boolean).join(', ').trim() || null
     : null;
 
-  return (
-    <div className="pb-16 md:pb-8 max-w-3xl mx-auto">
-      {/* Page Header */}
-      <div className="flex items-center justify-between py-3 mb-4 sticky top-0 bg-background/90 backdrop-blur-sm z-10 border-b border-border/30 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+  return (    <div className="pb-16 md:pb-8 max-w-3xl mx-auto px-4 sm:px-6">
+      {/* Page Header */}      <div className="flex items-center justify-between py-3 mb-4 sticky top-0 bg-background/90 backdrop-blur-sm z-10 border-b border-border/30 -mx-4 px-4 sm:-mx-6 sm:px-6">
         <Button variant="ghost" size="icon" onClick={() => router.push(`/users/${user.uid}`)} className="text-muted-foreground hover:text-foreground">
           <ChevronLeft className="h-5 w-5" />
           <span className="sr-only">Back to Profile</span>
@@ -230,8 +234,7 @@ export default function ProfileSettingsPage() {
           <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
             <Link href="/onboarding?step=2"><Edit3 className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" /><span className="sr-only">Edit Preferences</span></Link>
           </Button>
-        </div>
-        <div className={cn("flex overflow-x-auto space-x-3 pb-3 pt-1 -mx-1 px-1", "custom-scrollbar-horizontal")}>
+        </div>        <div className={cn("grid gap-4 sm:grid-cols-2 lg:grid-cols-4 auto-rows-fr overflow-x-hidden pt-1")}>
           <PreferenceGroupCard
             title="Health & Diet"
             icon={Heart}
@@ -350,13 +353,13 @@ export default function ProfileSettingsPage() {
       <section className="mb-6">
          <h3 className="text-md font-semibold mb-3 text-foreground/80 flex items-center"><Settings className="mr-2 h-4 w-4 text-primary/70"/>App Settings</h3>
           <div className="space-y-1 bg-card/50 border-border/20 p-2 rounded-lg shadow-sm">
-              <Link href="#" className="flex items-center p-2 rounded-md hover:bg-secondary/50 transition-colors text-sm text-foreground/80">
-                <Gift className="h-4 w-4 mr-3 text-muted-foreground" />My Plan Collections
+              <Link href="/users/settings" className="flex items-center p-2 rounded-md hover:bg-secondary/50 transition-colors text-sm text-foreground/80">
+                <Settings className="h-4 w-4 mr-3 text-muted-foreground" />Account Settings
               </Link>
-              <Link href="#" className="flex items-center p-2 rounded-md hover:bg-secondary/50 transition-colors text-sm text-foreground/80">
-                <TravelToleranceIcon className="h-4 w-4 mr-3 text-muted-foreground" />Saved Locations
+              <Link href="/users/settings?tab=subscription" className="flex items-center p-2 rounded-md hover:bg-secondary/50 transition-colors text-sm text-foreground/80">
+                <Wallet className="h-4 w-4 mr-3 text-muted-foreground" />Subscription & Billing
               </Link>
-              <Link href="#" className="flex items-center p-2 rounded-md hover:bg-secondary/50 transition-colors text-sm text-foreground/80">
+              <Link href="/users/settings?tab=security" className="flex items-center p-2 rounded-md hover:bg-secondary/50 transition-colors text-sm text-foreground/80">
                 <AdminIcon className="h-4 w-4 mr-3 text-muted-foreground" />Privacy & Security
               </Link>
           </div>

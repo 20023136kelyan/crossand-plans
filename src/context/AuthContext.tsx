@@ -28,8 +28,9 @@ interface AuthContextType {
   isNewUserJustSignedUp: boolean;
   acknowledgeNewUserWelcome: () => void;
   refreshProfileStatus: () => Promise<void>;
+  refreshProfileData: () => Promise<void>;
   signOut: () => Promise<void>;
-  signUpWithEmail: (email: string, password: string, displayName: string) => Promise<User | null>;
+  signUpWithEmail: (email: string, password: string, displayName: string, username?: string) => Promise<User | null>;
   signInWithEmail: (email: string, password: string) => Promise<User | null>;
   signInWithGoogle: () => Promise<User | null>;
   sendPasswordReset: (email: string) => Promise<void>;
@@ -84,6 +85,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setLoading(false);
     }
   }, [setProfileExists, setCurrentUserProfile, setLoading]); // setLoading is stable
+
+  // Add token refresh mechanism to ensure session cookies are kept valid
+  useEffect(() => {
+    if (!auth) return () => {};
+    
+    // Set up token refresh interval (every 55 minutes to be safe)
+    const refreshTokenInterval = setInterval(async () => {
+      if (!auth) return;
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        try {
+          console.log('[AuthContext] Refreshing token and session cookie');
+          // Force token refresh and update session cookie
+          const token = await currentUser.getIdToken(true);
+          console.log('[AuthContext] Token refreshed successfully, length:', token?.length);
+          await setSessionCookie(currentUser);
+          console.log('[AuthContext] Token refreshed and session cookie updated');
+        } catch (error) {
+          console.error('[AuthContext] Error refreshing token:', error);
+        }
+      }
+    }, 55 * 60 * 1000); // 55 minutes
+    
+    return () => clearInterval(refreshTokenInterval);
+  }, [auth]);
 
   useEffect(() => {
     const logPrefix = "[AuthContext onAuthStateChanged Effect]";
@@ -201,18 +227,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.log(`${logPrefix} On auth route & profile exists. Redirecting to /feed.`);
       router.push('/feed');
       return;
-    }
-
-    // Ensure settings route is protected
-    if (pathname === '/profile') {
-      console.log(`${logPrefix} On old profile route. Redirecting to /users/settings.`);
-      router.push('/users/settings');
+    }    // Allow both /profile and /users/settings as they are both settings pages
+    if (pathname === '/profile' || pathname === '/users/settings') {
+      console.log(`${logPrefix} On settings route. No redirect needed.`);
       return;
     }
 
     console.log(`${logPrefix} No redirect conditions met.`);
   }, [user, loading, profileExists, router, pathname]);
-
 
   const signOutFunc = async () => {
     if (!auth) return;
@@ -226,7 +248,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const signUpWithEmailFunc = async (email: string, password: string, displayName: string): Promise<User | null> => {
+  const signUpWithEmailFunc = async (email: string, password: string, displayName: string, username?: string): Promise<User | null> => {
     if (!auth) {
         console.error("Firebase Auth not initialized for signUpWithEmail.");
         throw new Error("Authentication service not available.");
@@ -236,6 +258,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (userCredential.user) {
         await firebaseUpdateProfile(userCredential.user, { displayName });
         await setSessionCookie(userCredential.user);
+        
+        // Store the username in a custom user claim or metadata if needed
+        // This will be properly saved during the onboarding process
+        
         return userCredential.user;
       }
       return null;
@@ -315,20 +341,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
   
+  // Create a wrapper for refreshProfileData that doesn't require a UID parameter
+  const refreshProfileDataWrapper = useCallback(async (): Promise<void> => {
+    if (!auth?.currentUser?.uid) {
+      console.warn("[AuthContext refreshProfileDataWrapper] No current user to refresh profile for");
+      return;
+    }
+    await refreshProfileData(auth.currentUser.uid);
+  }, [auth, refreshProfileData]);
+
   return (
     <AuthContext.Provider value={{
-        user,
-        loading,
-        profileExists,
-        currentUserProfile,
-        isNewUserJustSignedUp,
-        acknowledgeNewUserWelcome,
-        refreshProfileStatus,
-        signOut: signOutFunc,
-        signUpWithEmail: signUpWithEmailFunc,
-        signInWithEmail: signInWithEmailFunc,
-        signInWithGoogle: signInWithGoogleFunc,
-        sendPasswordReset: sendPasswordResetEmailFunc
+      user,
+      loading,
+      profileExists,
+      currentUserProfile,
+      isNewUserJustSignedUp,
+      acknowledgeNewUserWelcome,
+      refreshProfileStatus,
+      refreshProfileData: refreshProfileDataWrapper,
+      signOut: signOutFunc,
+      signUpWithEmail: signUpWithEmailFunc,
+      signInWithEmail: signInWithEmailFunc,
+      signInWithGoogle: signInWithGoogleFunc,
+      sendPasswordReset: sendPasswordResetEmailFunc,
     }}>
       {children}
     </AuthContext.Provider>

@@ -18,6 +18,7 @@ import { getDirectionsAction } from '@/app/actions/planActions';
 import { useToast } from '@/hooks/use-toast';
 import { format, parseISO, isValid } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { getGooglePlacePhotoUrl } from '@/utils/googleMapsHelpers';
 
 interface EditableItineraryItemCardProps {
   control: Control<PlanFormValues>;
@@ -337,7 +338,7 @@ const EditableItineraryItemCardImpl = ({
 
   // Primary image sources
   if (googlePhotoReference && staticMapApiKey) {
-    return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=600&photoreference=${googlePhotoReference}&key=${staticMapApiKey}`;
+    return getGooglePlacePhotoUrl(googlePhotoReference, 600, staticMapApiKey);
   }
   // Check currentItem.googleMapsImageUrl before warning about API key for googlePhotoReference
   if (currentItem?.googleMapsImageUrl) {

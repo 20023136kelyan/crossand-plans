@@ -264,7 +264,7 @@ export default function PublicProfilePage() {
                 <h2 className="text-md font-semibold text-foreground/90 truncate">{userProfile.name || "Profile"}</h2>
                 {isOwnProfile ? (
                      <Button variant="ghost" size="icon" asChild className="text-muted-foreground hover:text-foreground" aria-label="My Settings">
-                        <Link href="/profile"><SettingsIcon className="h-5 w-5" /></Link>
+                        <Link href="/users/settings"><SettingsIcon className="h-5 w-5" /></Link>
                      </Button>
                 ) : (
                     <div className="w-9 h-9"></div> 

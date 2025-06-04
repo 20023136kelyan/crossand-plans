@@ -125,14 +125,30 @@ function initializeAdminApp(): void {
   }
 }
 
-// Initialize the app
-try {
-  if (!appInitialized) {
-    initializeAdminApp();
+// Initialize the app with retry logic
+let retryCount = 0;
+const MAX_RETRIES = 3;
+
+function initializeWithRetry() {
+  try {
+    if (!appInitialized) {
+      console.log('[firebaseAdmin] Attempting to initialize Firebase Admin SDK (attempt ' + (retryCount + 1) + ')');
+      initializeAdminApp();
+      console.log('[firebaseAdmin] Firebase Admin SDK initialized successfully');
+    }
+  } catch (error) {
+    console.error('[firebaseAdmin] Failed to initialize Firebase Admin SDK:', error);
+    if (retryCount < MAX_RETRIES) {
+      retryCount++;
+      console.log(`[firebaseAdmin] Retrying initialization (${retryCount}/${MAX_RETRIES})...`);
+      initializeWithRetry();
+    } else {
+      console.error('[firebaseAdmin] Maximum retry attempts reached. Firebase Admin SDK initialization failed.');
+    }
   }
-} catch (error) {
-  console.error('[firebaseAdmin] Failed to initialize Firebase Admin SDK:', error);
 }
+
+initializeWithRetry();
 
 // Export instances
 export const firestoreAdmin = firestoreAdminInstance;

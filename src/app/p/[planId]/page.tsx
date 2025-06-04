@@ -35,6 +35,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { Plan as PlanType } from '@/types/user';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { getGooglePlacePhotoUrl } from '@/utils/googleMapsHelpers';
 import { format, parseISO, isValid } from 'date-fns';
 import { copyPlanToMyAccountAction, getPublicPlanByIdAction } from '@/app/actions/planActions'; // Updated import
 import { VerificationBadge } from '@/components/ui/verification-badge';
@@ -199,7 +200,7 @@ export default function PublicPlanPage() {
   } else {
       const firstItineraryItemWithImage = plan.itinerary?.find(item => item.googlePhotoReference || item.googleMapsImageUrl);
       if (firstItineraryItemWithImage?.googlePhotoReference && staticMapApiKey) {
-          mainPlanImage = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=1200&photoreference=${firstItineraryItemWithImage.googlePhotoReference}&key=${staticMapApiKey}`;
+          mainPlanImage = getGooglePlacePhotoUrl(firstItineraryItemWithImage.googlePhotoReference, 1200, staticMapApiKey);
       } else if (firstItineraryItemWithImage?.googleMapsImageUrl) {
           mainPlanImage = firstItineraryItemWithImage.googleMapsImageUrl;
       }
@@ -308,7 +309,7 @@ export default function PublicPlanPage() {
                 {plan.itinerary.map((item, index) => {
                   let itemPhotoUrl = `https://placehold.co/400x200.png?text=${encodeURIComponent(item.placeName)}`;
                   if (item.googlePhotoReference && staticMapApiKey) {
-                    itemPhotoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=600&photoreference=${item.googlePhotoReference}&key=${staticMapApiKey}`;
+                    itemPhotoUrl = getGooglePlacePhotoUrl(item.googlePhotoReference, 600, staticMapApiKey);
                   } else if (item.googleMapsImageUrl) {
                     itemPhotoUrl = item.googleMapsImageUrl;
                   }

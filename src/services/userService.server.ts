@@ -151,6 +151,7 @@ export const createUserProfileAdmin = async (
   uid: string,
   profileData: OnboardingProfileData & { // AuthUserData combined in action
     name: string | null;
+    username: string | null;
     email: string | null;
     avatarUrl: string | null;
   }
@@ -162,60 +163,55 @@ export const createUserProfileAdmin = async (
   try {
     const userDocRef = firestoreAdmin.collection(USER_COLLECTION).doc(uid);
     const now = FieldValue.serverTimestamp();
+    
+    // Check if user already exists to avoid overwriting data
+    const existingDoc = await userDocRef.get();
+    const exists = existingDoc.exists;
+    
+    // Generate a username if not provided
+    let username = profileData.username;
+    if (!username) {
+      // Try to create a username from email
+      if (profileData.email) {
+        username = profileData.email.split('@')[0];
+      } 
+      // If still no username, use name with random numbers
+      if (!username && profileData.name) {
+        username = profileData.name.toLowerCase().replace(/[^a-z0-9]/g, '') + Math.floor(Math.random() * 1000);
+      }
+      // Last resort
+      if (!username) {
+        username = 'user' + Date.now().toString().slice(-6);
+      }
+      
+      console.log(`[createUserProfileAdmin] Generated username '${username}' for user ${uid}`);
+    }
 
-    const combinedPreferences = Array.from(new Set([
-        ...(profileData.allergies || []),
-        ...(profileData.dietaryRestrictions || []),
-        ...(profileData.favoriteCuisines || []),
-        ...(profileData.activityTypePreferences || []),
-        ...(profileData.activityTypeDislikes || []), // Ensure these are distinct strings
-        ...(profileData.physicalLimitations || []),
-        ...(profileData.environmentalSensitivities || []),
-        ...(profileData.generalPreferences && profileData.generalPreferences.trim() !== '' ? [profileData.generalPreferences.trim()] : []),
-      ].filter(p => typeof p === 'string' && p.trim() !== '')));
-
-
-    const fullProfileData: Omit<UserProfile, 'uid' | 'createdAt' | 'updatedAt' | 'birthDate'> & { createdAt: FieldValue; updatedAt: FieldValue, birthDate: AdminTimestamp | null } = {
+    // Simplified profile data with only essential fields
+    const basicProfileData: Record<string, any> = {
       name: profileData.name,
+      username: username,
       name_lowercase: profileData.name ? profileData.name.toLowerCase() : null,
       email: profileData.email ? profileData.email.toLowerCase() : null,
       avatarUrl: profileData.avatarUrl,
-      bio: profileData.bio || null,
-      countryDialCode: profileData.countryDialCode || null,
-      phoneNumber: profileData.phoneNumber || null,
-      birthDate: profileData.birthDate ? AdminTimestamp.fromDate(new Date(profileData.birthDate)) : null,
-      physicalAddress: profileData.physicalAddress || null,
-      
-      allergies: profileData.allergies || [],
-      dietaryRestrictions: profileData.dietaryRestrictions || [],
-      generalPreferences: profileData.generalPreferences || '',
-      favoriteCuisines: profileData.favoriteCuisines || [],
-      physicalLimitations: profileData.physicalLimitations || [],
-      activityTypePreferences: profileData.activityTypePreferences || [],
-      activityTypeDislikes: profileData.activityTypeDislikes || [],
-      environmentalSensitivities: profileData.environmentalSensitivities || [],
-      
-      travelTolerance: profileData.travelTolerance || '',
-      budgetFlexibilityNotes: profileData.budgetFlexibilityNotes || '',
-      socialPreferences: profileData.socialPreferences || null,
-      availabilityNotes: profileData.availabilityNotes || '',
-      
-      preferences: combinedPreferences, // Use the combined and filtered list
-      
-      followers: [], 
-      following: [], 
-      
-      eventAttendanceScore: 0,
-      levelTitle: 'Newbie Planner',
-      levelStars: 1,
       role: 'user' as UserRoleType,
       isVerified: false,
-      
-      createdAt: now,
       updatedAt: now,
     };
+    
+    // Only set createdAt if this is a new document
+    if (!exists) {
+      basicProfileData.createdAt = now;
+    }
 
-    await userDocRef.set(fullProfileData, { merge: true }); // Use merge: true if profile might partially exist
+    // Only add these fields if they're explicitly provided
+    if (profileData.bio) basicProfileData.bio = profileData.bio;
+    if (profileData.physicalAddress) basicProfileData.physicalAddress = profileData.physicalAddress;
+    if (profileData.countryDialCode) basicProfileData.countryDialCode = profileData.countryDialCode;
+    if (profileData.phoneNumber) basicProfileData.phoneNumber = profileData.phoneNumber;
+    
+    // Only set explicitly provided fields to avoid creating default arrays and values
+    await userDocRef.set(basicProfileData, { merge: true });
     console.log('[createUserProfileAdmin] User profile created/updated successfully with Admin SDK for UID:', uid);
   } catch (error) {
     console.error('[createUserProfileAdmin] Error creating/updating user profile with Admin SDK:', error);
@@ -229,17 +225,57 @@ export const updateUserProfileAvatarAdmin = async (userId: string, newAvatarUrl:
     throw new Error("Server configuration error: Database service not available.");
   }
   try {
-    const userDocRef = firestoreAdmin.collection(USER_COLLECTION).doc(userId);
-    await userDocRef.update({
+    const userRef = firestoreAdmin.collection(USER_COLLECTION).doc(userId);
+    await userRef.update({
       avatarUrl: newAvatarUrl,
-      updatedAt: FieldValue.serverTimestamp(),
+      updatedAt: AdminTimestamp.now()
     });
-    console.log(`[updateUserProfileAvatarAdmin] Avatar URL updated for user ${userId}.`);
 
-    // Update avatar URL in all feed posts and comments
+    // Also update avatar URL in feed posts
     await updateUserAvatarInFeedAdmin(userId, newAvatarUrl);
+
+    console.log(`[updateUserProfileAvatarAdmin] Updated avatar URL for user ${userId}`);
   } catch (error) {
     console.error(`[updateUserProfileAvatarAdmin] Error updating avatar URL for user ${userId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Updates a user profile with the provided data
+ * @param userId - The user ID to update
+ * @param profileData - The profile data to update
+ * @returns Promise<void>
+ */
+export const updateUserProfileAdmin = async (userId: string, profileData: Partial<UserProfile>): Promise<void> => {
+  if (!firestoreAdmin) {
+    console.error("[updateUserProfileAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
+    throw new Error("Server configuration error: Database service not available.");
+  }
+
+  if (!userId) {
+    console.error("[updateUserProfileAdmin] Invalid user ID provided");
+    throw new Error("Invalid user ID");
+  }
+
+  try {
+    console.log(`[updateUserProfileAdmin] Updating profile for user ${userId}`, {
+      fieldsToUpdate: Object.keys(profileData)
+    });
+    
+    const userRef = firestoreAdmin.collection(USER_COLLECTION).doc(userId);
+    
+    // Always update the updatedAt timestamp
+    const dataToUpdate = {
+      ...profileData,
+      updatedAt: AdminTimestamp.now()
+    };
+    
+    await userRef.update(dataToUpdate);
+    
+    console.log(`[updateUserProfileAdmin] Successfully updated profile for user ${userId}`);
+  } catch (error) {
+    console.error(`[updateUserProfileAdmin] Error updating profile for user ${userId}:`, error);
     throw error;
   }
 };
@@ -286,9 +322,10 @@ export const searchUsersAdmin = async (searchTerm: string, currentUserId: string
       emailQuerySnapshot.forEach((docSnap: QueryDocumentSnapshot) => {
         if (docSnap.id !== currentUserId) { 
           const data = docSnap.data() as UserProfile;
-          resultsMap.set(docSnap.id, {
+          const userObj = {
             uid: docSnap.id,
             name: data.name,
+            username: data.username || null,
             email: data.email,
             avatarUrl: data.avatarUrl,
             role: data.role || 'user',
@@ -296,7 +333,8 @@ export const searchUsersAdmin = async (searchTerm: string, currentUserId: string
             friendshipStatus: docSnap.id === currentUserId 
               ? 'is_self' 
               : friendshipStatuses.get(docSnap.id) || 'not_friends'
-          });
+          } as SearchedUser;
+          resultsMap.set(docSnap.id, userObj);
         }
       });
     } catch (e) { console.error("[searchUsersAdmin] Error during email search:", e); }
@@ -312,9 +350,10 @@ export const searchUsersAdmin = async (searchTerm: string, currentUserId: string
       phoneQuerySnapshot.forEach((docSnap: QueryDocumentSnapshot) => {
         if (docSnap.id !== currentUserId && !resultsMap.has(docSnap.id)) { 
           const data = docSnap.data() as UserProfile;
-          resultsMap.set(docSnap.id, {
+          const userObj = {
             uid: docSnap.id,
             name: data.name,
+            username: data.username || null,
             email: data.email,
             avatarUrl: data.avatarUrl,
             role: data.role || 'user',
@@ -322,7 +361,8 @@ export const searchUsersAdmin = async (searchTerm: string, currentUserId: string
             friendshipStatus: docSnap.id === currentUserId 
               ? 'is_self' 
               : friendshipStatuses.get(docSnap.id) || 'not_friends'
-          });
+          } as SearchedUser;
+          resultsMap.set(docSnap.id, userObj);
         }
       });
     } catch (e) { console.error("[searchUsersAdmin] Error during phone search:", e); }
@@ -341,9 +381,10 @@ export const searchUsersAdmin = async (searchTerm: string, currentUserId: string
       nameQuerySnapshot.forEach((docSnap: QueryDocumentSnapshot) => {
         if (docSnap.id !== currentUserId && !resultsMap.has(docSnap.id)) { 
           const data = docSnap.data() as UserProfile;
-          resultsMap.set(docSnap.id, {
+          const userObj = {
             uid: docSnap.id,
             name: data.name,
+            username: data.username || null,
             email: data.email,
             avatarUrl: data.avatarUrl,
             role: data.role || 'user',
@@ -351,7 +392,8 @@ export const searchUsersAdmin = async (searchTerm: string, currentUserId: string
             friendshipStatus: docSnap.id === currentUserId 
               ? 'is_self' 
               : friendshipStatuses.get(docSnap.id) || 'not_friends'
-          });
+          } as SearchedUser;
+          resultsMap.set(docSnap.id, userObj);
         }
       });
     } catch (e) { console.error("[searchUsersAdmin] Error during name search:", e); }

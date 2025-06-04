@@ -65,6 +65,7 @@ export async function createFeedPostAction(
     const newPostData: Omit<FeedPost, 'id' | 'createdAt'> & { createdAt: FieldValue } = {
       userId: userId,
       userName: userProfile.name || `User (${userId.substring(0,5)})`,
+      username: userProfile.username || null,
       userAvatarUrl: userProfile.avatarUrl,
       userRole: userProfile.role || 'user',
       userIsVerified: userProfile.isVerified || false,
@@ -188,6 +189,7 @@ export async function addCommentToPostServerAction(
       postId,
       userId,
       userName: userProfile.name,
+      username: userProfile.username || null,
       userAvatarUrl: userProfile.avatarUrl,
       text: text.trim(),
     };
@@ -259,11 +261,19 @@ export async function deleteFeedPostAction(
   if (!authAdmin) return { success: false, error: "Server error: Auth service not available." };
   let decodedToken;
   try {
+    if (!idToken) {
+      console.error("[deleteFeedPostAction] No ID token provided");
+      return { success: false, error: "Authentication required. Please sign in again." };
+    }
+    
+    console.log("[deleteFeedPostAction] Verifying token format:", idToken.substring(0, 10) + "...");
     decodedToken = await authAdmin.verifyIdToken(idToken);
   } catch (error: any) {
     console.error("[deleteFeedPostAction] ID Token verification error:", error);
     let e = 'Authentication failed.';
-    if (error.code === 'auth/id-token-expired') e = 'Session expired.';
+    if (error.code === 'auth/id-token-expired') e = 'Session expired. Please refresh the page and try again.';
+    else if (error.code === 'auth/argument-error') e = 'Invalid token format. Please sign out and sign in again.';
+    else if (error.code === 'auth/invalid-id-token') e = 'Invalid token. Please sign out and sign in again.';
     return { success: false, error: e };
   }
   const requestingUserId = decodedToken.uid;

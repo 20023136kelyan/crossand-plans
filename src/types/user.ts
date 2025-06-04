@@ -9,7 +9,8 @@ export type UserRoleType = 'user' | 'admin' | 'influencer' | 'corporate';
 
 export interface UserProfile {
   uid: string; 
-  name: string | null;
+  name: string | null; // Full name of the user
+  username: string | null; // Unique username for the user
   name_lowercase?: string | null; 
   email: string | null; // Should be unique
   bio?: string | null; 
@@ -88,7 +89,7 @@ export type OnboardingProfileData = Pick<
   | 'budgetFlexibilityNotes'
   | 'socialPreferences'
   | 'availabilityNotes'
-> & { birthDate?: string | null; name?: string | null; email?: string | null; avatarUrl?: string | null; };
+> & { birthDate?: string | null; name?: string | null; username?: string | null; email?: string | null; avatarUrl?: string | null; };
 
 
 export type FriendStatus = 'pending_sent' | 'pending_received' | 'friends';
@@ -107,6 +108,7 @@ export interface FriendEntry {
 export interface SearchedUser {
   uid: string;
   name: string | null;
+  username: string | null;
   email: string | null;
   avatarUrl: string | null;
   role?: UserRoleType | null;
@@ -125,6 +127,7 @@ export interface UserStats {
 export interface ChatParticipantInfo {
   uid: string;
   name: string; 
+  username: string | null;
   avatarUrl: string | null;
   role: UserRoleType | null;
   isVerified: boolean;
@@ -222,6 +225,7 @@ export interface Plan {
   hostName?: string;
   hostAvatarUrl?: string;
   creatorName?: string;
+  creatorUsername?: string;
   creatorAvatarUrl?: string;
   creatorIsVerified?: boolean;
   invitedParticipantUserIds: string[];
@@ -271,6 +275,7 @@ export interface Comment {
   userId: string; 
   planId: string; 
   userName: string | null; 
+  username: string | null; 
   userAvatarUrl: string | null; 
   role?: UserRoleType | null; 
   isVerified?: boolean;       
@@ -303,6 +308,7 @@ export interface FeedPost {
   id: string;
   userId: string;
   userName: string;
+  username: string | null;
   userAvatarUrl: string | null;
   userRole: UserRoleType | null;
   userIsVerified: boolean;
@@ -324,6 +330,7 @@ export interface FeedComment {
   postId: string;
   userId: string;
   userName: string | null;
+  username: string | null;
   userAvatarUrl: string | null;
   text: string;
   createdAt: AppTimestamp;
@@ -333,6 +340,7 @@ export interface FeedComment {
 export interface Influencer { // Used for Explore Page display
   id: string; // User UID
   name: string;
+  username?: string | null;
   avatarUrl?: string | null;
   imageUrl?: string;
   date?: string;
@@ -365,6 +373,7 @@ export type FirebaseClientTimestamp = ClientTimestamp;
 export interface Profile {
   id: string;
   name: string;
+  username?: string;
   email?: string;
   avatarUrl?: string;
   imageUrl?: string;

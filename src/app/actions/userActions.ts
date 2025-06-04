@@ -3,31 +3,37 @@
 
 import {
   createUserProfileAdmin,
-  searchUsersAdmin as searchUsersAdminService,
-  sendFriendRequestAdmin as sendFriendRequestAdminService,
-  acceptFriendRequestAdmin as acceptFriendRequestAdminService,
-  declineOrCancelFriendRequestAdmin as declineOrCancelFriendRequestAdminService,
-  removeFriendAdmin as removeFriendAdminService,
-  getUserProfileAdmin as getUserProfileAdminService,
-  getUsersProfilesAdmin as getUsersProfilesAdminService, // Correct alias
-  getUserStatsAdmin as getUserStatsAdminService,
-  followUserAdmin as followUserAdminService,
-  unfollowUserAdmin as unfollowUserAdminService,
+  updateUserProfileAdmin,
   updateUserProfileAvatarAdmin,
+  searchUsersAdmin as searchUsersAdminService,
+  getUserProfileAdmin as getUserProfileAdminService,
+  getUserStatsAdmin as getUserStatsAdminService,
+  sendFriendRequestAdmin,
+  acceptFriendRequestAdmin,
+  declineOrCancelFriendRequestAdmin,
+  removeFriendAdmin,
+  followUserAdmin,
+  unfollowUserAdmin
 } from '@/services/userService.server';
+import { countries } from '@/app/(app)/onboarding/countries';
 import { getFeedPostsAdmin } from '@/services/feedService.server';
 import type { OnboardingProfileData, SearchedUser, UserProfile, UserStats, FriendStatus, FeedPost, UserPreferences } from '@/types/user'; // Added FeedPost and UserPreferences
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { authAdmin, storageAdmin, firestoreAdmin } from '@/lib/firebaseAdmin';
+import { getAuth } from 'firebase-admin/auth';
 import { FieldValue } from 'firebase-admin/firestore';
 import { commonImageExtensions } from '@/lib/utils';
 import { Firestore } from 'firebase-admin/firestore';
 
+// Collection constants
+const USER_COLLECTION = 'users';
+const FRIENDSHIPS_SUBCOLLECTION = 'friendships';
 
 interface AuthUserData {
   uid: string;
   displayName: string | null;
+  username?: string | null;
   email: string | null;
   photoURL: string | null;
 }
@@ -64,49 +70,91 @@ const clientOnboardingFormSchema = z.object({
   availabilityNotes: z.string().max(500).optional().nullable(),
 });
 
-
+/**
+ * Complete onboarding action.
+ * 
+ * @param clientProfileFormData - Client profile form data.
+ * @param authUserData - Auth user data.
+ * @returns { success: boolean; error?: string; userId?: string } - Success status, error message, and user ID.
+ */
 export async function completeOnboardingAction(
   clientProfileFormData: z.infer<typeof clientOnboardingFormSchema>,
   authUserData: AuthUserData
 ): Promise<{ success: boolean; error?: string; userId?: string }> {
   if (!authAdmin) {
-    return { success: false, error: "Server error: Authentication service not available." };
-  }
-  if (!firestoreAdmin) {
-    return { success: false, error: "Server error: Database service not available." };
-  }
-  if (!authUserData || !authUserData.uid) {
-    return { success: false, error: 'User not authenticated for onboarding action.' };
+    console.error("[completeOnboardingAction] Admin Auth service not available.");
+    return { success: false, error: "Server error: Auth service not available." };
   }
 
+  if (!firestoreAdmin) {
+    console.error("[completeOnboardingAction] Admin Firestore service not available.");
+    return { success: false, error: "Server error: Database service not available." };
+  }
+
+  const userId = authUserData.uid;
+  
   try {
-    const validationResult = clientOnboardingFormSchema.safeParse(clientProfileFormData);
-    if (!validationResult.success) {
-      return { success: false, error: "Invalid form data. " + JSON.stringify(validationResult.error.flatten().fieldErrors) };
-    }
-    const validatedProfileData = validationResult.data;
+    // Don't use Google profile picture URL directly to avoid rate limiting issues
+    // Only use it if the user hasn't set their own avatar yet
+    let avatarUrl = null;
     
-    const profilePayloadForAdminService: OnboardingProfileData & {
-      name: string | null; 
+    // Check if we already have a profile with an avatar
+    try {
+      const existingUserDoc = await firestoreAdmin.collection('users').doc(userId).get();
+      if (existingUserDoc.exists) {
+        const existingData = existingUserDoc.data();
+        // Keep existing avatar if available
+        if (existingData?.avatarUrl && !existingData.avatarUrl.includes('googleusercontent.com')) {
+          avatarUrl = existingData.avatarUrl;
+        }
+      }
+    } catch (error) {
+      console.error("[completeOnboardingAction] Error checking existing profile:", error);
+      // Continue with null avatarUrl if there's an error
+    }
+    
+    // Convert form data to profile data format
+    const profileData: OnboardingProfileData & {
+      name: string | null;
+      username: string | null;
       email: string | null;
       avatarUrl: string | null;
     } = {
-      ...validatedProfileData,
-      countryDialCode: null, 
-      name: validatedProfileData.name || authUserData.displayName, 
-      email: authUserData.email, 
-      avatarUrl: authUserData.photoURL, 
+      name: clientProfileFormData.name || null,
+      username: clientProfileFormData.username || null,
+      email: authUserData.email,
+      avatarUrl: avatarUrl, // Use existing avatar or null (don't use Google URL)
+      bio: clientProfileFormData.bio || null,
+      countryDialCode: clientProfileFormData.selectedCountryCode ? 
+        countries.find((c: { code: string; dialCode: string }) => c.code === clientProfileFormData.selectedCountryCode)?.dialCode || null : null,
+      phoneNumber: clientProfileFormData.phoneNumber || null,
+      birthDate: clientProfileFormData.birthDate ? clientProfileFormData.birthDate : null,
+      physicalAddress: clientProfileFormData.physicalAddress || null,
+      allergies: clientProfileFormData.allergies || [],
+      dietaryRestrictions: clientProfileFormData.dietaryRestrictions || [],
+      favoriteCuisines: clientProfileFormData.favoriteCuisines || [],
+      generalPreferences: clientProfileFormData.generalPreferences || '',
+      physicalLimitations: clientProfileFormData.physicalLimitations || [],
+      activityTypePreferences: clientProfileFormData.activityTypePreferences || [],
+      activityTypeDislikes: clientProfileFormData.activityTypeDislikes || [],
+      environmentalSensitivities: clientProfileFormData.environmentalSensitivities || [],
+      travelTolerance: clientProfileFormData.travelTolerance || '',
+      budgetFlexibilityNotes: clientProfileFormData.budgetFlexibilityNotes || '',
+      socialPreferences: clientProfileFormData.socialPreferences ? {
+        preferredGroupSize: clientProfileFormData.socialPreferences.preferredGroupSize || null,
+        interactionLevel: clientProfileFormData.socialPreferences.interactionLevel || null
+      } : { preferredGroupSize: null, interactionLevel: null },
+      availabilityNotes: clientProfileFormData.availabilityNotes || '',
     };
-    
-    await createUserProfileAdmin(authUserData.uid, profilePayloadForAdminService);
 
+    await createUserProfileAdmin(userId, profileData);
     revalidatePath('/profile');
-    revalidatePath(`/users/${authUserData.uid}`);
+    revalidatePath(`/users/${userId}`);
     revalidatePath('/(app)/layout', 'layout');
-    return { success: true, userId: authUserData.uid };
-
-  } catch (error: any) {
-    return { success: false, error: error.message || 'Failed to save profile.' };
+    return { success: true, userId };
+  } catch (error) {
+    console.error("[completeOnboardingAction] Error creating user profile:", error);
+    return { success: false, error: "Failed to complete onboarding. Please try again." };
   }
 }
 
@@ -343,7 +391,7 @@ export async function sendFriendRequestAction(
     }
 
     // Send friend request using admin service
-    await sendFriendRequestAdminService(currentUserProfile, targetUserProfile);
+    await sendFriendRequestAdmin(currentUserProfile, targetUserProfile);
 
     return {
       success: true,
@@ -381,12 +429,9 @@ export async function acceptFriendRequestAction(
     }
 
     // Accept friend request using admin service
-    await acceptFriendRequestAdminService(currentUserProfile, requesterProfile);
-
-    return {
-      success: true,
-      message: `You are now friends with ${requesterProfile.name || 'user'}.`
-    };
+    const result = await acceptFriendRequestAdmin(currentUserProfile, requesterProfile);
+    revalidatePath(`/users/${requesterId}`);
+    return { success: true, message: "Friend request accepted successfully." };
   } catch (error: any) {
     console.error('Error in acceptFriendRequestAction:', error);
     return {
@@ -408,8 +453,8 @@ export async function declineFriendRequestAction(
     const decodedToken = await authAdmin.verifyIdToken(idToken);
     const currentUserId = decodedToken.uid;
 
-    await declineOrCancelFriendRequestAdminService(currentUserId, targetUserId);
-
+    await declineOrCancelFriendRequestAdmin(currentUserId, targetUserId);
+    revalidatePath(`/users/${targetUserId}`);
     return {
       success: true,
       message: "Friend request declined."
@@ -435,8 +480,8 @@ export async function removeFriendAction(
     const decodedToken = await authAdmin.verifyIdToken(idToken);
     const currentUserId = decodedToken.uid;
 
-    await removeFriendAdminService(currentUserId, targetUserId);
-
+    await removeFriendAdmin(currentUserId, targetUserId);
+    revalidatePath(`/users/${targetUserId}`);
     return {
       success: true,
       message: "Friend removed."
@@ -471,12 +516,10 @@ export async function followUserAction(
   }
 
   try {
-    await followUserAdminService(currentUserId, targetUserId);
+    await followUserAdmin(currentUserId, targetUserId);
     revalidatePath(`/users/${targetUserId}`);
-    revalidatePath(`/users/${currentUserId}`);
-    revalidatePath('/explore'); 
-    revalidatePath('/messages'); 
-    return { success: true, message: "Successfully followed user." };
+    revalidatePath('/feed');
+    return { success: true, message: "User followed successfully." };
   } catch (error: any) {
     return { success: false, error: error.message || "Failed to follow user." };
   }
@@ -499,12 +542,10 @@ export async function unfollowUserAction(
   const currentUserId = decodedToken.uid;
 
   try {
-    await unfollowUserAdminService(currentUserId, targetUserId);
+    await unfollowUserAdmin(currentUserId, targetUserId);
     revalidatePath(`/users/${targetUserId}`);
-    revalidatePath(`/users/${currentUserId}`);
-    revalidatePath('/explore');
-    revalidatePath('/messages');
-    return { success: true, message: "Successfully unfollowed user." };
+    revalidatePath('/feed');
+    return { success: true, message: "User unfollowed successfully." };
   } catch (error: any) {
     return { success: false, error: error.message || "Failed to unfollow user." };
   }
@@ -512,60 +553,189 @@ export async function unfollowUserAction(
 
 export async function getUserLocationAction(userId: string): Promise<{ 
   success: boolean; 
-  data?: { city: string; country: string; }; 
+  data?: { city: string; country: string; state?: string; }; 
   error?: string; 
 }> {
+  console.log(`[getUserLocationAction] Starting location fetch for user ID: ${userId}`);
+  
+  // Default location to return if we can't get the actual location
+  const defaultLocationData = {
+    city: 'Unknown',
+    country: 'Unknown',
+    state: 'Unknown'
+  };
+  
+  if (!userId || userId === 'undefined') {
+    console.warn('[getUserLocationAction] Invalid user ID provided');
+    return { 
+      success: true, 
+      data: {
+        city: 'Unknown',
+        country: 'Unknown'
+      }
+    };
+  }
+  
   if (!firestoreAdmin) {
-    return { success: false, error: 'Database not initialized' };
+    console.warn('[getUserLocationAction] Database not initialized');
+    return { 
+      success: true, 
+      data: {
+        city: 'Unknown',
+        country: 'Unknown'
+      }
+    };
   }
 
   try {
-    const userDoc = await (firestoreAdmin as Firestore)
-      .collection('userProfiles')
-      .doc(userId)
-      .get();
-
-    const userData = userDoc.data();
+    // First try to get the user profile directly
+    console.log(`[getUserLocationAction] Fetching profile for userId: ${userId}`);
+    const userProfile = await getUserProfileAdminService(userId);
     
-    if (!userData?.physicalAddress?.city || !userData?.physicalAddress?.country) {
-      return { success: false, error: 'Location not found' };
+    if (!userProfile) {
+      console.warn(`[getUserLocationAction] Profile fetch returned null for userId: ${userId}`);
+      return { 
+        success: true, 
+        data: {
+          city: 'Unknown',
+          country: 'Unknown'
+        }
+      };
     }
-
+    
+    console.log(`[getUserLocationAction] Retrieved profile for userId: ${userId}`, { 
+      hasPhysicalAddress: !!userProfile.physicalAddress,
+      username: userProfile.username || 'not set',
+      name: userProfile.name || 'not set',
+      profileKeys: Object.keys(userProfile)
+    });
+    
+    // Check if physicalAddress exists and has the required fields
+    if (!userProfile.physicalAddress) {
+      console.warn(`[getUserLocationAction] No physicalAddress in profile for userId: ${userId}`);
+      return { 
+        success: true, 
+        data: {
+          city: 'Unknown',
+          country: 'Unknown'
+        }
+      };
+    }
+    
+    const physicalAddress = userProfile.physicalAddress;
+    const city = physicalAddress.city || 'Unknown';
+    const country = physicalAddress.country || 'Unknown';
+    const state = physicalAddress.state || 'Unknown';
+    
+    console.log(`[getUserLocationAction] Retrieved location:`, { city, state, country });
+    
+    // Return location data with fallbacks for any missing fields
     return {
       success: true,
       data: {
-        city: userData.physicalAddress.city,
-        country: userData.physicalAddress.country
+        city,
+        country,
+        state
       }
     };
   } catch (error) {
-    console.error('[getUserLocationAction] Error:', error);
-    return { success: false, error: 'Failed to fetch user location' };
+    console.error('[getUserLocationAction] Error fetching user location:', error);
+    return { 
+      success: true, 
+      data: {
+        city: 'Unknown',
+        country: 'Unknown'
+      }
+    };
   }
 }
 
 export async function getUserPreferencesAction(userId: string): Promise<UserPreferences | null> {
   if (!firestoreAdmin) {
-    console.error('Firestore admin not initialized');
+    console.error('[getUserPreferencesAction] Database not initialized');
     return null;
   }
 
   try {
-    const userDoc = await firestoreAdmin.collection('users').doc(userId).get();
-    if (!userDoc.exists) return null;
+    const userProfileRef = firestoreAdmin.collection(USER_COLLECTION).doc(userId);
+    const userProfileDoc = await userProfileRef.get();
 
-    const userData = userDoc.data();
-    if (!userData?.preferences) return null;
+    if (!userProfileDoc.exists) {
+      console.warn(`[getUserPreferencesAction] User profile not found for userId: ${userId}`);
+      return null;
+    }
 
-    return {
-      preferredCategories: userData.preferences.categories || [],
-      preferredLocations: userData.preferences.locations || [],
-      preferredPriceRange: userData.preferences.priceRange || '',
-      preferredDayOfWeek: userData.preferences.dayOfWeek || [],
-      preferredTimeOfDay: userData.preferences.timeOfDay || []
+    const userData = userProfileDoc.data() as any;
+    
+    // Create default preferences if not available
+    const userPreferences: UserPreferences = {
+      preferredCategories: [],
+      preferredLocations: [],
+      preferredPriceRange: '',
+      preferredDayOfWeek: [],
+      preferredTimeOfDay: []
     };
+    
+    // If preferences exist and are properly structured, extract them
+    if (userData.preferences && typeof userData.preferences === 'object' && !Array.isArray(userData.preferences)) {
+      userPreferences.preferredCategories = userData.preferences.categories || [];
+      userPreferences.preferredLocations = userData.preferences.locations || [];
+      userPreferences.preferredPriceRange = userData.preferences.priceRange || '';
+      userPreferences.preferredDayOfWeek = userData.preferences.dayOfWeek || [];
+      userPreferences.preferredTimeOfDay = userData.preferences.timeOfDay || [];
+    }
+
+    return userPreferences;
   } catch (error) {
-    console.error('Error fetching user preferences:', error);
+    console.error('[getUserPreferencesAction] Error fetching user preferences:', error);
     return null;
   }
+}
+
+/**
+* Updates a user profile with the provided data
+* @param userId - The user ID to update
+* @param profileData - The profile data to update
+* @returns Promise with success status and error message if any
+*/
+export async function updateUserProfileAction(
+userId: string,
+profileData: Partial<UserProfile>
+): Promise<{ success: boolean; error?: string }> {
+console.log(`[updateUserProfileAction] Starting profile update for user ID: ${userId}`);
+  
+if (!userId) {
+console.warn('[updateUserProfileAction] Invalid user ID provided');
+return { success: false, error: 'Invalid user ID' };
+}
+  
+if (!firestoreAdmin) {
+console.warn('[updateUserProfileAction] Database not initialized');
+return { success: false, error: 'Database not initialized' };
+}
+
+try {
+// If username is provided, ensure it's set in the profile
+if (profileData.username) {
+console.log(`[updateUserProfileAction] Updating username to: ${profileData.username}`);
+}
+
+// If name is provided, update name_lowercase as well
+if (profileData.name) {
+profileData.name_lowercase = profileData.name.toLowerCase();
+console.log(`[updateUserProfileAction] Updating name to: ${profileData.name}`);
+}
+  
+// Update the user profile using the admin service
+await updateUserProfileAdmin(userId, profileData);
+  
+console.log(`[updateUserProfileAction] Successfully updated profile for user ${userId}`);
+return { success: true };
+} catch (error) {
+console.error('[updateUserProfileAction] Error updating user profile:', error);
+return { 
+  success: false, 
+  error: error instanceof Error ? error.message : 'Unknown error updating profile'
+};
+}
 }
