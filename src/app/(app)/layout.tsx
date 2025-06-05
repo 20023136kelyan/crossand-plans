@@ -14,7 +14,15 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
-import { Form, FormItem, FormControl, FormField, FormLabel, FormMessage, FormDescription as ShadFormDescription } from "@/components/ui/form"; // Added FormDescription alias
+import {
+  Form,
+  FormItem,
+  FormControl,
+  FormField,
+  FormLabel,
+  FormMessage,
+  FormDescription as ShadFormDescription,
+} from "@/components/ui/form";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -46,6 +54,7 @@ import {
   Loader2, PlusCircle, Share2, Globe, Lock as LockIcon, Edit3, Sparkles, X as XIcon, UploadCloud,
   MessageSquare, User as UserIcon, Search, LayoutGrid, LayoutList, Wallet as WalletIcon, ChevronLeft, ImageIcon
 } from 'lucide-react';
+import { Label } from '@/components/ui/label'; // Added this import
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { auth } from '@/lib/firebase';
 
@@ -194,8 +203,7 @@ export default function AppLayout({
     const isOnboardingRelated = pathname === '/onboarding';
     const isPublicDynamicRoute = pathname.startsWith('/p/') || pathname.startsWith('/u/'); 
     
-    if (profileExists === null && user) { // Added check for user existence
-        // Still checking profile, wait if user is present.
+    if (profileExists === null && user) {
         return;
     }
 
@@ -533,9 +541,9 @@ export default function AppLayout({
         <DialogContent className="sm:max-w-sm rounded-xl bg-card shadow-2xl p-6 border-transparent">
           <DialogHeader className="text-left mb-1">
             <DialogTitle className="text-lg font-semibold text-foreground">Create New Post</DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">Share a highlight from one of your completed plans.</DialogDescription>
+            <ShadFormDescription className="text-xs text-muted-foreground">Share a highlight from one of your completed plans.</ShadFormDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-3"> {/* Reduced gap from gap-6 to gap-4 and py from 4 to 3 */}
+          <div className="grid gap-4 py-3">
             <FormItem className="space-y-1">
                 <FormLabel htmlFor="completed-plan-select-dialog-applayout" className="text-xs font-medium">Select Completed Plan</FormLabel>
                 {loadingCompletedPlans ? (
@@ -558,7 +566,7 @@ export default function AppLayout({
                 Highlight Image
               </FormLabel>
               {finalHighlightPreviewUrl ? (
-                <div className="mt-1.5 space-y-1.5"> {/* Adjusted margin */}
+                <div className="mt-1.5 space-y-1.5">
                   <div className="relative w-full aspect-[4/3] rounded-lg overflow-hidden border border-border/30 shadow-sm">
                     <NextImage src={finalHighlightPreviewUrl} alt="Highlight preview" fill style={{ objectFit: 'cover' }} data-ai-hint="upload preview" unoptimized/>
                   </div>
@@ -566,7 +574,7 @@ export default function AppLayout({
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="w-full text-xs h-8" // Slightly smaller button
+                    className="w-full text-xs h-8"
                     onClick={() => {
                       setCroppedHighlightFileForPost(null);
                       if (finalHighlightPreviewUrlRef.current) URL.revokeObjectURL(finalHighlightPreviewUrlRef.current);
@@ -614,24 +622,23 @@ export default function AppLayout({
                 disabled={isSubmittingPostFromDialog || !selectedPlanIdForPost || isPostCropperModalOpen} 
               />
               <FormMessage className="text-xs" />
-              {/* Removed the form description as it might be redundant with the button text */}
             </FormItem>
 
             <FormItem className="space-y-1">
               <FormLabel htmlFor="post-caption-dialog-applayout" className="text-xs font-medium">Caption</FormLabel>
               <FormControl><Textarea id="post-caption-dialog-applayout" placeholder="Write something about this highlight..." value={postCaptionForDialog} onChange={(e) => setPostCaptionForDialog(e.target.value)}
-                className="text-sm min-h-[80px] bg-muted border-border/30 focus:border-primary placeholder:text-muted-foreground/70" disabled={isSubmittingPostFromDialog || !croppedHighlightFileForPost} rows={3} /></FormControl> {/* Reduced rows from 4 to 3 */}
+                className="text-sm min-h-[60px] bg-muted border-border/30 focus:border-primary placeholder:text-muted-foreground/70" disabled={isSubmittingPostFromDialog || !croppedHighlightFileForPost} rows={3} /></FormControl>
               <FormMessage className="text-xs" />
             </FormItem>
             <FormItem className="space-y-1">
               <FormLabel htmlFor="post-visibility-dialog-applayout" className="text-xs font-medium">Visibility</FormLabel>
-              <RadioGroup id="post-visibility-dialog-applayout" value={postVisibilityForDialog} onValueChange={(value: string) => setPostVisibilityForDialog(value as FeedPostVisibility)} className="flex items-center gap-4 pt-0.5" disabled={isSubmittingPostFromDialog}> {/* Reduced gap from 6 to 4 */}
+              <RadioGroup id="post-visibility-dialog-applayout" value={postVisibilityForDialog} onValueChange={(value: string) => setPostVisibilityForDialog(value as FeedPostVisibility)} className="flex items-center gap-4 pt-0.5" disabled={isSubmittingPostFromDialog}>
                 <div className="flex items-center gap-1.5"><RadioGroupItem value="public" id="visibility-public-dialog-applayout" /><Label htmlFor="visibility-public-dialog-applayout" className="text-xs font-normal flex items-center gap-1 cursor-pointer"><Globe className="w-3.5 h-3.5"/>Public</Label></div>
                 <div className="flex items-center gap-1.5"><RadioGroupItem value="private" id="visibility-private-dialog-applayout" /><Label htmlFor="visibility-private-dialog-applayout" className="text-xs font-normal flex items-center gap-1 cursor-pointer"><LockIcon className="w-3.5 h-3.5"/>Private</Label></div>
               </RadioGroup>
             </FormItem>
           </div>
-          <DialogFooter className="flex flex-col gap-2 pt-4"> {/* Reduced gap, reduced pt */}
+          <DialogFooter className="flex flex-col gap-2 pt-3">
              <Button type="button" onClick={handleCreatePostSubmit} disabled={isSubmittingPostFromDialog || loadingCompletedPlans || !selectedPlanIdForPost || !croppedHighlightFileForPost || !postCaptionForDialog.trim()} className="w-full h-9">
               {isSubmittingPostFromDialog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Share2 className="mr-2 h-4 w-4" />} Share
             </Button>
