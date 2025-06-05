@@ -1,3 +1,4 @@
+
 import type { Metadata } from 'next';
 import { Geist } from 'next/font/google'; // Using Geist Sans as a clean, readable sans-serif font
 import './globals.css';
@@ -13,6 +14,11 @@ const geistSans = Geist({
 export const metadata: Metadata = {
   title: 'Macaroom',
   description: 'Sweeten your social planning with Macaroom',
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1, // Optional: good for preventing accidental zoom on mobile
+  },
 };
 
 export default function RootLayout({
@@ -20,8 +26,6 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY; // Removed
-
   return (
     <html lang="en" className="h-full">
       <body className={`${geistSans.variable} font-sans antialiased h-full flex flex-col`}>
@@ -29,7 +33,6 @@ export default function RootLayout({
           {children}
           <Toaster />
         </AuthProvider>
-        {/* Google Maps API Script removed as it's loaded by useJsApiLoader in specific components */}
       </body>
     </html>
   );

@@ -1,3 +1,4 @@
+
 'use client';
 
 import Link from 'next/link';
@@ -17,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { calculatePlanScore, calculateDiscountMultiplier } from '@/lib/utils/planRanking';
 import { useRouter } from 'next/navigation';
-import { toast } from '@/hooks/use-toast';
+// Removed duplicate toast import: import { toast } from '@/hooks/use-toast';
 import type { UserPreferences, GeoPoint } from '@/types/user';
 import { calculateEnhancedPlanScore } from '@/lib/utils/enhancedRanking';
 
@@ -1275,7 +1276,7 @@ export const ExploreContent = ({ initialData, userPreferences }: ExploreContentP
   }, [initialData]);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col overflow-x-hidden">
       {/* Header */}
       <div className={cn(
         "sticky top-0 z-50 w-full bg-background/80 backdrop-blur-sm border-b border-border/30",
@@ -1444,12 +1445,23 @@ export const ExploreContent = ({ initialData, userPreferences }: ExploreContentP
                   <Section 
                     title="Featured Plans"
                     viewAllHref="/plans/featured"
-                    className="mb-12 -mx-4"
+                    className="mb-12 overflow-hidden"
                   >
-                    <div className="relative">
-                      <div className="flex overflow-x-auto gap-6 px-4 pb-4 snap-x snap-mandatory hide-scrollbar">
+                    <div className="relative -mx-4 sm:mx-0">
+                      <div className="flex overflow-x-auto gap-4 px-4 pb-4 snap-x snap-mandatory hide-scrollbar">
                         {featuredPlans.map((plan: Plan) => (
-                          <div key={plan.id} className="flex-none w-[calc(100vw-2rem)] max-w-[1000px] snap-center">
+                          <div key={plan.id} className="flex-none w-[calc(100vw-2rem)] sm:w-[500px] md:w-[600px] lg:w-[800px] max-w-[1000px] snap-center">
+                {/* Featured Plan Panels */}
+                {featuredPlans.length > 0 && (
+                  <Section 
+                    title="Featured Plans"
+                    viewAllHref="/plans/featured"
+                    className="mb-12 overflow-hidden"
+                  >
+                    <div className="relative -mx-4 sm:mx-0">
+                      <div className="flex overflow-x-auto gap-4 px-4 pb-4 snap-x snap-mandatory hide-scrollbar">
+                        {featuredPlans.map((plan: Plan) => (
+                          <div key={plan.id} className="flex-none w-[calc(100vw-2rem)] sm:w-[500px] md:w-[600px] lg:w-[800px] max-w-[1000px] snap-center">
                             <FeaturedPlanPanel
                               plan={plan}
                               isAdmin={isAdmin}
@@ -1537,18 +1549,20 @@ export const ExploreContent = ({ initialData, userPreferences }: ExploreContentP
                   <Section
                     title="Popular Cities"
                     viewAllHref="/explore/cities"
-                    className="overflow-x-auto hide-scrollbar"
+                    className="overflow-hidden"
                   >
-                    <div className="flex gap-4 pb-4 md:grid md:grid-cols-4 lg:grid-cols-6">
-                      {cities.slice(0, 6).map(city => (
-                        <Link key={city.name} href={`/plans/city/${city.name}`} className="w-full">
-                          <CityCard
-                            city={city}
-                            onSelect={() => {}}
-                            isSelected={false}
-                          />
-                        </Link>
-                      ))}
+                    <div className="relative -mx-4 sm:mx-0">
+                      <div className="flex gap-4 px-4 pb-4 overflow-x-auto snap-x snap-mandatory hide-scrollbar sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+                        {cities.slice(0, 6).map(city => (
+                          <Link key={city.name} href={`/plans/city/${city.name}`} className="w-[160px] flex-none sm:w-full">
+                            <CityCard
+                              city={city}
+                              onSelect={() => {}}
+                              isSelected={false}
+                            />
+                          </Link>
+                        ))}
+                      </div>
                     </div>
                   </Section>
                 )}
@@ -1558,17 +1572,19 @@ export const ExploreContent = ({ initialData, userPreferences }: ExploreContentP
                   <Section
                     title="Popular Categories"
                     viewAllHref="/explore/categories"
-                    className="grid grid-cols-2 md:grid-cols-4 gap-4"
+                    className="overflow-hidden"
                   >
-                    {categories.slice(0, 4).map(category => (
-                      <Link key={category.name} href={`/plans/category/${encodeURIComponent(category.name)}`}>
-                        <CategoryCard
-                          name={category.name}
-                          iconUrl={category.iconUrl}
-                          isSelected={false}
-                        />
-                      </Link>
-                    ))}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                      {categories.slice(0, 4).map(category => (
+                        <Link key={category.name} href={`/plans/category/${encodeURIComponent(category.name)}`}>
+                          <CategoryCard
+                            name={category.name}
+                            iconUrl={category.iconUrl}
+                            isSelected={false}
+                          />
+                        </Link>
+                      ))}
+                    </div>
                   </Section>
                 )}
 
@@ -1577,14 +1593,16 @@ export const ExploreContent = ({ initialData, userPreferences }: ExploreContentP
                   <Section
                     title="A Day in the Life Of"
                     viewAllHref="/explore/celebrity"
-                    className="overflow-x-auto hide-scrollbar"
+                    className="overflow-hidden"
                   >
-                    <div className="flex gap-4 pb-4 md:grid md:grid-cols-5 lg:grid-cols-8">
-                      {profiles.map(profile => (
-                        <Link key={profile.id} href={`/plans/celebrity/${profile.id}`} className="w-full">
-                          <ProfileCard profile={profile} />
-                        </Link>
-                      ))}
+                    <div className="relative -mx-4 sm:mx-0">
+                      <div className="flex gap-4 px-4 pb-4 overflow-x-auto snap-x snap-mandatory hide-scrollbar sm:grid sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-8">
+                        {profiles.map(profile => (
+                          <Link key={profile.id} href={`/plans/celebrity/${profile.id}`} className="w-[140px] flex-none sm:w-full">
+                            <ProfileCard profile={profile} />
+                          </Link>
+                        ))}
+                      </div>
                     </div>
                   </Section>
                 )}
