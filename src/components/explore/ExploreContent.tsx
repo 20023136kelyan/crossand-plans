@@ -137,7 +137,7 @@ const CityCard = ({ city, onSelect, isSelected }: { city: City; onSelect: () => 
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
       </div>
       <div className="absolute bottom-0 left-0 right-0 p-3 text-white">
-        <h3 className="text-lg font-medium line-clamp-1">{city.name}</h3>
+        <h3 className="text-base sm:text-lg font-medium line-clamp-1">{city.name}</h3>
         {formatDate(city.date) && (
           <p className="text-sm opacity-90">{formatDate(city.date)}</p>
         )}
@@ -326,7 +326,7 @@ const FeaturedPlanPanel = ({ plan, isAdmin, onRemoveFeature }: { plan: Plan; isA
         </div>
         <div className="absolute inset-x-0 bottom-0 p-6">
           <div className="max-w-2xl">
-            <h2 className="text-3xl font-bold text-white mb-3">{plan.name}</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-3">{plan.name}</h2>
             {plan.description && (<p className="text-lg text-white/80 mb-4 line-clamp-2">{plan.description}</p>)}
             {plan.location && (<p className="text-white/90 flex items-center gap-2 mb-4"> <MapPin className="h-5 w-5" /> {plan.location} </p>)}
             <div className="flex items-center gap-6 text-white/80">
@@ -386,7 +386,7 @@ const NavigationCard = ({
           </div>
         </div>
         <div>
-          <h3 className="text-xl font-semibold text-white mb-2">{title}</h3>
+          <h3 className="text-lg sm:text-xl font-semibold text-white mb-2">{title}</h3>
           <p className="text-sm text-white/70">{description}</p>
         </div>
       </div>
@@ -651,7 +651,7 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
   }
 
   return (
-    <div className="min-h-screen flex flex-col overflow-x-hidden">
+    <div className="min-h-screen flex flex-col">
       <div className={cn("sticky top-0 z-50 w-full bg-background/80 backdrop-blur-sm border-b border-border/30", "transition-transform duration-300 ease-in-out", !isTabsHeaderVisible && "-translate-y-full")}>
         <div className="max-w-screen-2xl mx-auto w-full">
           <div className={cn("sticky top-0 z-30 flex justify-center items-center transition-all duration-300 ease-in-out h-12 sm:h-14 py-2", isTabsHeaderVisible ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0 pointer-events-none")}>
