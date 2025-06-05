@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { format } from 'date-fns';
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { fetchExplorePageDataAction } from '@/app/actions/exploreActions';
-import { getUserLocationAction, searchUsersAction } from '@/app/actions/userActions'; // Removed unused friend actions
+import { getUserLocationAction, searchUsersAction } from '@/app/actions/userActions';
 import { useToast } from '@/hooks/use-toast';
 import { Plan, Profile, Category, City, SearchedUser, Influencer } from '@/types/user';
 import { useAuth } from '@/context/AuthContext';
@@ -21,6 +21,7 @@ import { useRouter } from 'next/navigation';
 import type { UserPreferences, GeoPoint } from '@/types/user';
 import { UserSearchResultCard } from './UserSearchResultCard';
 
+// Profile card for Day in the Life section
 const ProfileCard = ({ profile }: { profile: Profile | Influencer }) => {
   const formatDate = (dateString?: string) => { if (!dateString) return ''; try { const date = new Date(dateString); if (isNaN(date.getTime())) return ''; return format(date, 'dd/MM/yyyy'); } catch (error) { return ''; }};
   return (
@@ -46,6 +47,7 @@ export const CategoryCard = ({ name, isSelected, onClick, iconUrl }: { name: str
   </Button>
 );
 
+// City card component
 const CityCard = ({ city, onSelect, isSelected }: { city: City; onSelect: () => void; isSelected: boolean }) => {
   const formatDate = (dateString?: string) => { if (!dateString) return ''; try { const date = new Date(dateString); if (isNaN(date.getTime())) return ''; return format(date, 'dd/MM/yyyy'); } catch (error) { return ''; }};
   return (
@@ -64,6 +66,7 @@ const CityCard = ({ city, onSelect, isSelected }: { city: City; onSelect: () => 
   );
 };
 
+// Section component
 const Section = ({ title, children, viewAllHref, viewAllText = "View All", className = "" }: { title: string; children: React.ReactNode; viewAllHref?: string; viewAllText?: string; className?: string; }) => (
   <section className="mb-6 w-full">
     <div className="flex justify-between items-center mb-3"><h2 className="text-xl font-semibold">{title}</h2>{viewAllHref && (<Link href={viewAllHref}><Button variant="link" className="text-primary text-sm px-0">{viewAllText}</Button></Link>)}</div>
@@ -71,6 +74,7 @@ const Section = ({ title, children, viewAllHref, viewAllText = "View All", class
   </section>
 );
 
+// Plan card component
 const PlanCard = ({ plan }: { plan: Plan }) => {
   const { user } = useAuth(); const { toast } = useToast(); const [saving, setSaving] = useState(false);
   const handleSave = async (e: React.MouseEvent) => {
@@ -106,6 +110,22 @@ const PlanCard = ({ plan }: { plan: Plan }) => {
   );
 };
 
+// Navigation Card component
+const NavigationCard = ({ title, description, imageUrl, href, icon: Icon }: { title: string; description: string; imageUrl?: string; href: string; icon: React.ElementType; }) => (
+  <Link href={href} onClick={(e) => e.stopPropagation()}>
+    <div className="group relative h-[200px] rounded-2xl overflow-hidden bg-black/90">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent">{imageUrl && (<Image src={imageUrl} alt={title} fill className="object-cover transition-transform group-hover:scale-105 mix-blend-overlay opacity-30" data-ai-hint={`${title.toLowerCase()} abstract`} />)}</div>
+      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
+      <div className="absolute inset-0 p-6 flex flex-col justify-between">
+        <div className="flex items-center gap-3"><div className="p-2.5 rounded-xl bg-white/10 backdrop-blur-sm"><Icon className="h-6 w-6 text-white" /></div></div>
+        <div><h3 className="text-lg sm:text-xl font-semibold text-white mb-2">{title}</h3><p className="text-sm text-white/70">{description}</p></div>
+      </div>
+      <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+    </div>
+  </Link>
+);
+
+// Featured Plan Panel component
 const FeaturedPlanPanel = ({ plan, isAdmin, onRemoveFeature }: { plan: Plan; isAdmin?: boolean; onRemoveFeature?: () => void; }) => {
   const maxDiscount = useMemo(() => { if (!plan.venues?.length) return 0; return Math.max(...plan.venues.map(v => v.discount)); }, [plan.venues]);
   return (
@@ -132,20 +152,6 @@ const FeaturedPlanPanel = ({ plan, isAdmin, onRemoveFeature }: { plan: Plan; isA
   );
 };
 
-const NavigationCard = ({ title, description, imageUrl, href, icon: Icon }: { title: string; description: string; imageUrl?: string; href: string; icon: React.ElementType; }) => (
-  <Link href={href} onClick={(e) => e.stopPropagation()}>
-    <div className="group relative h-[200px] rounded-2xl overflow-hidden bg-black/90">
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent">{imageUrl && (<Image src={imageUrl} alt={title} fill className="object-cover transition-transform group-hover:scale-105 mix-blend-overlay opacity-30" data-ai-hint={`${title.toLowerCase()} abstract`} />)}</div>
-      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
-      <div className="absolute inset-0 p-6 flex flex-col justify-between">
-        <div className="flex items-center gap-3"><div className="p-2.5 rounded-xl bg-white/10 backdrop-blur-sm"><Icon className="h-6 w-6 text-white" /></div></div>
-        <div><h3 className="text-lg sm:text-xl font-semibold text-white mb-2">{title}</h3><p className="text-sm text-white/70">{description}</p></div>
-      </div>
-      <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-    </div>
-  </Link>
-);
-
 interface ExplorePageData {
   featuredProfiles: Profile[];
   completedPlans: Plan[];
@@ -165,7 +171,6 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
   const [selectedCity, setSelectedCity] = useState<string | undefined>();
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
   const [viewMode, setViewMode] = useState<'all' | 'cities' | 'categories' | 'creators' | 'dayInLife'>('all');
-  // Removed feedView and related header visibility logic as it's now handled by AppLayout
   const [profiles, setProfiles] = useState<Profile[]>(initialData?.featuredProfiles || []);
   const [plans, setPlans] = useState<Plan[]>(initialData?.completedPlans || []);
   const [cities, setCities] = useState<City[]>(initialData?.featuredCities || []);
@@ -208,8 +213,6 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
       setCategories(initialData.categories || []); setLoading(false);
     } else { fetchData(); }
   }, [initialData, fetchData, processExploreData, userLocation]);
-
-  // Removed the useEffect for handleScroll as the sticky header is now part of AppLayout
 
   const performSearch = useCallback(async (term: string) => {
     if (!term.trim()) { setIsSearchActive(false); setUserSearchResults([]); return; }
@@ -254,11 +257,10 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
   if (loading && !initialData) { return <div className="flex justify-center items-center min-h-screen"><Loader2 className="h-12 w-12 animate-spin" /></div>; }
 
   return (
-    <div className="min-h-screen flex flex-col overflow-x-hidden"> {/* Main root div for ExploreContent */}
-      {/* The main ForYou/Explore Tabs switcher is now in AppLayout */}
-      {/* This header is for search and filters WITHIN the Explore page */}
+    <div className="flex flex-col"> {/* Removed min-h-screen, AppLayout handles height */}
+      {/* Header with search and filters */}
       <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border/30">
-        <div className="px-4 py-3">
+        <div className="container mx-auto px-4 py-3">
           <h2 className="text-lg font-semibold mb-2 text-center">Discover</h2>
           <div className="relative max-w-2xl mx-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -267,7 +269,7 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
           </div>
         </div>
         {!isSearchActive && (
-          <div className="px-4">
+          <div className="container mx-auto px-4">
             <div className="flex gap-2 pb-3 overflow-x-auto hide-scrollbar max-w-2xl mx-auto">
               <Button variant={viewMode === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('all')} className="flex-shrink-0">All</Button>
               <Button variant={viewMode === 'cities' ? 'default' : 'outline'} size="sm" onClick={() => { router.push('/explore/cities', { scroll: false }); }} className="flex-shrink-0">Cities</Button>
@@ -279,32 +281,30 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
         )}
       </div>
 
-      <main className="flex-1 overflow-auto">
-        <div className="max-w-screen-2xl mx-auto w-full">
-          <div className="px-4 py-6 relative">
-            {isSearchActive ? (
-              <div className="mb-6">
-                {searchLoading && (<div className="flex justify-center items-center py-10 min-h-[200px]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>)}
-                {!searchLoading && filteredPlans.length === 0 && userSearchResults.length === 0 && (<div className="text-center py-8"><p className="text-muted-foreground">No results found for "{searchTerm}"</p></div>)}
-                {userSearchResults.length > 0 && (<Section title="Matching People" className="mb-8"><div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">{userSearchResults.map(userResult => (<UserSearchResultCard key={userResult.uid} userResult={userResult} />))}</div></Section>)}
-                {filteredPlans.length > 0 && (<Section title="Matching Plans" className="mb-8"><div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">{filteredPlans.map(plan => <PlanCard key={plan.id} plan={plan} />)}</div></Section>)}
-              </div>
-            ) : viewMode === 'all' ? (
-              <>
-                {featuredPlans.length > 0 && (<Section title="Featured Plans" viewAllHref="/plans/featured" className="mb-12 overflow-hidden"><div className="relative -mx-4 sm:mx-0"><div className="flex overflow-x-auto gap-4 px-4 pb-4 snap-x snap-mandatory hide-scrollbar">{featuredPlans.map((plan: Plan) => (<div key={plan.id} className="flex-none w-[calc(100vw-2rem)] sm:w-[500px] md:w-[600px] lg:w-[800px] max-w-[1000px] snap-center"><FeaturedPlanPanel plan={plan} isAdmin={isAdmin} onRemoveFeature={() => toggleFeatured(plan.id, false)} /></div>))}</div></div></Section>)}
-                {isAdmin && (<Section title="Admin: Add to Featured" className="mb-12"><div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">{plans.slice(0, 6).map(plan => (<div key={plan.id} className="relative group"><PlanCard plan={plan} /><div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><Button variant="default" onClick={() => toggleFeatured(plan.id, true)}><Crown className="h-4 w-4 mr-2" />Make Featured</Button></div></div>))}</div></Section>)}
-                <Section title="Browse Plans" className="grid grid-cols-2 md:grid-cols-4 gap-4"><NavigationCard title="Cities" description="Explore plans by location" href="/explore/cities" icon={MapPin} /><NavigationCard title="Categories" description="Browse by interest" href="/explore/categories" icon={Layers} /><NavigationCard title="Creators" description="Follow your favorite planners" href="/explore/creators" icon={Users} /><NavigationCard title="Celebrity Plans" description="Experience a day in their life" href="/explore/celebrity" icon={Star} /></Section>
-                {cities.length > 0 && (<Section title="Popular Cities" viewAllHref="/explore/cities" className="overflow-hidden"><div className="relative -mx-4 sm:mx-0"><div className="flex gap-4 px-4 pb-4 overflow-x-auto snap-x snap-mandatory hide-scrollbar sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">{cities.slice(0, 6).map(city => (<Link key={city.name} href={`/plans/city/${city.name}`} className="w-[160px] flex-none sm:w-full"><CityCard city={city} onSelect={() => {}} isSelected={false} /></Link>))}</div></div></Section>)}
-                {categories.length > 0 && (<Section title="Popular Categories" viewAllHref="/explore/categories" className="overflow-hidden"><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">{categories.slice(0, 4).map(category => (<Link key={category.name} href={`/plans/category/${encodeURIComponent(category.name)}`}><CategoryCard name={category.name} iconUrl={category.iconUrl} isSelected={false} /></Link>))}</div></Section>)}
-                {profiles.length > 0 && (<Section title="A Day in the Life Of" viewAllHref="/explore/creators" className="overflow-hidden"><div className="relative -mx-4 sm:mx-0"><div className="flex gap-4 px-4 pb-4 overflow-x-auto snap-x snap-mandatory hide-scrollbar sm:grid sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-8">{profiles.map(profile => (<Link key={profile.id} href={`/users/${profile.id}`} className="w-[140px] flex-none sm:w-full"><ProfileCard profile={profile} /></Link>))}</div></div></Section>)}
-                {filteredPlans.length > 0 && (<Section title="Popular Plans" viewAllHref="/plans" className="space-y-6"><div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">{filteredPlans.slice(0, 6).map(plan => ( <PlanCard key={plan.id} plan={plan} /> ))}</div></Section>)}
-                 {!loading && plans.length === 0 && featuredPlans.length === 0 && !isSearchActive && (<div className="text-center py-12 text-muted-foreground"><Search className="mx-auto h-16 w-16 opacity-30 mb-3" /><p className="font-semibold text-lg">No plans to show right now.</p><p className="text-sm">Try adjusting your location or search terms, or check back later!</p></div>)}
-              </>
-            ) : (<div className="text-center py-10"><p className="text-muted-foreground">Select a view (All, Cities, Categories, etc.) to see content.</p></div>)}
+      {/* Main Content Area - Relies on AppLayout for padding and max-width */}
+      <div className="flex-1"> {/* Removed internal <main> and max-width/padding divs */}
+        {isSearchActive ? (
+          <div className="mb-6">
+            {searchLoading && (<div className="flex justify-center items-center py-10 min-h-[200px]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>)}
+            {!searchLoading && filteredPlans.length === 0 && userSearchResults.length === 0 && (<div className="text-center py-8"><p className="text-muted-foreground">No results found for "{searchTerm}"</p></div>)}
+            {userSearchResults.length > 0 && (<Section title="Matching People" className="mb-8"><div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">{userSearchResults.map(userResult => (<UserSearchResultCard key={userResult.uid} userResult={userResult} />))}</div></Section>)}
+            {filteredPlans.length > 0 && (<Section title="Matching Plans" className="mb-8"><div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">{filteredPlans.map(plan => <PlanCard key={plan.id} plan={plan} />)}</div></Section>)}
           </div>
-        </div>
-      </main>
+        ) : viewMode === 'all' ? (
+          <>
+            {featuredPlans.length > 0 && (<Section title="Featured Plans" viewAllHref="/plans/featured" className="mb-12"><div className="flex overflow-x-auto gap-4 pb-4 snap-x snap-mandatory hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">{featuredPlans.map((plan: Plan) => (<div key={plan.id} className="flex-none w-[calc(100vw-2rem)] sm:w-[500px] md:w-[600px] lg:w-[800px] max-w-[1000px] snap-center"><FeaturedPlanPanel plan={plan} isAdmin={isAdmin} onRemoveFeature={() => toggleFeatured(plan.id, false)} /></div>))}</div></Section>)}
+            {isAdmin && (<Section title="Admin: Add to Featured" className="mb-12"><div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">{plans.slice(0, 6).map(plan => (<div key={plan.id} className="relative group"><PlanCard plan={plan} /><div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><Button variant="default" onClick={() => toggleFeatured(plan.id, true)}><Crown className="h-4 w-4 mr-2" />Make Featured</Button></div></div>))}</div></Section>)}
+            <Section title="Browse Plans" className="grid grid-cols-2 md:grid-cols-4 gap-4"><NavigationCard title="Cities" description="Explore plans by location" href="/explore/cities" icon={MapPin} /><NavigationCard title="Categories" description="Browse by interest" href="/explore/categories" icon={Layers} /><NavigationCard title="Creators" description="Follow your favorite planners" href="/explore/creators" icon={Users} /><NavigationCard title="Celebrity Plans" description="Experience a day in their life" href="/explore/celebrity" icon={Star} /></Section>
+            {cities.length > 0 && (<Section title="Popular Cities" viewAllHref="/explore/cities"><div className="flex gap-4 pb-4 overflow-x-auto snap-x snap-mandatory hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">{cities.slice(0, 6).map(city => (<Link key={city.name} href={`/plans/city/${city.name}`} className="w-[160px] flex-none sm:w-full"><CityCard city={city} onSelect={() => {}} isSelected={false} /></Link>))}</div></Section>)}
+            {categories.length > 0 && (<Section title="Popular Categories" viewAllHref="/explore/categories"><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">{categories.slice(0, 4).map(category => (<Link key={category.name} href={`/plans/category/${encodeURIComponent(category.name)}`}><CategoryCard name={category.name} iconUrl={category.iconUrl} isSelected={false} /></Link>))}</div></Section>)}
+            {profiles.length > 0 && (<Section title="A Day in the Life Of" viewAllHref="/explore/creators"><div className="flex gap-4 pb-4 overflow-x-auto snap-x snap-mandatory hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-8">{profiles.map(profile => (<Link key={profile.id} href={`/users/${profile.id}`} className="w-[140px] flex-none sm:w-full"><ProfileCard profile={profile} /></Link>))}</div></Section>)}
+            {filteredPlans.length > 0 && (<Section title="Popular Plans" viewAllHref="/plans" className="space-y-6"><div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">{filteredPlans.slice(0, 6).map(plan => ( <PlanCard key={plan.id} plan={plan} /> ))}</div></Section>)}
+             {!loading && plans.length === 0 && featuredPlans.length === 0 && !isSearchActive && (<div className="text-center py-12 text-muted-foreground"><Search className="mx-auto h-16 w-16 opacity-30 mb-3" /><p className="font-semibold text-lg">No plans to show right now.</p><p className="text-sm">Try adjusting your location or search terms, or check back later!</p></div>)}
+          </>
+        ) : (<div className="text-center py-10"><p className="text-muted-foreground">Select a view (All, Cities, Categories, etc.) to see content.</p></div>)}
+      </div>
     </div>
   );
 }
+
     
