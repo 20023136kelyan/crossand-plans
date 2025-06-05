@@ -4,7 +4,7 @@
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { Sidebar } from '@/components/layout/Sidebar';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'; // Added useSearchParams
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,7 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
-import { FormItem } from "@/components/ui/form"; // Added FormItem import
+import { FormItem } from "@/components/ui/form";
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,7 +34,6 @@ import { useAuth } from '@/context/AuthContext';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { getFriendships } from '@/services/userService';
 import { getUserCompletedPlans, getPendingPlanSharesForUser, getPendingPlanInvitationsCount } from '@/services/planService';
-import { getUserChats } from '@/services/chatService';
 import type { Chat, Plan, UserProfile, AppTimestamp, FeedPostVisibility, FeedPost, UserRoleType } from '@/types/user';
 import { isValid, parseISO } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -190,13 +189,19 @@ export default function AppLayout({
 
   // Routing effect
   useEffect(() => {
-    if (loading) return; // Wait for auth loading to complete
+    if (authLoading) return; // Wait for auth loading to complete
 
     const publicPaths = ['/login', '/signup', '/'];
     const isOnboardingRelated = pathname === '/onboarding';
-    const isPublicDynamicRoute = pathname.startsWith('/p/') || pathname.startsWith('/u/'); // Public plan/user views
+    const isPublicDynamicRoute = pathname.startsWith('/p/') || pathname.startsWith('/u/'); 
     
     if (user) { // User is authenticated
+      if (profileExists === null && !authLoading) { 
+        // Still checking profile, wait.
+        // This condition might be problematic. If auth is done (authLoading=false) but profileExists is null, we should wait.
+        // If user exists AND authLoading is false AND profileExists is null, it means we are actively waiting for profile.
+        return;
+      }
       if (profileExists === false && !isOnboardingRelated) {
         // If profile doesn't exist, and not on onboarding, redirect to onboarding
         router.push('/onboarding');
@@ -213,7 +218,7 @@ export default function AppLayout({
       }
       // If on a public route, do nothing (stay on page)
     }
-  }, [user, loading, profileExists, router, pathname]);
+  }, [user, authLoading, profileExists, router, pathname]);
 
   const [pageAnimationClass, setPageAnimationClass] = useState('');
   const previousPathnameRef = useRef(pathname);
@@ -456,9 +461,7 @@ export default function AppLayout({
     return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
   }
   
-  // Early return if profileExists is still null after loading, and user is authenticated.
-  // This prevents rendering children until profile status is determined, potentially avoiding layout shifts or incorrect redirects.
-  if (user && profileExists === null && !loading) {
+  if (user && profileExists === null && !authLoading) {
       return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
   }
 
@@ -619,3 +622,5 @@ export default function AppLayout({
     </div>
   );
 }
+
+    
