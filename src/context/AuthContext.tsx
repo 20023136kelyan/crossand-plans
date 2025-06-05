@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { User } from 'firebase/auth';
@@ -14,7 +15,7 @@ import {
 import { useRouter, usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
-import { auth, googleProvider } from '@/lib/firebase'; 
+import { auth, googleProvider } from '@/lib/firebase';
 import { checkUserProfileExists, getUserProfile } from '@/services/userService';
 import type { UserProfile } from '@/types/user';
 import { useToast } from '@/hooks/use-toast';
@@ -23,12 +24,12 @@ import { setSessionCookie, clearSessionCookie } from '@/lib/sessionCookie';
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  profileExists: boolean | null; 
+  profileExists: boolean | null;
   currentUserProfile: UserProfile | null;
   isNewUserJustSignedUp: boolean;
   acknowledgeNewUserWelcome: () => void;
   refreshProfileStatus: () => Promise<void>;
-  refreshProfileData: () => Promise<void>;
+  refreshProfileData: () => Promise<void>; // Wrapper, doesn't take UID
   signOut: () => Promise<void>;
   signUpWithEmail: (email: string, password: string, displayName: string, username?: string) => Promise<User | null>;
   signInWithEmail: (email: string, password: string) => Promise<User | null>;
@@ -40,201 +41,151 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true); 
+  const [loading, setLoading] = useState(true);
   const [profileExists, setProfileExists] = useState<boolean | null>(null);
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
   const [isNewUserJustSignedUp, setIsNewUserJustSignedUp] = useState(false);
-  
+
   const router = useRouter();
   const pathname = usePathname();
   const { toast } = useToast();
   const previousUserUidRef = useRef<string | null | undefined>(undefined);
 
-  const refreshProfileData = useCallback(async (uid: string | null) => {
-    const logPrefix = "[AuthContext refreshProfileData]";
+  // refreshProfileDataInternal: Fetches and sets profile state. Does NOT manage global loading.
+  const refreshProfileDataInternal = useCallback(async (uid: string | null) => {
+    const logPrefix = "[AuthContext refreshProfileDataInternal]";
     if (!uid) {
-      // // console.warn(`${logPrefix} No UID provided.`);
+      console.log(`${logPrefix} No UID, setting profile not exists.`);
       setProfileExists(false);
       setCurrentUserProfile(null);
-      setLoading(false); // Ensure loading is false if no UID
-      return { exists: false, profile: null };
+      return { exists: false, profile: null, error: false };
     }
-    // // console.log(`${logPrefix} Called for UID: ${uid}. Setting loading to true.`);
-    setLoading(true); 
+    console.log(`${logPrefix} Fetching profile for UID: ${uid}`);
     try {
         const exists = await checkUserProfileExists(uid);
+        const profileData = exists ? await getUserProfile(uid) : null;
+        console.log(`${logPrefix} Profile exists: ${exists} for UID: ${uid}. Profile data fetched: ${!!profileData}`);
+        // These setters will trigger re-renders if values change.
         setProfileExists(exists);
-        // // console.log(`${logPrefix} Profile exists set to: ${exists} for UID: ${uid}`);
-        if (exists) {
-          const profileData = await getUserProfile(uid);
-          setCurrentUserProfile(profileData);
-          // // console.log(`${logPrefix} currentUserProfile set for UID: ${uid}. Name: ${profileData?.name}`);
-          return { exists: true, profile: profileData };
-        } else {
-          setCurrentUserProfile(null);
-          // // console.log(`${logPrefix} currentUserProfile set to null for UID: ${uid}.`);
-          return { exists: false, profile: null };
-        }
+        setCurrentUserProfile(profileData);
+        return { exists, profile: profileData, error: false };
     } catch (error) {
-        console.error(`${logPrefix} Error for UID ${uid}:`, error);
-        setProfileExists(false); 
-        setCurrentUserProfile(null);
-        return { exists: false, profile: null };
-    } finally {
-        // // console.log(`${logPrefix} Finished for UID: ${uid}. Setting loading to false.`);
-        setLoading(false);
+        console.error(`${logPrefix} Error fetching profile for UID ${uid}:`, error);
+        // On error, we return exists:false. The caller (onAuthStateChanged) will decide how to setProfileExists.
+        return { exists: false, profile: null, error: true };
     }
-  }, [setProfileExists, setCurrentUserProfile, setLoading]); // setLoading is stable
+  }, [setProfileExists, setCurrentUserProfile]); // Stable setters
 
-  // Add token refresh mechanism to ensure session cookies are kept valid
+  // Main auth state and profile loading effect
+  useEffect(() => {
+    const logPrefix = "[AuthContext onAuthStateChanged Effect]";
+    if (!auth) {
+      console.warn(`${logPrefix} Firebase auth not initialized. Setting loading to false.`);
+      setLoading(false);
+      return () => {};
+    }
+    console.log(`${logPrefix} Setting up listener. Initializing loading to true.`);
+    setLoading(true);
+
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      const currentUid = fbUser?.uid || null;
+      console.log(`${logPrefix} Auth state changed. Current fbUser UID: ${currentUid}`);
+      setUser(fbUser); // Update user state first
+
+      if (fbUser) {
+        const profileCheckResult = await refreshProfileDataInternal(fbUser.uid);
+
+        // Handle setting profileExists more robustly to avoid flapping
+        if (profileCheckResult.error) {
+          // If there was an error fetching profile, and we previously knew a profile existed,
+          // maintain profileExists as true to prevent incorrect redirection to onboarding.
+          // UI should indicate data might be stale or there's an issue.
+          setProfileExists(prev => (prev === true ? true : false));
+          // We might keep the old currentUserProfile or set it to null to indicate staleness
+          // setCurrentUserProfile(prevProfile => (profileExists === true ? prevProfile : null));
+          console.warn(`${logPrefix} Error fetching profile for ${fbUser.uid}. Kept profileExists state if previously true.`);
+        } else {
+          // No error, set profileExists based on the actual check.
+          setProfileExists(profileCheckResult.exists);
+          setCurrentUserProfile(profileCheckResult.profile); // Also update profile data
+        }
+
+        // Handle new user state for onboarding trigger
+        if (profileCheckResult.exists === false && currentUid !== previousUserUidRef.current && !profileCheckResult.error) {
+          console.log(`${logPrefix} New user or profile definitively not found. UID: ${fbUser.uid}. Setting isNewUserJustSignedUp=true.`);
+          setIsNewUserJustSignedUp(true);
+        } else {
+          setIsNewUserJustSignedUp(false);
+        }
+        previousUserUidRef.current = currentUid;
+      } else {
+        // No user, reset all related states
+        console.log(`${logPrefix} No Firebase user. Resetting states.`);
+        previousUserUidRef.current = null;
+        setProfileExists(null); // Use null to indicate unknown/not applicable for logged out state
+        setCurrentUserProfile(null);
+        setIsNewUserJustSignedUp(false);
+      }
+      console.log(`${logPrefix} Setting loading to false after auth and profile checks for UID: ${currentUid}.`);
+      setLoading(false); // Loading is complete for this auth state change
+    });
+
+    return () => {
+      console.log(`${logPrefix} Cleaning up listener.`);
+      unsubscribe();
+    };
+  }, [auth, refreshProfileDataInternal, profileExists]); // Added profileExists: if it changes outside this effect, we might need to re-evaluate
+
+  // Token refresh interval
   useEffect(() => {
     if (!auth) return () => {};
-    
-    // Set up token refresh interval (every 55 minutes to be safe)
     const refreshTokenInterval = setInterval(async () => {
       if (!auth) return;
       const currentUser = auth.currentUser;
       if (currentUser) {
         try {
-          console.log('[AuthContext] Refreshing token and session cookie');
-          // Force token refresh and update session cookie
-          const token = await currentUser.getIdToken(true);
-          console.log('[AuthContext] Token refreshed successfully, length:', token?.length);
-          await setSessionCookie(currentUser);
-          console.log('[AuthContext] Token refreshed and session cookie updated');
+          console.log('[AuthContext TokenRefresh] Refreshing token and session cookie');
+          await currentUser.getIdToken(true); // Force refresh client-side token
+          await setSessionCookie(currentUser); // Update server-side session cookie
+          console.log('[AuthContext TokenRefresh] Token refreshed and session cookie updated');
         } catch (error) {
-          console.error('[AuthContext] Error refreshing token:', error);
+          console.error('[AuthContext TokenRefresh] Error refreshing token:', error);
+          // Optionally handle sign-out if token refresh persistently fails
         }
       }
-    }, 55 * 60 * 1000); // 55 minutes
-    
+    }, 30 * 60 * 1000); // Refresh every 30 minutes
+
     return () => clearInterval(refreshTokenInterval);
   }, [auth]);
 
-  useEffect(() => {
-    const logPrefix = "[AuthContext onAuthStateChanged Effect]";
-    if (!auth) {
-      // // console.warn(`${logPrefix} Firebase auth not initialized. Setting loading to false.`);
-      setLoading(false);
-      return () => {};
-    }
-    // // console.log(`${logPrefix} Setting up listener.`);
-    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
-      const currentUid = fbUser?.uid || null;
-      // // console.log(`[AuthContext onAuthStateChanged] Auth state changed. Current fbUser UID: ${currentUid}, Previous UID Ref: ${previousUserUidRef.current}`);
-      
-      // Don't set loading true here, refreshProfileData will handle it
-      setUser(fbUser);
-
-      if (fbUser) {
-        // // console.log(`[AuthContext onAuthStateChanged] User is present. Refreshing profile data for UID: ${fbUser.uid}`);
-        const { exists } = await refreshProfileData(fbUser.uid);
-        
-        if (exists === false && currentUid !== previousUserUidRef.current) {
-          // // console.log(`[AuthContext onAuthStateChanged] New user (profile doesn't exist, UID changed), setting isNewUserJustSignedUp=true. UID: ${fbUser.uid}`);
-          setIsNewUserJustSignedUp(true);
-        } else if (exists === true && isNewUserJustSignedUp && currentUid === previousUserUidRef.current) {
-          // This condition means profile was just created, and we are still in the "new user" phase.
-          // Keep isNewUserJustSignedUp as true until acknowledged by onboarding page.
-          // // console.log(`[AuthContext onAuthStateChanged] Profile just created for new user. isNewUserJustSignedUp remains true. UID: ${fbUser.uid}`);
-        }
-         else {
-          // // console.log(`[AuthContext onAuthStateChanged] Not a new user signup event or profile exists and was previously known. isNewUserJustSignedUp=false. UID: ${fbUser?.uid}`);
-          setIsNewUserJustSignedUp(false);
-        }
-        previousUserUidRef.current = currentUid;
-      } else { 
-        // // console.log("[AuthContext onAuthStateChanged] No Firebase user. Resetting states.");
-        previousUserUidRef.current = null; 
-        setProfileExists(null); 
-        setCurrentUserProfile(null);
-        setIsNewUserJustSignedUp(false);
-        setLoading(false); // No user, so loading is definitely finished.
-      }
-      // setLoading(false) is handled by refreshProfileData or the else block above
-    });
-    return () => {
-      // // console.log("[AuthContext onAuthStateChanged Effect] Cleaning up listener.");
-      unsubscribe();
-    };
-  }, [refreshProfileData]); // refreshProfileData is stable
 
   const acknowledgeNewUserWelcome = useCallback(() => {
-    // // console.log("[AuthContext] Welcome acknowledged, setting isNewUserJustSignedUp to false.");
+    console.log("[AuthContext] Welcome acknowledged, setting isNewUserJustSignedUp to false.");
     setIsNewUserJustSignedUp(false);
   }, []);
 
   const refreshProfileStatus = useCallback(async () => {
     if (!auth) {
-      // // console.warn("[AuthContext refreshProfileStatus] Firebase auth not initialized.");
+      console.warn("[AuthContext refreshProfileStatus] Firebase auth not initialized.");
       return;
     }
     const currentAuthUser = auth.currentUser;
-    // // console.log("[AuthContext refreshProfileStatus] Called. Current auth user UID:", currentAuthUser?.uid);
+    console.log("[AuthContext refreshProfileStatus] Called. Current auth user UID:", currentAuthUser?.uid);
     if (currentAuthUser?.uid) {
-      await refreshProfileData(currentAuthUser.uid);
+      setLoading(true); // Indicate loading during refresh
+      await refreshProfileDataInternal(currentAuthUser.uid);
+      setLoading(false); // Done loading
     } else {
-      // // console.log("[AuthContext refreshProfileStatus] No current auth user to refresh. Resetting profile states.");
       setProfileExists(null);
       setCurrentUserProfile(null);
       setIsNewUserJustSignedUp(false);
     }
-  }, [auth, refreshProfileData]);
+  }, [auth, refreshProfileDataInternal]);
 
-  // Routing logic
-  useEffect(() => {
-    const logPrefix = "[AuthContext Routing Effect]";
-    console.log(`${logPrefix} Triggered. Pathname: ${pathname}, Loading: ${loading}, User: ${!!user}, ProfileExists: ${profileExists}`);
+  const refreshProfileDataWrapper = useCallback(async (): Promise<void> => {
+    await refreshProfileStatus();
+  }, [refreshProfileStatus]);
 
-    const isAuthRoute = pathname === '/login' || pathname === '/signup';
-    const isOnboardingRoute = pathname === '/onboarding';
-    const isPublicPlanRoute = pathname.startsWith('/p/');
-    const isPublicUserProfileRoute = pathname.startsWith('/u/');
-    const isExploreRoute = pathname.startsWith('/explore');
-    const isUserRoute = pathname.startsWith('/users/');
-
-    if (loading) {
-      console.log(`${logPrefix} Still loading, returning.`);
-      return;
-    }
-
-    // Handle unauthenticated users
-    if (!user) {
-      const isPublicRoute = isAuthRoute || pathname === '/' || isPublicPlanRoute || isPublicUserProfileRoute || isExploreRoute;
-      if (!isPublicRoute) {
-        console.log(`${logPrefix} No user & not public route. Redirecting to /login.`);
-        router.push('/login');
-      }
-      return;
-    }
-
-    // Handle authenticated users
-    console.log(`${logPrefix} User is authenticated.`);
-    if (profileExists === null) {
-      console.log(`${logPrefix} ProfileExists is null, returning.`);
-      return;
-    }
-
-    // Redirect to onboarding if no profile exists
-    if (profileExists === false && !isOnboardingRoute) {
-      console.log(`${logPrefix} Profile does not exist & not on onboarding. Redirecting to /onboarding.`);
-      router.push('/onboarding');
-      return;
-    }
-
-    // Only redirect from auth routes to feed, never from other routes
-    if (isAuthRoute && profileExists === true) {
-      console.log(`${logPrefix} On auth route & profile exists. Redirecting to /feed.`);
-      router.push('/feed');
-      return;
-    }    // Allow both /profile and /users/settings as they are both settings pages
-    if (pathname === '/profile' || pathname === '/users/settings') {
-      console.log(`${logPrefix} On settings route. No redirect needed.`);
-      return;
-    }
-
-    console.log(`${logPrefix} No redirect conditions met.`);
-  }, [user, loading, profileExists, router, pathname]);
 
   const signOutFunc = async () => {
     if (!auth) return;
@@ -242,6 +193,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       await firebaseSignOut(auth);
       await clearSessionCookie();
       toast({ title: "Signed Out", description: "You have been successfully signed out." });
+      // Router push to /login will be handled by the main routing effect in AppLayout
     } catch (error: any) {
       console.error('[AuthContext] Error signing out: ', error);
       toast({ title: "Sign Out Error", description: error.message || "Could not sign out.", variant: "destructive" });
@@ -257,11 +209,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       if (userCredential.user) {
         await firebaseUpdateProfile(userCredential.user, { displayName });
+        // Username handling will occur during onboarding now.
+        // Forcing token refresh before setting session cookie
+        await userCredential.user.getIdToken(true);
         await setSessionCookie(userCredential.user);
-        
-        // Store the username in a custom user claim or metadata if needed
-        // This will be properly saved during the onboarding process
-        
+        // isNewUserJustSignedUp will be set by onAuthStateChanged
         return userCredential.user;
       }
       return null;
@@ -279,6 +231,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       if (userCredential.user) {
+        // Forcing token refresh before setting session cookie
+        await userCredential.user.getIdToken(true);
         await setSessionCookie(userCredential.user);
         return userCredential.user;
       }
@@ -297,7 +251,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       if (result.user) {
+        // Forcing token refresh before setting session cookie
+        await result.user.getIdToken(true);
         await setSessionCookie(result.user);
+        // isNewUserJustSignedUp will be set by onAuthStateChanged
         return result.user;
       }
       return null;
@@ -337,18 +294,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       await sendPasswordResetEmail(auth, email);
     } catch (error: any) {
       console.error("[AuthContext] Error sending password reset email:", error);
-      throw error; 
+      throw error;
     }
   };
-  
-  // Create a wrapper for refreshProfileData that doesn't require a UID parameter
-  const refreshProfileDataWrapper = useCallback(async (): Promise<void> => {
-    if (!auth?.currentUser?.uid) {
-      console.warn("[AuthContext refreshProfileDataWrapper] No current user to refresh profile for");
-      return;
-    }
-    await refreshProfileData(auth.currentUser.uid);
-  }, [auth, refreshProfileData]);
 
   return (
     <AuthContext.Provider value={{
@@ -378,5 +326,3 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 };
-
-    
