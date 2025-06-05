@@ -235,6 +235,7 @@ export default function AppLayout({
 
   // ---- Create Post Dialog Logic ----
   const [isCreatePostDialogOpen, setIsCreatePostDialogOpen] = useState(false);
+  const [isPostCropperModalOpen, setIsPostCropperModalOpen] = useState(false); // Added this line
   const [userCompletedPlans, setUserCompletedPlans] = useState<Plan[]>([]);
   const [loadingCompletedPlans, setLoadingCompletedPlans] = useState(false);
   const [selectedPlanIdForPost, setSelectedPlanIdForPost] = useState<string | undefined>(undefined);
@@ -262,9 +263,9 @@ export default function AppLayout({
     setCroppedHighlightFileForPost(null);
     if (finalHighlightPreviewUrlRef.current) {
       URL.revokeObjectURL(finalHighlightPreviewUrlRef.current);
-      finalHighlightPreviewUrlRef.current = null; 
     }
     setFinalHighlightPreviewUrl(null);
+    finalHighlightPreviewUrlRef.current = null; 
     setImageSrcForPostCropper(null);
     setPostCrop(undefined);
     setCompletedPostCrop(null);
@@ -274,10 +275,10 @@ export default function AppLayout({
     setIsPostCropperModalOpen(false);
     setLoadingCompletedPlans(false);
     setIsSubmittingPostFromDialog(false);
-  }, []); // Stable: no problematic dependencies
+  }, []); 
 
   const handleOpenCreatePostDialog = useCallback(async () => {
-    const currentAuthUser = auth.currentUser; // Get current user from auth instance directly
+    const currentAuthUser = auth.currentUser; 
   
     if (!currentAuthUser || !currentUserProfile) {
       toast({ title: "Login Required", description: "Please log in to create a post.", variant: "destructive" });
@@ -285,13 +286,11 @@ export default function AppLayout({
     }
     
     resetCreatePostDialogStates();
-    // setIsQuickAddOpen(false); // This state is managed by BottomNav/Sidebar
     setIsCreatePostDialogOpen(true);
   
     setLoadingCompletedPlans(true);
     try {
-      // const idToken = await currentAuthUser.getIdToken(true); // Not needed by getUserCompletedPlans (client)
-      const completedPlans = await getUserCompletedPlans(currentAuthUser.uid); // Use direct UID
+      const completedPlans = await getUserCompletedPlans(currentAuthUser.uid); 
       setUserCompletedPlans(completedPlans);
       if (completedPlans.length === 0) {
         toast({ title: "No Completed Plans", description: "You need to have completed a plan to share highlights.", variant: "default", duration: 4000 });
@@ -301,7 +300,7 @@ export default function AppLayout({
     } finally {
       setLoadingCompletedPlans(false);
     }
-  }, [currentUserProfile, resetCreatePostDialogStates, toast, auth]); // Added auth as a dependency
+  }, [currentUserProfile, resetCreatePostDialogStates, toast, auth]); 
 
 
   const handleHighlightFileChangeForDialog = (event: React.ChangeEvent<HTMLInputElement>) => {
