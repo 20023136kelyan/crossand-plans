@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Header } from '@/components/layout/Header';
@@ -55,6 +56,7 @@ import {
   MessageSquare, User as UserIcon, Search, LayoutGrid, LayoutList, Wallet as WalletIcon, ChevronLeft
 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-is-mobile';
+import { auth } from '@/lib/firebase'; // Import client-side auth directly
 
 // Canvas preview helper function for image cropping (for posts)
 async function canvasPreview(
@@ -117,7 +119,7 @@ export default function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading: authLoading, currentUserProfile, profileExists, refreshProfileStatus } = useAuth();
+  const { user, loading: authLoading, currentUserProfile, profileExists, refreshProfileStatus, acknowledgeNewUserWelcome } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const { toast } = useToast();
@@ -132,37 +134,29 @@ export default function AppLayout({
   // ---- Notification Counts Effect ----
   useEffect(() => {
     const logPrefix = "[AppLayout Notifications Effect]";
-    // console.log(`${logPrefix} Running. UserID: ${currentUserId}, ProfileExists: ${profileExists}, AuthLoading: ${authLoading}`);
-
     if (authLoading || !currentUserId || profileExists === false || profileExists === null) {
-      // console.log(`${logPrefix} Conditions not met. Resetting counts.`);
       setPlansNotificationCount(0);
       setMessagesNotificationCount(0);
       setProfileNotificationCount(0);
       return () => {};
     }
 
-    // console.log(`${logPrefix} User authenticated & profile exists. Setting up listeners for UserID: ${currentUserId}`);
     let unsubFriendRequests: (() => void) | undefined;
     let unsubPlanShares: (() => void) | undefined;
     let unsubPlanInvitations: (() => void) | undefined;
     let unsubChats: (() => void) | undefined;
 
-    // Friend Requests for Profile Badge
     unsubFriendRequests = getFriendships(
       currentUserId,
       (allFriendships) => {
         const pendingReceivedCount = allFriendships.filter(f => f.status === 'pending_received').length;
-        // console.log(`${logPrefix} Pending Friend Requests: ${pendingReceivedCount}`);
         setProfileNotificationCount(pendingReceivedCount);
       },
       (error) => console.error(`${logPrefix} Error fetching friendships:`, error)
     );
 
-    // Plan Shares & Invitations for Plans Badge
     let currentPlanSharesCount = 0;
     let currentPlanInvitesCount = 0;
-
     const updatePlansTotal = () => {
       setPlansNotificationCount(currentPlanSharesCount + currentPlanInvitesCount);
     };
@@ -172,8 +166,6 @@ export default function AppLayout({
           currentPlanSharesCount = shares.length;
           updatePlansTotal();
         }, (error) => console.error(`${logPrefix} Error fetching plan shares:`, error));
-    } else {
-        console.warn(`${logPrefix} getPendingPlanSharesForUser is not a function or not imported.`);
     }
     
     if (typeof getPendingPlanInvitationsCount === 'function') {
@@ -181,51 +173,39 @@ export default function AppLayout({
           currentPlanInvitesCount = invitesCount;
           updatePlansTotal();
         }, (error) => console.error(`${logPrefix} Error fetching plan invites:`, error));
-    } else {
-        console.warn(`${logPrefix} getPendingPlanInvitationsCount is not a function or not imported.`);
     }
 
-
-    // Unread Messages for Messages Badge
     if (typeof getUserChats === 'function') {
         unsubChats = getUserChats(currentUserId, (fetchedChats: Chat[]) => {
           let unreadCount = 0;
           fetchedChats.forEach((chat) => {
             if (!chat.lastMessageTimestamp || !chat.lastMessageSenderId || chat.lastMessageSenderId === currentUserId) return;
-
             let lastMsgTime: number | null = null;
             if (chat.lastMessageTimestamp) {
                const parsedDate = parseISO(chat.lastMessageTimestamp as string);
                if (isValid(parsedDate)) lastMsgTime = parsedDate.getTime();
             }
-
             let userReadTime = 0;
             const userReadTsValue = chat.participantReadTimestamps?.[currentUserId];
             if (userReadTsValue) {
               const parsedReadDate = parseISO(userReadTsValue as string);
               if (isValid(parsedReadDate)) userReadTime = parsedReadDate.getTime();
             }
-
             if (lastMsgTime && lastMsgTime > userReadTime) {
               unreadCount++;
             }
           });
           setMessagesNotificationCount(unreadCount);
         }, (error) => console.error(`${logPrefix} Error fetching chats for notifications:`, error));
-    } else {
-        console.warn(`${logPrefix} getUserChats is not a function or not imported.`);
     }
 
-
     return () => {
-      // console.log(`${logPrefix} Cleanup: Unsubscribing from all listeners for UserID: ${currentUserId}`);
       if (unsubFriendRequests) unsubFriendRequests();
       if (unsubPlanShares) unsubPlanShares();
       if (unsubPlanInvitations) unsubPlanInvitations();
       if (unsubChats) unsubChats();
     };
   }, [currentUserId, profileExists, authLoading, user?.uid]);
-
 
   // ---- Page Transition Animation Logic ----
   const [pageAnimationClass, setPageAnimationClass] = useState('');
@@ -235,7 +215,6 @@ export default function AppLayout({
     const currentPath = pathname;
     const prevPath = previousPathnameRef.current;
     let animationClass = '';
-
     const mainBottomNavDestinations = ['/feed', '/explore', '/plans', `/users/${user?.uid}`, '/wallet'];
     const isMessagesPage = currentPath.startsWith('/messages/') && currentPath !== '/messages';
 
@@ -247,7 +226,6 @@ export default function AppLayout({
             animationClass = 'animate-slide-in-from-bottom';
         }
     }
-
 
     setPageAnimationClass(animationClass);
     if (currentPath !== prevPath) {
@@ -265,9 +243,14 @@ export default function AppLayout({
   const [postCrop, setPostCrop] = useState<Crop>();
   const imgRefPostCropperDialog = useRef<HTMLImageElement>(null);
   const [completedPostCrop, setCompletedPostCrop] = useState<PixelCrop | null>(null);
-  const [isPostCropperModalOpen, setIsPostCropperModalOpen] = useState(false);
   const [croppedHighlightFileForPost, setCroppedHighlightFileForPost] = useState<File | null>(null);
   const [finalHighlightPreviewUrl, setFinalHighlightPreviewUrl] = useState<string | null>(null);
+  const finalHighlightPreviewUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    finalHighlightPreviewUrlRef.current = finalHighlightPreviewUrl;
+  }, [finalHighlightPreviewUrl]);
+
 
   const [postCaptionForDialog, setPostCaptionForDialog] = useState('');
   const [postVisibilityForDialog, setPostVisibilityForDialog] = useState<FeedPostVisibility>('public');
@@ -277,7 +260,10 @@ export default function AppLayout({
   const resetCreatePostDialogStates = useCallback(() => {
     setSelectedPlanIdForPost(undefined);
     setCroppedHighlightFileForPost(null);
-    if (finalHighlightPreviewUrl) URL.revokeObjectURL(finalHighlightPreviewUrl);
+    if (finalHighlightPreviewUrlRef.current) {
+      URL.revokeObjectURL(finalHighlightPreviewUrlRef.current);
+      finalHighlightPreviewUrlRef.current = null; 
+    }
     setFinalHighlightPreviewUrl(null);
     setImageSrcForPostCropper(null);
     setPostCrop(undefined);
@@ -288,20 +274,24 @@ export default function AppLayout({
     setIsPostCropperModalOpen(false);
     setLoadingCompletedPlans(false);
     setIsSubmittingPostFromDialog(false);
-  }, [finalHighlightPreviewUrl]);
+  }, []); // Stable: no problematic dependencies
 
   const handleOpenCreatePostDialog = useCallback(async () => {
-    if (!user || !currentUserProfile) {
+    const currentAuthUser = auth.currentUser; // Get current user from auth instance directly
+  
+    if (!currentAuthUser || !currentUserProfile) {
       toast({ title: "Login Required", description: "Please log in to create a post.", variant: "destructive" });
       return;
     }
+    
     resetCreatePostDialogStates();
-    setIsQuickAddOpen(false);
+    // setIsQuickAddOpen(false); // This state is managed by BottomNav/Sidebar
     setIsCreatePostDialogOpen(true);
-
+  
     setLoadingCompletedPlans(true);
     try {
-      const completedPlans = await getUserCompletedPlans(user.uid);
+      // const idToken = await currentAuthUser.getIdToken(true); // Not needed by getUserCompletedPlans (client)
+      const completedPlans = await getUserCompletedPlans(currentAuthUser.uid); // Use direct UID
       setUserCompletedPlans(completedPlans);
       if (completedPlans.length === 0) {
         toast({ title: "No Completed Plans", description: "You need to have completed a plan to share highlights.", variant: "default", duration: 4000 });
@@ -311,7 +301,8 @@ export default function AppLayout({
     } finally {
       setLoadingCompletedPlans(false);
     }
-  }, [user, currentUserProfile, toast, resetCreatePostDialogStates]);
+  }, [currentUserProfile, resetCreatePostDialogStates, toast, auth]); // Added auth as a dependency
+
 
   const handleHighlightFileChangeForDialog = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -344,7 +335,7 @@ export default function AppLayout({
         setPostCrop(undefined);
         setCompletedPostCrop(null);
         setCroppedHighlightFileForPost(null);
-        if (finalHighlightPreviewUrl) URL.revokeObjectURL(finalHighlightPreviewUrl);
+        if (finalHighlightPreviewUrlRef.current) URL.revokeObjectURL(finalHighlightPreviewUrlRef.current);
         setFinalHighlightPreviewUrl(null);
         setIsPostCropperModalOpen(true);
       });
@@ -370,8 +361,10 @@ export default function AppLayout({
       const croppedFileResult = await canvasPreview(imgRefPostCropperDialog.current, document.createElement('canvas'), completedPostCrop, originalFileName);
       if (croppedFileResult) {
         setCroppedHighlightFileForPost(croppedFileResult);
-        if (finalHighlightPreviewUrl) URL.revokeObjectURL(finalHighlightPreviewUrl);
-        setFinalHighlightPreviewUrl(URL.createObjectURL(croppedFileResult));
+        if (finalHighlightPreviewUrlRef.current) URL.revokeObjectURL(finalHighlightPreviewUrlRef.current);
+        const newPreviewUrl = URL.createObjectURL(croppedFileResult);
+        setFinalHighlightPreviewUrl(newPreviewUrl);
+        finalHighlightPreviewUrlRef.current = newPreviewUrl;
       } else {
         toast({ title: "Crop Failed", description: "Could not process the cropped image.", variant: "destructive" });
       }
@@ -397,8 +390,8 @@ export default function AppLayout({
     setIsSubmittingPostFromDialog(true);
     let idToken: string | null = null;
     try {
-      await user.getIdToken(true);
-      idToken = await user.getIdToken();
+      if (!auth.currentUser) throw new Error("User not authenticated for creating post.");
+      idToken = await auth.currentUser.getIdToken(true);
       if (!idToken) throw new Error("Failed to retrieve authentication token.");
 
       const highlightFormData = new FormData();
@@ -428,9 +421,7 @@ export default function AppLayout({
         toast({ title: "Post Shared!", description: "Your highlight has been shared to the feed." });
         setIsCreatePostDialogOpen(false);
         resetCreatePostDialogStates();
-        console.log('Refreshing route. Current pathname:', pathname);
         router.refresh();
-        // FeedPage will re-fetch on its own or via revalidatePath
       } else {
         throw new Error(postResult.error || "Could not share to feed.");
       }
@@ -445,7 +436,6 @@ export default function AppLayout({
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const openQuickAddMenu = useCallback(() => setIsQuickAddOpen(true), []);
 
-
   // ---- Hiding Bottom Nav Logic ----
   const isOnboardingPage = pathname === '/onboarding';
   const isIndividualChatPage = pathname.startsWith('/messages/') && pathname !== '/messages';
@@ -455,8 +445,8 @@ export default function AppLayout({
   const isPlanGeneratePage = pathname === '/plans/generate';
   const isPlanCreatePage = pathname === '/plans/create';
   const isCollectionDetailPage = pathname.startsWith('/collections/') && pathname !== '/collections';
-  const isUserSettingsPage = pathname === '/profile';
-  const isUserProfilePage = pathname.startsWith('/users/'); // New public profile page
+  const isUserSettingsPage = pathname === '/profile' || pathname === '/users/settings'; // Allow both
+  const isUserProfilePage = pathname.startsWith('/users/') && pathname !== '/users/settings'; // Exclude settings from generic user profile
 
   const hideBottomNav =
     isOnboardingPage ||
@@ -483,7 +473,6 @@ export default function AppLayout({
     !useFullWidthLayout && "max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8",
     pageAnimationClass
   );
-
 
   if (authLoading && !user) {
     return (
@@ -539,8 +528,6 @@ export default function AppLayout({
       {/* Global Quick Add Popover */}
       <Popover open={isQuickAddOpen} onOpenChange={setIsQuickAddOpen}>
         <PopoverTrigger asChild>
-          {/* Dummy trigger, actual opening handled by openQuickAddMenu from Nav/Sidebar */}
-          {/* This div can be styled if needed, or kept minimal if trigger is purely programmatic */}
           <div />
         </PopoverTrigger>
         <PopoverContent
@@ -558,7 +545,7 @@ export default function AppLayout({
                 <Sparkles className="mr-2 h-4 w-4" /> New Plan (AI)
               </Link>
             </Button>
-            <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() => {handleOpenCreatePostDialog(); setIsQuickAddOpen(false); }}>
+            <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() =>{handleOpenCreatePostDialog(); setIsQuickAddOpen(false); }}>
               <Edit3 className="mr-2 h-4 w-4" /> New Post
             </Button>
           </div>
@@ -625,8 +612,9 @@ export default function AppLayout({
                     className="absolute top-1 right-1 h-7 w-7 bg-black/60 hover:bg-black/80 text-white/90 hover:text-white rounded-full backdrop-blur-sm shadow-md"
                     onClick={() => {
                       setCroppedHighlightFileForPost(null);
-                      if (finalHighlightPreviewUrl) URL.revokeObjectURL(finalHighlightPreviewUrl);
+                      if (finalHighlightPreviewUrlRef.current) URL.revokeObjectURL(finalHighlightPreviewUrlRef.current);
                       setFinalHighlightPreviewUrl(null);
+                      finalHighlightPreviewUrlRef.current = null;
                       setImageSrcForPostCropper(null);
                       if (highlightFileInputRefDialog.current) highlightFileInputRefDialog.current.value = "";
                     }}
@@ -727,7 +715,6 @@ export default function AppLayout({
                 aspect={4/3}
                 minWidth={100}
                 minHeight={75}
-                // circularCrop={false} // Rectangular crop for posts
               >
                 <NextImage
                   ref={imgRefPostCropperDialog}
