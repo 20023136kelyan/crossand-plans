@@ -4,7 +4,7 @@
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { Sidebar } from '@/components/layout/Sidebar';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'; // Added useSearchParams
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,8 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
+import { FormItem } from "@/components/ui/form"; // Added FormItem import
+import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -28,7 +29,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import NextImage from 'next/image';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Added Tabs
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from '@/context/AuthContext';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { getFriendships } from '@/services/userService';
@@ -187,6 +188,33 @@ export default function AppLayout({
     };
   }, [currentUserId, profileExists, authLoading, user?.uid]);
 
+  // Routing effect
+  useEffect(() => {
+    if (loading) return; // Wait for auth loading to complete
+
+    const publicPaths = ['/login', '/signup', '/'];
+    const isOnboardingRelated = pathname === '/onboarding';
+    const isPublicDynamicRoute = pathname.startsWith('/p/') || pathname.startsWith('/u/'); // Public plan/user views
+    
+    if (user) { // User is authenticated
+      if (profileExists === false && !isOnboardingRelated) {
+        // If profile doesn't exist, and not on onboarding, redirect to onboarding
+        router.push('/onboarding');
+      } else if (profileExists === true && (isOnboardingRelated || publicPaths.includes(pathname))) {
+        // If profile exists, and on onboarding or a public auth path, redirect to feed
+        router.push('/feed');
+      }
+      // If profileExists is true and on an app page, do nothing (stay on page)
+      // If profileExists is null (still checking), do nothing, wait for it to resolve
+    } else { // User is not authenticated
+      if (!isPublicDynamicRoute && !publicPaths.includes(pathname) && !isOnboardingRelated) {
+        // If not on a public-access route, redirect to login
+        router.push('/login');
+      }
+      // If on a public route, do nothing (stay on page)
+    }
+  }, [user, loading, profileExists, router, pathname]);
+
   const [pageAnimationClass, setPageAnimationClass] = useState('');
   const previousPathnameRef = useRef(pathname);
 
@@ -218,7 +246,7 @@ export default function AppLayout({
 
 
   const [isCreatePostDialogOpen, setIsCreatePostDialogOpen] = useState(false);
-  const [isPostCropperModalOpen, setIsPostCropperModalOpen] = useState(false);
+  const [isPostCropperModalOpen, setIsPostCropperModalOpen] = useState(false); // Added state
   const [userCompletedPlans, setUserCompletedPlans] = useState<Plan[]>([]);
   const [loadingCompletedPlans, setLoadingCompletedPlans] = useState(false);
   const [selectedPlanIdForPost, setSelectedPlanIdForPost] = useState<string | undefined>(undefined);
@@ -240,7 +268,7 @@ export default function AppLayout({
     setCroppedHighlightFileForPost(null);
     if (finalHighlightPreviewUrlRef.current) { URL.revokeObjectURL(finalHighlightPreviewUrlRef.current); }
     setFinalHighlightPreviewUrl(null);
-    finalHighlightPreviewUrlRef.current = null;
+    finalHighlightPreviewUrlRef.current = null; // Ensure ref is also cleared
     setImageSrcForPostCropper(null);
     setPostCrop(undefined);
     setCompletedPostCrop(null);
@@ -253,8 +281,8 @@ export default function AppLayout({
   }, []);
 
   const handleOpenCreatePostDialog = useCallback(async () => {
-    const currentAuthUser = auth.currentUser;
-    if (!currentAuthUser || !currentUserProfile) {
+    const currentAuthUser = auth.currentUser; // Use imported auth directly
+    if (!currentAuthUser || !currentUserProfile) { // Use currentUserProfile from AuthContext
       toast({ title: "Login Required", description: "Please log in to create a post.", variant: "destructive" });
       return;
     }
@@ -272,7 +300,7 @@ export default function AppLayout({
     } finally {
       setLoadingCompletedPlans(false);
     }
-  }, [currentUserProfile, resetCreatePostDialogStates, toast, auth]);
+  }, [currentUserProfile, resetCreatePostDialogStates, toast, auth]); // Added auth to dependencies
 
   const handleHighlightFileChangeForDialog = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -340,15 +368,16 @@ export default function AppLayout({
   };
 
   const handleCreatePostSubmit = async () => {
-    if (!user || !currentUserProfile) { toast({ title: "Auth Error", description: "User not authenticated.", variant: "destructive" }); return; }
+    const currentAuthUser = auth.currentUser; // Use imported auth
+    if (!currentAuthUser || !currentUserProfile) { toast({ title: "Auth Error", description: "User not authenticated.", variant: "destructive" }); return; }
     if (!selectedPlanIdForPost) { toast({ title: "Validation Error", description: "Please select a plan.", variant: "destructive" }); return; }
     if (!croppedHighlightFileForPost) { toast({ title: "Validation Error", description: "Please select and crop an image highlight.", variant: "destructive" }); return; }
     if (!postCaptionForDialog.trim()) { toast({ title: "Validation Error", description: "Please enter a caption.", variant: "destructive" }); return; }
     setIsSubmittingPostFromDialog(true);
     let idToken: string | null = null;
     try {
-      if (!auth.currentUser) throw new Error("User not authenticated for creating post.");
-      idToken = await auth.currentUser.getIdToken(true);
+      if (!currentAuthUser) throw new Error("User not authenticated for creating post.");
+      idToken = await currentAuthUser.getIdToken(true);
       if (!idToken) throw new Error("Failed to retrieve authentication token.");
       const highlightFormData = new FormData();
       highlightFormData.append('highlightImage', croppedHighlightFileForPost);
@@ -379,7 +408,6 @@ export default function AppLayout({
   };
 
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
-  // Removed openQuickAddMenu, it's managed internally by BottomNav or Sidebar for their popovers
 
   const isOnboardingPage = pathname === '/onboarding';
   const isIndividualChatPage = pathname.startsWith('/messages/') && pathname !== '/messages';
@@ -389,13 +417,12 @@ export default function AppLayout({
   const isPlanGeneratePage = pathname === '/plans/generate';
   const isPlanCreatePage = pathname === '/plans/create';
   const isCollectionDetailPage = pathname.startsWith('/collections/') && pathname !== '/collections';
-  const isUserSettingsPage = pathname === '/profile' || pathname === '/users/settings';
+  const isUserSettingsPage = pathname === '/profile' || pathname === '/users/settings'; // Updated to include /users/settings
   const isUserProfilePage = pathname.startsWith('/users/') && pathname !== '/users/settings';
 
   const hideBottomNav = isOnboardingPage || isIndividualChatPage || isPlanDetailPage || isPlanCategoryPage || isPlanCityPage || isPlanGeneratePage || isPlanCreatePage || isCollectionDetailPage || isUserSettingsPage;
   const useFullWidthLayout = isIndividualChatPage || isPlanGeneratePage;
 
-  // Scroll-to-hide/show logic for Page Tabs
   const [isPageTabsVisible, setIsPageTabsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
   const scrollThreshold = 50;
@@ -408,7 +435,7 @@ export default function AppLayout({
       else if (currentScrollY < lastScrollY && !isPageTabsVisible) setIsPageTabsVisible(true);
       setLastScrollY(currentScrollY <= 0 ? 0 : currentScrollY);
     };
-    if (pathname === '/feed' || pathname === '/explore') { // Only attach scroll listener for these pages
+    if (pathname === '/feed' || pathname === '/explore') {
       window.addEventListener('scroll', handleScroll, { passive: true });
     }
     return () => window.removeEventListener('scroll', handleScroll);
@@ -428,6 +455,13 @@ export default function AppLayout({
   if (authLoading && !user) {
     return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
   }
+  
+  // Early return if profileExists is still null after loading, and user is authenticated.
+  // This prevents rendering children until profile status is determined, potentially avoiding layout shifts or incorrect redirects.
+  if (user && profileExists === null && !loading) {
+      return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
+  }
+
 
   return (
     <div className="min-h-screen bg-background">
@@ -448,7 +482,7 @@ export default function AppLayout({
           {showPageTabs && (
             <div className={cn(
               "sticky top-16 z-20 flex justify-center items-center transition-all duration-300 ease-in-out h-12 border-b border-border/30",
-              "bg-background/90 backdrop-blur-sm", // Apply background and blur always
+              "bg-background/90 backdrop-blur-sm",
               isPageTabsVisible ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0 pointer-events-none"
             )}>
               <Tabs value={activePageTab} onValueChange={handlePageTabChange} className="w-full max-w-xs sm:max-w-sm">
@@ -482,7 +516,7 @@ export default function AppLayout({
         <BottomNav
           plansNotificationCount={plansNotificationCount}
           profileNotificationCount={profileNotificationCount}
-          openQuickAddMenu={() => setIsQuickAddOpen(true)} // Pass function to control AppLayout's popover
+          openQuickAddMenu={() => setIsQuickAddOpen(true)}
           handleOpenCreatePostDialog={handleOpenCreatePostDialog}
         />
       )}
@@ -500,6 +534,7 @@ export default function AppLayout({
         </PopoverContent>
       </Popover>
 
+      {/* Create Post Dialog */}
       <Dialog open={isCreatePostDialogOpen} onOpenChange={(open) => { setIsCreatePostDialogOpen(open); if (!open) resetCreatePostDialogStates(); }}>
         <DialogContent className="sm:max-w-sm rounded-xl bg-card shadow-2xl p-6 border-transparent">
           <DialogHeader className="text-left mb-2">
@@ -564,9 +599,13 @@ export default function AppLayout({
         </DialogContent>
       </Dialog>
 
+      {/* Post Image Cropper Dialog for AppLayout */}
       <Dialog open={isPostCropperModalOpen} onOpenChange={(open) => {if(!open) handleCancelPostImageCropDialog(); }}>
         <DialogContent className="sm:max-w-md p-4 bg-card border-border/50">
-          <DialogHeader><DialogTitle className="text-lg font-semibold">Crop Your Highlight Image</DialogTitle><DialogDescription className="text-sm">Adjust the selection for your post image. Recommended aspect ratio: 4:3.</DialogDescription></DialogHeader>
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold">Crop Your Highlight Image</DialogTitle>
+            <DialogDescription className="text-sm">Adjust the selection for your post image. Recommended aspect ratio: 4:3.</DialogDescription>
+          </DialogHeader>
           {imageSrcForPostCropper && (
             <div className="my-4 max-h-[60vh] overflow-hidden flex justify-center items-center">
               <ReactCrop crop={postCrop} onChange={(_, percentCrop) => setPostCrop(percentCrop)} onComplete={(c) => setCompletedPostCrop(c)} aspect={4/3} minWidth={100} minHeight={75}>
@@ -580,4 +619,3 @@ export default function AppLayout({
     </div>
   );
 }
-    
