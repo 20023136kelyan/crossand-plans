@@ -680,12 +680,24 @@ export default function FeedPage() {
     setActivePostForDetailModal(post); setIsPostDetailModalOpen(true); setLoadingAuthorForDetailModal(true); setAuthorForDetailModal(null);
     try {
       const authorProfile = await getUserProfile(post.userId);
-      if (authorProfile) { setAuthorForDetailModal(authorProfile); } else { throw new Error("Author profile not found."); }
-    } catch (error: any) {
+      if (authorProfile) {
+        setAuthorForDetailModal(authorProfile);
+      } else {
+        // Instead of throwing, set to null and perhaps log a warning.
+        // The modal should handle a null authorProfile gracefully.
+        console.warn(`Author profile not found for userId: ${post.userId}. Modal will show limited author info.`);
+        setAuthorForDetailModal(null);
+        // Optionally, a less severe toast can be shown here if desired,
+        // or let the modal display "User not found"
+        // toast({ title: "Author Info", description: "Could not load full author details for this post.", variant: "default" });
+      }
+    } catch (error: any) { // This catch is for unexpected errors from getUserProfile
       console.error("Error fetching author profile for detail modal:", error);
       toast({ title: "Error", description: `Could not load author details: ${error.message}`, variant: "destructive" });
       setAuthorForDetailModal(null);
-    } finally { setLoadingAuthorForDetailModal(false); }
+    } finally {
+      setLoadingAuthorForDetailModal(false);
+    }
   }, [user, toast]);
 
   const handleClosePostDetailModal = useCallback(() => {
