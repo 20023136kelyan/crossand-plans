@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { calculatePlanScore, calculateDiscountMultiplier } from '@/lib/utils/planRanking';
 import { useRouter } from 'next/navigation';
-// Removed duplicate toast import: import { toast } from '@/hooks/use-toast';
+// Removed duplicate toast import
 import type { UserPreferences, GeoPoint } from '@/types/user';
 import { calculateEnhancedPlanScore } from '@/lib/utils/enhancedRanking';
 
@@ -710,77 +710,45 @@ interface ExploreContentProps {
   userPreferences?: UserPreferences | null;
 }
 
-export const ExploreContent = ({ initialData, userPreferences }: ExploreContentProps) => {
-  // Hooks
+export function ExploreContent({ initialData, userPreferences }: ExploreContentProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
-  
-  // Refs
-  const isMounted = useRef(true);
-  const toastIds = useRef<string[]>([]);
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Types
-  type UserLocation = {
-    city: string;
-    country: string;
-    coordinates?: GeoPoint;
-  };
-
-  type ViewMode = 'all' | 'cities' | 'categories' | 'creators' | 'dayInLife';
-
-  type FetchLocationParam = {
-    city: string;
-    country: string;
-    coordinates?: GeoPoint;
-  } | undefined;
-
-  // Helper function to convert UserLocation to FetchLocationParam
-  const getLocationForApi = (loc: UserLocation | null): FetchLocationParam => {
-    if (!loc?.city || !loc?.country) return undefined;
-    const result: FetchLocationParam = { 
-      city: loc.city, 
-      country: loc.country
-    };
-    if (loc.coordinates) {
-      result.coordinates = loc.coordinates;
-    }
-    return result;
-  };
-
-  // State
-  const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
-  const [locationRequested, setLocationRequested] = useState(false);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [userLocation, setUserLocation] = useState<{ 
+    city: string; 
+    country: string;
+    coordinates?: GeoPoint;
+  } | undefined>();
   const [selectedCity, setSelectedCity] = useState<string | undefined>();
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
-  const [viewMode, setViewMode] = useState<ViewMode>('all');
-  const [isTabsHeaderVisible, setIsTabsHeaderVisible] = useState<boolean>(true);
-  const [lastScrollY, setLastScrollY] = useState<number>(0);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [cities, setCities] = useState<City[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [viewMode, setViewMode] = useState<'all' | 'cities' | 'categories' | 'creators' | 'dayInLife'>('all');
+  const [feedView, setFeedView] = useState<'forYou' | 'explore'>('explore');
+  const [isTabsHeaderVisible, setIsTabsHeaderVisible] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
+  const scrollThreshold = 50;
+  
+  const [profiles, setProfiles] = useState<Profile[]>(initialData?.featuredProfiles || []);
+  const [plans, setPlans] = useState<Plan[]>(initialData?.completedPlans || []);
+  const [cities, setCities] = useState<City[]>(initialData?.featuredCities || []);
+  const [categories, setCategories] = useState<Category[]>(initialData?.categories || []);
+  const [searchResults, setSearchResults] = useState<SearchedUser[]>([]);
   const [filteredPlans, setFilteredPlans] = useState<Plan[]>([]);
   const [featuredPlans, setFeaturedPlans] = useState<Plan[]>([]);
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
-  const [searchLoading, setSearchLoading] = useState<boolean>(false);
-  
-  // Constants
-  const scrollThreshold = 50;
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [locationRequested, setLocationRequested] = useState(false);
+  const [isSearchActive, setIsSearchActive] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Category images mapping with proper typing
   const categoryImages: Record<string, string> = {
     'ALL': '/images/categories/all.jpg',
     'ART': '/images/categories/art.jpg',
     'FITNESS': '/images/categories/fitness.jpg',
-    // Add more category images as needed
   };
 
-  // Function to request location
-  const requestLocation = () => {
+  const requestLocation = useCallback(() => {
     if (navigator.geolocation) {
       setLocationRequested(true);
       navigator.geolocation.getCurrentPosition(
@@ -791,690 +759,266 @@ export const ExploreContent = ({ initialData, userPreferences }: ExploreContentP
           };
           
           try {
-            // Reverse geocode to get city and country
             const response = await fetch(
               `https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.latitude},${coords.longitude}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`
             );
-            
-            if (!response.ok) {
-              throw new Error(`Geocoding API error: ${response.status}`);
-            }
-            
+            if (!response.ok) throw new Error(`Geocoding API error: ${response.status}`);
             const data = await response.json();
-            
-            if (data.status !== 'OK') {
-              throw new Error(`Geocoding failed: ${data.status}`);
-            }
+            if (data.status !== 'OK') throw new Error(`Geocoding failed: ${data.status}`);
             
             if (data.results?.[0]?.address_components) {
               const components = data.results[0].address_components;
-              const city = components.find(
-                (c: any) => c.types.includes('locality')
-              )?.long_name;
-              const country = components.find(
-                (c: any) => c.types.includes('country')
-              )?.long_name;
-
+              const city = components.find((c: any) => c.types.includes('locality'))?.long_name;
+              const country = components.find((c: any) => c.types.includes('country'))?.long_name;
               if (city && country) {
-                const newLocation = {
-                  city,
-                  country,
-                  coordinates: coords
-                } satisfies NonNullable<UserLocation>;
-                setUserLocation(newLocation);
+                setUserLocation({ city, country, coordinates: coords });
               } else {
                 throw new Error('Could not find city and country in geocoding results');
               }
             } else {
               throw new Error('No address components found in geocoding results');
             }
-          } catch (error) {
+          } catch (error: any) {
             console.error('Error getting location details:', error);
-            toast({
-              title: 'Location Error',
-              description: 'Could not determine your city. Some features may be limited.',
-              variant: 'default',
-              duration: 5000
-            });
+            toast({ title: 'Location Error', description: error.message || 'Could not determine city.', variant: 'default', duration: 5000 });
           }
         },
         (error) => {
-          console.error('Error getting geolocation:', {
-            code: error.code,
-            message: error.message,
-            PERMISSION_DENIED: error.PERMISSION_DENIED,
-            POSITION_UNAVAILABLE: error.POSITION_UNAVAILABLE,
-            TIMEOUT: error.TIMEOUT
-          });
-          
-          let errorMessage = 'Could not access your location. ';
-          
-          switch (error.code) {
-            case error.PERMISSION_DENIED:
-              errorMessage += 'Please enable location access in your browser settings.';
-              break;
-            case error.POSITION_UNAVAILABLE:
-              errorMessage += 'Location information is unavailable.';
-              break;
-            case error.TIMEOUT:
-              errorMessage += 'Location request timed out.';
-              break;
-            default:
-              errorMessage += `An unknown error occurred: ${error.message}`;
-          }
-          
-          toast({
-            title: 'Location Access Error',
-            description: errorMessage,
-            variant: 'default',
-            duration: 5000
-          });
+          console.error('Error getting geolocation:', error);
+          toast({ title: 'Location Access Error', description: 'Could not access location. Please enable in browser settings.', variant: 'default', duration: 5000 });
         },
-        {
-          enableHighAccuracy: false,
-          timeout: 10000,
-          maximumAge: 300000 // 5 minutes
-        }
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
       );
     } else {
-      console.error('Geolocation is not supported by this browser');
-      toast({
-        title: 'Location Not Supported',
-        description: 'Your browser does not support geolocation. Some features may be limited.',
-        variant: 'default',
-        duration: 5000
-      });
-    }
-  };
-
-  // Replace the geolocation useEffect with a check for saved location
-  useEffect(() => {
-    async function getUserLocation() {
-      if (!user?.uid) return;
-      try {
-        const location = await getUserLocationAction(user.uid);
-        if (location.success && location.data) {
-          if (location.data.city !== userLocation?.city || location.data.country !== userLocation?.country) {
-            setUserLocation({ 
-              city: location.data.city, 
-              country: location.data.country 
-              // As per instructions, not including coordinates here as getUserLocationAction data structure for them is unclear
-            });
-          }
-        } else {
-          // This is an expected case for new users - no need to show error
-          if (!locationRequested) {
-            toast({
-              title: 'Enable Location',
-              description: 'Enable location access to see personalized recommendations',
-              action: (
-                <Button variant="default" size="sm" onClick={requestLocation}>
-                  Enable Location
-                </Button>
-              ),
-              duration: 0 // Keep until user acts
-            });
-          }
-        }
-      } catch (error) {
-        // Only log actual errors, not the "Location not found" case
-        if (error instanceof Error && error.message !== 'Location not found') {
-          console.error('Error getting user location:', {
-            error,
-            message: error instanceof Error ? error.message : String(error)
-          });
-          toast({
-            title: 'Location Error',
-            description: 'Could not retrieve your saved location',
-            variant: 'default',
-            duration: 5000
-          });
-        }
-      }
-    }
-
-    getUserLocation();
-  }, [user, toast, locationRequested]);
-
-  // Function to show toast with proper cleanup
-  const showToast = useCallback((options: Parameters<typeof toast>[0]) => {
-    try {
-      const result = toast(options);
-      if (result && 'id' in result) {
-        toastIds.current.push(String(result.id));
-      }
-      return result;
-    } catch (error) {
-      console.error('Error showing toast:', error);
-      return null;
+      toast({ title: 'Location Not Supported', description: 'Browser does not support geolocation.', variant: 'default', duration: 5000 });
     }
   }, [toast]);
 
-  // Memoize the fetch function to prevent unnecessary re-creations
-  const fetchLocationAndData = useCallback(async () => {
-    if (!user?.uid) return;
-    
-    let currentLocation = getLocationForApi(userLocation);
-    let shouldFetchLocation = false;
-    
-    try {
-      // Only fetch location if we don't have one or if it was explicitly requested
-      if (!userLocation || locationRequested) {
-        shouldFetchLocation = true;
-        const location = await getUserLocationAction(user.uid);
-        
-        if (location?.success && location?.data) {
-          const newLocation = { city: location.data.city, country: location.data.country };
-          // Only update if location actually changed
-          if (newLocation.city !== userLocation?.city || newLocation.country !== userLocation?.country) {
-            setUserLocation(newLocation);
-            currentLocation = getLocationForApi(newLocation);
-          }
+  useEffect(() => {
+    if (user?.uid) {
+      getUserLocationAction(user.uid).then(result => {
+        if (result.success && result.data?.city && result.data?.country) {
+          setUserLocation({ city: result.data.city, country: result.data.country });
         } else if (!locationRequested) {
-          // Only show the toast if we haven't already requested location
-          showToast({ 
-            id: 'location-toast',
+          toast({ 
             title: 'Enable Location', 
-            description: 'Enable location access to see personalized recommendations', 
-            action: <Button onClick={() => setLocationRequested(true)}>Enable</Button>,
+            description: 'Enable location access for personalized recommendations.', 
+            action: <Button onClick={requestLocation}>Enable</Button>,
             duration: 0 
           });
         }
-      }
-
-      // Only fetch data if we're not waiting for location or if we just got location
-      if (!shouldFetchLocation || currentLocation || !locationRequested) {
-        setLoading(true);
-        const result = await fetchExplorePageDataAction(
-          currentLocation || undefined,
-          false, // isPremiumUser
-          0,     // activityScore
-          userPreferences
-        );
-        
-        if (result.success && result.data) {
-          const allPlans = result.data.completedPlans || [];
-          
-          // Process plans in a single batch
-          const processedData = processExploreData(allPlans, result.data.featuredCities || [], currentLocation);
-          
-          setProfiles(result.data.featuredProfiles || []);
-          setFeaturedPlans(processedData.featuredPlans);
-          setPlans(processedData.plans);
-          setCities(processedData.cities);
-          setCategories(result.data.categories || []);
-        } else if (result?.error) {
-          showToast({
-            title: 'Error',
-            description: result.error,
-            variant: 'destructive'
+      }).catch(err => {
+        console.error("Error fetching user location:", err);
+        if (!locationRequested) {
+           toast({ 
+            title: 'Location Unavailable', 
+            description: 'Could not retrieve saved location. Want to enable it now?', 
+            action: <Button onClick={requestLocation}>Enable</Button>,
+            duration: 0 
           });
         }
+      });
+    }
+  }, [user?.uid, toast, locationRequested, requestLocation]);
+
+  const processExploreData = useCallback((allPlansData: Plan[], featuredCitiesData: City[], currentLocation?: { city: string; country: string; coordinates?: GeoPoint }) => {
+    const scoredPlans = allPlansData.map(plan => ({
+      ...plan,
+      score: calculateEnhancedPlanScore(plan, currentLocation?.coordinates || null, userPreferences || undefined)
+    })).sort((a, b) => b.score - a.score);
+
+    setFeaturedPlans(scoredPlans.filter(plan => plan.featured));
+    setPlans(scoredPlans.filter(plan => !plan.featured));
+
+    const citiesWithScore = featuredCitiesData.map(city => ({
+      ...city,
+      score: scoredPlans
+        .filter(p => p.city?.toLowerCase() === city.name?.toLowerCase())
+        .reduce((acc, p) => acc + (p as any).score, 0) // Cast to any to access score
+    })).sort((a, b) => b.score - a.score);
+    setCities(citiesWithScore);
+  }, [userPreferences]);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await fetchExplorePageDataAction(userLocation, false, 0, userPreferences);
+      if (result.success && result.data) {
+        setProfiles(result.data.featuredProfiles || []);
+        processExploreData(result.data.completedPlans || [], result.data.featuredCities || [], userLocation);
+        setCategories(result.data.categories || []);
+      } else {
+        toast({ title: 'Error', description: result.error || 'Failed to fetch explore data', variant: 'destructive' });
       }
-    } catch (error) {
-      if (error instanceof Error) {
-        showToast({
-          title: 'Error',
-          description: error.message,
-          variant: 'destructive'
-        });
-      }
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message || 'Failed to fetch explore data', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
-  }, [user, userLocation, locationRequested, userPreferences]);
+  }, [userLocation, userPreferences, processExploreData, toast]);
 
-  // Memoized data processing function
-  const processExploreData = useCallback((allPlans: Plan[], featuredCities: City[], currentLocation?: FetchLocationParam) => {
-    // Sort plans by score
-    const sortedPlans = allPlans.map(plan => {
-      const locationForScoring = currentLocation ? {
-        city: currentLocation.city,
-        country: currentLocation.country
-      } : undefined;
-      return {
-        ...plan,
-        score: calculatePlanScore(plan, locationForScoring)
-      };
-    }).sort((a, b) => b.score - a.score);
-
-    // Process cities
-    const citiesWithScore = featuredCities.map(city => ({
-      ...city,
-      score: sortedPlans
-        .filter(p => p.city?.toLowerCase() === city.name?.toLowerCase())
-        .reduce((acc, p) => acc + p.score, 0)
-    })).sort((a, b) => b.score - a.score);
-    
-    return {
-      featuredPlans: sortedPlans.filter(plan => plan.featured),
-      plans: sortedPlans.filter(plan => !plan.featured),
-      cities: citiesWithScore
-    };
-  }, []);
-
-  // Main effect for data fetching
-  useEffect(() => {
-    // Initial fetch with debounce
-    const timer = setTimeout(() => {
-      fetchLocationAndData();
-    }, 100);
-    
-    // Refresh explore data every 5 minutes
-    const intervalId = setInterval(fetchLocationAndData, 5 * 60 * 1000);
-    
-    return () => {
-      clearTimeout(timer);
-      clearInterval(intervalId);
-      // Clean up any pending toasts
-      if (toast && typeof toast === 'function') {
-        const toastElement = document.querySelector('[data-sonner-toast]');
-        if (toastElement) {
-          toastElement.remove();
-        }
-      }
-    };
-  }, [fetchLocationAndData]);
-
-  // Optimized scroll handler with throttling
-  const handleScroll = useCallback((): void => {
-    const currentScrollY = window.scrollY;
-    if (Math.abs(currentScrollY - lastScrollY) < scrollThreshold / 3) return;
-    if (currentScrollY > lastScrollY && currentScrollY > scrollThreshold && isTabsHeaderVisible) {
-      setIsTabsHeaderVisible(false);
-    } else if (currentScrollY < lastScrollY && !isTabsHeaderVisible) {
-      setIsTabsHeaderVisible(true);
-    }
-    setLastScrollY(currentScrollY <= 0 ? 0 : currentScrollY);
-  }, [lastScrollY, isTabsHeaderVisible, scrollThreshold]);
-
-  // Add scroll event listener with throttling
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    
-    const throttledHandleScroll = () => {
-      if (!timeoutId) {
-        timeoutId = setTimeout(() => {
-          handleScroll();
-          timeoutId = null;
-        }, 100);
-      }
-    };
-
-    window.addEventListener('scroll', throttledHandleScroll, { passive: true });
-    
-    return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      window.removeEventListener('scroll', throttledHandleScroll);
-    };
-  }, [handleScroll]);
-
-  // Update filtered plans when selection changes
-  useEffect(() => {
-    if (!plans) return;
-    
-    let filtered = [...plans];
-    
-    // Filter by view mode
-    if (viewMode === 'dayInLife') {
-      filtered = filtered.filter(plan => plan.type === 'dayInLife');
-    }
-    
-    // Apply category filter
-    if (selectedCategory && selectedCategory !== 'ALL') {
-      filtered = filtered.filter(plan => 
-        plan.eventType?.toLowerCase() === selectedCategory.toLowerCase()
-      );
-    }
-    
-    // Apply city filter
-    if (selectedCity) {
-      filtered = filtered.filter(plan => 
-        plan.city?.toLowerCase() === selectedCity.toLowerCase()
-      );
-    }
-    
-    // Apply search filter
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase().trim();
-      if (term.length > 0) {
-        filtered = filtered.filter(plan => 
-          plan.name.toLowerCase().includes(term) ||
-          plan.location?.toLowerCase().includes(term) ||
-          plan.city?.toLowerCase().includes(term) ||
-          plan.eventType?.toLowerCase().includes(term) ||
-          plan.description?.toLowerCase().includes(term) ||
-          plan.creatorName?.toLowerCase().includes(term) ||
-          plan.creatorUsername?.toLowerCase().includes(term)
-        );
-      }
-    }
-    
-    // Calculate scores and sort
-    const scoredPlans = filtered.map(plan => ({
-      ...plan,
-      score: calculateEnhancedPlanScore(
-        plan,
-        userLocation?.coordinates || null,
-        userPreferences || undefined
-      )
-    }));
-    
-    // Sort by score
-    scoredPlans.sort((a, b) => b.score - a.score);
-    
-    // Remove score property before setting state
-    setFilteredPlans(scoredPlans.map(({ score, ...plan }) => plan));
-  }, [
-    plans,
-    selectedCategory,
-    selectedCity,
-    searchTerm,
-    viewMode,
-    userLocation,
-    userPreferences
-  ]);
-
-  // Check if user is admin
-  useEffect(() => {
-    const checkAdminStatus = async () => {
-      if (!user) return;
-      try {
-        const idToken = await user.getIdToken();
-        const response = await fetch('/api/admin/verify', {
-          headers: {
-            'Authorization': `Bearer ${idToken}`
-          }
-        });
-        const data = await response.json();
-        setIsAdmin(data.isAdmin);
-      } catch (error) {
-        console.error('Error checking admin status:', error);
-      }
-    };
-
-    checkAdminStatus();
-  }, [user]);
-
-  // Function to toggle featured status
-  const toggleFeatured = async (planId: string, featured: boolean) => {
-    if (!user) return;
-    try {
-      const idToken = await user.getIdToken();
-      const response = await fetch('/api/admin/plans/toggle-featured', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${idToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ planId, featured })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update featured status');
-      }
-
-      // Refresh the plans data
-      const currentLocation = getLocationForApi(userLocation);
-      const result = await fetchExplorePageDataAction(
-        currentLocation || undefined,
-        false, // isPremiumUser
-        0,     // activityScore
-        userPreferences
-      );
-      if (result.success && result.data) {
-        const allPlans = result.data.completedPlans || [];
-        const processedData = processExploreData(allPlans, result.data.featuredCities || [], currentLocation);
-        setFeaturedPlans(processedData.featuredPlans);
-        setPlans(processedData.plans);
-      }
-
-      toast({
-        title: featured ? 'Plan featured' : 'Plan removed from featured',
-        description: 'The plan has been updated successfully.',
-      });
-    } catch (error) {
-      console.error('Error updating featured status:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to update featured status',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  // Handle search input changes without causing continuous refreshes
-  const handleSearchChange = (value: string) => {
-    setSearchTerm(value);
-    
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-    
-    if (value.trim().length > 0) {
-      setSearchLoading(true);
-      searchTimeoutRef.current = setTimeout(() => {
-        setSearchLoading(false);
-      }, 300);
-    } else {
-      setSearchLoading(false);
-    }
-  };
-
-  // Initialize data from props
   useEffect(() => {
     if (initialData) {
       setProfiles(initialData.featuredProfiles || []);
-      setPlans(initialData.completedPlans || []);
-      setCities(initialData.featuredCities || []);
+      processExploreData(initialData.completedPlans || [], initialData.featuredCities || [], userLocation);
       setCategories(initialData.categories || []);
+      setLoading(false);
+    } else {
+      fetchData();
     }
-  }, [initialData]);
+  }, [initialData, fetchData, processExploreData, userLocation]);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      if (Math.abs(currentScrollY - lastScrollY) < scrollThreshold / 3) return;
+      if (currentScrollY > lastScrollY && currentScrollY > scrollThreshold && isTabsHeaderVisible) {
+        setIsTabsHeaderVisible(false);
+      } else if (currentScrollY < lastScrollY && !isTabsHeaderVisible) {
+        setIsTabsHeaderVisible(true);
+      }
+      setLastScrollY(currentScrollY <= 0 ? 0 : currentScrollY);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [lastScrollY, isTabsHeaderVisible, scrollThreshold]);
+  
+  useEffect(() => {
+    if (!plans) return;
+    let newFilteredPlans = [...plans];
+    if (selectedCategory && selectedCategory !== 'ALL') {
+      newFilteredPlans = newFilteredPlans.filter(plan => plan.eventType?.toLowerCase() === selectedCategory.toLowerCase());
+    }
+    if (selectedCity) {
+      newFilteredPlans = newFilteredPlans.filter(plan => plan.city?.toLowerCase() === selectedCity.toLowerCase());
+    }
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase().trim();
+      newFilteredPlans = newFilteredPlans.filter(plan => 
+        plan.name.toLowerCase().includes(term) ||
+        plan.location?.toLowerCase().includes(term) ||
+        plan.city?.toLowerCase().includes(term) ||
+        plan.eventType?.toLowerCase().includes(term) ||
+        plan.description?.toLowerCase().includes(term) ||
+        plan.creatorName?.toLowerCase().includes(term) ||
+        plan.creatorUsername?.toLowerCase().includes(term)
+      );
+    }
+    setFilteredPlans(newFilteredPlans.sort((a,b) => calculateEnhancedPlanScore(b, userLocation?.coordinates || null, userPreferences) - calculateEnhancedPlanScore(a, userLocation?.coordinates || null, userPreferences)));
+  }, [plans, selectedCategory, selectedCity, searchTerm, userLocation, userPreferences]);
+
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (user) {
+        try {
+          const idToken = await user.getIdToken();
+          const response = await fetch('/api/admin/verify', { headers: { 'Authorization': `Bearer ${idToken}` } });
+          const data = await response.json();
+          setIsAdmin(data.isAdmin);
+        } catch (error) { console.error('Error checking admin status:', error); }
+      }
+    };
+    checkAdminStatus();
+  }, [user]);
+
+  const toggleFeatured = async (planId: string, newFeaturedStatus: boolean) => {
+    if (user) {
+      try {
+        const idToken = await user.getIdToken();
+        await fetch('/api/admin/plans/toggle-featured', { 
+          method: 'POST', 
+          headers: { 'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ planId, featured: newFeaturedStatus })
+        });
+        fetchData(); // Refresh data
+        toast({ title: 'Success', description: `Plan ${newFeaturedStatus ? 'featured' : 'unfeatured'}.` });
+      } catch (error) { 
+        toast({ title: 'Error', description: 'Failed to update plan.', variant: 'destructive' });
+      }
+    }
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    setIsSearchActive(value.trim().length > 0);
+    if (value.trim().length > 0) {
+      setSearchLoading(true);
+      searchTimeoutRef.current = setTimeout(() => setSearchLoading(false), 300); 
+    } else {
+      setSearchResults([]);
+      setSearchLoading(false);
+    }
+  };
+  
+  if (loading && !initialData) {
+    return <div className="flex justify-center items-center min-h-screen"><Loader2 className="h-12 w-12 animate-spin" /></div>;
+  }
 
   return (
     <div className="min-h-screen flex flex-col overflow-x-hidden">
-      {/* Header */}
       <div className={cn(
         "sticky top-0 z-50 w-full bg-background/80 backdrop-blur-sm border-b border-border/30",
         "transition-transform duration-300 ease-in-out",
         !isTabsHeaderVisible && "-translate-y-full"
       )}>
         <div className="max-w-screen-2xl mx-auto w-full">
-          {/* For You / Explore Toggle - Centered at the top */}
-          <div
-            className={cn(
-              "sticky top-0 z-30 flex justify-center items-center transition-all duration-300 ease-in-out h-12 sm:h-14 py-2",
-              isTabsHeaderVisible ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0 pointer-events-none"
-            )}
-          >
-            <div className={cn(
-              "grid grid-cols-2 p-0.5 rounded-lg max-w-xs sm:max-w-sm h-8 sm:h-9",
-              "bg-card/70 backdrop-blur-md shadow-md",
-            )}>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  // Redirect to feed page with forYou tab active
-                  router.push('/feed?tab=forYou');
-                }}
-                className={cn(
-                  "text-xs sm:text-sm rounded h-full px-3 py-1.5 transition-colors duration-150",
-                  "hover:bg-muted"
-                )}
-              >
-                For You
-              </Button>
-              <Button
-                variant="default"
-                size="sm"
-                className={cn(
-                  "text-xs sm:text-sm rounded h-full px-3 py-1.5 transition-colors duration-150",
-                  "bg-primary/20 text-primary shadow-sm"
-                )}
-              >
-                Explore
-              </Button>
+          <div className={cn(
+            "sticky top-0 z-30 flex justify-center items-center transition-all duration-300 ease-in-out h-12 sm:h-14 py-2",
+            isTabsHeaderVisible ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0 pointer-events-none"
+          )}>
+            <div className={cn("grid grid-cols-2 p-0.5 rounded-lg max-w-xs sm:max-w-sm h-8 sm:h-9", "bg-card/70 backdrop-blur-md shadow-md")}>
+              <Button variant="ghost" size="sm" onClick={() => router.push('/feed?tab=forYou')} className="text-xs sm:text-sm rounded h-full px-3 py-1.5 transition-colors duration-150 hover:bg-muted">For You</Button>
+              <Button variant="default" size="sm" className="text-xs sm:text-sm rounded h-full px-3 py-1.5 transition-colors duration-150 bg-primary/20 text-primary shadow-sm">Explore</Button>
             </div>
           </div>
-
           <div className="px-4 py-3">
             <h2 className="text-lg font-semibold mb-2 text-center">Discover</h2>
             <div className="relative max-w-2xl mx-auto">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Search plans, people, places..."
-                className="pl-9 h-10 rounded-xl w-full pr-10"
-                value={searchTerm}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
-                    handleSearchChange('');
-                  }
-                }}
-              />
-              {searchTerm && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
-                  onClick={() => {
-                    handleSearchChange('');
-                  }}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
+              <Input type="search" placeholder="Search plans, people, places..." className="pl-9 h-10 rounded-xl w-full pr-10" value={searchTerm} onChange={(e) => handleSearchChange(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && handleSearchChange('')} />
+              {searchTerm && <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8" onClick={() => handleSearchChange('')}><X className="h-4 w-4" /></Button>}
             </div>
           </div>
-
-
-
-          {/* Navigation Tabs */}
           <div className="px-4">
             <div className="flex gap-2 pb-3 overflow-x-auto hide-scrollbar max-w-2xl mx-auto">
-              <Button
-                variant={viewMode === 'all' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  setViewMode('all');
-                }}
-                className="flex-shrink-0"
-              >
-                All
-              </Button>
-              <Button
-                variant={viewMode === 'cities' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  setViewMode('cities');
-                  router.push('/explore/cities', { scroll: false });
-                }}
-                className="flex-shrink-0"
-              >
-                Cities
-              </Button>
-              <Button
-                variant={viewMode === 'categories' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  setViewMode('categories');
-                  router.push('/explore/categories', { scroll: false });
-                }}
-                className="flex-shrink-0"
-              >
-                Categories
-              </Button>
-              <Button
-                variant={viewMode === 'creators' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  setViewMode('creators');
-                  router.push('/explore/creators', { scroll: false });
-                }}
-                className="flex-shrink-0"
-              >
-                Creators
-              </Button>
-              <Button
-                variant={viewMode === 'dayInLife' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  setViewMode('dayInLife');
-                }}
-                className="flex-shrink-0"
-              >
-                Day in Life
-              </Button>
+              <Button variant={viewMode === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('all')} className="flex-shrink-0">All</Button>
+              <Button variant={viewMode === 'cities' ? 'default' : 'outline'} size="sm" onClick={() => { setViewMode('cities'); router.push('/explore/cities', { scroll: false }); }} className="flex-shrink-0">Cities</Button>
+              <Button variant={viewMode === 'categories' ? 'default' : 'outline'} size="sm" onClick={() => { setViewMode('categories'); router.push('/explore/categories', { scroll: false }); }} className="flex-shrink-0">Categories</Button>
+              <Button variant={viewMode === 'creators' ? 'default' : 'outline'} size="sm" onClick={() => { setViewMode('creators'); router.push('/explore/creators', { scroll: false }); }} className="flex-shrink-0">Creators</Button>
+              <Button variant={viewMode === 'dayInLife' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('dayInLife')} className="flex-shrink-0">Day in Life</Button>
             </div>
           </div>
         </div>
       </div>
-
-      {/* Main Content */}
       <main className="flex-1 overflow-auto">
         <div className="max-w-screen-2xl mx-auto w-full">
           <div className="px-4 py-6 relative">
-            {/* Search loading and no results states */}
             {searchTerm.trim().length > 0 && !loading && (
               <div className="mb-6">
                 {searchLoading ? (
-                  <div className="flex justify-center items-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  </div>
+                  <div className="flex justify-center items-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
                 ) : filteredPlans.length === 0 && (
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground">No results found for "{searchTerm}"</p>
-                  </div>
+                  <div className="text-center py-8"><p className="text-muted-foreground">No results found for "{searchTerm}"</p></div>
                 )}
               </div>
             )}
-            {loading ? (
-              <div className="absolute inset-0 flex justify-center items-center min-h-[50vh] bg-background/80">
-                <Loader2 className="h-8 w-8 animate-spin" />
-              </div>
-            ) : viewMode === 'all' && (
+            {viewMode === 'all' && (
               <>
-                {/* Featured Plan Panels */}
                 {featuredPlans.length > 0 && (
-                  <Section 
-                    title="Featured Plans"
-                    viewAllHref="/plans/featured"
-                    className="mb-12 overflow-hidden"
-                  >
+                  <Section title="Featured Plans" viewAllHref="/plans/featured" className="mb-12 overflow-hidden">
                     <div className="relative -mx-4 sm:mx-0">
                       <div className="flex overflow-x-auto gap-4 px-4 pb-4 snap-x snap-mandatory hide-scrollbar">
                         {featuredPlans.map((plan: Plan) => (
                           <div key={plan.id} className="flex-none w-[calc(100vw-2rem)] sm:w-[500px] md:w-[600px] lg:w-[800px] max-w-[1000px] snap-center">
-                {/* Featured Plan Panels */}
-                {featuredPlans.length > 0 && (
-                  <Section 
-                    title="Featured Plans"
-                    viewAllHref="/plans/featured"
-                    className="mb-12 overflow-hidden"
-                  >
-                    <div className="relative -mx-4 sm:mx-0">
-                      <div className="flex overflow-x-auto gap-4 px-4 pb-4 snap-x snap-mandatory hide-scrollbar">
-                        {featuredPlans.map((plan: Plan) => (
-                          <div key={plan.id} className="flex-none w-[calc(100vw-2rem)] sm:w-[500px] md:w-[600px] lg:w-[800px] max-w-[1000px] snap-center">
-                            <FeaturedPlanPanel
-                              plan={plan}
-                              isAdmin={isAdmin}
-                              onRemoveFeature={() => toggleFeatured(plan.id, false)}
-                            />
+                            <FeaturedPlanPanel plan={plan} isAdmin={isAdmin} onRemoveFeature={() => toggleFeatured(plan.id, false)} />
                           </div>
                         ))}
                       </div>
                     </div>
                   </Section>
                 )}
-
-                {/* Admin: Add to Featured */}
                 {isAdmin && (
                   <Section title="Admin: Add to Featured" className="mb-12">
                     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1482,123 +1026,50 @@ export const ExploreContent = ({ initialData, userPreferences }: ExploreContentP
                         <div key={plan.id} className="relative group">
                           <PlanCard plan={plan} />
                           <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                            <Button
-                              variant="default"
-                              onClick={() => toggleFeatured(plan.id, true)}
-                            >
-                              <Crown className="h-4 w-4 mr-2" />
-                              Make Featured
-                            </Button>
+                            <Button variant="default" onClick={() => toggleFeatured(plan.id, true)}><Crown className="h-4 w-4 mr-2" />Make Featured</Button>
                           </div>
                         </div>
                       ))}
                     </div>
                   </Section>
                 )}
-
-                {/* Navigation Cards */}
                 <Section title="Browse Plans" className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <NavigationCard
-                    title="Cities"
-                    description="Explore plans by location"
-                    href="/explore/cities"
-                    icon={MapPin}
-                  />
-                  <NavigationCard
-                    title="Categories"
-                    description="Browse by interest"
-                    href="/explore/categories"
-                    icon={Layers}
-                  />
-                  <NavigationCard
-                    title="Creators"
-                    description="Follow your favorite planners"
-                    href="/explore/creators"
-                    icon={Users}
-                  />
-                  <NavigationCard
-                    title="Celebrity Plans"
-                    description="Experience a day in their life"
-                    href="/explore/celebrity"
-                    icon={Star}
-                  />
+                  <NavigationCard title="Cities" description="Explore plans by location" href="/explore/cities" icon={MapPin} />
+                  <NavigationCard title="Categories" description="Browse by interest" href="/explore/categories" icon={Layers} />
+                  <NavigationCard title="Creators" description="Follow your favorite planners" href="/explore/creators" icon={Users} />
+                  <NavigationCard title="Celebrity Plans" description="Experience a day in their life" href="/explore/celebrity" icon={Star} />
                 </Section>
-
-                {/* Featured Plans */}
-                {featuredPlans.length > 0 && (
-                  <Section 
-                    title="Featured Plans"
-                    viewAllHref="/plans/featured"
-                    className="space-y-6"
-                  >
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {featuredPlans.slice(0, 3).map((plan: Plan) => (
-                        <FeaturedPlanPanel
-                          key={plan.id}
-                          plan={plan}
-                          isAdmin={isAdmin}
-                          onRemoveFeature={() => toggleFeatured(plan.id, false)}
-                        />
-                      ))}
-                    </div>
-                  </Section>
-                )}
-
-                {/* Popular Cities */}
+                
                 {cities.length > 0 && (
-                  <Section
-                    title="Popular Cities"
-                    viewAllHref="/explore/cities"
-                    className="overflow-hidden"
-                  >
+                  <Section title="Popular Cities" viewAllHref="/explore/cities" className="overflow-hidden">
                     <div className="relative -mx-4 sm:mx-0">
                       <div className="flex gap-4 px-4 pb-4 overflow-x-auto snap-x snap-mandatory hide-scrollbar sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
                         {cities.slice(0, 6).map(city => (
                           <Link key={city.name} href={`/plans/city/${city.name}`} className="w-[160px] flex-none sm:w-full">
-                            <CityCard
-                              city={city}
-                              onSelect={() => {}}
-                              isSelected={false}
-                            />
+                            <CityCard city={city} onSelect={() => {}} isSelected={false} />
                           </Link>
                         ))}
                       </div>
                     </div>
                   </Section>
                 )}
-
-                {/* Popular Categories */}
                 {categories.length > 0 && (
-                  <Section
-                    title="Popular Categories"
-                    viewAllHref="/explore/categories"
-                    className="overflow-hidden"
-                  >
+                  <Section title="Popular Categories" viewAllHref="/explore/categories" className="overflow-hidden">
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                       {categories.slice(0, 4).map(category => (
                         <Link key={category.name} href={`/plans/category/${encodeURIComponent(category.name)}`}>
-                          <CategoryCard
-                            name={category.name}
-                            iconUrl={category.iconUrl}
-                            isSelected={false}
-                          />
+                          <CategoryCard name={category.name} iconUrl={category.iconUrl} isSelected={false} />
                         </Link>
                       ))}
                     </div>
                   </Section>
                 )}
-
-                {/* Celebrity Plans */}
                 {profiles.length > 0 && (
-                  <Section
-                    title="A Day in the Life Of"
-                    viewAllHref="/explore/celebrity"
-                    className="overflow-hidden"
-                  >
+                  <Section title="A Day in the Life Of" viewAllHref="/explore/creators" className="overflow-hidden">
                     <div className="relative -mx-4 sm:mx-0">
                       <div className="flex gap-4 px-4 pb-4 overflow-x-auto snap-x snap-mandatory hide-scrollbar sm:grid sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-8">
                         {profiles.map(profile => (
-                          <Link key={profile.id} href={`/plans/celebrity/${profile.id}`} className="w-[140px] flex-none sm:w-full">
+                          <Link key={profile.id} href={`/users/${profile.id}`} className="w-[140px] flex-none sm:w-full">
                             <ProfileCard profile={profile} />
                           </Link>
                         ))}
@@ -1606,13 +1077,7 @@ export const ExploreContent = ({ initialData, userPreferences }: ExploreContentP
                     </div>
                   </Section>
                 )}
-
-                {/* Popular Plans */}
-                <Section
-                  title="Popular Plans"
-                  viewAllHref="/plans"
-                  className="space-y-6"
-                >
+                <Section title="Popular Plans" viewAllHref="/plans" className="space-y-6">
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {plans.slice(0, 6).map(plan => (
                       <PlanCard key={plan.id} plan={plan} />
@@ -1627,3 +1092,6 @@ export const ExploreContent = ({ initialData, userPreferences }: ExploreContentP
     </div>
   );
 }
+
+
+    
