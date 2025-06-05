@@ -43,6 +43,7 @@ const ProfileCard = ({ profile }: { profile: Profile | Influencer }) => {
             alt={profile.name || 'Profile'}
             fill
             className="object-cover"
+            data-ai-hint={profile.type?.toLowerCase() || "profile content"}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-muted">
@@ -67,14 +68,14 @@ const ProfileCard = ({ profile }: { profile: Profile | Influencer }) => {
 };
 
 // Category card component
-export const CategoryCard = ({ 
-  name, 
-  isSelected, 
+export const CategoryCard = ({
+  name,
+  isSelected,
   onClick,
-  iconUrl 
-}: { 
-  name: string; 
-  isSelected?: boolean; 
+  iconUrl
+}: {
+  name: string;
+  isSelected?: boolean;
   onClick?: (e: React.MouseEvent) => void;
   iconUrl?: string;
 }) => (
@@ -111,7 +112,7 @@ const CityCard = ({ city, onSelect, isSelected }: { city: City; onSelect: () => 
   };
 
   return (
-    <div 
+    <div
       className={cn(
         "relative flex-shrink-0 w-[160px] h-[160px] cursor-pointer overflow-hidden rounded-2xl",
         isSelected && "ring-2 ring-primary"
@@ -126,6 +127,7 @@ const CityCard = ({ city, onSelect, isSelected }: { city: City; onSelect: () => 
             fill
             className="object-cover"
             sizes="160px"
+            data-ai-hint={`${city.name} cityscape`}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-muted">
@@ -148,13 +150,13 @@ const CityCard = ({ city, onSelect, isSelected }: { city: City; onSelect: () => 
 };
 
 // Section component
-const Section = ({ 
-  title, 
+const Section = ({
+  title,
   children,
   viewAllHref,
   viewAllText = "View All",
   className = ""
-}: { 
+}: {
   title: string;
   children: React.ReactNode;
   viewAllHref?: string;
@@ -187,7 +189,7 @@ const PlanCard = ({ plan }: { plan: Plan }) => {
   const handleSave = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (!user) {
       toast({
         title: "Login Required",
@@ -240,7 +242,7 @@ const PlanCard = ({ plan }: { plan: Plan }) => {
         )}
         <div className="relative aspect-[2/1] bg-muted">
           {plan.photoHighlights?.[0] ? (
-            <Image src={plan.photoHighlights[0]} alt={plan.name} fill className="object-cover" />
+            <Image src={plan.photoHighlights[0]} alt={plan.name} fill className="object-cover" data-ai-hint={`${plan.eventType} event`} />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
               <Calendar className="h-8 w-8 text-muted-foreground/50" />
@@ -309,7 +311,7 @@ const FeaturedPlanPanel = ({ plan, isAdmin, onRemoveFeature }: { plan: Plan; isA
     <Link href={`/p/${plan.id}`}>
       <div className="group relative h-[500px] rounded-2xl overflow-hidden bg-black/90">
         {plan.photoHighlights?.[0] && (
-          <Image src={plan.photoHighlights[0]} alt={plan.name} fill className="object-cover transition-transform group-hover:scale-105 opacity-70" sizes="(max-width: 768px) 100vw, 1000px" priority />
+          <Image src={plan.photoHighlights[0]} alt={plan.name} fill className="object-cover transition-transform group-hover:scale-105 opacity-70" sizes="(max-width: 768px) 100vw, 1000px" priority data-ai-hint={`${plan.eventType} featured`} />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
         {isAdmin && onRemoveFeature && (
@@ -349,6 +351,51 @@ const FeaturedPlanPanel = ({ plan, isAdmin, onRemoveFeature }: { plan: Plan; isA
   );
 };
 
+// Navigation Card component - DEFINITION ADDED BACK HERE
+const NavigationCard = ({
+  title,
+  description,
+  imageUrl,
+  href,
+  icon: Icon
+}: {
+  title: string;
+  description: string;
+  imageUrl?: string;
+  href: string;
+  icon: React.ElementType;
+}) => (
+  <Link href={href} onClick={(e) => e.stopPropagation()}>
+    <div className="group relative h-[200px] rounded-2xl overflow-hidden bg-black/90">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent">
+        {imageUrl && (
+          <Image
+            src={imageUrl}
+            alt={title}
+            fill
+            className="object-cover transition-transform group-hover:scale-105 mix-blend-overlay opacity-30"
+            data-ai-hint={`${title.toLowerCase()} abstract`}
+          />
+        )}
+      </div>
+      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
+      <div className="absolute inset-0 p-6 flex flex-col justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-white/10 backdrop-blur-sm">
+            <Icon className="h-6 w-6 text-white" />
+          </div>
+        </div>
+        <div>
+          <h3 className="text-xl font-semibold text-white mb-2">{title}</h3>
+          <p className="text-sm text-white/70">{description}</p>
+        </div>
+      </div>
+      <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+    </div>
+  </Link>
+);
+
+
 interface ExplorePageData {
   featuredProfiles: Profile[];
   completedPlans: Plan[];
@@ -375,16 +422,16 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
   const [isTabsHeaderVisible, setIsTabsHeaderVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
   const scrollThreshold = 50;
-  
+
   const [profiles, setProfiles] = useState<Profile[]>(initialData?.featuredProfiles || []);
   const [plans, setPlans] = useState<Plan[]>(initialData?.completedPlans || []);
   const [cities, setCities] = useState<City[]>(initialData?.featuredCities || []);
   const [categories, setCategories] = useState<Category[]>(initialData?.categories || []);
-  
-  const [userSearchResults, setUserSearchResults] = useState<SearchedUser[]>([]); // For people search
+
+  const [userSearchResults, setUserSearchResults] = useState<SearchedUser[]>([]);
   const [filteredPlans, setFilteredPlans] = useState<Plan[]>([]);
   const [featuredPlans, setFeaturedPlans] = useState<Plan[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false); // Combined loading for plans & people
+  const [searchLoading, setSearchLoading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [locationRequested, setLocationRequested] = useState(false);
   const [isSearchActive, setIsSearchActive] = useState(false);
@@ -498,21 +545,17 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, [lastScrollY, isTabsHeaderVisible, scrollThreshold]);
-  
+
   const performSearch = useCallback(async (term: string) => {
     if (!term.trim()) {
       setIsSearchActive(false);
       setUserSearchResults([]);
-      // Plan filtering will naturally reset via the useEffect below when searchTerm is empty
       return;
     }
     setIsSearchActive(true);
     setSearchLoading(true);
-    setUserSearchResults([]); // Clear previous user results
+    setUserSearchResults([]);
 
-    // Plan filtering is handled by the useEffect below based on `searchTerm`
-
-    // User search
     if (user) {
       try {
         const idToken = await user.getIdToken();
@@ -521,7 +564,6 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
           setUserSearchResults(userResult.users);
         } else {
           setUserSearchResults([]);
-          // Optionally toast if user search fails, but not if it just returns no results
           if (userResult.error) {
              toast({ title: "User Search Error", description: userResult.error, variant: "destructive" });
           }
@@ -536,18 +578,18 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
 
   useEffect(() => {
     if (!plans) return;
-    let newFilteredPlans = [...plans, ...featuredPlans]; // Search across both featured and regular plans
-    
-    if (selectedCategory && selectedCategory !== 'ALL' && !searchTerm) { // Apply category filter only if no search term
+    let newFilteredPlans = [...plans, ...featuredPlans];
+
+    if (selectedCategory && selectedCategory !== 'ALL' && !searchTerm) {
       newFilteredPlans = newFilteredPlans.filter(plan => plan.eventType?.toLowerCase() === selectedCategory.toLowerCase());
     }
-    if (selectedCity && !searchTerm) { // Apply city filter only if no search term
+    if (selectedCity && !searchTerm) {
       newFilteredPlans = newFilteredPlans.filter(plan => plan.city?.toLowerCase() === selectedCity.toLowerCase());
     }
     if (searchTerm) {
       const term = searchTerm.toLowerCase().trim();
       if (term.length > 0) {
-        newFilteredPlans = newFilteredPlans.filter(plan => 
+        newFilteredPlans = newFilteredPlans.filter(plan =>
           plan.name.toLowerCase().includes(term) ||
           (plan.location?.toLowerCase().includes(term)) ||
           (plan.city?.toLowerCase().includes(term)) ||
@@ -581,14 +623,14 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
     if (user) {
       try {
         const idToken = await user.getIdToken();
-        await fetch('/api/admin/plans/toggle-featured', { 
-          method: 'POST', 
+        await fetch('/api/admin/plans/toggle-featured', {
+          method: 'POST',
           headers: { 'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ planId, featured: newFeaturedStatus })
         });
-        fetchData(); 
+        fetchData();
         toast({ title: 'Success', description: `Plan ${newFeaturedStatus ? 'featured' : 'unfeatured'}.` });
-      } catch (error) { 
+      } catch (error) {
         toast({ title: 'Error', description: 'Failed to update plan.', variant: 'destructive' });
       }
     }
@@ -601,9 +643,9 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
     }
     searchTimeoutRef.current = setTimeout(() => {
       performSearch(value);
-    }, 300); // 300ms debounce
+    }, 300);
   };
-  
+
   if (loading && !initialData) {
     return <div className="flex justify-center items-center min-h-screen"><Loader2 className="h-12 w-12 animate-spin" /></div>;
   }
