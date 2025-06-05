@@ -14,16 +14,7 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
-import {
-  Form,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormControl,
-  FormMessage,
-  FormDescription
-} from '@/components/ui/form';
-import { Label } from "@/components/ui/label"; // Explicit import
+import { Label } from "@/components/ui/label";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -37,6 +28,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import NextImage from 'next/image';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Added Tabs
 import { useAuth } from '@/context/AuthContext';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { getFriendships } from '@/services/userService';
@@ -56,9 +48,8 @@ import {
   MessageSquare, User as UserIcon, Search, LayoutGrid, LayoutList, Wallet as WalletIcon, ChevronLeft
 } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-is-mobile';
-import { auth } from '@/lib/firebase'; // Import client-side auth directly
+import { auth } from '@/lib/firebase';
 
-// Canvas preview helper function for image cropping (for posts)
 async function canvasPreview(
   image: HTMLImageElement,
   canvas: HTMLCanvasElement,
@@ -111,15 +102,12 @@ async function canvasPreview(
   });
 }
 
-const SIDEBAR_MARGIN_CLASS_MD = "md:ml-[60px]";
-const SIDEBAR_MARGIN_CLASS_LG = "lg:ml-[64px]";
-
 export default function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading: authLoading, currentUserProfile, profileExists, refreshProfileStatus, acknowledgeNewUserWelcome } = useAuth();
+  const { user, loading: authLoading, currentUserProfile, profileExists, refreshProfileStatus, acknowledgeNewUserWelcome, isNewUserJustSignedUp } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const { toast } = useToast();
@@ -131,7 +119,6 @@ export default function AppLayout({
 
   const currentUserId = user?.uid;
 
-  // ---- Notification Counts Effect ----
   useEffect(() => {
     const logPrefix = "[AppLayout Notifications Effect]";
     if (authLoading || !currentUserId || profileExists === false || profileExists === null) {
@@ -140,12 +127,10 @@ export default function AppLayout({
       setProfileNotificationCount(0);
       return () => {};
     }
-
     let unsubFriendRequests: (() => void) | undefined;
     let unsubPlanShares: (() => void) | undefined;
     let unsubPlanInvitations: (() => void) | undefined;
     let unsubChats: (() => void) | undefined;
-
     unsubFriendRequests = getFriendships(
       currentUserId,
       (allFriendships) => {
@@ -154,27 +139,23 @@ export default function AppLayout({
       },
       (error) => console.error(`${logPrefix} Error fetching friendships:`, error)
     );
-
     let currentPlanSharesCount = 0;
     let currentPlanInvitesCount = 0;
     const updatePlansTotal = () => {
       setPlansNotificationCount(currentPlanSharesCount + currentPlanInvitesCount);
     };
-
     if (typeof getPendingPlanSharesForUser === 'function') {
         unsubPlanShares = getPendingPlanSharesForUser(currentUserId, (shares) => {
           currentPlanSharesCount = shares.length;
           updatePlansTotal();
         }, (error) => console.error(`${logPrefix} Error fetching plan shares:`, error));
     }
-    
     if (typeof getPendingPlanInvitationsCount === 'function') {
         unsubPlanInvitations = getPendingPlanInvitationsCount(currentUserId, (invitesCount) => {
           currentPlanInvitesCount = invitesCount;
           updatePlansTotal();
         }, (error) => console.error(`${logPrefix} Error fetching plan invites:`, error));
     }
-
     if (typeof getUserChats === 'function') {
         unsubChats = getUserChats(currentUserId, (fetchedChats: Chat[]) => {
           let unreadCount = 0;
@@ -198,7 +179,6 @@ export default function AppLayout({
           setMessagesNotificationCount(unreadCount);
         }, (error) => console.error(`${logPrefix} Error fetching chats for notifications:`, error));
     }
-
     return () => {
       if (unsubFriendRequests) unsubFriendRequests();
       if (unsubPlanShares) unsubPlanShares();
@@ -207,39 +187,41 @@ export default function AppLayout({
     };
   }, [currentUserId, profileExists, authLoading, user?.uid]);
 
-  // ---- Page Transition Animation Logic ----
   const [pageAnimationClass, setPageAnimationClass] = useState('');
   const previousPathnameRef = useRef(pathname);
 
   useEffect(() => {
     const currentPath = pathname;
     const prevPath = previousPathnameRef.current;
-    let animationClass = '';
-    const mainBottomNavDestinations = ['/feed', '/explore', '/plans', `/users/${user?.uid}`, '/wallet'];
-    const isMessagesPage = currentPath.startsWith('/messages/') && currentPath !== '/messages';
 
-    if (currentPath.startsWith('/messages/') && currentPath !== '/messages' && prevPath !== '/messages') {
-        animationClass = 'animate-slide-in-messages';
-    } else if (mainBottomNavDestinations.includes(currentPath) && currentPath !== prevPath) {
-        const wasOnMainBottomNavDest = mainBottomNavDestinations.includes(prevPath) || (prevPath.startsWith('/messages/') && prevPath !== '/messages');
-        if (wasOnMainBottomNavDest || prevPath === '/') {
-            animationClass = 'animate-slide-in-from-bottom';
-        }
-    }
-
-    setPageAnimationClass(animationClass);
     if (currentPath !== prevPath) {
-      previousPathnameRef.current = currentPath;
-    }
-  }, [pathname, user?.uid]);
+      const mainTabs = ['/feed', '/explore'];
+      const prevIndex = mainTabs.indexOf(prevPath);
+      const currentIndex = mainTabs.indexOf(currentPath);
 
-  // ---- Create Post Dialog Logic ----
+      if (prevIndex !== -1 && currentIndex !== -1) {
+        if (currentIndex > prevIndex) {
+          setPageAnimationClass('animate-slide-in-from-right');
+        } else if (currentIndex < prevIndex) {
+          setPageAnimationClass('animate-slide-in-from-left');
+        } else {
+          setPageAnimationClass('');
+        }
+      } else {
+         setPageAnimationClass('animate-fade-in'); // Fallback for other transitions
+      }
+      const timer = setTimeout(() => setPageAnimationClass(''), 500);
+      previousPathnameRef.current = currentPath;
+      return () => clearTimeout(timer);
+    }
+  }, [pathname]);
+
+
   const [isCreatePostDialogOpen, setIsCreatePostDialogOpen] = useState(false);
-  const [isPostCropperModalOpen, setIsPostCropperModalOpen] = useState(false); // Added this line
+  const [isPostCropperModalOpen, setIsPostCropperModalOpen] = useState(false);
   const [userCompletedPlans, setUserCompletedPlans] = useState<Plan[]>([]);
   const [loadingCompletedPlans, setLoadingCompletedPlans] = useState(false);
   const [selectedPlanIdForPost, setSelectedPlanIdForPost] = useState<string | undefined>(undefined);
-
   const [imageSrcForPostCropper, setImageSrcForPostCropper] = useState<string | null>(null);
   const [postCrop, setPostCrop] = useState<Crop>();
   const imgRefPostCropperDialog = useRef<HTMLImageElement>(null);
@@ -247,12 +229,7 @@ export default function AppLayout({
   const [croppedHighlightFileForPost, setCroppedHighlightFileForPost] = useState<File | null>(null);
   const [finalHighlightPreviewUrl, setFinalHighlightPreviewUrl] = useState<string | null>(null);
   const finalHighlightPreviewUrlRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    finalHighlightPreviewUrlRef.current = finalHighlightPreviewUrl;
-  }, [finalHighlightPreviewUrl]);
-
-
+  useEffect(() => { finalHighlightPreviewUrlRef.current = finalHighlightPreviewUrl; }, [finalHighlightPreviewUrl]);
   const [postCaptionForDialog, setPostCaptionForDialog] = useState('');
   const [postVisibilityForDialog, setPostVisibilityForDialog] = useState<FeedPostVisibility>('public');
   const [isSubmittingPostFromDialog, setIsSubmittingPostFromDialog] = useState(false);
@@ -261,11 +238,9 @@ export default function AppLayout({
   const resetCreatePostDialogStates = useCallback(() => {
     setSelectedPlanIdForPost(undefined);
     setCroppedHighlightFileForPost(null);
-    if (finalHighlightPreviewUrlRef.current) {
-      URL.revokeObjectURL(finalHighlightPreviewUrlRef.current);
-    }
+    if (finalHighlightPreviewUrlRef.current) { URL.revokeObjectURL(finalHighlightPreviewUrlRef.current); }
     setFinalHighlightPreviewUrl(null);
-    finalHighlightPreviewUrlRef.current = null; 
+    finalHighlightPreviewUrlRef.current = null;
     setImageSrcForPostCropper(null);
     setPostCrop(undefined);
     setCompletedPostCrop(null);
@@ -275,22 +250,19 @@ export default function AppLayout({
     setIsPostCropperModalOpen(false);
     setLoadingCompletedPlans(false);
     setIsSubmittingPostFromDialog(false);
-  }, []); 
+  }, []);
 
   const handleOpenCreatePostDialog = useCallback(async () => {
-    const currentAuthUser = auth.currentUser; 
-  
+    const currentAuthUser = auth.currentUser;
     if (!currentAuthUser || !currentUserProfile) {
       toast({ title: "Login Required", description: "Please log in to create a post.", variant: "destructive" });
       return;
     }
-    
     resetCreatePostDialogStates();
     setIsCreatePostDialogOpen(true);
-  
     setLoadingCompletedPlans(true);
     try {
-      const completedPlans = await getUserCompletedPlans(currentAuthUser.uid); 
+      const completedPlans = await getUserCompletedPlans(currentAuthUser.uid);
       setUserCompletedPlans(completedPlans);
       if (completedPlans.length === 0) {
         toast({ title: "No Completed Plans", description: "You need to have completed a plan to share highlights.", variant: "default", duration: 4000 });
@@ -300,8 +272,7 @@ export default function AppLayout({
     } finally {
       setLoadingCompletedPlans(false);
     }
-  }, [currentUserProfile, resetCreatePostDialogStates, toast, auth]); 
-
+  }, [currentUserProfile, resetCreatePostDialogStates, toast, auth]);
 
   const handleHighlightFileChangeForDialog = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -315,28 +286,19 @@ export default function AppLayout({
       const clientMimeType = file.type;
       const fileName = file.name;
       const fileExtension = fileName.split('.').pop()?.toLowerCase();
-
-      if (clientMimeType && clientMimeType.startsWith('image/')) {
-          isValidClientSide = true;
-      } else if (fileExtension && commonImageExtensions.includes(fileExtension)) {
-          isValidClientSide = true;
-      }
-
+      if (clientMimeType && clientMimeType.startsWith('image/')) { isValidClientSide = true; }
+      else if (fileExtension && commonImageExtensions.includes(fileExtension)) { isValidClientSide = true; }
       if (!isValidClientSide) {
          toast({ title: "Invalid file type", description: `Please select an image. Detected: ${clientMimeType || 'unknown'}. File: ${fileName}`, variant: "destructive" });
          if (highlightFileInputRefDialog.current) highlightFileInputRefDialog.current.value = "";
          return;
       }
-
       const reader = new FileReader();
       reader.addEventListener('load', () => {
         setImageSrcForPostCropper(reader.result?.toString() || null);
-        setPostCrop(undefined);
-        setCompletedPostCrop(null);
-        setCroppedHighlightFileForPost(null);
+        setPostCrop(undefined); setCompletedPostCrop(null); setCroppedHighlightFileForPost(null);
         if (finalHighlightPreviewUrlRef.current) URL.revokeObjectURL(finalHighlightPreviewUrlRef.current);
-        setFinalHighlightPreviewUrl(null);
-        setIsPostCropperModalOpen(true);
+        setFinalHighlightPreviewUrl(null); setIsPostCropperModalOpen(true);
       });
       reader.readAsDataURL(file);
       if (highlightFileInputRefDialog.current) highlightFileInputRefDialog.current.value = "";
@@ -374,10 +336,7 @@ export default function AppLayout({
   };
 
   const handleCancelPostImageCropDialog = () => {
-    setIsPostCropperModalOpen(false);
-    setImageSrcForPostCropper(null);
-    setPostCrop(undefined);
-    setCompletedPostCrop(null);
+    setIsPostCropperModalOpen(false); setImageSrcForPostCropper(null); setPostCrop(undefined); setCompletedPostCrop(null);
   };
 
   const handleCreatePostSubmit = async () => {
@@ -385,42 +344,29 @@ export default function AppLayout({
     if (!selectedPlanIdForPost) { toast({ title: "Validation Error", description: "Please select a plan.", variant: "destructive" }); return; }
     if (!croppedHighlightFileForPost) { toast({ title: "Validation Error", description: "Please select and crop an image highlight.", variant: "destructive" }); return; }
     if (!postCaptionForDialog.trim()) { toast({ title: "Validation Error", description: "Please enter a caption.", variant: "destructive" }); return; }
-
     setIsSubmittingPostFromDialog(true);
     let idToken: string | null = null;
     try {
       if (!auth.currentUser) throw new Error("User not authenticated for creating post.");
       idToken = await auth.currentUser.getIdToken(true);
       if (!idToken) throw new Error("Failed to retrieve authentication token.");
-
       const highlightFormData = new FormData();
       highlightFormData.append('highlightImage', croppedHighlightFileForPost);
-
       const highlightResult = await addPhotoHighlightAction(selectedPlanIdForPost, highlightFormData, idToken);
-
       if (!highlightResult.success || !highlightResult.updatedPlan?.photoHighlights || highlightResult.updatedPlan.photoHighlights.length === 0) {
         throw new Error(highlightResult.error || "Could not upload highlight image or retrieve its URL.");
       }
       const latestHighlightUrl = highlightResult.updatedPlan.photoHighlights[highlightResult.updatedPlan.photoHighlights.length - 1];
       if (!latestHighlightUrl) throw new Error("Could not retrieve the new highlight URL after upload.");
-
       const selectedPlanDetails = userCompletedPlans.find(p => p.id === selectedPlanIdForPost) || { id: selectedPlanIdForPost, name: "Selected Plan" };
-
       const postDataForAction = {
-        planId: selectedPlanDetails.id,
-        planName: selectedPlanDetails.name || 'A Plan',
-        highlightImageUrl: latestHighlightUrl,
-        postText: postCaptionForDialog,
-        visibility: postVisibilityForDialog,
+        planId: selectedPlanDetails.id, planName: selectedPlanDetails.name || 'A Plan',
+        highlightImageUrl: latestHighlightUrl, postText: postCaptionForDialog, visibility: postVisibilityForDialog,
       };
-
       const postResult = await createFeedPostAction(postDataForAction, idToken);
-
       if (postResult.success) {
         toast({ title: "Post Shared!", description: "Your highlight has been shared to the feed." });
-        setIsCreatePostDialogOpen(false);
-        resetCreatePostDialogStates();
-        router.refresh();
+        setIsCreatePostDialogOpen(false); resetCreatePostDialogStates(); router.refresh();
       } else {
         throw new Error(postResult.error || "Could not share to feed.");
       }
@@ -433,9 +379,8 @@ export default function AppLayout({
   };
 
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
-  const openQuickAddMenu = useCallback(() => setIsQuickAddOpen(true), []);
+  // Removed openQuickAddMenu, it's managed internally by BottomNav or Sidebar for their popovers
 
-  // ---- Hiding Bottom Nav Logic ----
   const isOnboardingPage = pathname === '/onboarding';
   const isIndividualChatPage = pathname.startsWith('/messages/') && pathname !== '/messages';
   const isPlanDetailPage = pathname.startsWith('/plans/') && pathname.split('/').length > 3 && !pathname.includes('/create') && !pathname.includes('/generate') && !pathname.includes('/category/') && !pathname.includes('/city/');
@@ -444,41 +389,44 @@ export default function AppLayout({
   const isPlanGeneratePage = pathname === '/plans/generate';
   const isPlanCreatePage = pathname === '/plans/create';
   const isCollectionDetailPage = pathname.startsWith('/collections/') && pathname !== '/collections';
-  const isUserSettingsPage = pathname === '/profile' || pathname === '/users/settings'; // Allow both
-  const isUserProfilePage = pathname.startsWith('/users/') && pathname !== '/users/settings'; // Exclude settings from generic user profile
+  const isUserSettingsPage = pathname === '/profile' || pathname === '/users/settings';
+  const isUserProfilePage = pathname.startsWith('/users/') && pathname !== '/users/settings';
 
-  const hideBottomNav =
-    isOnboardingPage ||
-    isIndividualChatPage ||
-    isPlanDetailPage ||
-    isPlanCategoryPage ||
-    isPlanCityPage ||
-    isPlanGeneratePage ||
-    isPlanCreatePage ||
-    isCollectionDetailPage ||
-    isUserSettingsPage;
-
-  const showHeader = pathname === '/feed';
+  const hideBottomNav = isOnboardingPage || isIndividualChatPage || isPlanDetailPage || isPlanCategoryPage || isPlanCityPage || isPlanGeneratePage || isPlanCreatePage || isCollectionDetailPage || isUserSettingsPage;
   const useFullWidthLayout = isIndividualChatPage || isPlanGeneratePage;
 
-  const mainContentWrapperClasses = cn(
-    "flex-1 flex flex-col",
-    !isMobile && "md:pl-[240px] lg:pl-[256px]"
-  );
+  // Scroll-to-hide/show logic for Page Tabs
+  const [isPageTabsVisible, setIsPageTabsVisible] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
+  const scrollThreshold = 50;
 
-  const mainContentContainerClasses = cn(
-    "flex-1",
-    useFullWidthLayout ? "h-full" : (hideBottomNav ? "py-6" : "py-6 mb-16 md:mb-0"),
-    !useFullWidthLayout && "max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8",
-    pageAnimationClass
-  );
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      if (Math.abs(currentScrollY - lastScrollY) < scrollThreshold / 3) return;
+      if (currentScrollY > lastScrollY && currentScrollY > scrollThreshold && isPageTabsVisible) setIsPageTabsVisible(false);
+      else if (currentScrollY < lastScrollY && !isPageTabsVisible) setIsPageTabsVisible(true);
+      setLastScrollY(currentScrollY <= 0 ? 0 : currentScrollY);
+    };
+    if (pathname === '/feed' || pathname === '/explore') { // Only attach scroll listener for these pages
+      window.addEventListener('scroll', handleScroll, { passive: true });
+    }
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [lastScrollY, isPageTabsVisible, scrollThreshold, pathname]);
+
+  const activePageTab = pathname === '/feed' ? '/feed' : (pathname === '/explore' ? '/explore' : '/feed');
+  const handlePageTabChange = (value: string) => {
+    if (value === '/feed' && pathname !== '/feed') {
+      router.push('/feed');
+    } else if (value === '/explore' && pathname !== '/explore') {
+      router.push('/explore');
+    }
+  };
+  const showPageTabs = pathname === '/feed' || pathname === '/explore';
+
 
   if (authLoading && !user) {
-    return (
-        <div className="flex h-screen items-center justify-center bg-background">
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        </div>
-    );
+    return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
   }
 
   return (
@@ -494,76 +442,70 @@ export default function AppLayout({
           </div>
         )}
 
-        <div className={cn(
-          "flex-1 min-h-screen",
-          !isMobile && "md:pl-[240px] lg:pl-[256px]"
-        )}>
-          {showHeader && user && (
-            <Header
-              messagesNotificationCount={messagesNotificationCount}
-            />
+        <div className={cn("flex-1 min-h-screen", !isMobile && "md:pl-[240px] lg:pl-[256px]")}>
+          <Header messagesNotificationCount={messagesNotificationCount} />
+          
+          {showPageTabs && (
+            <div className={cn(
+              "sticky top-16 z-20 flex justify-center items-center transition-all duration-300 ease-in-out h-12 border-b border-border/30",
+              "bg-background/90 backdrop-blur-sm", // Apply background and blur always
+              isPageTabsVisible ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0 pointer-events-none"
+            )}>
+              <Tabs value={activePageTab} onValueChange={handlePageTabChange} className="w-full max-w-xs sm:max-w-sm">
+                <TabsList className={cn(
+                  "grid grid-cols-2 p-0.5 rounded-lg h-8 sm:h-9 w-full",
+                  "bg-card/70 shadow-md"
+                )}>
+                  <TabsTrigger value="/feed" className="text-xs sm:text-sm data-[state=active]:bg-primary/20 data-[state=active]:text-primary data-[state=active]:shadow-sm rounded h-full px-3 py-1.5 transition-colors duration-150">
+                    For You
+                  </TabsTrigger>
+                  <TabsTrigger value="/explore" className="text-xs sm:text-sm data-[state=active]:bg-primary/20 data-[state=active]:text-primary data-[state=active]:shadow-sm rounded h-full px-3 py-1.5 transition-colors duration-150">
+                    Explore
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
           )}
+
           <main className={cn(
             "flex-1 mx-auto w-full",
             useFullWidthLayout ? "h-full" : (hideBottomNav ? "py-6" : "py-6 mb-16 md:mb-0"),
             !useFullWidthLayout && "max-w-5xl px-4 sm:px-6 lg:px-8",
-            pageAnimationClass
+            pageAnimationClass 
           )}>
             {children}
           </main>
         </div>
       </div>
 
-      {/* Mobile bottom nav and dialogs */}
       {isMobile && !hideBottomNav && user && (
         <BottomNav
           plansNotificationCount={plansNotificationCount}
           profileNotificationCount={profileNotificationCount}
-          openQuickAddMenu={openQuickAddMenu}
+          openQuickAddMenu={() => setIsQuickAddOpen(true)} // Pass function to control AppLayout's popover
           handleOpenCreatePostDialog={handleOpenCreatePostDialog}
         />
       )}
 
-      {/* Global Quick Add Popover */}
       <Popover open={isQuickAddOpen} onOpenChange={setIsQuickAddOpen}>
-        <PopoverTrigger asChild>
-          <div />
-        </PopoverTrigger>
+        <PopoverTrigger asChild><div /></PopoverTrigger>
         <PopoverContent
-          side={isMobile ? "top" : "right"}
-          align={isMobile ? "center" : "start"}
-          className={cn(
-            "w-56 p-2 shadow-xl rounded-xl border-border/50 bg-card/95 backdrop-blur-sm",
-            isMobile ? "mb-2 fixed bottom-16 left-1/2 -translate-x-1/2" : "ml-2"
-          )}
-          onOpenAutoFocus={(e) => e.preventDefault()}
-        >
+          side={isMobile ? "top" : "right"} align={isMobile ? "center" : "start"}
+          className={cn("w-56 p-2 shadow-xl rounded-xl border-border/50 bg-card/95 backdrop-blur-sm", isMobile ? "mb-2 fixed bottom-16 left-1/2 -translate-x-1/2" : "ml-2")}
+          onOpenAutoFocus={(e) => e.preventDefault()}>
           <div className="grid gap-1">
-            <Button variant="ghost" className="w-full justify-start text-sm h-9" asChild onClick={() => setIsQuickAddOpen(false)}>
-              <Link href="/plans/generate">
-                <Sparkles className="mr-2 h-4 w-4" /> New Plan (AI)
-              </Link>
-            </Button>
-            <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() =>{handleOpenCreatePostDialog(); setIsQuickAddOpen(false); }}>
-              <Edit3 className="mr-2 h-4 w-4" /> New Post
-            </Button>
+            <Button variant="ghost" className="w-full justify-start text-sm h-9" asChild onClick={() => setIsQuickAddOpen(false)}><Link href="/plans/generate"><Sparkles className="mr-2 h-4 w-4" /> New Plan (AI)</Link></Button>
+            <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() =>{handleOpenCreatePostDialog(); setIsQuickAddOpen(false); }}><Edit3 className="mr-2 h-4 w-4" /> New Post</Button>
           </div>
         </PopoverContent>
       </Popover>
 
-      {/* Global "Create New Feed Post" Dialog */}
-      <Dialog open={isCreatePostDialogOpen} onOpenChange={(open) => {
-          setIsCreatePostDialogOpen(open);
-          if (!open) resetCreatePostDialogStates();
-        }}>
+      <Dialog open={isCreatePostDialogOpen} onOpenChange={(open) => { setIsCreatePostDialogOpen(open); if (!open) resetCreatePostDialogStates(); }}>
         <DialogContent className="sm:max-w-sm rounded-xl bg-card shadow-2xl p-6 border-transparent">
           <DialogHeader className="text-left mb-2">
             <DialogTitle className="text-xl font-semibold text-foreground">Create New Feed Post</DialogTitle>
-            <DialogDescription className="text-sm text-muted-foreground">
-              Share a highlight from one of your completed plans.
-            </DialogDescription>
+            <DialogDescription className="text-sm text-muted-foreground">Share a highlight from one of your completed plans.</DialogDescription>
           </DialogHeader>
-
           <div className="grid gap-6 py-4">
             <FormItem className="space-y-1.5">
                 <Label htmlFor="completed-plan-select-dialog-applayout" className="text-sm font-medium">Select Completed Plan</Label>
@@ -575,166 +517,67 @@ export default function AppLayout({
                     <Link href="/plans" className="text-xs text-primary hover:underline mt-0.5" onClick={() => setIsCreatePostDialogOpen(false)}>View your plans.</Link>
                   </div>
                 ) : (
-                <Select
-                    value={selectedPlanIdForPost}
-                    onValueChange={setSelectedPlanIdForPost}
-                    disabled={isSubmittingPostFromDialog || loadingCompletedPlans}
-                >
-                    <SelectTrigger id="completed-plan-select-dialog-applayout" className="text-sm h-9 bg-muted border-border/30 focus:border-primary placeholder:text-muted-foreground/70">
-                      <SelectValue placeholder="Choose a plan..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                    {userCompletedPlans.map(plan => (
-                        <SelectItem key={plan.id} value={plan.id} className="text-sm">{plan.name}</SelectItem>
-                    ))}
-                    </SelectContent>
+                <Select value={selectedPlanIdForPost} onValueChange={setSelectedPlanIdForPost} disabled={isSubmittingPostFromDialog || loadingCompletedPlans}>
+                    <SelectTrigger id="completed-plan-select-dialog-applayout" className="text-sm h-9 bg-muted border-border/30 focus:border-primary placeholder:text-muted-foreground/70"><SelectValue placeholder="Choose a plan..." /></SelectTrigger>
+                    <SelectContent>{userCompletedPlans.map(plan => (<SelectItem key={plan.id} value={plan.id} className="text-sm">{plan.name}</SelectItem>))}</SelectContent>
                 </Select>
                 )}
             </FormItem>
-
             <FormItem className="space-y-1.5">
               <Label htmlFor="highlight-image-upload-dialog-applayout" className="text-sm font-medium">Upload New Highlight</Label>
-              <Input
-                id="highlight-image-upload-dialog-applayout"
-                type="file"
-                accept="image/png, image/jpeg, image/gif, image/webp, image/*"
-                onChange={handleHighlightFileChangeForDialog}
-                ref={highlightFileInputRefDialog}
+              <Input id="highlight-image-upload-dialog-applayout" type="file" accept="image/png, image/jpeg, image/gif, image/webp, image/*" onChange={handleHighlightFileChangeForDialog} ref={highlightFileInputRefDialog}
                 className="text-sm h-10 file:mr-2 file:text-xs file:font-semibold file:rounded-md file:border-0 file:bg-primary/20 file:text-primary hover:file:bg-primary/30 bg-muted border-border/30 focus:border-primary"
-                disabled={isSubmittingPostFromDialog || !selectedPlanIdForPost || isPostCropperModalOpen}
-              />
+                disabled={isSubmittingPostFromDialog || !selectedPlanIdForPost || isPostCropperModalOpen} />
               {finalHighlightPreviewUrl && (
                 <div className="mt-3 relative w-full aspect-video sm:aspect-square sm:w-40 sm:h-40 max-h-60 rounded-lg overflow-hidden border border-border/50 shadow-sm group mx-auto">
                   <NextImage src={finalHighlightPreviewUrl} alt="Highlight preview" fill style={{ objectFit: 'contain' }} data-ai-hint="upload preview" unoptimized/>
-                  <Button
-                    variant="ghost" size="icon"
-                    className="absolute top-1 right-1 h-7 w-7 bg-black/60 hover:bg-black/80 text-white/90 hover:text-white rounded-full backdrop-blur-sm shadow-md"
-                    onClick={() => {
-                      setCroppedHighlightFileForPost(null);
-                      if (finalHighlightPreviewUrlRef.current) URL.revokeObjectURL(finalHighlightPreviewUrlRef.current);
-                      setFinalHighlightPreviewUrl(null);
-                      finalHighlightPreviewUrlRef.current = null;
-                      setImageSrcForPostCropper(null);
-                      if (highlightFileInputRefDialog.current) highlightFileInputRefDialog.current.value = "";
-                    }}
-                    aria-label="Remove selected image"
-                    disabled={isSubmittingPostFromDialog}
-                  >
-                    <XIcon className="h-4 w-4" />
-                  </Button>
+                  <Button variant="ghost" size="icon" className="absolute top-1 right-1 h-7 w-7 bg-black/60 hover:bg-black/80 text-white/90 hover:text-white rounded-full backdrop-blur-sm shadow-md"
+                    onClick={() => { setCroppedHighlightFileForPost(null); if (finalHighlightPreviewUrlRef.current) URL.revokeObjectURL(finalHighlightPreviewUrlRef.current); setFinalHighlightPreviewUrl(null); finalHighlightPreviewUrlRef.current = null; setImageSrcForPostCropper(null); if (highlightFileInputRefDialog.current) highlightFileInputRefDialog.current.value = ""; }}
+                    aria-label="Remove selected image" disabled={isSubmittingPostFromDialog}><XIcon className="h-4 w-4" /></Button>
                 </div>
               )}
               {!finalHighlightPreviewUrl && !imageSrcForPostCropper && (
                 <button type="button" onClick={() => highlightFileInputRefDialog.current?.click()}
-                  className={cn(
-                    "mt-1 w-full aspect-video sm:w-full sm:h-40 max-h-60 rounded-lg border-2 border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground hover:bg-muted/50 transition-colors mx-auto",
-                    (!selectedPlanIdForPost || isPostCropperModalOpen) && "opacity-50 cursor-not-allowed"
-                  )}
-                  disabled={!selectedPlanIdForPost || isSubmittingPostFromDialog || isPostCropperModalOpen}
-                  aria-label="Upload highlight image"
-                >
-                  <UploadCloud className="h-8 w-8 mb-1" />
-                  <span className="text-xs">Click to upload</span>
-                </button>
+                  className={cn("mt-1 w-full aspect-video sm:w-full sm:h-40 max-h-60 rounded-lg border-2 border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground hover:bg-muted/50 transition-colors mx-auto", (!selectedPlanIdForPost || isPostCropperModalOpen) && "opacity-50 cursor-not-allowed")}
+                  disabled={!selectedPlanIdForPost || isSubmittingPostFromDialog || isPostCropperModalOpen} aria-label="Upload highlight image"><UploadCloud className="h-8 w-8 mb-1" /><span className="text-xs">Click to upload</span></button>
               )}
             </FormItem>
-
             <FormItem className="space-y-1.5">
               <Label htmlFor="post-caption-dialog-applayout" className="text-sm font-medium">Caption</Label>
-              <Textarea
-                id="post-caption-dialog-applayout"
-                placeholder="Write something about this highlight..."
-                value={postCaptionForDialog}
-                onChange={(e) => setPostCaptionForDialog(e.target.value)}
-                className="text-sm min-h-[100px] bg-muted border-border/30 focus:border-primary placeholder:text-muted-foreground/70"
-                disabled={isSubmittingPostFromDialog || !croppedHighlightFileForPost}
-                rows={4}
-              />
+              <Textarea id="post-caption-dialog-applayout" placeholder="Write something about this highlight..." value={postCaptionForDialog} onChange={(e) => setPostCaptionForDialog(e.target.value)}
+                className="text-sm min-h-[100px] bg-muted border-border/30 focus:border-primary placeholder:text-muted-foreground/70" disabled={isSubmittingPostFromDialog || !croppedHighlightFileForPost} rows={4} />
             </FormItem>
-
             <FormItem className="space-y-1.5">
               <Label htmlFor="post-visibility-dialog-applayout" className="text-sm font-medium">Visibility</Label>
-              <RadioGroup
-                id="post-visibility-dialog-applayout"
-                value={postVisibilityForDialog}
-                onValueChange={(value: string) => setPostVisibilityForDialog(value as FeedPostVisibility)}
-                className="flex items-center gap-6 pt-1"
-                disabled={isSubmittingPostFromDialog}
-              >
-                <div className="flex items-center gap-1.5">
-                  <RadioGroupItem value="public" id="visibility-public-dialog-applayout" />
-                  <Label htmlFor="visibility-public-dialog-applayout" className="text-sm font-normal flex items-center gap-1.5 cursor-pointer"><Globe className="w-4 h-4"/>Public</Label>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <RadioGroupItem value="private" id="visibility-private-dialog-applayout" />
-                  <Label htmlFor="visibility-private-dialog-applayout" className="text-sm font-normal flex items-center gap-1.5 cursor-pointer"><LockIcon className="w-4 h-4"/>Private</Label>
-                </div>
+              <RadioGroup id="post-visibility-dialog-applayout" value={postVisibilityForDialog} onValueChange={(value: string) => setPostVisibilityForDialog(value as FeedPostVisibility)} className="flex items-center gap-6 pt-1" disabled={isSubmittingPostFromDialog}>
+                <div className="flex items-center gap-1.5"><RadioGroupItem value="public" id="visibility-public-dialog-applayout" /><Label htmlFor="visibility-public-dialog-applayout" className="text-sm font-normal flex items-center gap-1.5 cursor-pointer"><Globe className="w-4 h-4"/>Public</Label></div>
+                <div className="flex items-center gap-1.5"><RadioGroupItem value="private" id="visibility-private-dialog-applayout" /><Label htmlFor="visibility-private-dialog-applayout" className="text-sm font-normal flex items-center gap-1.5 cursor-pointer"><LockIcon className="w-4 h-4"/>Private</Label></div>
               </RadioGroup>
             </FormItem>
           </div>
-
           <DialogFooter className="flex flex-col gap-3 pt-6">
-             <Button
-              type="button"
-              onClick={handleCreatePostSubmit}
-              disabled={isSubmittingPostFromDialog || loadingCompletedPlans || !selectedPlanIdForPost || !croppedHighlightFileForPost || !postCaptionForDialog.trim()}
-              className="w-full h-10"
-            >
-              {isSubmittingPostFromDialog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Share2 className="mr-2 h-4 w-4" />}
-              Share
+             <Button type="button" onClick={handleCreatePostSubmit} disabled={isSubmittingPostFromDialog || loadingCompletedPlans || !selectedPlanIdForPost || !croppedHighlightFileForPost || !postCaptionForDialog.trim()} className="w-full h-10">
+              {isSubmittingPostFromDialog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Share2 className="mr-2 h-4 w-4" />} Share
             </Button>
-            <DialogClose asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {setIsCreatePostDialogOpen(false); resetCreatePostDialogStates();}}
-                disabled={isSubmittingPostFromDialog}
-                className="w-full h-10 text-muted-foreground hover:text-foreground"
-              >
-                Cancel
-              </Button>
-            </DialogClose>
+            <DialogClose asChild><Button type="button" variant="ghost" onClick={() => {setIsCreatePostDialogOpen(false); resetCreatePostDialogStates();}} disabled={isSubmittingPostFromDialog} className="w-full h-10 text-muted-foreground hover:text-foreground">Cancel</Button></DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Post Image Cropper Dialog for AppLayout */}
       <Dialog open={isPostCropperModalOpen} onOpenChange={(open) => {if(!open) handleCancelPostImageCropDialog(); }}>
         <DialogContent className="sm:max-w-md p-4 bg-card border-border/50">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-semibold">Crop Your Highlight Image</DialogTitle>
-            <DialogDescription className="text-sm">Adjust the selection for your post image. Recommended aspect ratio: 4:3.</DialogDescription>
-          </DialogHeader>
+          <DialogHeader><DialogTitle className="text-lg font-semibold">Crop Your Highlight Image</DialogTitle><DialogDescription className="text-sm">Adjust the selection for your post image. Recommended aspect ratio: 4:3.</DialogDescription></DialogHeader>
           {imageSrcForPostCropper && (
             <div className="my-4 max-h-[60vh] overflow-hidden flex justify-center items-center">
-              <ReactCrop
-                crop={postCrop}
-                onChange={(_, percentCrop) => setPostCrop(percentCrop)}
-                onComplete={(c) => setCompletedPostCrop(c)}
-                aspect={4/3}
-                minWidth={100}
-                minHeight={75}
-              >
-                <NextImage
-                  ref={imgRefPostCropperDialog}
-                  alt="Crop me"
-                  src={imageSrcForPostCropper}
-                  width={0}
-                  height={0}
-                  sizes="100vw"
-                  style={{ display: 'block', maxHeight: '50vh', width: 'auto', height: 'auto', objectFit: 'contain', userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' }}
-                  onLoad={onPostImageLoadInCropperDialog}
-                  unoptimized={true}
-                />
+              <ReactCrop crop={postCrop} onChange={(_, percentCrop) => setPostCrop(percentCrop)} onComplete={(c) => setCompletedPostCrop(c)} aspect={4/3} minWidth={100} minHeight={75}>
+                <NextImage ref={imgRefPostCropperDialog} alt="Crop me" src={imageSrcForPostCropper} width={0} height={0} sizes="100vw" style={{ display: 'block', maxHeight: '50vh', width: 'auto', height: 'auto', objectFit: 'contain', userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' }} onLoad={onPostImageLoadInCropperDialog} unoptimized={true} />
               </ReactCrop>
             </div>
           )}
-          <DialogFooter className="gap-2 sm:justify-end">
-            <Button variant="outline" onClick={handleCancelPostImageCropDialog} size="sm" disabled={isSubmittingPostFromDialog}>Cancel</Button>
-            <Button onClick={handlePostImageCropAndSaveDialog} disabled={!completedPostCrop || isSubmittingPostFromDialog} size="sm">Crop & Use Image</Button>
-          </DialogFooter>
+          <DialogFooter className="gap-2 sm:justify-end"><Button variant="outline" onClick={handleCancelPostImageCropDialog} size="sm" disabled={isSubmittingPostFromDialog}>Cancel</Button><Button onClick={handlePostImageCropAndSaveDialog} disabled={!completedPostCrop || isSubmittingPostFromDialog} size="sm">Crop & Use Image</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
   );
 }
+    
