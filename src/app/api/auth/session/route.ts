@@ -1,3 +1,4 @@
+
 import { NextResponse, NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 import { authAdmin } from '@/lib/firebaseAdmin';
@@ -7,61 +8,65 @@ const SESSION_COOKIE_NAME = 'session';
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 5; // 5 days in seconds
 
 export async function POST(request: NextRequest) {
+  const requestLogId = `[${new Date().toISOString()}] [/api/auth/session POST]`;
+  console.log(`${requestLogId} Received request to create session.`);
+
   try {
     const body = await request.json();
     const idToken = body.idToken;
 
-    // Validate token input
     if (!idToken) {
-      console.error('[/api/auth/session POST] No ID token provided');
+      console.error(`${requestLogId} No ID token provided.`);
       return NextResponse.json({ error: 'ID token is required' }, { status: 400 });
     }
     
     if (typeof idToken !== 'string' || idToken.trim() === '') {
-      console.error('[/api/auth/session POST] Invalid token format: empty string or not a string');
+      console.error(`${requestLogId} Invalid token format: empty string or not a string.`);
       return NextResponse.json({ error: 'Invalid ID token format' }, { status: 400 });
     }
 
-    // Basic format validation (Firebase tokens are quite long)
     if (idToken.length < 50) {
-      console.error('[/api/auth/session POST] Token appears too short to be valid');
+      console.error(`${requestLogId} Token appears too short to be valid.`);
       return NextResponse.json({ error: 'Invalid ID token format: token too short' }, { status: 400 });
     }
 
     if (!authAdmin) {
-      console.error('[/api/auth/session POST] Firebase Admin SDK Auth service not initialized or available.');
+      console.error(`${requestLogId} Firebase Admin SDK Auth service not initialized or available.`);
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
     }
     const currentAuthAdmin: Auth = authAdmin;
 
     let decodedToken: DecodedIdToken;
     try {
-      console.log('[/api/auth/session POST] Verifying ID token...');
+      console.log(`${requestLogId} Verifying ID token (checkRevoked=true)...`);
       decodedToken = await currentAuthAdmin.verifyIdToken(idToken, true /* checkRevoked */);
-      console.log(`[/api/auth/session POST] ID token verified successfully for UID: ${decodedToken.uid}`);
+      console.log(`${requestLogId} ID token verified successfully for UID: ${decodedToken.uid}`);
     } catch (error: any) {
-      const errorCode = error.code || 'unknown';
-      const errorMessage = error.message || 'No error message';
-      console.error(`[/api/auth/session POST] Error verifying ID token: [${errorCode}] ${errorMessage}`, error);
+      const errorCode = error.code || 'unknown_auth_error';
+      const errorMessage = error.message || 'No error message from Firebase Admin';
+      console.error(`${requestLogId} Error verifying ID token: [${errorCode}] ${errorMessage}`, error);
       
+      let clientErrorMessage = `Authentication error: ${errorCode}`;
+      let clientStatus = 401;
+
       if (errorCode === 'auth/id-token-revoked') {
-        return NextResponse.json({ error: 'ID token has been revoked. Please sign in again.' }, { status: 401 });
+        clientErrorMessage = 'ID token has been revoked. Please sign in again.';
       } else if (errorCode === 'auth/id-token-expired') {
-        return NextResponse.json({ error: 'ID token has expired. Please sign in again.' }, { status: 401 });
+        clientErrorMessage = 'ID token has expired. Please sign in again.';
       } else if (errorCode === 'auth/argument-error') {
-        return NextResponse.json({ error: 'Invalid ID token format. Please sign in again.' }, { status: 400 });
+        clientErrorMessage = 'Invalid ID token format provided to server. Please sign in again.';
+        clientStatus = 400;
       } else if (errorCode === 'auth/invalid-id-token') {
-        return NextResponse.json({ error: 'Invalid ID token. Please sign in again.' }, { status: 401 });
+        clientErrorMessage = 'Invalid ID token structure or signature. Please sign in again.';
       }
-      return NextResponse.json({ error: `Authentication error: ${errorCode}` }, { status: 401 });
+      return NextResponse.json({ error: clientErrorMessage, errorCode }, { status: clientStatus });
     }
 
-    // Create a session cookie with Firebase Admin
-    // This creates a proper session cookie that lasts longer than the ID token
     const expiresIn = COOKIE_MAX_AGE_SECONDS * 1000; // Convert to milliseconds
+    console.log(`${requestLogId} Creating session cookie for UID: ${decodedToken.uid}, expiresIn: ${expiresIn}ms.`);
     const sessionCookie = await currentAuthAdmin.createSessionCookie(idToken, { expiresIn });
     
-    const cookieStore = await cookies();
+    const cookieStore = cookies();
     cookieStore.set(SESSION_COOKIE_NAME, sessionCookie, {
       httpOnly: true,
       maxAge: COOKIE_MAX_AGE_SECONDS,
@@ -70,37 +75,47 @@ export async function POST(request: NextRequest) {
       secure: process.env.NODE_ENV === 'production',
     });
 
-    console.log(`[/api/auth/session POST] Session cookie set for UID: ${decodedToken.uid}`);
+    console.log(`${requestLogId} Session cookie set successfully for UID: ${decodedToken.uid}`);
     return NextResponse.json({ status: 'success', message: 'Session cookie set' });
 
-  } catch (error) {
-    console.error('[/api/auth/session POST] General error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } catch (error: any) {
+    const generalErrorCode = error.code || 'internal_server_error';
+    console.error(`${requestLogId} General error: [${generalErrorCode}]`, error.message || error);
+    return NextResponse.json({ error: 'Internal server error', errorCode: generalErrorCode }, { status: 500 });
   }
 }
 
 export async function DELETE(request: NextRequest) {
+  const requestLogId = `[${new Date().toISOString()}] [/api/auth/session DELETE]`;
+  console.log(`${requestLogId} Received request to clear session.`);
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME);
+    const cookieStore = cookies();
+    const sessionCookieValue = cookieStore.get(SESSION_COOKIE_NAME)?.value;
     
-    if (sessionCookie && authAdmin) {
+    if (sessionCookieValue && authAdmin) {
       const currentAuthAdmin: Auth = authAdmin;
       try {
-        const decodedToken = await currentAuthAdmin.verifyIdToken(sessionCookie.value, true);
+        console.log(`${requestLogId} Verifying session cookie before revoking refresh tokens.`);
+        const decodedToken = await currentAuthAdmin.verifySessionCookie(sessionCookieValue, true); // Check if active session cookie
+        console.log(`${requestLogId} Session cookie valid for UID: ${decodedToken.uid}. Revoking refresh tokens.`);
         await currentAuthAdmin.revokeRefreshTokens(decodedToken.uid);
-        console.log(`[/api/auth/session DELETE] Revoked refresh tokens for UID: ${decodedToken.uid}`);
+        console.log(`${requestLogId} Revoked refresh tokens for UID: ${decodedToken.uid}`);
       } catch (error: any) {
-        console.warn(`[/api/auth/session DELETE] Error revoking refresh tokens (UID might be unavailable or token invalid, this is often OK during signout):`, error.message);
+        console.warn(`${requestLogId} Error verifying session cookie or revoking refresh tokens (UID might be unavailable or token invalid, this is often OK during signout): Code: ${error.code}, Message:`, error.message);
+        // Proceed to delete cookie even if token verification/revocation fails, as client wants to sign out.
       }
+    } else {
+      console.log(`${requestLogId} No session cookie found or authAdmin not available. Clearing cookie if present.`);
     }
     
     cookieStore.delete(SESSION_COOKIE_NAME);
-    console.log('[/api/auth/session DELETE] Session cookie deleted.');
+    console.log(`${requestLogId} Session cookie cleared from browser.`);
     return NextResponse.json({ status: 'success', message: 'Session cookie cleared' });
 
-  } catch (error) {
-    console.error('[/api/auth/session DELETE] General error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } catch (error: any) {
+    const generalErrorCode = error.code || 'internal_server_error';
+    console.error(`${requestLogId} General error: [${generalErrorCode}]`, error.message || error);
+    return NextResponse.json({ error: 'Internal server error', errorCode: generalErrorCode }, { status: 500 });
   }
-} 
+}
+    
