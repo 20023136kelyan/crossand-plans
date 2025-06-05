@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from "@/components/ui/input";
 import { format } from 'date-fns';
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { fetchExplorePageDataAction } from '@/app/actions/exploreActions';
 import { getUserLocationAction, searchUsersAction, sendFriendRequestAction, acceptFriendRequestAction, declineFriendRequestAction, removeFriendAction } from '@/app/actions/userActions';
 import { useToast } from '@/hooks/use-toast';
@@ -709,25 +709,32 @@ interface ExploreContentProps {
   userPreferences?: UserPreferences | null;
 }
 
-export function ExploreContent({ initialData, userPreferences }: ExploreContentProps) {
+export const ExploreContent = ({ initialData, userPreferences }: ExploreContentProps) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [userLocation, setUserLocation] = useState<{ 
-    city: string; 
+  
+  // Refs
+  const isMounted = useRef<boolean>(true);
+  const toastIds = useRef<string[]>([]);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // State
+  type UserLocation = {
+    city: string;
     country: string;
     coordinates?: GeoPoint;
-  } | undefined>();
+  } | null;
+  
+  const [userLocation, setUserLocation] = useState<UserLocation>(null);
+  const [locationRequested, setLocationRequested] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
   const [selectedCity, setSelectedCity] = useState<string | undefined>();
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
   const [viewMode, setViewMode] = useState<'all' | 'cities' | 'categories' | 'creators' | 'dayInLife'>('all');
   const [isTabsHeaderVisible, setIsTabsHeaderVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
-  const scrollThreshold = 50;
-  
-  // Data states
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [cities, setCities] = useState<City[]>([]);
@@ -735,9 +742,10 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
   const [filteredPlans, setFilteredPlans] = useState<Plan[]>([]);
   const [featuredPlans, setFeaturedPlans] = useState<Plan[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [locationRequested, setLocationRequested] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Constants
+  const scrollThreshold = 50;
 
   // Category images mapping with proper typing
   const categoryImages: Record<string, string> = {
@@ -784,11 +792,12 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
               )?.long_name;
 
               if (city && country) {
-                setUserLocation({
+                const newLocation = {
                   city,
                   country,
                   coordinates: coords
-                });
+                } satisfies NonNullable<UserLocation>;
+                setUserLocation(newLocation);
               } else {
                 throw new Error('Could not find city and country in geocoding results');
               }
@@ -861,10 +870,13 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
       try {
         const location = await getUserLocationAction(user.uid);
         if (location.success && location.data) {
-          setUserLocation({ 
-            city: location.data.city, 
-            country: location.data.country 
-          });
+          if (location.data.city !== userLocation?.city || location.data.country !== userLocation?.country) {
+            setUserLocation({ 
+              city: location.data.city, 
+              country: location.data.country 
+              // As per instructions, not including coordinates here as getUserLocationAction data structure for them is unclear
+            });
+          }
         } else {
           // This is an expected case for new users - no need to show error
           if (!locationRequested) {
@@ -900,90 +912,185 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
     getUserLocation();
   }, [user, toast, locationRequested]);
 
-  // Fetch user location and initial data
+  // Function to show toast with proper cleanup
+  const showToast = useCallback((options: Parameters<typeof toast>[0]) => {
+    try {
+      const result = toast(options);
+      if (result && 'id' in result) {
+        toastIds.current.push(String(result.id));
+      }
+      return result;
+    } catch (error) {
+      console.error('Error showing toast:', error);
+      return null;
+    }
+  }, [toast]);
+
+  // Combined effect for location and data fetching
   useEffect(() => {
-    async function getUserLocation() {
-      if (!user?.uid) return;
+    let isSubscribed = true;
+    
+    const fetchLocationAndData = async () => {
+      console.log('fetchLocationAndData called');
+      if (!user?.uid) {
+        console.log('No user UID, skipping fetch');
+        return;
+      }
+
+      // 1. Fetch user location
+      type FetchLocationParam = Parameters<typeof fetchExplorePageDataAction>[0];
+      
+      // Convert userLocation to the expected type for the API call
+      const getLocationForApi = (loc: UserLocation): FetchLocationParam => {
+        if (!loc) return undefined;
+        return {
+          city: loc.city,
+          country: loc.country
+        };
+      };
+      
+      let currentLocation = getLocationForApi(userLocation);
+      
       try {
-        const location = await getUserLocationAction(user.uid);
-        if (location.success && location.data) {
-          setUserLocation({ 
-            city: location.data.city, 
-            country: location.data.country 
-          });
-        } else {
-          console.error('Failed to get user location:', location.error);
+        // Only fetch location if not already requested or if explicitly requested
+        if (!userLocation || locationRequested) {
+          const location = await getUserLocationAction(user.uid);
+          if (isSubscribed && location?.success && location?.data) {
+            const newLocation = { 
+              city: location.data.city, 
+              country: location.data.country
+            } satisfies NonNullable<UserLocation>;
+            
+            if (newLocation.city !== userLocation?.city || 
+                newLocation.country !== userLocation?.country) {
+              setUserLocation(newLocation);
+              currentLocation = getLocationForApi(newLocation);
+            }
+          } else if (isSubscribed && !locationRequested) {
+            showToast({
+              title: 'Enable Location',
+              description: 'Enable location access to see personalized recommendations',
+              action: (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setLocationRequested(true)}
+                >
+                  Enable
+                </Button>
+              ),
+              duration: 0
+            });
+          }
+        }
+      } catch (error) {
+        if (isSubscribed && error instanceof Error && error?.message !== 'Location not found') {
+          console.error('Location error:', error);
           toast({
             title: 'Location Error',
-            description: location.error || 'Could not retrieve your saved location',
-            variant: 'default',
+            description: error.message,
+            variant: 'destructive',
             duration: 5000
           });
         }
-      } catch (error) {
-        console.error('Error getting user location:', {
-          error,
-          message: error instanceof Error ? error.message : String(error)
-        });
-        toast({
-          title: 'Location Error',
-          description: error instanceof Error ? error.message : 'Could not retrieve your saved location',
-          variant: 'default',
-          duration: 5000
-        });
       }
-    }
 
-    async function fetchData() {
-      setLoading(true);
+      // 2. Fetch explore data
       try {
-        const result = await fetchExplorePageDataAction(userLocation);
+        console.log('Fetching explore data...');
+        setLoading(true);
+        const result = await fetchExplorePageDataAction(
+          currentLocation || undefined,
+          false, // isPremiumUser
+          0,     // activityScore
+          userPreferences
+        );
+        
+        console.log('Explore data result:', result);
+        if (!isSubscribed) {
+          console.log('Component unmounted, skipping state update');
+          return;
+        }
+        
         if (result.success && result.data) {
+          console.log('Explore data loaded successfully');
           setProfiles(result.data.featuredProfiles || []);
           const allPlans = result.data.completedPlans || [];
+          console.log(`Found ${allPlans.length} plans`);
           
           // Sort plans by score
-          const sortedPlans = allPlans.map(plan => ({
-            ...plan,
-            score: calculatePlanScore(plan, userLocation)
-          })).sort((a, b) => b.score - a.score);
+          const sortedPlans = allPlans.map(plan => {
+            const locationForScoring = currentLocation ? {
+              city: currentLocation.city,
+              country: currentLocation.country
+            } : undefined;
+            const score = calculatePlanScore(plan, locationForScoring);
+            return {
+              ...plan,
+              score
+            };
+          }).sort((a, b) => b.score - a.score);
 
           // Separate featured and regular plans
           setFeaturedPlans(sortedPlans.filter(plan => plan.featured));
           setPlans(sortedPlans.filter(plan => !plan.featured));
           
           // Sort cities by number of high-quality plans
-          const citiesWithScore = result.data.featuredCities.map(city => ({
+          const citiesWithScore = (result.data.featuredCities || []).map(city => ({
             ...city,
             score: sortedPlans
-              .filter(p => p.city?.toLowerCase() === city.name.toLowerCase())
+              .filter(p => p.city?.toLowerCase() === city.name?.toLowerCase())
               .reduce((acc, p) => acc + p.score, 0)
           })).sort((a, b) => b.score - a.score);
           
           setCities(citiesWithScore);
           setCategories(result.data.categories || []);
-        } else {
+        } else if (result?.error) {
+          console.error('Error fetching explore data:', result.error);
           toast({
             title: 'Error',
-            description: result.error || 'Failed to fetch explore data',
+            description: result.error,
             variant: 'destructive',
           });
         }
       } catch (error) {
         console.error('Error fetching explore data:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to fetch explore data',
-          variant: 'destructive',
-        });
+        if (isSubscribed) {
+          showToast({
+            title: 'Error',
+            description: 'Failed to fetch explore data',
+            variant: 'destructive',
+          });
+        }
       } finally {
-        setLoading(false);
+        if (isSubscribed) {
+          console.log('Finished loading, setting loading to false');
+          setLoading(false);
+        }
       }
-    }
+    };
 
-    getUserLocation();
-    fetchData();
-  }, [toast, userLocation, user]);
+    // Initial fetch
+    fetchLocationAndData();
+    
+    // Set up refresh interval
+    const intervalId = setInterval(fetchLocationAndData, 5 * 60 * 1000);
+    
+    return () => {
+      isSubscribed = false;
+      clearInterval(intervalId);
+      // Cleanup any pending toasts when component unmounts
+      toastIds.current.forEach(id => {
+        const toastElement = document.querySelector(`[data-sonner-toast][data-id="${id}"]`);
+        if (toastElement) {
+          toastElement.remove();
+        }
+      });
+      toastIds.current = [];
+    };
+  }, [user, locationRequested, toast, userPreferences, userLocation]);
+  
+
 
   // Handle scroll effect for header
   useEffect(() => {
