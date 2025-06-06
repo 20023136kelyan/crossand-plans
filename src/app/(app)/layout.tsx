@@ -3,14 +3,15 @@
 
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
-import { Sidebar, SidebarProvider } from '@/components/ui/sidebar'; // Added SidebarProvider
+import { Sidebar } from '@/components/layout/Sidebar'; // Changed import
+import { SidebarProvider } from '@/components/ui/sidebar'; // Ensure provider is from ui
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription as DialogDescriptionComponent,
+  DialogDescription as DialogDescriptionComponent, // Renamed to avoid conflict
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
@@ -21,7 +22,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-  FormDescription,
+  FormDescription, // Added import
 } from "@/components/ui/form";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -54,7 +55,7 @@ import {
   Loader2, PlusCircle, Share2, Globe, Lock as LockIcon, Edit3, Sparkles, X as XIcon, UploadCloud,
   MessageSquare, User as UserIcon, Search, LayoutGrid, LayoutList, Wallet as WalletIcon, ChevronLeft, ImageIcon, ImagePlus
 } from 'lucide-react';
-import { Label } from '@/components/ui/label'; // Keep this for radio button labels
+import { Label } from '@/components/ui/label';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { auth } from '@/lib/firebase';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -360,8 +361,8 @@ export default function AppLayout({
     if (!currentAuthUser || !currentUserProfile) { toast({ title: "Auth Error", description: "User not authenticated.", variant: "destructive" }); return; }
     if (!croppedHighlightFileForPost) { toast({ title: "Validation Error", description: "Please select and crop an image highlight.", variant: "destructive" }); return; }
     
-    setIsSubmittingPostFromDialog(true); // Indicate overall submission start
-    setIsUploadingHighlight(true); // Specific for image upload phase
+    setIsSubmittingPostFromDialog(true); 
+    setIsUploadingHighlight(true); 
     let idToken: string | null = null;
     let uploadedHighlightUrl: string | null = null;
 
@@ -372,7 +373,7 @@ export default function AppLayout({
       const highlightFormData = new FormData();
       highlightFormData.append('highlightImage', croppedHighlightFileForPost);
       const highlightResult = await addPhotoHighlightAction(dataFromForm.planId, highlightFormData, idToken);
-      setIsUploadingHighlight(false); // Image upload phase ends
+      setIsUploadingHighlight(false); 
       
       if (!highlightResult.success || !highlightResult.updatedPlan?.photoHighlights || highlightResult.updatedPlan.photoHighlights.length === 0) {
         throw new Error(highlightResult.error || "Could not upload highlight image or retrieve its URL.");
@@ -395,9 +396,9 @@ export default function AppLayout({
     } catch (error: any) {
       console.error("Error creating post from AppLayout dialog:", error);
       toast({ title: "Error Creating Post", description: error.message || "An unexpected error occurred.", variant: "destructive" });
-      setIsUploadingHighlight(false); // Ensure this is false if any error occurs
+      setIsUploadingHighlight(false); 
     } finally {
-      setIsSubmittingPostFromDialog(false); // Overall submission ends
+      setIsSubmittingPostFromDialog(false); 
     }
   };
 
@@ -442,7 +443,7 @@ export default function AppLayout({
       <div className="flex">
         {!isMobile && user && currentUserProfile && (
           <div className="fixed inset-y-0 left-0 z-30">
-            <SidebarProvider> {/* ADDED SidebarProvider WRAPPER */}
+            <SidebarProvider>
               <Sidebar plansNotificationCount={plansNotificationCount} profileNotificationCount={profileNotificationCount} handleOpenCreatePostDialog={handleOpenCreatePostDialog} />
             </SidebarProvider>
           </div>
@@ -483,10 +484,11 @@ export default function AppLayout({
           </DialogHeader>
           
           <ScrollArea className="flex-1 min-h-0">
-            <div className="p-4 space-y-3">
+            <div className="p-4 space-y-4">
               <Form {...formForPostCreation}>
-                <form className="space-y-3">
+                <form className="space-y-4">
                   <FormItem>
+                    <FormLabel className="text-xs font-medium">Highlight Image</FormLabel>
                     <div 
                       onDragOver={handleDragOver} 
                       onDragLeave={handleDragLeave} 
@@ -553,6 +555,7 @@ export default function AppLayout({
                       ref={highlightFileInputRefDialog} className="sr-only"
                       disabled={isSubmittingPostFromDialog || !formForPostCreation.getValues('planId') || isPostCropperModalOpen || isUploadingHighlight} 
                     />
+                    <p className="text-xs text-muted-foreground pt-1">You'll be able to crop after selecting.</p>
                   </FormItem>
                   
                   <FormField
@@ -634,4 +637,3 @@ export default function AppLayout({
     </div>
   );
 }
-
