@@ -1,17 +1,16 @@
-
 'use client';
 
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
-import { Sidebar } from '@/components/layout/Sidebar';
-import { SidebarProvider } from '@/components/ui/sidebar';
+import { Sidebar } from '@/components/layout/Sidebar'; // Changed from ui/sidebar
+import { SidebarProvider } from '@/components/ui/sidebar'; // Provider is from ui/sidebar
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription as DialogDescriptionComponent,
+  DialogDescription as DialogDescriptionComponent, // Aliased
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
@@ -22,12 +21,12 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-  FormDescription,
+  // FormDescription, // Only FormDescription from ui/form if needed inside FormField
 } from "@/components/ui/form";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  Select,
+  Select, // Still needed for the RHF Controller, but rendered via Popover/Command
   SelectContent,
   SelectItem,
   SelectTrigger,
@@ -37,6 +36,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import NextImage from 'next/image';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from '@/context/AuthContext';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
@@ -53,9 +53,9 @@ import 'react-image-crop/dist/ReactCrop.css';
 import Link from 'next/link';
 import {
   Loader2, PlusCircle, Share2, Globe, Lock as LockIcon, Edit3, Sparkles, X as XIcon, UploadCloud,
-  MessageSquare, User as UserIcon, Search, LayoutGrid, LayoutList, Wallet as WalletIcon, ChevronLeft, ImageIcon, ImagePlus, ArrowRight, ArrowLeft as BackArrowIcon
+  MessageSquare, User as UserIcon, Search, LayoutGrid, LayoutList, Wallet as WalletIcon, ChevronLeft, ImageIcon, ImagePlus, ArrowRight, ArrowLeft as BackArrowIcon, Check, ChevronsUpDown
 } from 'lucide-react';
-import { Label } from '@/components/ui/label'; // Added Label
+import { Label } from '@/components/ui/label';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { auth } from '@/lib/firebase';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -118,7 +118,7 @@ async function canvasPreview(
 const createPostFormSchema = z.object({
   planId: z.string().min(1, "Please select a plan."),
   caption: z.string().min(1, "Caption cannot be empty.").max(2000, "Caption is too long."),
-  isPublic: z.boolean().default(true),
+  isPublic: z.boolean().default(true), // Changed from visibility string
 });
 type CreatePostFormValues = z.infer<typeof createPostFormSchema>;
 
@@ -260,7 +260,8 @@ export default function AppLayout({
   const [currentPostCreationStep, setCurrentPostCreationStep] = useState(1);
   const [isUploadingHighlight, setIsUploadingHighlight] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-
+  const [planSearchTerm, setPlanSearchTerm] = useState('');
+  const [isPlanPickerOpen, setIsPlanPickerOpen] = useState(false);
 
   const formForPostCreation = useForm<CreatePostFormValues>({
     resolver: zodResolver(createPostFormSchema),
@@ -279,6 +280,8 @@ export default function AppLayout({
     setCurrentPostCreationStep(1); 
     setIsUploadingHighlight(false);
     setIsDraggingOver(false);
+    setPlanSearchTerm('');
+    setIsPlanPickerOpen(false);
   }, [formForPostCreation]);
 
   const handleOpenCreatePostDialog = useCallback(async () => {
@@ -292,7 +295,7 @@ export default function AppLayout({
       if (completedPlans.length === 0) toast({ title: "No Completed Plans", description: "You need to have completed a plan to share highlights.", variant: "default", duration: 4000 });
     } catch (error: any) { toast({ title: "Error Fetching Plans", description: error.message || "Could not fetch your completed plans.", variant: "destructive" });
     } finally { setLoadingCompletedPlans(false); }
-  }, [currentUserProfile, resetCreatePostDialogStates, toast, auth]); 
+  }, [currentUserProfile, resetCreatePostDialogStates, toast]); 
 
   const handleFileSelected = (file: File | null) => {
     if (!file) return;
@@ -305,7 +308,6 @@ export default function AppLayout({
     if (!isValidClientSide) {
        toast({ title: "Invalid file type", description: `Please select an image. Detected: ${clientMimeType || 'unknown'}. File: ${fileName}`, variant: "destructive" }); return;
     }
-    // This check is mostly a safeguard for step 2; step 1 should ensure planId is set.
     if (currentPostCreationStep === 2 && !formForPostCreation.getValues('planId')) {
       toast({ title: "Plan Required", description: "A plan must be selected. Please go back to step 1.", variant: "default" });
       return;
@@ -451,6 +453,15 @@ export default function AppLayout({
   };
   const showPageTabs = pathname === '/feed' || pathname === '/explore';
 
+  const filteredCompletedPlans = useMemo(() => {
+    if (!planSearchTerm) return userCompletedPlans;
+    return userCompletedPlans.filter(plan =>
+      plan.name.toLowerCase().includes(planSearchTerm.toLowerCase())
+    );
+  }, [userCompletedPlans, planSearchTerm]);
+
+  const dialogTitle = currentPostCreationStep === 1 ? "Select a Plan" : "Add Highlight Details";
+  
   if (authLoading && !user) return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
   if (user && profileExists === null && !authLoading) return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
 
@@ -458,11 +469,9 @@ export default function AppLayout({
     <div className="min-h-screen bg-background">
       <div className="flex">
         {!isMobile && user && currentUserProfile && (
-          <div className="fixed inset-y-0 left-0 z-30">
-            <SidebarProvider>
-              <Sidebar plansNotificationCount={plansNotificationCount} profileNotificationCount={profileNotificationCount} handleOpenCreatePostDialog={handleOpenCreatePostDialog} />
-            </SidebarProvider>
-          </div>
+           <SidebarProvider> {/* Added SidebarProvider here */}
+            <Sidebar plansNotificationCount={plansNotificationCount} profileNotificationCount={profileNotificationCount} handleOpenCreatePostDialog={handleOpenCreatePostDialog} />
+          </SidebarProvider>
         )}
         <div className={cn("flex-1 min-h-screen", !isMobile && "md:pl-[240px] lg:pl-[256px]")}>
           <Header messagesNotificationCount={messagesNotificationCount} />
@@ -494,17 +503,18 @@ export default function AppLayout({
 
       <Dialog open={isCreatePostDialogOpen} onOpenChange={(open) => { if(!open) handleCancelDialog(); else setIsCreatePostDialogOpen(true); }}>
         <DialogContent className="sm:max-w-md rounded-xl bg-card/90 backdrop-blur-sm shadow-2xl p-0 border-transparent flex flex-col max-h-[90vh] sm:max-h-[85vh]">
-          <DialogHeader className="text-left p-4 border-b border-border/30">
-            <DialogTitle className="text-lg font-semibold text-foreground">Create New Post - Step {currentPostCreationStep} of 2</DialogTitle>
-            <DialogDescriptionComponent className="text-xs text-muted-foreground">
-              {currentPostCreationStep === 1 ? "Select a completed plan to share highlights from." : "Add your highlight image and caption."}
-            </DialogDescriptionComponent>
+          <DialogHeader className="text-left p-4 border-b border-border/30 space-y-1.5">
+            <DialogTitle className="text-lg font-semibold text-foreground">{dialogTitle}</DialogTitle>
+            <div className="flex items-center space-x-1 h-1.5">
+              <div className={cn("h-full rounded-full flex-1 transition-colors", currentPostCreationStep >= 1 ? "bg-primary" : "bg-muted")}></div>
+              <div className={cn("h-full rounded-full flex-1 transition-colors", currentPostCreationStep >= 2 ? "bg-primary" : "bg-muted")}></div>
+            </div>
           </DialogHeader>
           
           <ScrollArea className="flex-1 min-h-0">
             <div className="p-4 space-y-3">
               <Form {...formForPostCreation}>
-                <form> {/* onSubmit handled by step buttons */}
+                <form>
                   {currentPostCreationStep === 1 && (
                     <div className="space-y-3">
                       <FormField
@@ -512,7 +522,7 @@ export default function AppLayout({
                         name="planId"
                         render={({ field }) => (
                           <FormItem className="space-y-1">
-                            <FormLabel className="text-xs font-medium">Select Completed Plan</FormLabel>
+                            <FormLabel className="text-xs font-medium">Completed Plan</FormLabel>
                             {loadingCompletedPlans ? ( <div className="flex items-center text-sm text-muted-foreground h-9"><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Loading plans...</div>
                             ) : userCompletedPlans.length === 0 ? (
                               <div className="text-sm text-muted-foreground h-auto flex flex-col items-start py-1">
@@ -520,10 +530,54 @@ export default function AppLayout({
                                 <Link href="/plans" className="text-xs text-primary hover:underline mt-0.5" onClick={() => setIsCreatePostDialogOpen(false)}>View your plans.</Link>
                               </div>
                             ) : (
-                            <Select onValueChange={field.onChange} value={field.value} disabled={isSubmittingPostFromDialog || loadingCompletedPlans}>
-                                <FormControl><SelectTrigger className="text-sm h-9 bg-background border-border/30 focus:border-primary placeholder:text-muted-foreground/70"><SelectValue placeholder="Choose a plan..." /></SelectTrigger></FormControl>
-                                <SelectContent>{userCompletedPlans.map(plan => (<SelectItem key={plan.id} value={plan.id} className="text-sm">{plan.name}</SelectItem>))}</SelectContent>
-                            </Select>
+                              <Popover open={isPlanPickerOpen} onOpenChange={setIsPlanPickerOpen}>
+                                <PopoverTrigger asChild>
+                                  <FormControl>
+                                    <Button
+                                      variant="outline"
+                                      role="combobox"
+                                      className={cn(
+                                        "w-full justify-between text-xs h-9 px-3 py-2 border border-input bg-background",
+                                        !field.value && "text-muted-foreground"
+                                      )}
+                                    >
+                                      {field.value ? (userCompletedPlans.find(plan => plan.id === field.value)?.name || "Select plan") : "Select completed plan..."}
+                                      <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                                    </Button>
+                                  </FormControl>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                                  <Command>
+                                    <CommandInput
+                                      placeholder="Search plans..."
+                                      value={planSearchTerm}
+                                      onValueChange={setPlanSearchTerm}
+                                      className="h-9 text-xs"
+                                    />
+                                    <CommandList>
+                                      <CommandEmpty>No plans found.</CommandEmpty>
+                                      <ScrollArea className="h-[150px] custom-scrollbar-vertical">
+                                        <CommandGroup>
+                                          {filteredCompletedPlans.map((plan) => (
+                                            <CommandItem
+                                              key={plan.id}
+                                              value={plan.name} 
+                                              onSelect={() => {
+                                                formForPostCreation.setValue("planId", plan.id, { shouldValidate: true });
+                                                setIsPlanPickerOpen(false);
+                                              }}
+                                              className="text-xs"
+                                            >
+                                              <Check className={cn("mr-2 h-3 w-3", field.value === plan.id ? "opacity-100" : "opacity-0")}/>
+                                              {plan.name}
+                                            </CommandItem>
+                                          ))}
+                                        </CommandGroup>
+                                      </ScrollArea>
+                                    </CommandList>
+                                  </Command>
+                                </PopoverContent>
+                              </Popover>
                             )}
                             <FormMessage className="text-xs" />
                           </FormItem>
@@ -554,7 +608,7 @@ export default function AppLayout({
                             finalHighlightPreviewUrl ? "aspect-[4/3] p-0" : "h-28 p-3 hover:bg-muted/70 hover:border-primary/50"
                           )}
                           onClick={() => {
-                            if (finalHighlightPreviewUrl && !isUploadingHighlight && !isSubmittingPostFromDialog) return; // Allow clicking preview to change if not uploading
+                            if (finalHighlightPreviewUrl && !isUploadingHighlight && !isSubmittingPostFromDialog) return;
                             if (isUploadingHighlight || isSubmittingPostFromDialog) return;
                             highlightFileInputRefDialog.current?.click();
                           }}
@@ -622,7 +676,7 @@ export default function AppLayout({
                           <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border/30 p-2.5 bg-background">
                             <div className="space-y-0.5">
                               <FormLabel className="text-xs font-medium">Make Post Public</FormLabel>
-                              <FormDescription className="text-xs text-muted-foreground">Anyone can see this post.</FormDescription>
+                              <p className="text-xs text-muted-foreground">Anyone can see this post.</p>
                             </div>
                             <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={isSubmittingPostFromDialog || isUploadingHighlight} /></FormControl>
                           </FormItem>
@@ -634,17 +688,17 @@ export default function AppLayout({
               </Form>
             </div>
           </ScrollArea>
-          <DialogFooter className="flex flex-row gap-2 p-3 border-t border-border/30">
+          <DialogFooter className="flex flex-row gap-2 p-3 border-t border-border/30 bg-card/90 backdrop-blur-sm">
             {currentPostCreationStep === 1 && (
               <>
-                <Button type="button" onClick={handleCancelDialog} className="w-full sm:w-auto h-9 text-xs text-destructive border border-destructive/40 hover:bg-destructive/10 bg-transparent transition-all duration-150 ease-in-out hover:scale-105 hover:shadow-md active:scale-95 active:shadow-inner" disabled={isSubmittingPostFromDialog || isUploadingHighlight}>Cancel</Button>
-                <Button type="button" onClick={handleNextStep} disabled={!formForPostCreation.watch('planId') || isSubmittingPostFromDialog || isUploadingHighlight} className="w-full sm:w-auto h-9 text-xs bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all duration-150 ease-in-out hover:scale-105 hover:shadow-md active:scale-95 active:shadow-inner">Next <ArrowRight className="ml-2 h-3.5 w-3.5" /></Button>
+                <Button type="button" onClick={handleCancelDialog} className="flex-1 h-9 text-xs text-destructive border border-destructive/40 hover:bg-destructive/10 bg-transparent transition-all duration-150 ease-in-out hover:scale-105 hover:shadow-md active:scale-95 active:shadow-inner" disabled={isSubmittingPostFromDialog || isUploadingHighlight}>Cancel</Button>
+                <Button type="button" onClick={handleNextStep} disabled={!formForPostCreation.watch('planId') || isSubmittingPostFromDialog || isUploadingHighlight} className="flex-1 h-9 text-xs bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all duration-150 ease-in-out hover:scale-105 hover:shadow-md active:scale-95 active:shadow-inner">Next <ArrowRight className="ml-2 h-3.5 w-3.5" /></Button>
               </>
             )}
             {currentPostCreationStep === 2 && (
               <>
-                <Button type="button" onClick={handlePreviousStep} className="w-full sm:w-auto h-9 text-xs border-primary/40 text-primary/90 hover:bg-primary/10 bg-transparent transition-all duration-150 ease-in-out hover:scale-105 hover:shadow-md active:scale-95 active:shadow-inner" disabled={isSubmittingPostFromDialog || isUploadingHighlight}><BackArrowIcon className="mr-2 h-3.5 w-3.5" /> Back</Button>
-                <Button type="button" onClick={formForPostCreation.handleSubmit(handleCreatePostSubmit)} disabled={isSubmittingPostFromDialog || isUploadingHighlight || loadingCompletedPlans || !formForPostCreation.formState.isValid || !croppedHighlightFileForPost} className="w-full sm:w-auto h-9 text-xs bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all duration-150 ease-in-out hover:scale-105 hover:shadow-md active:scale-95 active:shadow-inner">
+                <Button type="button" onClick={handlePreviousStep} className="flex-1 h-9 text-xs border-primary/40 text-primary/90 hover:bg-primary/10 bg-transparent transition-all duration-150 ease-in-out hover:scale-105 hover:shadow-md active:scale-95 active:shadow-inner" disabled={isSubmittingPostFromDialog || isUploadingHighlight}><BackArrowIcon className="mr-2 h-3.5 w-3.5" /> Back</Button>
+                <Button type="button" onClick={formForPostCreation.handleSubmit(handleCreatePostSubmit)} disabled={isSubmittingPostFromDialog || isUploadingHighlight || loadingCompletedPlans || !formForPostCreation.formState.isValid || !croppedHighlightFileForPost} className="flex-1 h-9 text-xs bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-all duration-150 ease-in-out hover:scale-105 hover:shadow-md active:scale-95 active:shadow-inner">
                   {(isSubmittingPostFromDialog || isUploadingHighlight) && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />} Share Highlight
                 </Button>
               </>
@@ -666,7 +720,7 @@ export default function AppLayout({
               </ReactCrop>
             </div>
           )}
-          <DialogFooter className="gap-2 sm:justify-end"><Button variant="outline" onClick={handleCancelPostImageCropDialog} size="sm" disabled={isUploadingHighlight || isSubmittingPostFromDialog}>Cancel</Button><Button onClick={handlePostImageCropAndSaveDialog} disabled={!completedPostCrop || isUploadingHighlight || isSubmittingPostFromDialog} size="sm">Crop & Use Image</Button></DialogFooter>
+          <DialogFooter className="gap-2 sm:justify-end"><Button variant="outline" onClick={handleCancelPostImageCropDialog} size="sm" disabled={isUploadingHighlight || isSubmittingPostFromDialog}>Cancel</Button><Button onClick={handlePostImageCropAndSaveDialog} disabled={!completedPostCrop || isUploadingHighlight || isSubmittingPostFromDialog} size="sm">Crop &amp; Use Image</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
