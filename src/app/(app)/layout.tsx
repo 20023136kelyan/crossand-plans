@@ -3,14 +3,14 @@
 
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
-import { Sidebar } from '@/components/ui/sidebar';
+import { Sidebar, SidebarProvider } from '@/components/ui/sidebar'; // Added SidebarProvider
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription as DialogDescriptionComponent, // Alias to avoid conflict with ShadFormDescription
+  DialogDescription as DialogDescriptionComponent,
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
@@ -21,7 +21,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-  FormDescription, // Added FormDescription here
+  FormDescription,
 } from "@/components/ui/form";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -54,13 +54,14 @@ import {
   Loader2, PlusCircle, Share2, Globe, Lock as LockIcon, Edit3, Sparkles, X as XIcon, UploadCloud,
   MessageSquare, User as UserIcon, Search, LayoutGrid, LayoutList, Wallet as WalletIcon, ChevronLeft, ImageIcon, ImagePlus
 } from 'lucide-react';
-import { Label } from '@/components/ui/label';
+import { Label } from '@/components/ui/label'; // Keep this for radio button labels
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { auth } from '@/lib/firebase';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 async function canvasPreview(
   image: HTMLImageElement,
@@ -359,8 +360,8 @@ export default function AppLayout({
     if (!currentAuthUser || !currentUserProfile) { toast({ title: "Auth Error", description: "User not authenticated.", variant: "destructive" }); return; }
     if (!croppedHighlightFileForPost) { toast({ title: "Validation Error", description: "Please select and crop an image highlight.", variant: "destructive" }); return; }
     
-    setIsSubmittingPostFromDialog(true);
-    setIsUploadingHighlight(true);
+    setIsSubmittingPostFromDialog(true); // Indicate overall submission start
+    setIsUploadingHighlight(true); // Specific for image upload phase
     let idToken: string | null = null;
     let uploadedHighlightUrl: string | null = null;
 
@@ -371,7 +372,7 @@ export default function AppLayout({
       const highlightFormData = new FormData();
       highlightFormData.append('highlightImage', croppedHighlightFileForPost);
       const highlightResult = await addPhotoHighlightAction(dataFromForm.planId, highlightFormData, idToken);
-      setIsUploadingHighlight(false);
+      setIsUploadingHighlight(false); // Image upload phase ends
       
       if (!highlightResult.success || !highlightResult.updatedPlan?.photoHighlights || highlightResult.updatedPlan.photoHighlights.length === 0) {
         throw new Error(highlightResult.error || "Could not upload highlight image or retrieve its URL.");
@@ -394,9 +395,9 @@ export default function AppLayout({
     } catch (error: any) {
       console.error("Error creating post from AppLayout dialog:", error);
       toast({ title: "Error Creating Post", description: error.message || "An unexpected error occurred.", variant: "destructive" });
-      setIsUploadingHighlight(false);
+      setIsUploadingHighlight(false); // Ensure this is false if any error occurs
     } finally {
-      setIsSubmittingPostFromDialog(false);
+      setIsSubmittingPostFromDialog(false); // Overall submission ends
     }
   };
 
@@ -441,7 +442,9 @@ export default function AppLayout({
       <div className="flex">
         {!isMobile && user && currentUserProfile && (
           <div className="fixed inset-y-0 left-0 z-30">
-            <Sidebar plansNotificationCount={plansNotificationCount} profileNotificationCount={profileNotificationCount} handleOpenCreatePostDialog={handleOpenCreatePostDialog} />
+            <SidebarProvider> {/* ADDED SidebarProvider WRAPPER */}
+              <Sidebar plansNotificationCount={plansNotificationCount} profileNotificationCount={profileNotificationCount} handleOpenCreatePostDialog={handleOpenCreatePostDialog} />
+            </SidebarProvider>
           </div>
         )}
         <div className={cn("flex-1 min-h-screen", !isMobile && "md:pl-[240px] lg:pl-[256px]")}>
@@ -473,52 +476,28 @@ export default function AppLayout({
       </Popover>
 
       <Dialog open={isCreatePostDialogOpen} onOpenChange={(open) => { setIsCreatePostDialogOpen(open); if (!open) resetCreatePostDialogStates(); }}>
-        <DialogContent className="sm:max-w-md rounded-xl bg-card shadow-2xl p-0 border-transparent flex flex-col max-h-[90vh] sm:max-h-[80vh]">
-          <DialogHeader className="p-4 border-b border-border/30 text-left">
+        <DialogContent className="sm:max-w-md rounded-xl bg-card shadow-2xl p-0 border-transparent flex flex-col max-h-[90vh] sm:max-h-[85vh]">
+          <DialogHeader className="text-left p-4 border-b border-border/30">
             <DialogTitle className="text-lg font-semibold text-foreground">Create New Post</DialogTitle>
             <DialogDescriptionComponent className="text-xs text-muted-foreground">Share a highlight from one of your completed plans.</DialogDescriptionComponent>
           </DialogHeader>
           
           <ScrollArea className="flex-1 min-h-0">
-            <div className="p-4 space-y-4">
+            <div className="p-4 space-y-3">
               <Form {...formForPostCreation}>
                 <form className="space-y-3">
-                  <FormField
-                    control={formForPostCreation.control}
-                    name="planId"
-                    render={({ field }) => (
-                      <FormItem className="space-y-1">
-                        <FormLabel className="text-xs font-medium">Select Completed Plan</FormLabel>
-                        {loadingCompletedPlans ? ( <div className="flex items-center text-sm text-muted-foreground h-9"><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Loading plans...</div>
-                        ) : userCompletedPlans.length === 0 ? (
-                          <div className="text-sm text-muted-foreground h-auto flex flex-col items-start py-1">
-                            <span>No completed plans found.</span>
-                            <Link href="/plans" className="text-xs text-primary hover:underline mt-0.5" onClick={() => setIsCreatePostDialogOpen(false)}>View your plans.</Link>
-                          </div>
-                        ) : (
-                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmittingPostFromDialog || loadingCompletedPlans}>
-                            <FormControl><SelectTrigger className="text-sm h-9 bg-background border-border/30 focus:border-primary placeholder:text-muted-foreground/70"><SelectValue placeholder="Choose a plan..." /></SelectTrigger></FormControl>
-                            <SelectContent>{userCompletedPlans.map(plan => (<SelectItem key={plan.id} value={plan.id} className="text-sm">{plan.name}</SelectItem>))}</SelectContent>
-                        </Select>
-                        )}
-                        <FormMessage className="text-xs" />
-                      </FormItem>
-                    )}
-                  />
-
                   <FormItem>
-                    <FormLabel className="text-xs font-medium">Highlight Image</FormLabel>
                     <div 
                       onDragOver={handleDragOver} 
                       onDragLeave={handleDragLeave} 
                       onDrop={handleDrop}
                       className={cn(
-                        "w-full rounded-lg border-2 border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground transition-colors duration-150 ease-in-out cursor-pointer",
+                        "w-full rounded-lg border-2 border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground transition-colors duration-150 ease-in-out cursor-pointer relative overflow-hidden",
                         isDraggingOver && "border-primary bg-primary/10",
-                        finalHighlightPreviewUrl ? "aspect-[4/3] relative overflow-hidden p-0" : "h-28 p-3 hover:bg-muted/70 hover:border-primary/50"
+                        finalHighlightPreviewUrl ? "aspect-[4/3] p-0" : "h-28 p-3 hover:bg-muted/70 hover:border-primary/50"
                       )}
                       onClick={() => {
-                        if (finalHighlightPreviewUrl && !isUploadingHighlight) return; // If preview shown and not uploading, user should use "Change" button
+                        if (finalHighlightPreviewUrl && !isUploadingHighlight) return; 
                         if (!formForPostCreation.getValues('planId')) {
                           toast({ title: "Select a Plan First", description: "Please choose a plan before uploading an image.", variant: "default" }); return;
                         }
@@ -530,9 +509,9 @@ export default function AppLayout({
                         <>
                           <NextImage src={finalHighlightPreviewUrl} alt="Highlight preview" fill style={{ objectFit: 'cover' }} data-ai-hint="upload preview" unoptimized />
                           {isUploadingHighlight && (
-                            <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white">
+                            <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center text-white backdrop-blur-sm">
                               <Loader2 className="h-6 w-6 animate-spin mb-1" />
-                              <span className="text-xs">Uploading...</span>
+                              <span className="text-xs">Uploading image...</span>
                             </div>
                           )}
                            {!isUploadingHighlight && (
@@ -555,9 +534,9 @@ export default function AppLayout({
                         </>
                       ) : (
                         <>
-                          <UploadCloud className={cn("h-8 w-8 mb-1", isDraggingOver ? "text-primary" : "text-gray-500")} />
+                          <UploadCloud className={cn("h-8 w-8 mb-1", isDraggingOver ? "text-primary" : "text-muted-foreground/70")} />
                           <span className="text-xs font-medium">{isDraggingOver ? "Drop image here" : "Drag & drop or click to upload"}</span>
-                          <span className="text-[10px] text-gray-600 mt-0.5">(Max 5MB, square recommended)</span>
+                          <span className="text-[10px] text-muted-foreground/80 mt-0.5">(Max 5MB, 4:3 recommended)</span>
                         </>
                       )}
                     </div>
@@ -575,6 +554,29 @@ export default function AppLayout({
                       disabled={isSubmittingPostFromDialog || !formForPostCreation.getValues('planId') || isPostCropperModalOpen || isUploadingHighlight} 
                     />
                   </FormItem>
+                  
+                  <FormField
+                    control={formForPostCreation.control}
+                    name="planId"
+                    render={({ field }) => (
+                      <FormItem className="space-y-1">
+                        <FormLabel className="text-xs font-medium">Select Completed Plan</FormLabel>
+                        {loadingCompletedPlans ? ( <div className="flex items-center text-sm text-muted-foreground h-9"><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Loading plans...</div>
+                        ) : userCompletedPlans.length === 0 ? (
+                          <div className="text-sm text-muted-foreground h-auto flex flex-col items-start py-1">
+                            <span>No completed plans found.</span>
+                            <Link href="/plans" className="text-xs text-primary hover:underline mt-0.5" onClick={() => setIsCreatePostDialogOpen(false)}>View your plans.</Link>
+                          </div>
+                        ) : (
+                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmittingPostFromDialog || loadingCompletedPlans || !croppedHighlightFileForPost}>
+                            <FormControl><SelectTrigger className="text-sm h-9 bg-background border-border/30 focus:border-primary placeholder:text-muted-foreground/70"><SelectValue placeholder="Choose a plan..." /></SelectTrigger></FormControl>
+                            <SelectContent>{userCompletedPlans.map(plan => (<SelectItem key={plan.id} value={plan.id} className="text-sm">{plan.name}</SelectItem>))}</SelectContent>
+                        </Select>
+                        )}
+                        <FormMessage className="text-xs" />
+                      </FormItem>
+                    )}
+                  />
                   
                   <FormField
                     control={formForPostCreation.control} name="caption"
@@ -604,9 +606,9 @@ export default function AppLayout({
               </Form>
             </div>
           </ScrollArea>
-          <DialogFooter className="flex flex-row gap-2 p-4 border-t border-border/30">
-            <Button type="button" variant="ghost" onClick={() => {setIsCreatePostDialogOpen(false); resetCreatePostDialogStates();}} disabled={isSubmittingPostFromDialog || isUploadingHighlight} className="w-full sm:w-auto h-9 text-muted-foreground hover:text-foreground">Cancel</Button>
-            <Button type="button" onClick={formForPostCreation.handleSubmit(handleCreatePostSubmit)} disabled={isSubmittingPostFromDialog || isUploadingHighlight || loadingCompletedPlans || !formForPostCreation.formState.isValid || !croppedHighlightFileForPost} className="w-full sm:w-auto h-9">
+          <DialogFooter className="flex flex-row gap-2 p-3 border-t border-border/30">
+            <Button type="button" variant="ghost" onClick={() => {setIsCreatePostDialogOpen(false); resetCreatePostDialogStates();}} disabled={isSubmittingPostFromDialog || isUploadingHighlight} className="w-full sm:w-auto h-9 text-xs text-muted-foreground hover:text-foreground">Cancel</Button>
+            <Button type="button" onClick={formForPostCreation.handleSubmit(handleCreatePostSubmit)} disabled={isSubmittingPostFromDialog || isUploadingHighlight || loadingCompletedPlans || !formForPostCreation.formState.isValid || !croppedHighlightFileForPost} className="w-full sm:w-auto h-9 text-xs">
               {(isSubmittingPostFromDialog || isUploadingHighlight) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Share
             </Button>
           </DialogFooter>
@@ -632,3 +634,4 @@ export default function AppLayout({
     </div>
   );
 }
+
