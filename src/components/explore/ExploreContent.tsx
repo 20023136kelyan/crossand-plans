@@ -257,7 +257,7 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
   if (loading && !initialData) { return <div className="flex justify-center items-center min-h-screen"><Loader2 className="h-12 w-12 animate-spin" /></div>; }
 
   return (
-    <div className="flex flex-col"> {/* Removed min-h-screen, AppLayout handles height */}
+    <div className="flex flex-col overflow-x-hidden">
       {/* Header with search and filters */}
       <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border/30">
         <div className="container mx-auto px-4 py-3">
@@ -281,13 +281,13 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
         )}
       </div>
 
-      {/* Main Content Area - Relies on AppLayout for padding and max-width */}
-      <div className="flex-1"> {/* Removed internal <main> and max-width/padding divs */}
+      {/* Main Content Area */}
+      <div className="flex-1">
         {isSearchActive ? (
           <div className="mb-6">
             {searchLoading && (<div className="flex justify-center items-center py-10 min-h-[200px]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>)}
-            {!searchLoading && filteredPlans.length === 0 && userSearchResults.length === 0 && (<div className="text-center py-8"><p className="text-muted-foreground">No results found for "{searchTerm}"</p></div>)}
-            {userSearchResults.length > 0 && (<Section title="Matching People" className="mb-8"><div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">{userSearchResults.map(userResult => (<UserSearchResultCard key={userResult.uid} userResult={userResult} />))}</div></Section>)}
+            {!searchLoading && filteredPlans.length === 0 && searchResults.length === 0 && (<div className="text-center py-8"><p className="text-muted-foreground">No results found for "{searchTerm}"</p></div>)}
+            {searchResults.length > 0 && (<Section title="Matching People" className="mb-8"><div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">{searchResults.map(userResult => (<UserSearchResultCard key={userResult.uid} userResult={userResult} />))}</div></Section>)}
             {filteredPlans.length > 0 && (<Section title="Matching Plans" className="mb-8"><div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">{filteredPlans.map(plan => <PlanCard key={plan.id} plan={plan} />)}</div></Section>)}
           </div>
         ) : viewMode === 'all' ? (
@@ -306,5 +306,3 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
     </div>
   );
 }
-
-    
