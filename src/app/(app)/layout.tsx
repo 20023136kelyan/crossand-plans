@@ -1,16 +1,17 @@
+
 'use client';
 
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
-import { Sidebar } from '@/components/layout/Sidebar'; // Changed from ui/sidebar
-import { SidebarProvider } from '@/components/ui/sidebar'; // Provider is from ui/sidebar
+import { Sidebar } from '@/components/layout/Sidebar';
+import { SidebarProvider } from '@/components/ui/sidebar';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription as DialogDescriptionComponent, // Aliased
+  DialogDescription as DialogDescriptionComponent,
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
@@ -21,12 +22,12 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-  // FormDescription, // Only FormDescription from ui/form if needed inside FormField
+  FormDescription,
 } from "@/components/ui/form";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  Select, // Still needed for the RHF Controller, but rendered via Popover/Command
+  Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
@@ -39,7 +40,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from '@/context/AuthContext';
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'; // Added useMemo
 import { getFriendships } from '@/services/userService';
 import { getUserCompletedPlans, getPendingPlanSharesForUser, getPendingPlanInvitationsCount } from '@/services/planService';
 import type { Chat, Plan, UserProfile, AppTimestamp, FeedPostVisibility, FeedPost, UserRoleType } from '@/types/user';
@@ -118,7 +119,7 @@ async function canvasPreview(
 const createPostFormSchema = z.object({
   planId: z.string().min(1, "Please select a plan."),
   caption: z.string().min(1, "Caption cannot be empty.").max(2000, "Caption is too long."),
-  isPublic: z.boolean().default(true), // Changed from visibility string
+  isPublic: z.boolean().default(true),
 });
 type CreatePostFormValues = z.infer<typeof createPostFormSchema>;
 
@@ -469,7 +470,7 @@ export default function AppLayout({
     <div className="min-h-screen bg-background">
       <div className="flex">
         {!isMobile && user && currentUserProfile && (
-           <SidebarProvider> {/* Added SidebarProvider here */}
+           <SidebarProvider>
             <Sidebar plansNotificationCount={plansNotificationCount} profileNotificationCount={profileNotificationCount} handleOpenCreatePostDialog={handleOpenCreatePostDialog} />
           </SidebarProvider>
         )}
@@ -676,7 +677,7 @@ export default function AppLayout({
                           <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border/30 p-2.5 bg-background">
                             <div className="space-y-0.5">
                               <FormLabel className="text-xs font-medium">Make Post Public</FormLabel>
-                              <p className="text-xs text-muted-foreground">Anyone can see this post.</p>
+                              <FormDescription className="text-xs text-muted-foreground">Anyone can see this post.</FormDescription>
                             </div>
                             <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={isSubmittingPostFromDialog || isUploadingHighlight} /></FormControl>
                           </FormItem>
