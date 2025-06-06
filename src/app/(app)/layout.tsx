@@ -10,7 +10,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription as DialogDescriptionComponent,
+  DialogDescription as DialogDescriptionComponent, // Alias to avoid conflict with ShadFormDescription
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
@@ -21,6 +21,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription, // Added FormDescription here
 } from "@/components/ui/form";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,7 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch'; // Added Switch
+import { Switch } from '@/components/ui/switch';
 import NextImage from 'next/image';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -53,13 +54,13 @@ import {
   Loader2, PlusCircle, Share2, Globe, Lock as LockIcon, Edit3, Sparkles, X as XIcon, UploadCloud,
   MessageSquare, User as UserIcon, Search, LayoutGrid, LayoutList, Wallet as WalletIcon, ChevronLeft, ImageIcon, ImagePlus
 } from 'lucide-react';
-import { Label } from '@/components/ui/label'; // Keep if needed for non-RHF labels
+import { Label } from '@/components/ui/label';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { auth } from '@/lib/firebase';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { ScrollArea } from '@/components/ui/scroll-area'; // For scrollable dialog content
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 async function canvasPreview(
   image: HTMLImageElement,
@@ -113,11 +114,10 @@ async function canvasPreview(
   });
 }
 
-// Updated schema for the "Create Post" dialog
 const createPostFormSchema = z.object({
   planId: z.string().min(1, "Please select a plan."),
   caption: z.string().min(1, "Caption cannot be empty.").max(2000, "Caption is too long."),
-  isPublic: z.boolean().default(true), // Changed from visibility to isPublic
+  isPublic: z.boolean().default(true),
 });
 type CreatePostFormValues = z.infer<typeof createPostFormSchema>;
 
@@ -255,8 +255,8 @@ export default function AppLayout({
   useEffect(() => { finalHighlightPreviewUrlRef.current = finalHighlightPreviewUrl; }, [finalHighlightPreviewUrl]);
   const [isSubmittingPostFromDialog, setIsSubmittingPostFromDialog] = useState(false);
   const highlightFileInputRefDialog = useRef<HTMLInputElement>(null);
-  const [isUploadingHighlight, setIsUploadingHighlight] = useState(false); // New state for image upload phase
-  const [isDraggingOver, setIsDraggingOver] = useState(false); // New state for drag-drop UI
+  const [isUploadingHighlight, setIsUploadingHighlight] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
 
   const formForPostCreation = useForm<CreatePostFormValues>({
@@ -360,7 +360,7 @@ export default function AppLayout({
     if (!croppedHighlightFileForPost) { toast({ title: "Validation Error", description: "Please select and crop an image highlight.", variant: "destructive" }); return; }
     
     setIsSubmittingPostFromDialog(true);
-    setIsUploadingHighlight(true); // Start image upload indicator
+    setIsUploadingHighlight(true);
     let idToken: string | null = null;
     let uploadedHighlightUrl: string | null = null;
 
@@ -371,7 +371,7 @@ export default function AppLayout({
       const highlightFormData = new FormData();
       highlightFormData.append('highlightImage', croppedHighlightFileForPost);
       const highlightResult = await addPhotoHighlightAction(dataFromForm.planId, highlightFormData, idToken);
-      setIsUploadingHighlight(false); // End image upload indicator
+      setIsUploadingHighlight(false);
       
       if (!highlightResult.success || !highlightResult.updatedPlan?.photoHighlights || highlightResult.updatedPlan.photoHighlights.length === 0) {
         throw new Error(highlightResult.error || "Could not upload highlight image or retrieve its URL.");
@@ -394,7 +394,7 @@ export default function AppLayout({
     } catch (error: any) {
       console.error("Error creating post from AppLayout dialog:", error);
       toast({ title: "Error Creating Post", description: error.message || "An unexpected error occurred.", variant: "destructive" });
-      setIsUploadingHighlight(false); // Ensure this is reset on error too
+      setIsUploadingHighlight(false);
     } finally {
       setIsSubmittingPostFromDialog(false);
     }
@@ -472,7 +472,6 @@ export default function AppLayout({
         </PopoverContent>
       </Popover>
 
-      {/* Create Post Dialog - Revamped */}
       <Dialog open={isCreatePostDialogOpen} onOpenChange={(open) => { setIsCreatePostDialogOpen(open); if (!open) resetCreatePostDialogStates(); }}>
         <DialogContent className="sm:max-w-md rounded-xl bg-card shadow-2xl p-0 border-transparent flex flex-col max-h-[90vh] sm:max-h-[80vh]">
           <DialogHeader className="p-4 border-b border-border/30 text-left">
@@ -482,75 +481,8 @@ export default function AppLayout({
           
           <ScrollArea className="flex-1 min-h-0">
             <div className="p-4 space-y-4">
-              <div 
-                onDragOver={handleDragOver} 
-                onDragLeave={handleDragLeave} 
-                onDrop={handleDrop}
-                className={cn(
-                  "w-full rounded-lg border-2 border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground transition-colors duration-150 ease-in-out cursor-pointer",
-                  isDraggingOver && "border-primary bg-primary/10",
-                  finalHighlightPreviewUrl ? "aspect-[4/3] relative overflow-hidden p-0" : "h-40 p-4 hover:bg-muted/70 hover:border-primary/50"
-                )}
-                onClick={() => {
-                  if (finalHighlightPreviewUrl) return; // Don't re-trigger if preview shown, use Change Image btn
-                  if (!formForPostCreation.getValues('planId')) {
-                    toast({ title: "Select a Plan First", description: "Please choose a plan before uploading an image.", variant: "default" }); return;
-                  }
-                  if (isUploadingHighlight || isSubmittingPostFromDialog) return;
-                  highlightFileInputRefDialog.current?.click();
-                }}
-              >
-                {finalHighlightPreviewUrl ? (
-                  <>
-                    <NextImage src={finalHighlightPreviewUrl} alt="Highlight preview" fill style={{ objectFit: 'cover' }} data-ai-hint="upload preview" unoptimized />
-                    {isUploadingHighlight && (
-                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                        <Loader2 className="h-8 w-8 animate-spin text-white" />
-                      </div>
-                    )}
-                    {!isUploadingHighlight && (
-                       <Button
-                        type="button" variant="secondary" size="sm"
-                        className="absolute top-2 right-2 text-xs h-7 bg-black/50 hover:bg-black/70 text-white backdrop-blur-sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (isUploadingHighlight || isSubmittingPostFromDialog) return;
-                          setCroppedHighlightFileForPost(null); if (finalHighlightPreviewUrlRef.current) URL.revokeObjectURL(finalHighlightPreviewUrlRef.current);
-                          setFinalHighlightPreviewUrl(null); finalHighlightPreviewUrlRef.current = null; setImageSrcForPostCropper(null);
-                          if (highlightFileInputRefDialog.current) highlightFileInputRefDialog.current.value = "";
-                          highlightFileInputRefDialog.current?.click(); // Re-open file dialog
-                        }}
-                        disabled={isUploadingHighlight || isSubmittingPostFromDialog}
-                      >
-                        <ImageIcon className="mr-1.5 h-3.5 w-3.5" /> Change
-                      </Button>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <ImagePlus className={cn("h-10 w-10 mb-2", isDraggingOver ? "text-primary" : "text-gray-500")} />
-                    <span className="text-sm font-medium">{isDraggingOver ? "Drop image here" : "Drag & drop image"}</span>
-                    <span className="text-xs text-gray-600 mt-0.5">or click to upload (Max 5MB)</span>
-                  </>
-                )}
-              </div>
-              <Input 
-                id="highlight-image-upload-dialog-applayout-rhf" type="file" 
-                accept="image/png, image/jpeg, image/gif, image/webp, image/*" 
-                onChange={(e) => {
-                    if (!formForPostCreation.getValues('planId')) {
-                      toast({ title: "Select a Plan First", description: "Please choose a plan before uploading an image.", variant: "default" });
-                      if (e.target) e.target.value = ""; // Clear the input
-                      return;
-                    }
-                    handleFileSelected(e.target.files ? e.target.files[0] : null);
-                }}
-                ref={highlightFileInputRefDialog} className="sr-only"
-                disabled={isSubmittingPostFromDialog || !formForPostCreation.getValues('planId') || isPostCropperModalOpen || isUploadingHighlight} 
-              />
-
               <Form {...formForPostCreation}>
-                <form className="space-y-3"> {/* Reduced gap */}
+                <form className="space-y-3">
                   <FormField
                     control={formForPostCreation.control}
                     name="planId"
@@ -573,6 +505,77 @@ export default function AppLayout({
                       </FormItem>
                     )}
                   />
+
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium">Highlight Image</FormLabel>
+                    <div 
+                      onDragOver={handleDragOver} 
+                      onDragLeave={handleDragLeave} 
+                      onDrop={handleDrop}
+                      className={cn(
+                        "w-full rounded-lg border-2 border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground transition-colors duration-150 ease-in-out cursor-pointer",
+                        isDraggingOver && "border-primary bg-primary/10",
+                        finalHighlightPreviewUrl ? "aspect-[4/3] relative overflow-hidden p-0" : "h-28 p-3 hover:bg-muted/70 hover:border-primary/50"
+                      )}
+                      onClick={() => {
+                        if (finalHighlightPreviewUrl && !isUploadingHighlight) return; // If preview shown and not uploading, user should use "Change" button
+                        if (!formForPostCreation.getValues('planId')) {
+                          toast({ title: "Select a Plan First", description: "Please choose a plan before uploading an image.", variant: "default" }); return;
+                        }
+                        if (isUploadingHighlight || isSubmittingPostFromDialog) return;
+                        highlightFileInputRefDialog.current?.click();
+                      }}
+                    >
+                      {finalHighlightPreviewUrl ? (
+                        <>
+                          <NextImage src={finalHighlightPreviewUrl} alt="Highlight preview" fill style={{ objectFit: 'cover' }} data-ai-hint="upload preview" unoptimized />
+                          {isUploadingHighlight && (
+                            <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white">
+                              <Loader2 className="h-6 w-6 animate-spin mb-1" />
+                              <span className="text-xs">Uploading...</span>
+                            </div>
+                          )}
+                           {!isUploadingHighlight && (
+                            <Button
+                              type="button" variant="secondary" size="sm"
+                              className="absolute top-1.5 right-1.5 text-xs h-7 bg-black/50 hover:bg-black/70 text-white backdrop-blur-sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (isUploadingHighlight || isSubmittingPostFromDialog) return;
+                                setCroppedHighlightFileForPost(null); if (finalHighlightPreviewUrlRef.current) URL.revokeObjectURL(finalHighlightPreviewUrlRef.current);
+                                setFinalHighlightPreviewUrl(null); finalHighlightPreviewUrlRef.current = null; setImageSrcForPostCropper(null);
+                                if (highlightFileInputRefDialog.current) highlightFileInputRefDialog.current.value = "";
+                                highlightFileInputRefDialog.current?.click();
+                              }}
+                              disabled={isUploadingHighlight || isSubmittingPostFromDialog}
+                            >
+                              <ImageIcon className="mr-1.5 h-3.5 w-3.5" /> Change
+                            </Button>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <UploadCloud className={cn("h-8 w-8 mb-1", isDraggingOver ? "text-primary" : "text-gray-500")} />
+                          <span className="text-xs font-medium">{isDraggingOver ? "Drop image here" : "Drag & drop or click to upload"}</span>
+                          <span className="text-[10px] text-gray-600 mt-0.5">(Max 5MB, square recommended)</span>
+                        </>
+                      )}
+                    </div>
+                     <Input 
+                      id="highlight-image-upload-dialog-applayout-rhf" type="file" 
+                      accept="image/png, image/jpeg, image/gif, image/webp, image/*" 
+                      onChange={(e) => {
+                          if (!formForPostCreation.getValues('planId')) {
+                            toast({ title: "Select a Plan First", description: "Please choose a plan before uploading an image.", variant: "default" });
+                            if (e.target) e.target.value = ""; return;
+                          }
+                          handleFileSelected(e.target.files ? e.target.files[0] : null);
+                      }}
+                      ref={highlightFileInputRefDialog} className="sr-only"
+                      disabled={isSubmittingPostFromDialog || !formForPostCreation.getValues('planId') || isPostCropperModalOpen || isUploadingHighlight} 
+                    />
+                  </FormItem>
+                  
                   <FormField
                     control={formForPostCreation.control} name="caption"
                     render={({ field }) => (
@@ -590,10 +593,10 @@ export default function AppLayout({
                     render={({ field }) => (
                       <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border/30 p-2.5 bg-background">
                         <div className="space-y-0.5">
-                          <FormLabel className="text-xs font-medium">Make Post Public</FormLabel>
+                          <FormLabel htmlFor="post-visibility-dialog-applayout" className="text-xs font-medium">Make Post Public</FormLabel>
                           <FormDescription className="text-xs text-muted-foreground">Anyone can see this post.</FormDescription>
                         </div>
-                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={isSubmittingPostFromDialog || isUploadingHighlight} /></FormControl>
+                        <FormControl><Switch id="post-visibility-dialog-applayout" checked={field.value} onCheckedChange={field.onChange} disabled={isSubmittingPostFromDialog || isUploadingHighlight} /></FormControl>
                       </FormItem>
                     )}
                   />
