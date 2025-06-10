@@ -18,5 +18,5 @@ const navItems = [
   { href: '/explore', label: 'Explore', icon: Search },
   { href: '/profile', label: 'My Profile', icon: User },
   { href: '/friends', label: 'Friends', icon: Users },
-  { href: '/payments', label: 'Payments', icon: HandCoins, isPlaceholder: true },
+  { href: '/payments', label: 'Payments', icon: HandCoins },
 ];

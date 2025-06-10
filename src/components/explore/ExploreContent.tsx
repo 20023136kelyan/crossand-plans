@@ -6,20 +6,26 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from "@/components/ui/input";
 import { format } from 'date-fns';
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { fetchExplorePageDataAction } from '@/app/actions/exploreActions';
+import React, { useEffect, useState, useMemo, useRef, useCallback, startTransition } from 'react';
+import { useIsMobile } from '@/hooks/use-is-mobile';
+import { fetchExplorePageDataAction, searchCollectionsAction } from '@/app/actions/exploreActions';
 import { getUserLocationAction, searchUsersAction } from '@/app/actions/userActions';
+import { getUserProfile, savePlanToUser } from '@/services/userService';
 import { useToast } from '@/hooks/use-toast';
-import { Plan, Profile, Category, City, SearchedUser, Influencer } from '@/types/user';
+import { Plan, Profile, Category, City, SearchedUser, Influencer, PlanCollection } from '@/types/user';
 import { useAuth } from '@/context/AuthContext';
-import { Loader2, MapPin, Calendar, Star, Search, Users, Heart, Share2, BookmarkPlus, Lock, Percent, Check, X, UserCheck, UserPlus, BadgeCheck, ArrowLeft, Layers, Crown } from 'lucide-react';
+import { Loader2, MapPin, Calendar, Star, Search, Users, Heart, Share2, BookmarkPlus, Lock, Percent, Check, X, UserCheck, UserPlus, BadgeCheck, ArrowLeft, Layers, Crown, TrendingUp, Clock, Sparkles, Filter } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { Separator } from '@/components/ui/separator';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { calculateEnhancedPlanScore } from '@/lib/utils/enhancedRanking';
 import { useRouter } from 'next/navigation';
 import type { UserPreferences, GeoPoint } from '@/types/user';
 import { UserSearchResultCard } from './UserSearchResultCard';
+import { trackSearch, trackResultClick, getRecentSearches, clearSearchHistory } from '@/services/searchAnalyticsService.client';
+import type { PersonalizedRecommendations } from '@/services/recommendationService.admin';
 
 // Profile card for Day in the Life section
 const ProfileCard = ({ profile }: { profile: Profile | Influencer }) => {
@@ -79,7 +85,7 @@ const PlanCard = ({ plan }: { plan: Plan }) => {
   const { user } = useAuth(); const { toast } = useToast(); const [saving, setSaving] = useState(false);
   const handleSave = async (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation(); if (!user) { toast({ title: "Login Required", description: "Please log in to save plans", variant: "destructive"}); return; }
-    setSaving(true); try { toast({ title: "Plan Saved", description: "Plan has been added to My Macaroon"}); } catch (error) { console.error('Error saving plan:', error); toast({ title: "Error", description: "Failed to save plan", variant: "destructive"}); } finally { setSaving(false); }
+    setSaving(true); try { const success = await savePlanToUser(user.uid, plan.id); if (success) { toast({ title: "Template Saved", description: "Activity template has been added to your saved collection"}); } else { toast({ title: "Error", description: "Failed to save template", variant: "destructive"}); } } catch (error) { console.error('Error saving template:', error); toast({ title: "Error", description: "Failed to save template", variant: "destructive"}); } finally { setSaving(false); }
   };
   const maxDiscount = useMemo(() => { if (!plan.venues?.length) return 0; return Math.max(...plan.venues.map(v => v.discount)); }, [plan.venues]);
   return (
@@ -103,7 +109,7 @@ const PlanCard = ({ plan }: { plan: Plan }) => {
             <Avatar className="h-6 w-6"><AvatarImage src={plan.creatorAvatarUrl} /><AvatarFallback>{plan.creatorName?.[0]?.toUpperCase() || 'U'}</AvatarFallback></Avatar>
             <div className="flex items-center gap-1"><span className="text-sm font-medium">{plan.creatorName}</span>{plan.creatorIsVerified && (<BadgeCheck className="h-4 w-4 text-primary" />)}</div>
           </div>
-          <div className="flex items-center gap-2 mt-4"><Button variant="outline" size="sm" className="flex-1" onClick={handleSave} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><BookmarkPlus className="h-4 w-4 mr-2" /> Add to My Macaroon</>}</Button></div>
+          <div className="flex items-center gap-2 mt-4"><Button variant="outline" size="sm" className="flex-1" onClick={handleSave} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><BookmarkPlus className="h-4 w-4 mr-2" /> Save Plan</>}</Button></div>
         </div>
       </div>
     </Link>
@@ -157,6 +163,7 @@ interface ExplorePageData {
   completedPlans: Plan[];
   featuredCities: City[];
   categories: Category[];
+  navigationCollections: PlanCollection[];
 }
 
 interface ExploreContentProps {
@@ -166,6 +173,7 @@ interface ExploreContentProps {
 
 export function ExploreContent({ initialData, userPreferences }: ExploreContentProps) {
   const { user } = useAuth(); const { toast } = useToast(); const router = useRouter();
+  const isMobile = useIsMobile();
   const [loading, setLoading] = useState(true); const [searchTerm, setSearchTerm] = useState('');
   const [userLocation, setUserLocation] = useState<{ city: string; country: string; coordinates?: GeoPoint; } | undefined>();
   const [selectedCity, setSelectedCity] = useState<string | undefined>();
@@ -175,12 +183,21 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
   const [plans, setPlans] = useState<Plan[]>(initialData?.completedPlans || []);
   const [cities, setCities] = useState<City[]>(initialData?.featuredCities || []);
   const [categories, setCategories] = useState<Category[]>(initialData?.categories || []);
+  const [navigationCollections, setNavigationCollections] = useState<PlanCollection[]>(initialData?.navigationCollections || []);
   const [userSearchResults, setUserSearchResults] = useState<SearchedUser[]>([]);
+  const [collectionSearchResults, setCollectionSearchResults] = useState<PlanCollection[]>([]);
   const [filteredPlans, setFilteredPlans] = useState<Plan[]>([]);
   const [featuredPlans, setFeaturedPlans] = useState<Plan[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false); const [locationRequested, setLocationRequested] = useState(false);
   const [isSearchActive, setIsSearchActive] = useState(false); const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [recommendations, setRecommendations] = useState<PersonalizedRecommendations | null>(null);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [showRecommendations, setShowRecommendations] = useState(false);
+  const [loadingRecommendations, setLoadingRecommendations] = useState(false);
+  const [showRecentSearches, setShowRecentSearches] = useState(false);
+  const [searchInputFocused, setSearchInputFocused] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
   const categoryImages: Record<string, string> = { 'ALL': '/images/categories/all.jpg', 'ART': '/images/categories/art.jpg', 'FITNESS': '/images/categories/fitness.jpg' };
 
   const requestLocation = useCallback(() => { /* ... (kept same) ... */ }, [toast]);
@@ -201,6 +218,7 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
         setProfiles(result.data.featuredProfiles || []);
         processExploreData(result.data.completedPlans || [], result.data.featuredCities || [], userLocation);
         setCategories(result.data.categories || []);
+        setNavigationCollections(result.data.navigationCollections || []);
       } else { toast({ title: 'Error', description: result.error || 'Failed to fetch explore data', variant: 'destructive' }); }
     } catch (error: any) { toast({ title: 'Error', description: error.message || 'Failed to fetch explore data', variant: 'destructive' }); }
     finally { setLoading(false); }
@@ -210,23 +228,95 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
     if (initialData) {
       setProfiles(initialData.featuredProfiles || []);
       processExploreData(initialData.completedPlans || [], initialData.featuredCities || [], userLocation);
-      setCategories(initialData.categories || []); setLoading(false);
+      setCategories(initialData.categories || []);
+      setNavigationCollections(initialData.navigationCollections || []);
+      setLoading(false);
     } else { fetchData(); }
   }, [initialData, fetchData, processExploreData, userLocation]);
 
   const performSearch = useCallback(async (term: string) => {
-    if (!term.trim()) { setIsSearchActive(false); setUserSearchResults([]); return; }
-    setIsSearchActive(true); setSearchLoading(true); setUserSearchResults([]);
+    if (!term.trim()) { 
+      setIsSearchActive(false); 
+      setUserSearchResults([]); 
+      setCollectionSearchResults([]);
+      return; 
+    }
+    setIsSearchActive(true); 
+    setSearchLoading(true); 
+    setUserSearchResults([]);
+    setCollectionSearchResults([]);
+    
+    let userCount = 0;
+    let collectionCount = 0;
+    let planCount = 0;
+    
+    // Search users
     if (user) {
       try {
         const idToken = await user.getIdToken();
         const userResult = await searchUsersAction(term, idToken);
-        if (userResult.success && userResult.users) { setUserSearchResults(userResult.users); }
-        else { setUserSearchResults([]); if (userResult.error) { toast({ title: "User Search Error", description: userResult.error, variant: "destructive" }); }}
-      } catch (error: any) { setUserSearchResults([]); toast({ title: "User Search Failed", description: error.message || "Could not search for people.", variant: "destructive" }); }
+        if (userResult.success && userResult.users) { 
+          setUserSearchResults(userResult.users);
+          userCount = userResult.users.length;
+        } else { 
+          setUserSearchResults([]); 
+          if (userResult.error) { 
+            toast({ title: "User Search Error", description: userResult.error, variant: "destructive" }); 
+          }
+        }
+      } catch (error: any) { 
+        setUserSearchResults([]); 
+        toast({ title: "User Search Failed", description: error.message || "Could not search for people.", variant: "destructive" }); 
+      }
     }
+    
+    // Search collections
+    try {
+      const collectionResult = await searchCollectionsAction(term);
+      if (collectionResult.success && collectionResult.collections) {
+        setCollectionSearchResults(collectionResult.collections);
+        collectionCount = collectionResult.collections.length;
+      } else {
+        setCollectionSearchResults([]);
+        if (collectionResult.error) {
+          toast({ title: "Collection Search Error", description: collectionResult.error, variant: "destructive" });
+        }
+      }
+    } catch (error: any) {
+      setCollectionSearchResults([]);
+      toast({ title: "Collection Search Failed", description: error.message || "Could not search for collections.", variant: "destructive" });
+    }
+    
+    // Count plan results from filtered plans
+    const termLower = term.toLowerCase().trim();
+    const matchingPlans = [...plans, ...featuredPlans].filter(plan =>
+      plan.name.toLowerCase().includes(termLower) || 
+      (plan.location?.toLowerCase().includes(termLower)) || 
+      (plan.city?.toLowerCase().includes(termLower)) ||
+      (plan.eventType?.toLowerCase().includes(termLower)) || 
+      (plan.description?.toLowerCase().includes(termLower)) || 
+      (plan.creatorName?.toLowerCase().includes(termLower)) ||
+      (plan.creatorUsername?.toLowerCase().includes(termLower)) || 
+      (plan.itinerary?.some(item => item.placeName?.toLowerCase().includes(termLower)))
+    );
+    planCount = matchingPlans.length;
+    
+    // Track search analytics
+    try {
+      await trackSearch(term, {
+        people: userCount,
+        plans: planCount,
+        collections: collectionCount
+      });
+      
+      // Update recent searches
+      setRecentSearches(getRecentSearches(10));
+    } catch (error) {
+      console.warn('Failed to track search analytics:', error);
+    }
+    
     setSearchLoading(false);
-  }, [user, toast]);
+  }, [user, toast, plans, featuredPlans]);
 
   useEffect(() => {
     if (!plans) return;
@@ -250,9 +340,59 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
   const toggleFeatured = async (planId: string, newFeaturedStatus: boolean) => { /* ... (kept same) ... */ };
 
   const handleSearchChange = (value: string) => {
-    setSearchTerm(value); if (searchTimeoutRef.current) { clearTimeout(searchTimeoutRef.current); }
+    setSearchTerm(value); 
+    
+    // Immediately set search state based on whether there's a value
+    if (!value.trim()) {
+      setIsSearchActive(false);
+      setUserSearchResults([]);
+      setCollectionSearchResults([]);
+    }
+    
+    if (searchTimeoutRef.current) { clearTimeout(searchTimeoutRef.current); }
     searchTimeoutRef.current = setTimeout(() => { performSearch(value); }, 300);
   };
+
+  // Fetch personalized recommendations
+  const fetchRecommendations = useCallback(async () => {
+    if (!user) return;
+    
+    setLoadingRecommendations(true);
+    try {
+      const response = await fetch('/api/recommendations?limit=10');
+      if (response.ok) {
+        const data = await response.json();
+        setRecommendations(data);
+      }
+    } catch (error) {
+      console.warn('Failed to fetch recommendations:', error);
+    } finally {
+      setLoadingRecommendations(false);
+    }
+  }, [user]);
+
+  // Load recent searches and recommendations on component mount
+  useEffect(() => {
+    setRecentSearches(getRecentSearches(10));
+    if (user) {
+      fetchRecommendations();
+    }
+  }, [user, fetchRecommendations]);
+
+  // Handle result click tracking
+  const handleResultClick = useCallback(async (
+    resultType: 'person' | 'plan' | 'collection',
+    resultId: string,
+    position: number
+  ) => {
+    if (searchTerm.trim()) {
+      try {
+        await trackResultClick(searchTerm, resultType, resultId, position);
+      } catch (error) {
+        console.warn('Failed to track result click:', error);
+      }
+    }
+  }, [searchTerm]);
 
   if (loading && !initialData) { return <div className="flex justify-center items-center min-h-screen"><Loader2 className="h-12 w-12 animate-spin" /></div>; }
 
@@ -261,21 +401,217 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
       {/* Header with search and filters */}
       <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border/30">
         <div className="container mx-auto px-4 py-3">
-          <h2 className="text-lg font-semibold mb-2 text-center">Discover</h2>
-          <div className="relative max-w-2xl mx-auto">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input type="search" placeholder="Search plans, people, places..." className="pl-9 h-10 rounded-xl w-full pr-10" value={searchTerm} onChange={(e) => handleSearchChange(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && handleSearchChange('')} />
-            {searchTerm && <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8" onClick={() => handleSearchChange('')}><X className="h-4 w-4" /></Button>}
+          {!isMobile && <h2 className="text-lg font-semibold mb-2 text-center">Discover</h2>}
+          <div ref={searchContainerRef} className="relative max-w-2xl mx-auto">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground pointer-events-none" />
+            <Input 
+              type="search" 
+              placeholder="Search plans, people, places..." 
+              className="pl-8 sm:pl-10 bg-card border-border text-sm h-8 sm:h-9 rounded-lg focus:ring-primary focus:border-primary w-full pr-10" 
+              value={searchTerm} 
+              onChange={(e) => {
+                const value = e.target.value;
+                handleSearchChange(value);
+                // Show recent searches when typing if there are matches
+                if (value.length > 0 && recentSearches.length > 0) {
+                  const hasMatches = recentSearches.some(search => 
+                    search.toLowerCase().includes(value.toLowerCase())
+                  );
+                  setShowRecentSearches(hasMatches);
+                } else {
+                  setShowRecentSearches(false);
+                }
+              }} 
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  handleSearchChange('');
+                  setShowRecentSearches(false);
+                }
+                if (e.key === 'ArrowDown' && showRecentSearches) {
+                  e.preventDefault();
+                  // Focus first recent search item
+                  const firstItem = searchContainerRef.current?.querySelector('[data-recent-search]') as HTMLElement;
+                  firstItem?.focus();
+                }
+              }}
+              onFocus={() => {
+                setSearchInputFocused(true);
+                if (searchTerm.length > 0 && recentSearches.length > 0) {
+                  const hasMatches = recentSearches.some(search => 
+                    search.toLowerCase().includes(searchTerm.toLowerCase())
+                  );
+                  setShowRecentSearches(hasMatches);
+                }
+              }}
+              onBlur={(e) => {
+                setSearchInputFocused(false);
+                // Only hide if not clicking within the search container
+                if (!searchContainerRef.current?.contains(e.relatedTarget as Node)) {
+                  setTimeout(() => setShowRecentSearches(false), 150);
+                }
+              }}
+            />
+            {searchTerm && (
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8" 
+                onClick={() => {
+                  handleSearchChange('');
+                  setShowRecentSearches(false);
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
+        {/* Recent Searches Dropdown - Positioned outside sticky header */}
+        {showRecentSearches && searchTerm && searchTerm.length > 0 && recentSearches.length > 0 && (
+          <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 w-full max-w-2xl mx-auto px-4 z-[100]">
+            <div className="bg-background border border-border rounded-xl shadow-lg max-h-60 overflow-y-auto">
+              <div className="p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-medium text-muted-foreground">Recent Searches</h4>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => {
+                      clearSearchHistory();
+                      setRecentSearches([]);
+                      setShowRecentSearches(false);
+                    }}
+                  >
+                    Clear
+                  </Button>
+                </div>
+                <div className="space-y-1">
+                  {recentSearches
+                    .filter(search => search.toLowerCase().includes(searchTerm.toLowerCase()))
+                    .slice(0, 5) // Limit to 5 suggestions
+                    .map((search, index) => (
+                    <button
+                      key={index}
+                      data-recent-search
+                      className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-muted/50 transition-colors flex items-center gap-2 focus:bg-muted/50 focus:outline-none"
+                      onClick={() => {
+                        handleSearchChange(search);
+                        setShowRecentSearches(false);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          const nextItem = e.currentTarget.nextElementSibling as HTMLElement;
+                          nextItem?.focus();
+                        }
+                        if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          const prevItem = e.currentTarget.previousElementSibling as HTMLElement;
+                          if (prevItem) {
+                            prevItem.focus();
+                          } else {
+                            // Focus back to input
+                            const input = searchContainerRef.current?.querySelector('input');
+                            input?.focus();
+                          }
+                        }
+                        if (e.key === 'Enter') {
+                          handleSearchChange(search);
+                          setShowRecentSearches(false);
+                        }
+                      }}
+                    >
+                      <Search className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                      <span className="truncate">{search}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
         {!isSearchActive && (
           <div className="container mx-auto px-4">
-            <div className="flex gap-2 pb-3 overflow-x-auto hide-scrollbar max-w-2xl mx-auto">
-              <Button variant={viewMode === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('all')} className="flex-shrink-0">All</Button>
-              <Button variant={viewMode === 'cities' ? 'default' : 'outline'} size="sm" onClick={() => { router.push('/explore/cities', { scroll: false }); }} className="flex-shrink-0">Cities</Button>
-              <Button variant={viewMode === 'categories' ? 'default' : 'outline'} size="sm" onClick={() => { router.push('/explore/categories', { scroll: false }); }} className="flex-shrink-0">Categories</Button>
-              <Button variant={viewMode === 'creators' ? 'default' : 'outline'} size="sm" onClick={() => { router.push('/explore/creators', { scroll: false }); }} className="flex-shrink-0">Creators</Button>
-              <Button variant={viewMode === 'dayInLife' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('dayInLife')} className="flex-shrink-0">Day in Life</Button>
+            <div className="flex gap-2 py-3 overflow-x-auto hide-scrollbar max-w-2xl mx-auto">
+              <Button 
+                variant={viewMode === 'all' ? 'default' : 'outline'} 
+                size="sm" 
+                onClick={() => setViewMode('all')} 
+                className={cn(
+                  "h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm transition-all duration-200 flex-shrink-0",
+                  viewMode === 'all'
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "bg-card border-border hover:bg-secondary/50"
+                )}
+              >
+                All
+              </Button>
+              <Button 
+                variant={viewMode === 'cities' ? 'default' : 'outline'} 
+                size="sm" 
+                onClick={() => {
+                   startTransition(() => {
+                     router.push('/explore/cities', { scroll: false });
+                   });
+                 }} 
+                className={cn(
+                  "h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm transition-all duration-200 flex-shrink-0",
+                  viewMode === 'cities'
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "bg-card border-border hover:bg-secondary/50"
+                )}
+              >
+                Cities
+              </Button>
+              <Button 
+                variant={viewMode === 'categories' ? 'default' : 'outline'} 
+                size="sm" 
+                onClick={() => {
+                   startTransition(() => {
+                     router.push('/explore/categories', { scroll: false });
+                   });
+                 }} 
+                className={cn(
+                  "h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm transition-all duration-200 flex-shrink-0",
+                  viewMode === 'categories'
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "bg-card border-border hover:bg-secondary/50"
+                )}
+              >
+                Categories
+              </Button>
+              <Button 
+                variant={viewMode === 'creators' ? 'default' : 'outline'} 
+                size="sm" 
+                onClick={() => {
+                   startTransition(() => {
+                     router.push('/explore/creators', { scroll: false });
+                   });
+                 }} 
+                className={cn(
+                  "h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm transition-all duration-200 flex-shrink-0",
+                  viewMode === 'creators'
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "bg-card border-border hover:bg-secondary/50"
+                )}
+              >
+                Creators
+              </Button>
+              <Button 
+                variant={viewMode === 'dayInLife' ? 'default' : 'outline'} 
+                size="sm" 
+                onClick={() => setViewMode('dayInLife')} 
+                className={cn(
+                  "h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm transition-all duration-200 flex-shrink-0",
+                  viewMode === 'dayInLife'
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "bg-card border-border hover:bg-secondary/50"
+                )}
+              >
+                Day in Life
+              </Button>
             </div>
           </div>
         )}
@@ -284,24 +620,213 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
       {/* Main Content Area */}
       <div className="flex-1">
         {isSearchActive ? (
-          <div className="mb-6">
+          <div className="container mx-auto px-4 mb-6">
             {searchLoading && (<div className="flex justify-center items-center py-10 min-h-[200px]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>)}
-            {!searchLoading && filteredPlans.length === 0 && searchResults.length === 0 && (<div className="text-center py-8"><p className="text-muted-foreground">No results found for "{searchTerm}"</p></div>)}
-            {searchResults.length > 0 && (<Section title="Matching People" className="mb-8"><div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">{searchResults.map(userResult => (<UserSearchResultCard key={userResult.uid} userResult={userResult} />))}</div></Section>)}
-            {filteredPlans.length > 0 && (<Section title="Matching Plans" className="mb-8"><div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">{filteredPlans.map(plan => <PlanCard key={plan.id} plan={plan} />)}</div></Section>)}
+            {!searchLoading && filteredPlans.length === 0 && userSearchResults.length === 0 && collectionSearchResults.length === 0 && (<div className="text-center py-8"><p className="text-muted-foreground">No results found for "{searchTerm}"</p></div>)}
+            
+            {/* Search Results Summary */}
+            {!searchLoading && (userSearchResults.length > 0 || filteredPlans.length > 0 || collectionSearchResults.length > 0) && (
+              <div className="mb-6">
+                <p className="text-sm text-muted-foreground">
+                  Found {userSearchResults.length + filteredPlans.length + collectionSearchResults.length} results for "{searchTerm}"
+                  {userSearchResults.length > 0 && ` • ${userSearchResults.length} people`}
+                  {filteredPlans.length > 0 && ` • ${filteredPlans.length} plans`}
+                  {collectionSearchResults.length > 0 && ` • ${collectionSearchResults.length} collections`}
+                </p>
+              </div>
+            )}
+            
+            {/* Collection Results */}
+            {collectionSearchResults.length > 0 && (
+              <Section title={`Matching Collections (${collectionSearchResults.length})`} className="mb-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                  {collectionSearchResults.map(collection => (
+                    <Link key={collection.id} href={`/collections/${collection.id}`}>
+                      <div className="group relative h-[200px] rounded-2xl overflow-hidden bg-gradient-to-br from-primary/10 to-secondary/10 border border-border/50 hover:border-primary/30 transition-all duration-300">
+                        {collection.coverImageUrl && (
+                          <Image 
+                            src={collection.coverImageUrl} 
+                            alt={collection.title} 
+                            fill 
+                            className="object-cover transition-transform group-hover:scale-105" 
+                          />
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                        <div className="absolute inset-0 p-4 flex flex-col justify-between">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary" className="bg-white/10 text-white border-white/20">
+                              <Layers className="h-3 w-3 mr-1" />
+                              Collection
+                            </Badge>
+                            {collection.isFeatured && (
+                              <Badge variant="premium" className="bg-gradient-to-r from-amber-500 to-amber-700">
+                                <Crown className="h-3 w-3 mr-1" />
+                                Featured
+                              </Badge>
+                            )}
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-semibold text-white mb-2 line-clamp-2">{collection.title}</h3>
+                            {collection.description && (
+                              <p className="text-sm text-white/80 line-clamp-2 mb-3">{collection.description}</p>
+                            )}
+                            <div className="flex items-center gap-3 text-white/70">
+                              <div className="flex items-center gap-1">
+                                <Users className="h-4 w-4" />
+                                <span className="text-sm">{collection.planIds?.length || 0} plans</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Avatar className="h-5 w-5">
+                                  <AvatarImage src={collection.curatorAvatarUrl || undefined} />
+                                  <AvatarFallback className="text-xs">{collection.curatorName?.[0]?.toUpperCase() || 'C'}</AvatarFallback>
+                                </Avatar>
+                                <span className="text-sm">{collection.curatorName}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </Section>
+            )}
+            
+            {/* User Results */}
+            {userSearchResults.length > 0 && (
+              <Section title={`Matching People (${userSearchResults.length})`} className="mb-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  {userSearchResults.map(userResult => (
+                    <UserSearchResultCard key={userResult.uid} userResult={userResult} />
+                  ))}
+                </div>
+              </Section>
+            )}
+            
+            {/* Plan Results */}
+            {filteredPlans.length > 0 && (
+              <Section title={`Matching Plans (${filteredPlans.length})`} className="mb-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                  {filteredPlans.map(plan => <PlanCard key={plan.id} plan={plan} />)}
+                </div>
+              </Section>
+            )}
           </div>
         ) : viewMode === 'all' ? (
-          <>
+          <div className="container mx-auto px-4">
+
+
+            {/* Personalized Recommendations */}
+            {user && recommendations && (
+              <>
+                {recommendations.plans.length > 0 && (
+                  <Section title="Recommended for You" className="mb-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                      {recommendations.plans.slice(0, 8).map((rec, index) => (
+                        <div key={rec.id} className="relative group">
+                          <div 
+                            onClick={() => handleResultClick('plan', rec.id, index)}
+                            className="cursor-pointer"
+                          >
+                            <PlanCard plan={rec.data as Plan} />
+                          </div>
+                          {rec.reasons.length > 0 && (
+                            <div className="mt-2">
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Sparkles className="h-3 w-3" />
+                                <span>{rec.reasons[0]}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </Section>
+                )}
+
+                {recommendations.trendingPlans.length > 0 && (
+                  <Section title="Trending This Week" className="mb-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                      {recommendations.trendingPlans.slice(0, 4).map((rec, index) => (
+                        <div key={rec.id} className="relative group">
+                          <div 
+                            onClick={() => handleResultClick('plan', rec.id, index)}
+                            className="cursor-pointer"
+                          >
+                            <PlanCard plan={rec.data as Plan} />
+                          </div>
+                          <div className="mt-2">
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <TrendingUp className="h-3 w-3" />
+                              <span>Trending</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Section>
+                )}
+
+                {recommendations.collections.length > 0 && (
+                  <Section title="Collections You Might Like" className="mb-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                      {recommendations.collections.slice(0, 4).map((rec, index) => (
+                        <div 
+                          key={rec.id}
+                          onClick={() => handleResultClick('collection', rec.id, index)}
+                          className="cursor-pointer"
+                        >
+                          <Link href={`/collections/${rec.id}`}>
+                            <div className="group relative h-[200px] rounded-2xl overflow-hidden bg-gradient-to-br from-primary/10 to-secondary/10 border border-border/50 hover:border-primary/30 transition-all duration-300">
+                              {(rec.data as any).coverImageUrl && (
+                                <Image 
+                                  src={(rec.data as any).coverImageUrl} 
+                                  alt={(rec.data as any).title} 
+                                  fill 
+                                  className="object-cover transition-transform group-hover:scale-105" 
+                                />
+                              )}
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                              <div className="absolute inset-0 p-4 flex flex-col justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="secondary" className="bg-white/10 text-white border-white/20">
+                                    <Layers className="h-3 w-3 mr-1" />
+                                    Collection
+                                  </Badge>
+                                  {rec.reasons.length > 0 && (
+                                    <Badge variant="outline" className="bg-white/10 text-white border-white/20 text-xs">
+                                      <Sparkles className="h-3 w-3 mr-1" />
+                                      {rec.reasons[0]}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div>
+                                  <h3 className="text-lg font-semibold text-white mb-2 line-clamp-2">{(rec.data as any).title}</h3>
+                                  {(rec.data as any).description && (
+                                    <p className="text-sm text-white/80 line-clamp-2 mb-3">{(rec.data as any).description}</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </Link>
+                        </div>
+                      ))}
+                    </div>
+                  </Section>
+                )}
+              </>
+            )}
+
             {featuredPlans.length > 0 && (<Section title="Featured Plans" viewAllHref="/plans/featured" className="mb-12"><div className="flex overflow-x-auto gap-4 pb-4 snap-x snap-mandatory hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">{featuredPlans.map((plan: Plan) => (<div key={plan.id} className="flex-none w-[calc(100vw-2rem)] sm:w-[500px] md:w-[600px] lg:w-[800px] max-w-[1000px] snap-center"><FeaturedPlanPanel plan={plan} isAdmin={isAdmin} onRemoveFeature={() => toggleFeatured(plan.id, false)} /></div>))}</div></Section>)}
-            {isAdmin && (<Section title="Admin: Add to Featured" className="mb-12"><div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">{plans.slice(0, 6).map(plan => (<div key={plan.id} className="relative group"><PlanCard plan={plan} /><div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><Button variant="default" onClick={() => toggleFeatured(plan.id, true)}><Crown className="h-4 w-4 mr-2" />Make Featured</Button></div></div>))}</div></Section>)}
-            <Section title="Browse Plans" className="grid grid-cols-2 md:grid-cols-4 gap-4"><NavigationCard title="Cities" description="Explore plans by location" href="/explore/cities" icon={MapPin} /><NavigationCard title="Categories" description="Browse by interest" href="/explore/categories" icon={Layers} /><NavigationCard title="Creators" description="Follow your favorite planners" href="/explore/creators" icon={Users} /><NavigationCard title="Celebrity Plans" description="Experience a day in their life" href="/explore/celebrity" icon={Star} /></Section>
-            {cities.length > 0 && (<Section title="Popular Cities" viewAllHref="/explore/cities"><div className="flex gap-4 pb-4 overflow-x-auto snap-x snap-mandatory hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">{cities.slice(0, 6).map(city => (<Link key={city.name} href={`/plans/city/${city.name}`} className="w-[160px] flex-none sm:w-full"><CityCard city={city} onSelect={() => {}} isSelected={false} /></Link>))}</div></Section>)}
-            {categories.length > 0 && (<Section title="Popular Categories" viewAllHref="/explore/categories"><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">{categories.slice(0, 4).map(category => (<Link key={category.name} href={`/plans/category/${encodeURIComponent(category.name)}`}><CategoryCard name={category.name} iconUrl={category.iconUrl} isSelected={false} /></Link>))}</div></Section>)}
-            {profiles.length > 0 && (<Section title="A Day in the Life Of" viewAllHref="/explore/creators"><div className="flex gap-4 pb-4 overflow-x-auto snap-x snap-mandatory hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-8">{profiles.map(profile => (<Link key={profile.id} href={`/users/${profile.id}`} className="w-[140px] flex-none sm:w-full"><ProfileCard profile={profile} /></Link>))}</div></Section>)}
-            {filteredPlans.length > 0 && (<Section title="Popular Plans" viewAllHref="/plans" className="space-y-6"><div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">{filteredPlans.slice(0, 6).map(plan => ( <PlanCard key={plan.id} plan={plan} /> ))}</div></Section>)}
+            {isAdmin && (<Section title="Admin: Add to Featured" className="mb-12"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">{plans.slice(0, 8).map(plan => (<div key={plan.id} className="relative group"><PlanCard plan={plan} /><div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><Button variant="default" onClick={() => toggleFeatured(plan.id, true)}><Crown className="h-4 w-4 mr-2" />Make Featured</Button></div></div>))}</div></Section>)}
+            <Section title="Browse Plans" className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">{navigationCollections.map(collection => (<NavigationCard key={collection.id} title={collection.name} description={collection.description || ''} href={collection.href || `/collections/${collection.id}`} icon={collection.icon === 'MapPin' ? MapPin : collection.icon === 'Layers' ? Layers : collection.icon === 'Users' ? Users : collection.icon === 'Star' ? Star : MapPin} />))}</Section>
+            {cities.length > 0 && (<Section title="Popular Cities" viewAllHref="/explore/cities"><div className="flex gap-4 pb-4 overflow-x-auto snap-x snap-mandatory hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">{cities.slice(0, 8).map(city => (<Link key={city.name} href={`/plans/city/${city.name}`} className="w-[160px] flex-none sm:w-full"><CityCard city={city} onSelect={() => {}} isSelected={false} /></Link>))}</div></Section>)}
+            {categories.length > 0 && (<Section title="Popular Categories" viewAllHref="/explore/categories"><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">{categories.slice(0, 6).map(category => (<Link key={category.name} href={`/plans/category/${encodeURIComponent(category.name)}`}><CategoryCard name={category.name} iconUrl={category.iconUrl} isSelected={false} /></Link>))}</div></Section>)}
+            {profiles.length > 0 && (<Section title="A Day in the Life Of" viewAllHref="/explore/creators"><div className="flex gap-4 pb-4 overflow-x-auto snap-x snap-mandatory hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-8 xl:grid-cols-10">{profiles.map(profile => (<Link key={profile.id} href={`/users/${profile.id}`} className="w-[140px] flex-none sm:w-full"><ProfileCard profile={profile} /></Link>))}</div></Section>)}
+            {filteredPlans.length > 0 && (<Section title="Popular Plans" viewAllHref="/plans" className="space-y-6"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">{filteredPlans.slice(0, 8).map(plan => (<PlanCard key={plan.id} plan={plan} />))}</div></Section>)}
              {!loading && plans.length === 0 && featuredPlans.length === 0 && !isSearchActive && (<div className="text-center py-12 text-muted-foreground"><Search className="mx-auto h-16 w-16 opacity-30 mb-3" /><p className="font-semibold text-lg">No plans to show right now.</p><p className="text-sm">Try adjusting your location or search terms, or check back later!</p></div>)}
-          </>
-        ) : (<div className="text-center py-10"><p className="text-muted-foreground">Select a view (All, Cities, Categories, etc.) to see content.</p></div>)}
+          </div>
+        ) : (<div className="container mx-auto px-4"><div className="text-center py-10"><p className="text-muted-foreground">Select a view (All, Cities, Categories, etc.) to see content.</p></div></div>)}
       </div>
     </div>
   );

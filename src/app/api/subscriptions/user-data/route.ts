@@ -44,61 +44,25 @@ export async function GET() {
 
     const userId = decodedClaims.uid;
     
-    // Try to get real data, fall back to mock data if needed
+    // Get user data using service functions
     let subscription = null;
     let userStats: UserStats;
     let userProfile;
     
     try {
-      // Try to get subscription data from Firestore directly if service fails
-      try {
-        subscription = await getActiveSubscription(userId);
-      } catch (serviceError) {
-        console.warn(`[/api/subscriptions/user-data] Service error getting subscription for user ${userId}:`, serviceError);
-        
-        // Fallback to direct Firestore query if service fails
-        if (firestoreAdmin) {
-          const db = firestoreAdmin as any;
-          const subscriptionsQuery = await db.collection('subscriptions')
-            .where('userId', '==', userId)
-            .where('status', '==', 'active')
-            .limit(1)
-            .get();
-          
-          if (!subscriptionsQuery.empty) {
-            subscription = subscriptionsQuery.docs[0].data();
-          }
-        }
-      }
+      // Get subscription data
+      subscription = await getActiveSubscription(userId);
     } catch (error) {
       console.warn(`[/api/subscriptions/user-data] Error getting subscription for user ${userId}:`, error);
-      // Continue with null subscription
+      // Continue with null subscription - user may not have an active subscription
     }
     
     try {
       // Get user stats
-      try {
-        userStats = await getUserStatsAdmin(userId);
-      } catch (serviceError) {
-        console.warn(`[/api/subscriptions/user-data] Service error getting user stats:`, serviceError);
-        
-        // Fallback to direct Firestore query
-        if (firestoreAdmin) {
-          const db = firestoreAdmin as any;
-          const userStatsDoc = await db.collection('userStats').doc(userId).get();
-          
-          if (userStatsDoc.exists) {
-            userStats = userStatsDoc.data() as UserStats;
-          } else {
-            throw new Error('User stats not found');
-          }
-        } else {
-          throw new Error('Firestore admin not available');
-        }
-      }
+      userStats = await getUserStatsAdmin(userId);
     } catch (error) {
       console.warn(`[/api/subscriptions/user-data] Error getting user stats for user ${userId}:`, error);
-      // Use mock stats as fallback with required fields
+      // Initialize with default stats for new users
       userStats = {
         plansCreatedCount: 0,
         plansSharedOrExperiencedCount: 0,
@@ -110,33 +74,27 @@ export async function GET() {
     
     try {
       // Get user profile
-      try {
-        userProfile = await getUserProfileAdmin(userId);
-      } catch (serviceError) {
-        console.warn(`[/api/subscriptions/user-data] Service error getting user profile:`, serviceError);
-        
-        // Fallback to direct Firestore query
-        if (firestoreAdmin) {
-          const db = firestoreAdmin as any;
-          const userProfileDoc = await db.collection('userProfiles').doc(userId).get();
-          
-          if (userProfileDoc.exists) {
-            userProfile = userProfileDoc.data();
-          } else {
-            throw new Error('User profile not found');
-          }
-        } else {
-          throw new Error('Firestore admin not available');
-        }
-      }
+      userProfile = await getUserProfileAdmin(userId);
     } catch (error) {
       console.warn(`[/api/subscriptions/user-data] Error getting user profile for user ${userId}:`, error);
-      // Use basic profile as fallback
+      // Create basic profile from auth claims for new users (without Google avatar URL)
+      // Extract additional Google user information for better onboarding experience
+      const firstName = decodedClaims.given_name || "";
+      const lastName = decodedClaims.family_name || "";
+      const fullName = decodedClaims.name || (firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName || "User");
+      
       userProfile = {
-        name: decodedClaims.name || "User",
+        name: fullName,
         email: decodedClaims.email || "",
-        avatarUrl: decodedClaims.picture || null,
-        eventAttendanceScore: 0
+        avatarUrl: null, // Don't use Google's picture URL to avoid external requests
+        eventAttendanceScore: 0,
+        // Store additional Google user data for onboarding pre-fill
+        googleUserData: {
+          given_name: firstName,
+          family_name: lastName,
+          locale: decodedClaims.locale || null,
+          email_verified: decodedClaims.email_verified || false
+        }
       };
     }
     
@@ -179,4 +137,4 @@ function calculateActivityScore(userStats: Awaited<ReturnType<typeof getUserStat
   const attendanceScore = (userProfile.eventAttendanceScore / 100) * 40; // Max 40 points for attendance
 
   return Math.round(plansScore + sharingScore + attendanceScore);
-} 
+}

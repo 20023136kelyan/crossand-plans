@@ -23,7 +23,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  MessageCircle, Search, UserPlus, Send, Loader2, ShieldCheck as AdminIcon, CheckCircle, Trash2, MoreVertical, Users as ManageFriendsIcon, XCircle
+  MessageCircle, Search, UserPlus, Send, Loader2, ShieldCheck as AdminIcon, CheckCircle, Trash2, MoreVertical, Users as ManageFriendsIcon, XCircle, Plus
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -688,43 +688,44 @@ export default function MessagesPage() {
   return (
     <>
       <div className="flex flex-col h-full">
-        <div className="flex justify-between items-start mb-6">
-          <h1 className="text-3xl font-bold text-foreground/60 opacity-60">Messages</h1>
-          <div className="flex items-center gap-2">
+        {/* Header with improved spacing and styling */}
+        <div className="pt-6 pb-6 border-b border-border/40">
+          <h1 className="text-3xl font-bold text-foreground/60 opacity-60 mb-6">Messages</h1>
+          
+          {/* Search bar with action buttons */}
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                type="search"
+                placeholder="Search chats..."
+                className="pl-8 sm:pl-10 bg-card border-border text-sm h-8 sm:h-9 rounded-lg focus:ring-primary focus:border-primary w-full"
+                value={searchTermChats}
+                onChange={(e) => setSearchTermChats(e.target.value)}
+              />
+            </div>
+            
             <Button
               variant="outline"
+              size="sm"
               onClick={() => setIsFriendPickerOpen(true)}
               aria-label="Start new chat"
-              className="hover:bg-primary hover:text-primary-foreground active:bg-primary active:text-primary-foreground h-9"
+              className="h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm bg-card border-border hover:bg-secondary/50"
               disabled={isInitiatingChat}
             >
-              {isInitiatingChat ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-              New Chat
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setIsManageFriendsDialogOpen(true)}
-              aria-label="Manage Contacts"
-              className="hover:bg-primary hover:text-primary-foreground active:bg-primary active:text-primary-foreground h-9 w-9"
-            >
-              <ManageFriendsIcon className="h-4 w-4" />
+              {isInitiatingChat ? (
+                <Loader2 className="h-4 w-4 animate-spin md:mr-2" />
+              ) : (
+                <Plus className="h-4 w-4 md:mr-2" />
+              )}
+              <span className="hidden md:inline">New Chat</span>
             </Button>
           </div>
         </div>
 
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-          <Input
-            placeholder="Search chats..."
-            className="pl-10 h-9"
-            value={searchTermChats}
-            onChange={(e) => setSearchTermChats(e.target.value)}
-          />
-        </div>
-
-        <div className="flex-grow overflow-y-auto space-y-3 pr-1 custom-scrollbar-vertical">
-          {filteredChats.map(chat => {
+        <div className="pt-6">
+          <div className="flex-grow overflow-y-auto space-y-3 pr-1 custom-scrollbar-vertical">
+            {filteredChats.map(chat => {
             const display = getDisplayInfo(chat);
             let lastMessageDateFormatted = 'Date unknown';
             let lastMessageTs: number | null = null;
@@ -806,12 +807,13 @@ export default function MessagesPage() {
             <div className="flex-grow flex flex-col items-center justify-between text-center py-16 sm:py-20">
               <div className="flex flex-col items-center">
                 <MessageCircle className="mx-auto h-24 w-24 text-muted-foreground/50 mb-4" />
-                <h2 className="text-2xl font-semibold">No Messages Yet</h2>
-                <p className="text-muted-foreground">Start a conversation with your friends.</p>
+                <h2 className="text-2xl font-semibold mb-2">No Messages Yet</h2>
+                <p className="text-muted-foreground mb-8">Start a conversation with your friends.</p>
               </div>
               <Button
                 variant="outline"
-                className="hover:bg-primary hover:text-primary-foreground active:bg-primary active:text-primary-foreground h-10"
+                size="lg"
+                className="border-primary/50 text-primary hover:bg-primary/10 hover:text-primary"
                 onClick={() => setIsFriendPickerOpen(true)}
                 disabled={isInitiatingChat}
               >
@@ -828,6 +830,7 @@ export default function MessagesPage() {
           </div>
         )}
       </div>
+    </div>
 
       <FriendPickerDialog
         open={isFriendPickerOpen}

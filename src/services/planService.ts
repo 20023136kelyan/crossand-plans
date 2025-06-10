@@ -438,27 +438,64 @@ export const getPendingPlanSharesForUser = (
     orderBy('createdAt', 'desc')
   );
 
-  const unsubscribe = onSnapshot(q, (snapshot) => {
-    const pendingShares = snapshot.docs.map(docSnap => {
-      const data = docSnap.data();
-      const timestamps = convertClientPlanTimestampsToISO({ createdAt: data.createdAt, updatedAt: data.updatedAt });
-      return {
-        id: docSnap.id,
-        originalPlanId: data.originalPlanId,
-        originalPlanName: data.originalPlanName,
-        sharedByUid: data.sharedByUid,
-        sharedByName: data.sharedByName,
-        sharedByAvatarUrl: data.sharedByAvatarUrl,
-        sharedWithUid: data.sharedWithUid,
-        status: data.status,
-        createdAt: timestamps.createdAt,
-        updatedAt: timestamps.updatedAt,
-      } as PlanShare;
-    });
-    onUpdate(pendingShares);
-  }, (error) => {
-    console.error(`[planService.ts client] Error fetching pending plan shares for user ${userId}:`, error);
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const shares: PlanShare[] = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        shares.push({
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt)
+        } as PlanShare);
+      });
+      onUpdate(shares);
+    },
+    (error) => {
+      console.error("[planService.ts client] Error in getPendingPlanSharesForUser:", error);
+      onUpdate([]);
+    }
+  );
+};
+
+export const getCompletedPlansForParticipant = (
+  userId: string,
+  onUpdate: (plans: Plan[]) => void
+): Unsubscribe => {
+  if (!db) {
+    console.warn("[planService.ts client] Firestore (db) is not initialized for getCompletedPlansForParticipant.");
+    return () => {};
+  }
+  if (!userId) {
+    console.warn("[planService.ts client] getCompletedPlansForParticipant called with no userId.");
     onUpdate([]);
-  });
-  return unsubscribe;
+    return () => {};
+  }
+  
+  const plansRef = collection(db, PLANS_COLLECTION);
+  const q = query(
+    plansRef,
+    where('invitedParticipantUserIds', 'array-contains', userId),
+    where('isCompleted', '==', true)
+  );
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const plans: Plan[] = [];
+      snapshot.forEach(doc => {
+        const plan = mapDocToPlan(doc);
+        // Only include plans where user hasn't confirmed completion yet
+        if (!plan.completionConfirmedBy?.includes(userId)) {
+          plans.push(plan);
+        }
+      });
+      onUpdate(plans);
+    },
+    (error) => {
+      console.error("[planService.ts client] Error in getCompletedPlansForParticipant:", error);
+      onUpdate([]);
+    }
+  );
 };

@@ -7,12 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from '@/components/ui/form';
-import { Trash2, Sparkles, CheckCircle, XCircle, ExternalLink, Clock, Car, Footprints, Bike, TramFront, Loader2, Edit3, Save, Ban, MoveUp, MoveDown } from 'lucide-react';
+import { Trash2, Sparkles, CheckCircle, XCircle, ExternalLink, Clock, Car, Footprints, Bike, TramFront, Loader2, Edit3, Save, Ban, MoveUp, MoveDown, CalendarClock } from 'lucide-react';
 import type { PlanFormValues, ItineraryItemSchemaValues } from './PlanForm';
 import React, { useEffect, useRef, useState, useCallback, memo, useMemo } from 'react'; // Added memo and useMemo
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { TransitMode } from '@/types/user';
 import { getDirectionsAction } from '@/app/actions/planActions';
 import { useToast } from '@/hooks/use-toast';
@@ -79,11 +80,12 @@ const EditableItineraryItemCardImpl = ({
   const [itemDataBeforeEdit, setItemDataBeforeEdit] = useState<Partial<ItineraryItemSchemaValues> | null>(null);
   
   const placeNameInputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<google.maps.places.Autocomplete & { input?: HTMLInputElement, listener?: google.maps.MapsEventListener } | null>(null);
+  const autocompleteRef = useRef<google.maps.places.PlaceAutocompleteElement | null>(null);
 
   const watchedRhfPlaceName = useWatch({ control, name: getFieldPath('placeName') }) || '';
   const [internalPlaceName, setInternalPlaceName] = useState<string>(String(watchedRhfPlaceName));
   const placeNameDebounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [autocompleteSetupTrigger, setAutocompleteSetupTrigger] = useState(0);
 
   useEffect(() => {
     if (watchedRhfPlaceName !== internalPlaceName) {
@@ -96,14 +98,42 @@ const EditableItineraryItemCardImpl = ({
       if (placeNameDebounceTimeoutRef.current) {
         clearTimeout(placeNameDebounceTimeoutRef.current);
       }
+      if (transitTimeDebounceRef.current) {
+        clearTimeout(transitTimeDebounceRef.current);
+      }
     };
   }, []);
 
   // Memoize the current item to prevent unnecessary re-renders
   const currentItemMemo = useMemo(() => watch(`itinerary.${index}`), [watch, index]);
   
+  // Function to clean up existing addresses that might have full formatted address
+  const cleanAddress = useCallback((rawAddress: string | null | undefined): string => {
+    if (!rawAddress) return '';
+    
+    // If address contains state/country info, clean it up
+    const parts = rawAddress.split(',').map(part => part.trim());
+    
+    // Remove parts that look like state codes, zip codes, or countries
+    const cleanedParts = parts.filter((part, index) => {
+      // Skip if it's a 2-letter state code (like "CA", "NY")
+      if (part.length === 2 && /^[A-Z]{2}$/.test(part)) return false;
+      
+      // Skip if it's a zip code (5 digits or 5+4 format)
+      if (/^\d{5}(-\d{4})?$/.test(part)) return false;
+      
+      // Skip if it's "USA", "United States", or other common country names
+      if (['USA', 'United States', 'US'].includes(part)) return false;
+      
+      // Keep first 2 parts (usually street + city)
+      return index < 2;
+    });
+    
+    return cleanedParts.join(', ');
+  }, []);
+  
   const { 
-    address, city, description, startTime, endTime,
+    address: rawAddress, city, description, startTime, endTime,
     lat: itemLat, 
     lng: itemLng, 
     googlePhotoReference, 
@@ -121,7 +151,11 @@ const EditableItineraryItemCardImpl = ({
     transitTimeFromPreviousMinutes 
   } = currentItem || {} as ItineraryItemSchemaValues;
   
+  // Clean the address for display
+  const address = cleanAddress(rawAddress);
+  
   const [isFetchingTransitTime, setIsFetchingTransitTime] = useState(false);
+  const transitTimeDebounceRef = useRef<NodeJS.Timeout | null>(null);
   
   // console.log(`Rendering EditableItineraryItemCard for index: ${index}, placeName: ${placeName}`);
 
@@ -152,15 +186,43 @@ const EditableItineraryItemCardImpl = ({
   const handlePlaceChanged = useCallback((place: google.maps.places.PlaceResult) => {
     if (!place) return;
 
+    // Extract address components for a clean, minimal display
+    const addressComponents = place.address_components || [];
+    const streetNumber = addressComponents.find(c => c.types.includes('street_number'))?.long_name || '';
+    const streetName = addressComponents.find(c => c.types.includes('route'))?.long_name || '';
+    const city = addressComponents.find(c => 
+      c.types.includes('locality') || 
+      c.types.includes('postal_town') || 
+      c.types.includes('administrative_area_level_2')
+    )?.long_name || '';
+    
+    // Create a minimal address display (only street number + street name + city)
+    // Explicitly exclude state, zip code, and country for cleaner visual presentation
+    let conciseAddress = '';
+    if (streetNumber && streetName && city) {
+      conciseAddress = `${streetNumber} ${streetName}, ${city}`;
+    } else if (streetName && city) {
+      conciseAddress = `${streetName}, ${city}`;
+    } else if (city) {
+      conciseAddress = city;
+    } else {
+      // If no components available, extract only essential parts from formatted address
+      const formatted = place.formatted_address || '';
+      // Try to extract just the first part before any state/country info
+      const parts = formatted.split(',');
+      if (parts.length >= 2) {
+        // Take first two parts (usually street + city) and exclude the rest
+        conciseAddress = parts.slice(0, 2).join(',').trim();
+      } else {
+        conciseAddress = formatted;
+      }
+    }
+
     // Batch our setValue calls to reduce re-renders
     // placeName is now set directly in the place_changed listener
     const updates: Partial<Record<keyof ItineraryItemSchemaValues, unknown>> = {
-      address: place.formatted_address || null,
-      city: place.address_components?.find(c => 
-        c.types.includes('locality') || 
-        c.types.includes('postal_town') || 
-        c.types.includes('administrative_area_level_2')
-      )?.long_name || null,
+      address: conciseAddress,
+      city: city || null,
       lat: place.geometry?.location?.lat() ?? null,
       lng: place.geometry?.location?.lng() ?? null,
       googlePlaceId: place.place_id || null,
@@ -195,82 +257,115 @@ const EditableItineraryItemCardImpl = ({
 
     // Clean up any existing autocomplete
     if (autocompleteRef.current) {
-      if (autocompleteRef.current.listener) {
-        window.google.maps.event.removeListener(autocompleteRef.current.listener);
-      }
-      if (autocompleteRef.current.input) {
-        window.google.maps.event.clearInstanceListeners(autocompleteRef.current.input);
-      }
+      autocompleteRef.current.remove();
       autocompleteRef.current = null;
     }
 
-    const newAutocomplete = new window.google.maps.places.Autocomplete(
-      placeNameInputRef.current,
-      { 
-        types: ['geocode', 'establishment'], 
+    // @ts-ignore - PlaceAutocompleteElement is available in the new Places API
+    const newAutocomplete = new window.google.maps.places.PlaceAutocompleteElement({
+      includedPrimaryTypes: ['geocode', 'establishment']
+    });
+
+    // Replace the input element with the new autocomplete element
+    if (placeNameInputRef.current && placeNameInputRef.current.parentNode) {
+      placeNameInputRef.current.parentNode.replaceChild(newAutocomplete, placeNameInputRef.current);
+      // Update the ref to point to the new element
+      placeNameInputRef.current = newAutocomplete as any;
+    }
+
+    // @ts-ignore - gmp-select event is available in the new Places API
+    newAutocomplete.addEventListener('gmp-select', async (event: any) => {
+      const { placePrediction } = event;
+      if (!placePrediction) return;
+
+      const place = placePrediction.toPlace();
+      await place.fetchFields({
         fields: [
-          'name', 
-          'formatted_address', 
-          'address_components', 
-          'geometry', 
-          'place_id', 
+          'displayName', 
+          'formattedAddress', 
+          'addressComponents', 
+          'location', 
+          'id', 
           'photos', 
           'rating', 
-          'user_ratings_total', 
-          'opening_hours', 
-          'international_phone_number', 
-          'website', 
-          'price_level', 
+          'userRatingCount', 
+          'regularOpeningHours', 
+          'internationalPhoneNumber', 
+          'websiteURI', 
+          'priceLevel', 
           'types', 
-          'business_status'
-        ] 
-      }
-    ) as google.maps.places.Autocomplete & { input?: HTMLInputElement; listener?: google.maps.MapsEventListener };
+          'businessStatus'
+        ]
+      });
 
-    newAutocomplete.input = placeNameInputRef.current;
-    const listener = newAutocomplete.addListener('place_changed', () => {
-      const place = newAutocomplete.getPlace();
-      if (!place) return;
+      // Convert new API fields to legacy format for compatibility
+      const legacyPlace = {
+        name: place.displayName,
+        formatted_address: place.formattedAddress,
+        address_components: place.addressComponents,
+        geometry: place.location ? {
+          location: {
+            lat: () => place.location.lat,
+            lng: () => place.location.lng
+          }
+        } : undefined,
+        place_id: place.id,
+        photos: place.photos,
+        rating: place.rating,
+        user_ratings_total: place.userRatingCount,
+        opening_hours: place.regularOpeningHours,
+        international_phone_number: place.internationalPhoneNumber,
+        website: place.websiteURI,
+        price_level: place.priceLevel,
+        types: place.types,
+        business_status: place.businessStatus
+      };
 
       // Ensure place has a name or formatted_address to proceed
-      if (place.name || place.formatted_address) {
-        const placeNameValue = place.name || place.formatted_address || ''; // Prioritize place.name
+      if (legacyPlace.name || legacyPlace.formatted_address) {
+        const placeNameValue = legacyPlace.name || ''; // Only use place.name for the place name field
         
         // Immediately update local state for responsive UI
         setInternalPlaceName(placeNameValue); 
   
         // Immediately update React Hook Form state for 'placeName'
-        // Assumes `setValue` is from useFormContext() and `getFieldPath` is defined
         setValue(getFieldPath('placeName'), placeNameValue, { 
           shouldValidate: true, 
           shouldDirty: true 
         });
   
         // Clear any debounce timeout that might have been set by typing
-        if (placeNameDebounceTimeoutRef.current) { // Ensure placeNameDebounceTimeoutRef is defined
+        if (placeNameDebounceTimeoutRef.current) {
           clearTimeout(placeNameDebounceTimeoutRef.current);
         }
   
-        // Defer the call to handlePlaceChanged
-        const placeDataForCallback = place; // Ensure 'place' is correctly captured if it might change
-        setTimeout(() => {
-          handlePlaceChanged(placeDataForCallback);
-        }, 0);
+        // Call handlePlaceChanged with the legacy-formatted place object
+        handlePlaceChanged(legacyPlace);
       }
     });
 
-    newAutocomplete.listener = listener;
     autocompleteRef.current = newAutocomplete;
 
     return () => {
-      if (listener && window.google?.maps) {
-        window.google.maps.event.removeListener(listener);
-      }
-      if (newAutocomplete?.input && window.google?.maps) {
-        window.google.maps.event.clearInstanceListeners(newAutocomplete.input);
+      if (autocompleteRef.current) {
+        autocompleteRef.current.remove();
+        autocompleteRef.current = null;
       }
     };
-  }, [isEditing, isGoogleMapsApiLoaded, handlePlaceChanged]);
+  }, [isEditing, isGoogleMapsApiLoaded, handlePlaceChanged, autocompleteSetupTrigger]);
+
+  // Additional useEffect to handle autocomplete setup on mount for items that start in editing mode
+  useEffect(() => {
+    // Small delay to ensure the input ref is properly set
+    const timer = setTimeout(() => {
+      if (isEditing && isGoogleMapsApiLoaded && placeNameInputRef.current && !autocompleteRef.current) {
+        // Trigger the autocomplete setup by incrementing the trigger
+        setAutocompleteSetupTrigger(prev => prev + 1);
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, []); // Only run on mount
 
   const fetchTransitTimeCallback = useCallback(async () => {
     // Only fetch if we have all required data and something has changed
@@ -315,13 +410,28 @@ const EditableItineraryItemCardImpl = ({
     } else if (index > 0 && (!previousItemLat || !previousItemLng || !itemLat || !itemLng)) {
        setValue(`itinerary.${index}.transitTimeFromPreviousMinutes`, null, { shouldValidate: false });
     }
-  }, [index, previousItemLat, previousItemLng, previousItemEndTime, previousItemStartTime, itemLat, itemLng, transitMode, setValue, toast, isFetchingTransitTime]); 
+  }, [index, previousItemLat, previousItemLng, previousItemEndTime, previousItemStartTime, itemLat, itemLng, transitMode, setValue, toast]); 
 
   useEffect(() => {
+    // Clear any existing timeout
+    if (transitTimeDebounceRef.current) {
+      clearTimeout(transitTimeDebounceRef.current);
+    }
+    
     // Only call fetchTransitTimeCallback if we're not in edit mode
     if (!isEditing) {
-      fetchTransitTimeCallback();
+      // Debounce the transit time calculation to prevent excessive API calls
+      transitTimeDebounceRef.current = setTimeout(() => {
+        fetchTransitTimeCallback();
+      }, 500); // 500ms debounce
     }
+    
+    // Cleanup function
+    return () => {
+      if (transitTimeDebounceRef.current) {
+        clearTimeout(transitTimeDebounceRef.current);
+      }
+    };
   }, [fetchTransitTimeCallback, isEditing]);
 
   const staticMapApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
@@ -403,107 +513,179 @@ const EditableItineraryItemCardImpl = ({
       </CardHeader>
       <CardContent className="p-4 space-y-3">
         {!isEditing ? (
-          // SUMMARY VIEW
-          <div className="space-y-2">
-            <div className="mt-1 h-32 md:h-40 bg-muted rounded-md flex items-center justify-center text-muted-foreground text-xs overflow-hidden relative">
-              {imageError ? (
-                <Image 
-                  key="placeholderImage" // Static key for the placeholder
-                  src={placeholderErrorUrl} 
-                  alt={`Image Not Available for ${placeName || 'itinerary stop'}`} 
-                  fill
-                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                  style={{ objectFit: 'cover' }}
-                  className="rounded-md"
-                  unoptimized // Placeholder is already optimized
-                />
-              ) : itemPhotoUrl.startsWith('https://') ? (
-                <Image 
-                  key={itemPhotoUrl}
-                  src={itemPhotoUrl} 
-                  alt={`Image of ${placeName || 'itinerary stop'}`} 
-                  fill
-                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                  style={{ objectFit: 'cover' }}
-                  className="rounded-md"
-                  data-ai-hint={types?.[0] || 'activity location'}
-                  unoptimized={itemPhotoUrl.includes('maps.googleapis.com')}
-                  onError={() => {
-                    if (!itemPhotoUrl.includes('placehold.co')) {
-                      setImageError(true);
-                    }
-                  }}
-                />
-              ) : (
-                 <div className="w-full h-full flex items-center justify-center bg-muted text-xs text-muted-foreground p-2 text-center">{placeName || "Location Image"}</div>
-              )}
-            </div>
-            <h4 className="font-semibold text-md text-foreground truncate">{placeName || "Unnamed Place"}</h4>
-            {address && <p className="text-xs text-muted-foreground truncate">{address}</p>}
-            <p className="text-xs text-muted-foreground truncate">
-              <Clock className="inline h-3 w-3 mr-1 flex-shrink-0" />
-              <span className="truncate">{formattedStartTime} - {formattedEndTime}</span>
-              {currentItem?.durationMinutes != null && <span className="ml-1 whitespace-nowrap">({currentItem.durationMinutes} mins)</span>}
-            </p>
-            {description && <p className="text-xs text-foreground/80 line-clamp-3 break-words">{description}</p>}
-
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs mt-1.5 text-muted-foreground">
-                {typeof rating === 'number' && <div className="flex items-center truncate"><Sparkles className="w-3 h-3 mr-1 text-amber-400 flex-shrink-0"/> Rating: {rating.toFixed(1)} ({reviewCount || 0})</div>}
-                {isOperational !== null && isOperational !== undefined && (
-                    <Badge variant={isOperational ? "default" : "destructive"} className="w-fit py-0.5 px-1.5 text-[10px] bg-opacity-70 truncate">
-                        {isOperational ? <CheckCircle className="w-3 h-3 mr-1 flex-shrink-0"/> : <XCircle className="w-3 h-3 mr-1 flex-shrink-0"/>}
-                        <span className="truncate">{statusText || (isOperational ? "Operational" : "Closed")}</span>
-                    </Badge>
-                )}
-                {priceLevel !== null && priceLevel !== undefined && <div className="truncate">Price: {'$'.repeat(priceLevel) || 'N/A'}</div>}
-                {phoneNumber && <div className="truncate" title={phoneNumber}>Phone: {phoneNumber}</div>}
-                {website && <a href={website} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate flex items-center text-xs"><span className="truncate">Website</span> <ExternalLink className="w-3 h-3 ml-1 flex-shrink-0"/></a>}
-            </div>
-
-            {types && types.length > 0 && (
-                <div className="mt-1">
-                    <p className="text-xs font-medium text-muted-foreground/80 mb-0.5">Categories:</p>
-                    <div className="flex flex-wrap gap-1">
-                        {types.slice(0,5).map(type => <Badge key={type} variant="outline" className="text-[10px] px-1 py-0 truncate">{type.replace(/_/g, ' ')}</Badge>)}
-                    </div>
-                </div>
-            )}
-
-            {activitySuggestions && activitySuggestions.length > 0 && (
-                <div className="mt-1">
-                    <p className="text-xs font-medium text-muted-foreground/80 mb-0.5">AI Suggested Activities:</p>
-                    <ul className="list-disc list-inside pl-1 space-y-0.5">
-                        {activitySuggestions.map((sugg, i) => <li key={i} className="text-xs text-foreground/80 break-words">{sugg}</li>)}
-                    </ul>
-                </div>
-            )}
-             {openingHours && openingHours.length > 0 && (
-                <div className="mt-1">
-                    <p className="text-xs font-medium text-muted-foreground/80 mb-0.5">Opening Hours:</p>
-                    <div className="text-xs text-foreground/80 max-h-16 overflow-y-auto bg-muted/30 p-1 rounded text-[10px] custom-scrollbar-horizontal">
-                        {openingHours.map((line, i) => <p key={i} className="break-words">{line}</p>)}
-                    </div>
-                </div>
-            )}
-            {index > 0 && transitMode && (
-              <div className="text-xs text-muted-foreground flex items-center pt-1 border-t border-border/30 mt-2 truncate">
-                {transitModeOptions.find(opt => opt.value === transitMode)?.icon ? React.createElement(transitModeOptions.find(opt => opt.value === transitMode)!.icon, {className: "w-3.5 h-3.5 mr-1.5 flex-shrink-0"}) : <Car className="w-3.5 h-3.5 mr-1.5 flex-shrink-0"/> }
-                <span className="truncate">Est. transit from previous:</span>
-                {isFetchingTransitTime ? (
-                  <Loader2 className="w-3 h-3 ml-1.5 animate-spin" />
+          // SUMMARY VIEW - Sleek and modern layout
+          <div className="space-y-3">
+            <div className="flex gap-4">
+              {/* Left side - Image */}
+              <div className="h-28 w-28 flex-shrink-0 bg-muted rounded-lg overflow-hidden relative shadow-sm">
+                {imageError ? (
+                  <Image 
+                    key="placeholderImage"
+                    src={placeholderErrorUrl} 
+                    alt={`Image Not Available for ${placeName || 'itinerary stop'}`} 
+                    fill
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                    style={{ objectFit: 'cover' }}
+                    className="rounded-lg"
+                    unoptimized
+                  />
+                ) : itemPhotoUrl.startsWith('https://') ? (
+                  <Image 
+                    key={itemPhotoUrl}
+                    src={itemPhotoUrl} 
+                    alt={`Image of ${placeName || 'itinerary stop'}`} 
+                    fill
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                    style={{ objectFit: 'cover' }}
+                    className="rounded-lg"
+                    data-ai-hint={types?.[0] || 'activity location'}
+                    unoptimized={itemPhotoUrl.includes('maps.googleapis.com')}
+                    onError={() => {
+                      if (!itemPhotoUrl.includes('placehold.co')) {
+                        setImageError(true);
+                      }
+                    }}
+                  />
                 ) : (
-                  <span className="ml-1 font-medium text-foreground/90 whitespace-nowrap">
-                    {transitTimeFromPreviousMinutes !== null && transitTimeFromPreviousMinutes !== undefined 
-                      ? `${transitTimeFromPreviousMinutes} mins` 
-                      : 'N/A'}
-                  </span>
+                  <div className="w-full h-full flex items-center justify-center bg-muted text-sm text-muted-foreground p-2 text-center font-medium">{placeName || "Location"}</div>
                 )}
               </div>
+              
+              {/* Right side - Essential info */}
+              <div className="flex-1 min-w-0 space-y-2">
+                <div>
+                  <h4 className="font-semibold text-base text-foreground truncate leading-tight">{placeName || "Unnamed Place"}</h4>
+                  {address && <p className="text-sm text-muted-foreground truncate mt-0.5">{address}</p>}
+                </div>
+                
+                <div className="flex items-center text-sm text-muted-foreground">
+                  <Clock className="inline h-4 w-4 mr-1.5 flex-shrink-0" />
+                  <span className="truncate font-medium">{formattedStartTime} - {formattedEndTime}</span>
+                  {currentItem?.durationMinutes != null && <span className="ml-2 whitespace-nowrap text-xs bg-muted px-2 py-0.5 rounded-full">({currentItem.durationMinutes} mins)</span>}
+                </div>
+                
+                {/* Key details in modern row */}
+                <div className="flex flex-wrap gap-2 text-sm">
+                  {typeof rating === 'number' && (
+                    <div className="flex items-center bg-amber-50 text-amber-700 px-2 py-1 rounded-full">
+                      <Sparkles className="w-3.5 h-3.5 mr-1 text-amber-500 flex-shrink-0"/> 
+                      <span className="font-medium">{rating.toFixed(1)}</span>
+                    </div>
+                  )}
+                  {priceLevel !== null && priceLevel !== undefined && (
+                    <div className="bg-green-50 text-green-700 px-2 py-1 rounded-full font-medium">
+                      {'$'.repeat(priceLevel) || 'N/A'}
+                    </div>
+                  )}
+                  {isOperational !== null && isOperational !== undefined && (
+                    <Badge variant={isOperational ? "default" : "destructive"} className="h-6 px-2 text-xs font-medium">
+                      {isOperational ? <CheckCircle className="w-3 h-3 mr-1 flex-shrink-0"/> : <XCircle className="w-3 h-3 mr-1 flex-shrink-0"/>}
+                      <span>{isOperational ? "Open" : "Closed"}</span>
+                    </Badge>
+                  )}
+                  {openingHours && openingHours.length > 0 && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-6 px-2 text-xs font-medium hover:bg-primary/5 border-primary/20">
+                          <CalendarClock className="w-3 h-3 mr-1" />
+                          Hours
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-72 p-0 bg-background/95 backdrop-blur-sm border border-border/50 shadow-lg" align="start">
+                        <div className="p-4">
+                          <h4 className="font-semibold text-base mb-3 text-foreground">{placeName || "Location"} - Opening Hours</h4>
+                          <div className="space-y-1">
+                            <table className="w-full text-sm">
+                              <tbody>
+                                {openingHours.map((line, i) => {
+                                  const parts = line.split(': ');
+                                  const day = parts[0];
+                                  const hours = parts[1] || '';
+                                  return (
+                                    <tr key={i} className="border-b border-border/30 last:border-b-0">
+                                      <td className="py-2 pr-3 font-medium text-muted-foreground">{day}</td>
+                                      <td className="py-2 text-foreground">{hours}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                  {website && (
+                    <a href={website} target="_blank" rel="noopener noreferrer" className="text-primary hover:text-primary/80 flex items-center bg-primary/5 px-2 py-1 rounded-full transition-colors">
+                      <ExternalLink className="w-3 h-3 flex-shrink-0"/>
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            {/* Description */}
+            {description && (
+              <div className="bg-muted/30 rounded-lg p-3">
+                <p className="text-sm text-foreground/90 line-clamp-2 break-words leading-relaxed">{description}</p>
+              </div>
             )}
+            
+            {/* Categories as modern badges */}
+            {types && types.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {types.slice(0,3).map(type => (
+                  <Badge key={type} variant="secondary" className="text-xs px-2 py-1 h-auto font-medium bg-secondary/60">
+                    {type.replace(/_/g, ' ')}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            
+            {/* Activities section */}
+            {activitySuggestions?.length > 0 && (
+              <details className="text-sm group">
+                <summary className="cursor-pointer text-primary hover:text-primary/80 font-medium flex items-center transition-colors">
+                  <span className="group-open:rotate-90 transition-transform mr-1">▶</span>
+                  Suggested Activities
+                </summary>
+                <div className="pt-2 pl-4">
+                  <ul className="space-y-1">
+                    {activitySuggestions.map((sugg, i) => (
+                      <li key={i} className="text-foreground/80 break-words flex items-start">
+                        <span className="w-1.5 h-1.5 bg-primary/60 rounded-full mt-2 mr-2 flex-shrink-0"></span>
+                        {sugg}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </details>
+            )}
+            
+            {/* Transit info - Modern styling */}
+            {index > 0 && transitMode && (
+              <div className="bg-muted/20 rounded-lg p-3 border border-border/30">
+                <div className="text-sm text-muted-foreground flex items-center">
+                  {transitModeOptions.find(opt => opt.value === transitMode)?.icon ? React.createElement(transitModeOptions.find(opt => opt.value === transitMode)!.icon, {className: "w-4 h-4 mr-2 flex-shrink-0 text-primary"}) : <Car className="w-4 h-4 mr-2 flex-shrink-0 text-primary"/> }
+                  <span className="font-medium">From previous stop:</span>
+                  {isFetchingTransitTime ? (
+                    <Loader2 className="w-4 h-4 ml-2 animate-spin text-primary" />
+                  ) : (
+                    <span className="ml-2 font-semibold text-foreground bg-primary/10 px-2 py-0.5 rounded-full text-xs">
+                      {transitTimeFromPreviousMinutes !== null && transitTimeFromPreviousMinutes !== undefined 
+                        ? `${transitTimeFromPreviousMinutes} mins` 
+                        : 'N/A'}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {/* Notes section */}
             {currentItem?.notes && (
-              <div className="mt-1 pt-1 border-t border-border/30">
-                <p className="text-xs font-medium text-muted-foreground/80 mb-0.5">Your Notes:</p>
-                <p className="text-xs text-foreground/80 whitespace-pre-wrap break-words">{currentItem.notes}</p>
+              <div className="bg-blue-50/50 border border-blue-200/50 rounded-lg p-3">
+                <p className="text-sm font-semibold text-blue-900/80 mb-1">Your Notes:</p>
+                <p className="text-sm text-blue-800/90 whitespace-pre-wrap break-words leading-relaxed">{currentItem.notes}</p>
               </div>
             )}
           </div>

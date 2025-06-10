@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -14,15 +14,10 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { X, ChevronLeft, ChevronRight, MessageSquare, Heart, Share2, ExternalLink, ShieldCheck as AdminIcon, CheckCircle, Send, Trash2, Loader2, MoreVertical } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import Link from "next/link";
+import { X, ChevronLeft, ChevronRight, ChevronDown, MessageSquare, Heart, Share2, ExternalLink, ShieldCheck as AdminIcon, CheckCircle, Send, Trash2, Loader2, MoreVertical, ZoomIn, ZoomOut, Copy, Bookmark, Flag, User } from "lucide-react";
 import Image from 'next/image';
-import Link from 'next/link';
 import type { FeedPost, FeedComment } from "@/types/user";
 import type { UserProfile } from "@/types/user";
 import { formatDistanceToNowStrict, parseISO, isValid } from "date-fns";
@@ -62,6 +57,7 @@ const LikeButton = ({ post }: { post: FeedPost }) => {
   );
   const [optimisticLikesCount, setOptimisticLikesCount] = useState<number>(post.likesCount || 0);
   const [isLiking, setIsLiking] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
 
   // Update optimistic state when post changes
   useEffect(() => {
@@ -82,11 +78,15 @@ const LikeButton = ({ post }: { post: FeedPost }) => {
 
     if (isLiking) return;
     setIsLiking(true);
+    setIsAnimating(true);
 
     // Optimistic update
     const wasLiked = optimisticLikedByCurrentUser;
     setOptimisticLikedByCurrentUser(!wasLiked);
     setOptimisticLikesCount(prev => wasLiked ? Math.max(0, prev - 1) : prev + 1);
+
+    // Reset animation after a short delay
+    setTimeout(() => setIsAnimating(false), 300);
 
     try {
       const idToken = await user.getIdToken(true);
@@ -112,19 +112,30 @@ const LikeButton = ({ post }: { post: FeedPost }) => {
   };
 
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      className={cn("p-0 h-auto flex items-center gap-1.5", 
-        optimisticLikedByCurrentUser ? "text-red-400" : "text-white hover:text-red-400")}
-      onClick={handleLikeClick}
-      disabled={!user || isLiking}
-      aria-pressed={optimisticLikedByCurrentUser ? true : false}
-      aria-label={optimisticLikedByCurrentUser ? "Unlike post" : "Like post"}
-    >
-      <Heart className={cn("h-5 w-5", optimisticLikedByCurrentUser && "fill-red-400")} />
-      <span className="text-xs font-medium tabular-nums">{optimisticLikesCount}</span>
-    </Button>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn("p-0 h-auto flex items-center gap-2 transition-all duration-200 hover:scale-105", 
+              optimisticLikedByCurrentUser ? "text-red-500 hover:text-red-600" : "text-white hover:text-red-400")}
+            onClick={handleLikeClick}
+            disabled={!user || isLiking}
+            aria-pressed={optimisticLikedByCurrentUser ? true : false}
+            aria-label={optimisticLikedByCurrentUser ? "Unlike post" : "Like post"}
+          >
+            <Heart className={cn("h-5 w-5 transition-all duration-200", 
+              optimisticLikedByCurrentUser ? "fill-current scale-110" : "fill-none",
+              isAnimating && "animate-pulse scale-125")} />
+            <span className="text-sm font-medium tabular-nums">{optimisticLikesCount}</span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="bg-black/90 text-white border-white/20">
+          <p>{optimisticLikedByCurrentUser ? 'Unlike' : 'Like'} this post</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 };
 
@@ -197,12 +208,20 @@ const CommentsList = ({ post }: { post: FeedPost }) => {
 
   if (comments.length === 0) {
     return (
-      <p className="text-xs text-muted-foreground text-center py-4">No comments yet. Be the first!</p>
+      <div className="flex flex-col items-center justify-center py-8 space-y-3">
+        <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center">
+          <MessageSquare className="h-5 w-5 text-muted-foreground" />
+        </div>
+        <div className="text-center space-y-1">
+          <p className="text-sm font-medium text-muted-foreground">No comments yet</p>
+          <p className="text-xs text-muted-foreground/70">Be the first to share your thoughts!</p>
+        </div>
+      </div>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 p-4">
       {comments.map((comment) => {
         let commentTimestampRelative = 'just now';
         if (comment.createdAt) {
@@ -228,50 +247,56 @@ const CommentsList = ({ post }: { post: FeedPost }) => {
         const isCommentOwner = user?.uid === comment.userId;
 
         return (
-          <div key={comment.id} className="flex flex-col mt-0 mb-0 relative">
-            <div className="absolute -top-3 left-3 z-10 flex items-center gap-2 bg-muted/80 border border-border/30 rounded-full py-1 pl-1 pr-3 shadow-sm">
-              <Avatar className="h-6 w-6">
-                <AvatarImage 
-                  src={comment.userAvatarUrl || undefined} 
-                  alt={comment.username || comment.userName || 'User'} 
-                  data-ai-hint="person avatar"
-                />
-                <AvatarFallback className="text-[11px]">{commenterInitial}</AvatarFallback>
-              </Avatar>
-              <span className="text-sm font-medium text-foreground">
-                {comment.username || comment.userName || 'User'}
-              </span>
-            </div>
-            <div className="w-full text-xs bg-background border border-border/10 p-3 pt-5 pl-4 rounded-xl shadow-sm relative group hover:bg-muted/20 transition-colors duration-200 mt-0">
-              <p className="text-foreground/90 whitespace-pre-line break-words leading-relaxed pr-6">{comment.text}</p>
-              <div className="absolute top-2.5 right-2.5 flex items-center gap-1">
+          <div key={comment.id} className="group">
+            <div className="bg-muted/30 border border-border/20 rounded-2xl p-4 hover:bg-muted/40 transition-all duration-200 hover:shadow-sm">
+              {/* Comment Header */}
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <Avatar className="h-8 w-8 border-2 border-border/30">
+                    <AvatarImage 
+                      src={comment.userAvatarUrl || undefined} 
+                      alt={comment.username || comment.userName || 'User'} 
+                      data-ai-hint="person avatar"
+                    />
+                    <AvatarFallback className="text-xs font-semibold">{commenterInitial}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">
+                      {comment.username || comment.userName || 'User'}
+                    </span>
+                    <span className="text-xs text-muted-foreground/70">•</span>
+                    <span className="text-xs text-muted-foreground">{commentTimestampRelative}</span>
+                  </div>
+                </div>
                 {isCommentOwner && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-5 w-5 p-0 text-muted-foreground/70 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="h-8 w-8 text-muted-foreground/70 opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-muted/50"
                       >
-                        <MoreVertical className="h-3 w-3" />
+                        <MoreVertical className="h-4 w-4" />
                         <span className="sr-only">Comment options</span>
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-32">
+                    <DropdownMenuContent align="end" className="w-36">
                       <DropdownMenuItem
-                        className="text-destructive focus:text-destructive cursor-pointer text-xs py-1.5 flex items-center"
+                        className="text-destructive focus:text-destructive cursor-pointer text-sm py-2 flex items-center"
                         onClick={() => handleDeleteComment(comment.id)}
                         disabled={isDeletingComment}
                       >
-                        <Trash2 className="h-3.5 w-3.5 mr-2" />
+                        <Trash2 className="h-4 w-4 mr-2" />
                         Delete
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
               </div>
-              <div className="mt-1.5 text-right">
-                <span className="text-muted-foreground text-[10px]">{commentTimestampRelative}</span>
+              
+              {/* Comment Content */}
+              <div className="pl-11">
+                <p className="text-sm text-foreground leading-relaxed whitespace-pre-line break-words">{comment.text}</p>
               </div>
             </div>
           </div>
@@ -321,54 +346,71 @@ const CommentForm = ({ post, onCommentAdded }: { post: FeedPost, onCommentAdded?
 
   if (!user || !currentUserProfile) {
     return (
-      <div className="px-4 py-3 border-t border-border/10 shrink-0">
-        <p className="text-xs text-muted-foreground text-center">
-          Sign in to add a comment
-        </p>
+      <div className="flex flex-col items-center justify-center py-6 space-y-3">
+        <div className="w-10 h-10 rounded-full bg-muted/50 flex items-center justify-center">
+          <MessageSquare className="h-4 w-4 text-muted-foreground" />
+        </div>
+        <div className="text-center space-y-1">
+          <p className="text-sm font-medium text-muted-foreground">Sign in to comment</p>
+          <p className="text-xs text-muted-foreground/70">Join the conversation</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmitComment} className="px-4 py-3 border-t border-border/10 shrink-0">
-      <div className="flex items-start gap-2">
-        <Avatar className="h-7 w-7 mt-1">
+    <form onSubmit={handleSubmitComment} className="space-y-2 sm:space-y-4">
+      <div className="flex items-start gap-2 sm:gap-3">
+        <Avatar className="h-7 w-7 sm:h-9 sm:w-9 border border-border/30 sm:border-2 ring-1 ring-primary/10 sm:ring-2 flex-shrink-0">
           <AvatarImage 
             src={currentUserProfile.avatarUrl || undefined} 
             alt={currentUserProfile.username || currentUserProfile.name || 'User'} 
             data-ai-hint="person avatar"
           />
-          <AvatarFallback>
+          <AvatarFallback className="text-xs sm:text-sm font-semibold">
             {currentUserProfile.username 
               ? currentUserProfile.username.charAt(0).toUpperCase() 
               : (currentUserProfile.name ? currentUserProfile.name.charAt(0).toUpperCase() : 'U')}
           </AvatarFallback>
         </Avatar>
-        <div className="relative flex-1">
-          <textarea 
-            id="detail-comment-input"
-            ref={commentInputRef}
-            placeholder="Add a comment..." 
-            value={commentText}
-            onChange={(e) => {
-              setCommentText(e.target.value);
-              // Auto-resize the textarea based on content
-              if (commentInputRef.current) {
-                commentInputRef.current.style.height = 'auto';
-                commentInputRef.current.style.height = `${Math.max(28, Math.min(120, commentInputRef.current.scrollHeight))}px`;
-              }
-            }}
-            className="min-h-[28px] h-[28px] w-full rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden"
-            disabled={isSubmitting}
-          />
-          <Button 
-            type="submit" 
-            size="sm" 
-            className="absolute bottom-2 right-2 h-7 px-2"
-            disabled={!commentText.trim() || isSubmitting}
-          >
-            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          </Button>
+        <div className="flex-1">
+          <div className="relative">
+            <textarea 
+              id="detail-comment-input"
+              ref={commentInputRef}
+              placeholder="Add a comment..." 
+              value={commentText}
+              onChange={(e) => {
+                setCommentText(e.target.value);
+                // Auto-resize the textarea based on content
+                if (commentInputRef.current) {
+                  commentInputRef.current.style.height = 'auto';
+                  commentInputRef.current.style.height = `${Math.max(36, Math.min(100, commentInputRef.current.scrollHeight))}px`;
+                }
+              }}
+              className="min-h-[36px] sm:min-h-[40px] w-full rounded-lg sm:rounded-xl border border-border/30 sm:border-2 bg-background/50 backdrop-blur-sm px-3 py-2 sm:px-4 sm:py-3 pr-12 sm:pr-14 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden transition-all duration-200"
+              disabled={isSubmitting}
+            />
+            <Button 
+              type="submit" 
+              size="sm" 
+              className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 sm:h-8 sm:w-8 rounded-full p-0 transition-all duration-200 hover:scale-105"
+              disabled={!commentText.trim() || isSubmitting || commentText.length > 500}
+            >
+              {isSubmitting ? (
+                <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
+              ) : (
+                <Send className="h-3 w-3 sm:h-4 sm:w-4" />
+              )}
+            </Button>
+          </div>
+          {commentText.length > 0 && (
+            <div className="mt-1 text-xs text-muted-foreground text-right">
+              <span className={commentText.length > 500 ? 'text-destructive' : ''}>
+                {commentText.length}/500
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </form>
@@ -386,6 +428,14 @@ export function PostDetailModal({
   hasNext,
   hasPrevious,
 }: PostDetailModalProps) {
+  const { toast } = useToast();
+  const [isImageZoomed, setIsImageZoomed] = useState(false);
+  const [imageScale, setImageScale] = useState(1);
+  const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const imageContainerRef = useRef<HTMLDivElement>(null);
+  
   if (!isOpen || !post) return null;
 
   const authorInitial = authorProfile?.username ? authorProfile.username.charAt(0).toUpperCase() : (authorProfile?.name ? authorProfile.name.charAt(0).toUpperCase() : 'U');
@@ -394,6 +444,66 @@ export function PostDetailModal({
   if (createdAtValid) {
       postedAtRelative = formatDistanceToNowStrict(parseISO(post.createdAt as string), { addSuffix: true });
   }
+
+  // Image zoom and pan handlers
+  const handleImageClick = useCallback(() => {
+    if (!isImageZoomed) {
+      setIsImageZoomed(true);
+      setImageScale(2);
+    } else {
+      setIsImageZoomed(false);
+      setImageScale(1);
+      setImagePosition({ x: 0, y: 0 });
+    }
+  }, [isImageZoomed]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (isImageZoomed) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - imagePosition.x, y: e.clientY - imagePosition.y });
+    }
+  }, [isImageZoomed, imagePosition]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (isDragging && isImageZoomed) {
+      setImagePosition({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      });
+    }
+  }, [isDragging, isImageZoomed, dragStart]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  const handleSharePost = useCallback(async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `Post by ${authorProfile?.username || authorProfile?.name || 'User'}`,
+          text: post.text || 'Check out this post!',
+          url: window.location.href
+        });
+      } else {
+        await navigator.clipboard.writeText(window.location.href);
+        toast({ title: "Link copied!", description: "Post link copied to clipboard" });
+      }
+    } catch (error) {
+      console.error('Error sharing:', error);
+    }
+  }, [authorProfile, post.text, toast]);
+
+  const handleCopyText = useCallback(async () => {
+    if (post.text) {
+      try {
+        await navigator.clipboard.writeText(post.text);
+        toast({ title: "Text copied!", description: "Post text copied to clipboard" });
+      } catch (error) {
+        console.error('Error copying text:', error);
+      }
+    }
+  }, [post.text, toast]);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -443,125 +553,275 @@ export function PostDetailModal({
           )}
 
           <div className={cn(
-            "flex flex-col h-full w-full overflow-hidden shadow-2xl",
-            "sm:flex-row sm:rounded-xl" // Side-by-side layout on sm+ screens
+            "flex flex-col h-full w-full overflow-hidden shadow-2xl bg-background/95 backdrop-blur-xl border border-border/20",
+            "sm:flex-row sm:rounded-2xl" // Side-by-side layout on sm+ screens
           )}>
             {/* Image Area (Takes up more space on larger screens) */}
             <div className={cn(
-              "relative bg-black/90 flex items-center justify-center overflow-hidden",
-              "w-full h-3/5 sm:h-full sm:w-3/5 md:w-2/3" // Adjust aspect ratio for mobile vs desktop
+              "relative bg-gradient-to-br from-gray-950 via-gray-900 to-black flex items-center justify-center overflow-hidden group",
+              "w-full h-3/5 sm:h-full sm:w-3/5 md:w-2/3 sm:rounded-l-2xl" // Adjust aspect ratio for mobile vs desktop
             )}>
               {post.mediaUrl ? (
-                <Image
-                  src={post.mediaUrl}
-                  alt={post.text || `Post by ${authorProfile?.username || authorProfile?.name || 'user'}`}
-                  fill
-                  style={{ objectFit: 'contain' }} 
-                  data-ai-hint="feed post media"
-                  unoptimized={!post.mediaUrl.startsWith('http') || post.mediaUrl.includes('placehold.co') || post.mediaUrl.includes('firebasestorage.googleapis.com')}
-                  priority
-                  sizes="(max-width: 639px) 100vw, (max-width: 767px) 60vw, 66vw"
-                  className="transition-transform duration-300 hover:scale-[1.02]"
-                />
+                <div 
+                  ref={imageContainerRef}
+                  className="relative w-full h-full cursor-pointer"
+                  onClick={handleImageClick}
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={handleMouseUp}
+                >
+                  <Image
+                    src={post.mediaUrl}
+                    alt={post.text || `Post by ${authorProfile?.username || authorProfile?.name || 'user'}`}
+                    fill
+                    style={{ 
+                      objectFit: 'contain',
+                      transform: `scale(${imageScale}) translate(${imagePosition.x / imageScale}px, ${imagePosition.y / imageScale}px)`,
+                      transition: isDragging ? 'none' : 'transform 0.3s ease-out'
+                    }} 
+                    data-ai-hint="feed post media"
+                    unoptimized={!post.mediaUrl.startsWith('http') || post.mediaUrl.includes('placehold.co') || post.mediaUrl.includes('firebasestorage.googleapis.com')}
+                    priority
+                    sizes="(max-width: 639px) 100vw, (max-width: 767px) 60vw, 66vw"
+                    className={cn(
+                      "transition-all duration-300",
+                      isImageZoomed ? "cursor-grab" : "cursor-zoom-in hover:brightness-110",
+                      isDragging && "cursor-grabbing"
+                    )}
+                  />
+                  
+                  {/* Zoom indicator */}
+                  <div className={cn(
+                    "absolute top-4 left-4 bg-black/60 backdrop-blur-sm rounded-full p-2 transition-opacity duration-300",
+                    "opacity-0 group-hover:opacity-100"
+                  )}>
+                    {isImageZoomed ? (
+                      <ZoomOut className="h-4 w-4 text-white" />
+                    ) : (
+                      <ZoomIn className="h-4 w-4 text-white" />
+                    )}
+                  </div>
+                </div>
               ) : (
-                <div className="text-white/70 text-center p-8">No image for this post.</div>
+                <div className="text-white/70 text-center p-8 space-y-4">
+                  <div className="w-16 h-16 mx-auto bg-white/10 rounded-full flex items-center justify-center">
+                    <MessageSquare className="h-8 w-8" />
+                  </div>
+                  <p className="text-lg font-medium">Text-only post</p>
+                  <p className="text-sm opacity-75">This post doesn't contain an image</p>
+                </div>
               )}
               
-              {/* Semi-translucent header overlay */}
-              <div className="absolute top-3 left-3 right-3 backdrop-blur-md bg-black/40 rounded-full px-4 py-2.5 shadow-md flex items-center justify-between z-10">
+              {/* Enhanced header overlay */}
+              <div className="absolute top-4 left-4 right-4 backdrop-blur-xl bg-black/60 rounded-2xl px-5 py-4 shadow-xl border border-white/20 flex items-center justify-between z-10">
                 {isLoadingAuthor ? (
                   <div className="flex items-center space-x-3">
-                    <div className="h-8 w-8 rounded-full bg-white/10 animate-pulse" />
+                    <div className="h-9 w-9 rounded-full bg-white/10 animate-pulse" />
                     <div className="space-y-2">
-                      <div className="h-4 w-24 bg-white/10 animate-pulse rounded" />
-                      <div className="h-3 w-32 bg-white/10 animate-pulse rounded" />
+                      <div className="h-4 w-28 bg-white/10 animate-pulse rounded" />
+                      <div className="h-3 w-36 bg-white/10 animate-pulse rounded" />
                     </div>
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center gap-2.5 flex-grow min-w-0">
-                      <Avatar className="h-8 w-8 border border-white/20">
+                    <Link href={`/users/${authorProfile?.id || post.userId}`} className="flex items-center gap-3 flex-grow min-w-0 hover:bg-white/10 rounded-xl p-1 transition-colors">
+                      <Avatar className="h-9 w-9 border-2 border-white/20 ring-2 ring-white/10">
                         <AvatarImage src={authorProfile?.avatarUrl || undefined} alt={authorProfile?.username || authorProfile?.name || 'User'} data-ai-hint="person avatar" />
-                        <AvatarFallback>{authorInitial}</AvatarFallback>
+                        <AvatarFallback className="bg-gradient-to-br from-primary/20 to-secondary/20 text-white font-semibold">{authorInitial}</AvatarFallback>
                       </Avatar>
                       <div className="flex-grow min-w-0">
-                        <div className="flex items-center">
-                          <span className="text-sm font-medium text-white">{authorProfile?.username || authorProfile?.name || 'Macaroom User'}</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-sm font-semibold text-white truncate">{authorProfile?.username || authorProfile?.name || 'Macaroom User'}</span>
                           {authorProfile && <VerificationBadgeModal role={authorProfile.role} isVerified={authorProfile.isVerified} />}
                         </div>
-                        <div className="text-xs text-white/80 truncate">
-                          {postedAtRelative}
+                        <div className="text-xs text-white/70 truncate flex items-center gap-1">
+                          <span>{postedAtRelative}</span>
+                          {post.planName && (
+                            <>
+                              <span>•</span>
+                              <span className="truncate">from {post.planName}</span>
+                            </>
+                          )}
                         </div>
                       </div>
-                    </div>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-white hover:bg-white/20 ml-2">
-                      <span className="sr-only">More options</span>
-                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M8 3.5C8.82843 3.5 9.5 2.82843 9.5 2C9.5 1.17157 8.82843 0.5 8 0.5C7.17157 0.5 6.5 1.17157 6.5 2C6.5 2.82843 7.17157 3.5 8 3.5Z" fill="currentColor"/>
-                        <path d="M8 9.5C8.82843 9.5 9.5 8.82843 9.5 8C9.5 7.17157 8.82843 6.5 8 6.5C7.17157 6.5 6.5 7.17157 6.5 8C6.5 8.82843 7.17157 9.5 8 9.5Z" fill="currentColor"/>
-                        <path d="M8 15.5C8.82843 15.5 9.5 14.8284 9.5 14C9.5 13.1716 8.82843 12.5 8 12.5C7.17157 12.5 6.5 13.1716 6.5 14C6.5 14.8284 7.17157 15.5 8 15.5Z" fill="currentColor"/>
-                      </svg>
-                    </Button>
+                    </Link>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-white hover:bg-white/20 ml-2 transition-all duration-200">
+                          <MoreVertical className="h-4 w-4" />
+                          <span className="sr-only">More options</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48 bg-black/90 backdrop-blur-md border-white/20">
+                        <DropdownMenuItem onClick={handleSharePost} className="text-white hover:bg-white/10">
+                          <Share2 className="h-4 w-4 mr-2" />
+                          Share post
+                        </DropdownMenuItem>
+                        {post.text && (
+                          <DropdownMenuItem onClick={handleCopyText} className="text-white hover:bg-white/10">
+                            <Copy className="h-4 w-4 mr-2" />
+                            Copy text
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem className="text-white hover:bg-white/10">
+                          <Bookmark className="h-4 w-4 mr-2" />
+                          Save post
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="text-red-400 hover:bg-red-500/10">
+                          <Flag className="h-4 w-4 mr-2" />
+                          Report
+                        </DropdownMenuItem>
+                        {post.planName && (
+                          <DropdownMenuItem asChild>
+                            <Link href={`/p/${post.planId}`} className="text-white hover:bg-white/10">
+                              <ExternalLink className="h-4 w-4 mr-2" />
+                              View plan
+                            </Link>
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </>
                 )}
               </div>
               
-              {/* Semi-translucent action bar overlay */}
-              <div className="absolute bottom-3 right-3 backdrop-blur-md bg-black/40 rounded-full px-4 py-2 shadow-md flex items-center gap-4 z-10">
-                <LikeButton post={post} />
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="text-white hover:text-primary/90 p-0 h-auto flex items-center gap-1.5"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const commentInput = document.getElementById('detail-comment-input');
-                    if (commentInput) {
-                      commentInput.focus();
-                    }
-                  }}
-                >
-                  <MessageSquare className="h-5 w-5" fill="none" />
-                  <span className="text-xs font-medium">{post.commentsCount || 0}</span>
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="text-white hover:text-primary/90 p-0 h-auto"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <Share2 className="h-5 w-5" fill="none" />
-                </Button>
+              {/* Enhanced action bar overlay */}
+              <div className="absolute bottom-4 left-4 right-4 backdrop-blur-xl bg-black/60 rounded-2xl px-5 py-4 shadow-xl border border-white/20 flex items-center justify-between z-10">
+                <div className="flex items-center gap-6">
+                  <LikeButton post={post} />
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-white hover:text-blue-400 p-0 h-auto flex items-center gap-2 transition-all duration-200 hover:scale-105"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const commentInput = document.getElementById('detail-comment-input');
+                            if (commentInput) {
+                              commentInput.focus();
+                            }
+                          }}
+                        >
+                          <MessageSquare className="h-5 w-5" fill="none" />
+                          <span className="text-sm font-medium tabular-nums">{post.commentsCount || 0}</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="bg-black/90 text-white border-white/20">
+                        <p>Add a comment</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-white hover:text-green-400 p-0 h-auto transition-all duration-200 hover:scale-105"
+                          onClick={handleSharePost}
+                        >
+                          <Share2 className="h-5 w-5" fill="none" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="bg-black/90 text-white border-white/20">
+                        <p>Share post</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                
+                {/* Plan link badge */}
+                {post.planName && post.planId && (
+                  <Link href={`/p/${post.planId}`}>
+                    <Badge 
+                      variant="secondary" 
+                      className="bg-white/10 text-white border-white/20 hover:bg-white/20 transition-all duration-200 cursor-pointer backdrop-blur-sm"
+                    >
+                      <ExternalLink className="h-3 w-3 mr-1" />
+                      View Plan
+                    </Badge>
+                  </Link>
+                )}
               </div>
             </div>
 
-            {/* Content Area (Side panel on larger screens) */}
+            {/* Content & Comments expandable drawer - Desktop layout */}
             <div className={cn(
-              "flex flex-col bg-card/95 backdrop-blur-sm text-foreground",
-              "w-full h-2/5 sm:h-full sm:w-2/5 md:w-1/3"
+              "absolute bottom-0 left-0 right-0 z-20 bg-background/98 backdrop-blur-xl",
+              "sm:relative sm:flex sm:flex-col sm:bg-background/98 sm:backdrop-blur-xl sm:text-foreground sm:border-l sm:border-border/20",
+              "sm:w-2/5 md:w-1/3 sm:h-full sm:rounded-r-2xl"
             )}>
-              <div className="flex-1 overflow-y-auto p-5 space-y-3 custom-scrollbar-vertical">
-                {post.text && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Avatar className="h-6 w-6 border border-border/20">
-                        <AvatarImage src={authorProfile?.avatarUrl || undefined} alt={authorProfile?.username || authorProfile?.name || 'User'} data-ai-hint="person avatar" />
-                        <AvatarFallback>{authorInitial}</AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm font-medium">{authorProfile?.username || authorProfile?.name || 'Macaroom User'}</span>
+              <div className="bg-muted/30 rounded-t-3xl sm:rounded-t-none border border-border/20 border-b-0 sm:border-0 overflow-hidden sm:flex-1 sm:flex sm:flex-col">
+                <details className="group" open>
+                  <summary className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/40 transition-colors list-none">
+                    <div className="flex items-center gap-3">
+                      <div className="w-1 h-6 bg-primary rounded-full group-open:bg-primary/60 transition-colors"></div>
+                      <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
+                        <MessageSquare className="h-4 w-4" />
+                        Discussion
+                      </h3>
+                      <Badge variant="secondary" className="text-xs font-medium bg-muted/50 text-muted-foreground border-border/30">
+                        {(post.commentsCount || 0) + (post.text ? 1 : 0)}
+                      </Badge>
                     </div>
-                    <p className="text-sm text-foreground/90 whitespace-pre-line">{post.text}</p>
+                    <ChevronDown className="h-4 w-4 text-muted-foreground group-open:rotate-180 transition-transform duration-200" />
+                  </summary>
+                  <div className="border-t border-border/20 bg-background/50 max-h-[60vh] sm:max-h-none overflow-y-auto sm:flex-1">
+                    <div className="space-y-4">
+                      {/* Author's thoughts section */}
+                      {post.text && (
+                        <div className="p-4 border-b border-border/10">
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="w-1 h-4 bg-amber-500 rounded-full"></div>
+                            <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                              <User className="h-3.5 w-3.5" />
+                              Author's Thoughts
+                            </h4>
+                          </div>
+                          <div className="bg-muted/30 rounded-xl p-4 border border-border/20">
+                            <div className="flex items-center gap-3 mb-3">
+                              <Avatar className="h-6 w-6 border border-border/30">
+                                <AvatarImage src={authorProfile?.avatarUrl || undefined} alt={authorProfile?.username || authorProfile?.name || 'User'} data-ai-hint="person avatar" />
+                                <AvatarFallback className="text-xs font-semibold">{authorInitial}</AvatarFallback>
+                              </Avatar>
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <span className="font-medium">{authorProfile?.username || authorProfile?.name || 'Macaroom User'}</span>
+                                <span>•</span>
+                                <span>{postedAtRelative}</span>
+                              </div>
+                            </div>
+                            <p className="text-sm text-foreground leading-relaxed whitespace-pre-line">{post.text}</p>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Comments section */}
+                      <div className="border-b border-border/10">
+                        <div className="flex items-center gap-2 px-4 py-3">
+                          <div className="w-1 h-4 bg-blue-500 rounded-full"></div>
+                          <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                            <MessageSquare className="h-3.5 w-3.5" />
+                            Comments
+                            <Badge variant="secondary" className="text-xs font-medium bg-muted/50 text-muted-foreground border-border/30">
+                              {post.commentsCount || 0}
+                            </Badge>
+                          </h4>
+                        </div>
+                        <CommentsList post={post} />
+                      </div>
+                    </div>
                   </div>
-                )}
-                
-                {/* Comments section */}
-                <div className="mt-4 px-1">
-                  <h3 className="text-sm font-medium mb-4">Comments</h3>
-                  <CommentsList post={post} />
-                </div>
+                </details>
               </div>
               
-              <CommentForm post={post} />
+              {/* Enhanced comment form */}
+              <div className="bg-muted/30 rounded-b-3xl sm:rounded-b-none border border-border/20 border-t-0 sm:border-0 p-3 sm:p-5">
+                <CommentForm post={post} />
+              </div>
             </div>
           </div>
         </DialogContent>

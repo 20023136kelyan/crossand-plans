@@ -16,6 +16,7 @@ import type { FriendEntry } from '@/types/user';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import type { PlanFormValues } from './PlanForm'; // Assuming PlanFormValues is still relevant, or adjust if used more generically
+import { useLimits } from '@/hooks/use-limits';
 
 interface FriendMultiSelectInputProps {
   control: Control<PlanFormValues | any>; // Allow 'any' if used outside PlanFormValues context too
@@ -36,6 +37,7 @@ export function FriendMultiSelectInput({
   const [searchTerm, setSearchTerm] = useState('');
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const { toast } = useToast();
+  const { canAddParticipant, maxParticipantsPerPlan } = useLimits();
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
@@ -96,7 +98,24 @@ export function FriendMultiSelectInput({
         }, [actualFriends, searchTerm, selectedFriendUids]); // Use selectedFriendUids from render prop
 
         const handleSelectFriend = (friendUid: string) => {
-          const newSelected = selectedFriendUids.includes(friendUid)
+          const isRemoving = selectedFriendUids.includes(friendUid);
+          
+          if (!isRemoving) {
+            // Adding a participant - check limits
+            // Current participants = host (1) + currently selected friends
+            const currentParticipants = 1 + selectedFriendUids.length;
+            
+            if (!canAddParticipant(currentParticipants)) {
+              toast({
+                title: 'Participant Limit Reached',
+                description: `This plan can have a maximum of ${maxParticipantsPerPlan} participants (including the host).`,
+                variant: 'destructive',
+              });
+              return;
+            }
+          }
+          
+          const newSelected = isRemoving
             ? selectedFriendUids.filter((uid: string) => uid !== friendUid)
             : [...selectedFriendUids, friendUid];
           formFieldRenderProp.onChange(newSelected);

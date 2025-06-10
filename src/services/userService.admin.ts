@@ -77,8 +77,8 @@ export const getUserProfileAdmin = async (userId: string): Promise<UserProfile |
       eventAttendanceScore: data?.eventAttendanceScore || 0,
       levelTitle: calculateLevelTitle(data?.eventAttendanceScore || 0),
       levelStars: calculateLevelStars(data?.eventAttendanceScore || 0),
-      createdAt: data?.createdAt?.toDate() || new Date(),
-      updatedAt: data?.updatedAt?.toDate() || new Date(),
+      createdAt: data?.createdAt && typeof data.createdAt.toDate === 'function' ? data.createdAt.toDate() : new Date(),
+      updatedAt: data?.updatedAt && typeof data.updatedAt.toDate === 'function' ? data.updatedAt.toDate() : new Date(),
     };
   } catch (error) {
     console.error('[getUserProfileAdmin] Error fetching user profile:', error);

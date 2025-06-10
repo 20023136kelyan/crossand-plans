@@ -12,6 +12,7 @@ import { AdminSettings } from '@/components/admin/settings/AdminSettings';
 import { AdminSecurity } from '@/components/admin/security/AdminSecurity';
 import { AdminIntegrations } from '@/components/admin/integrations/AdminIntegrations';
 import { AdminBackups } from '@/components/admin/backups/AdminBackups';
+import { AdminContentCuration } from '@/components/admin/content/AdminContentCuration';
 import { Shield, AlertTriangle } from 'lucide-react';
 
 export default function AdminManagement() {
@@ -96,11 +97,12 @@ export default function AdminManagement() {
         </div>
 
         <Tabs defaultValue="analytics" className="space-y-4">
-          <TabsList className="grid grid-cols-4 lg:grid-cols-8 gap-4">
+          <TabsList className="grid grid-cols-3 lg:grid-cols-9 gap-2">
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            <TabsTrigger value="content">Content</TabsTrigger>
             <TabsTrigger value="moderation">Moderation</TabsTrigger>
-            <TabsTrigger value="users">User Management</TabsTrigger>
-            <TabsTrigger value="system">System Status</TabsTrigger>
+            <TabsTrigger value="users">Users</TabsTrigger>
+            <TabsTrigger value="system">System</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
@@ -109,6 +111,10 @@ export default function AdminManagement() {
 
           <TabsContent value="analytics" className="border rounded-lg p-4">
             <AdminAnalytics />
+          </TabsContent>
+
+          <TabsContent value="content" className="border rounded-lg p-4">
+            <AdminContentCuration />
           </TabsContent>
 
           <TabsContent value="moderation" className="border rounded-lg p-4">
@@ -142,4 +148,4 @@ export default function AdminManagement() {
       </div>
     </div>
   );
-} 
+}

@@ -282,7 +282,29 @@ export const toggleLikePostAdmin = async (postId: string, userId: string): Promi
     if (error.customError && error.code === "POST_NOT_FOUND_IN_TRANSACTION") {
         return { success: false, error: "Post not found. It may have been deleted.", errorCode: "POST_NOT_FOUND" };
     }
-    // TODO: Check for specific Firestore error codes if applicable e.g. error.code === 'permission-denied'
+    // Handle specific Firestore error codes
+    if (error.code === 'permission-denied') {
+        return { 
+            success: false, 
+            error: "You don't have permission to perform this action.", 
+            errorCode: "PERMISSION_DENIED" 
+        };
+    }
+    if (error.code === 'unavailable') {
+        return { 
+            success: false, 
+            error: "Service temporarily unavailable. Please try again.", 
+            errorCode: "SERVICE_UNAVAILABLE" 
+        };
+    }
+    if (error.code === 'deadline-exceeded') {
+        return { 
+            success: false, 
+            error: "Request timed out. Please try again.", 
+            errorCode: "TIMEOUT" 
+        };
+    }
+    
     return { 
         success: false, 
         error: "Database operation failed. Please try again.", 

@@ -146,6 +146,9 @@ export default function CityPlansPage() {
 
   const upcomingPlans = useMemo(() => {
     return sortedPlans.filter(plan => {
+      // Template plans (admin-created) should always appear in upcoming
+      if (plan.isTemplate) return true;
+      
       if (!plan.eventTime) return false;
       const planDate = parseISO(plan.eventTime);
       return isValid(planDate) && isFuture(planDate);
@@ -154,6 +157,9 @@ export default function CityPlansPage() {
 
   const pastPlans = useMemo(() => {
     return sortedPlans.filter(plan => {
+      // Template plans should not appear in past plans
+      if (plan.isTemplate) return false;
+      
       if (!plan.eventTime) return false;
       const planDate = parseISO(plan.eventTime);
       return isValid(planDate) && isPast(planDate);

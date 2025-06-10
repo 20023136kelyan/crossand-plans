@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useAuth } from '@/context/AuthContext';
+import { toast } from 'sonner';
 import {
   Card,
   CardContent,
@@ -56,34 +58,138 @@ interface ReportedContent {
   dateReported: string;
 }
 
-const mockReports: ReportedContent[] = [
-  {
-    id: '1',
-    type: 'plan',
-    status: 'pending',
-    reportCount: 3,
-    reportedBy: 'user123',
-    reportedUser: 'creator456',
-    content: 'Inappropriate plan content...',
-    dateReported: '2024-03-15',
-  },
-  {
-    id: '2',
-    type: 'comment',
-    status: 'flagged',
-    reportCount: 5,
-    reportedBy: 'user789',
-    reportedUser: 'user101',
-    content: 'Offensive comment...',
-    dateReported: '2024-03-14',
-  },
-  // Add more mock reports as needed
-];
+interface ModerationStats {
+  averageResponseTime: string;
+  reportsToday: number;
+  resolutionRate: number;
+  pendingCount: number;
+  flaggedCount: number;
+  rejectedCount: number;
+}
+
+interface ApiReportedContent {
+  id: string;
+  type: string;
+  status: string;
+  reportCount: number;
+  reportedBy: string;
+  reportedUser: string;
+  content: string;
+  dateReported: string;
+  contentId: string;
+  reportReason: string;
+}
 
 export function AdminModeration() {
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<ContentType | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<ContentStatus | 'all'>('all');
+  const [reports, setReports] = useState<ReportedContent[]>([]);
+  const [stats, setStats] = useState<ModerationStats>({
+    averageResponseTime: '0 hours',
+    reportsToday: 0,
+    resolutionRate: 0,
+    pendingCount: 0,
+    flaggedCount: 0,
+    rejectedCount: 0
+  });
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchReports();
+    fetchStats();
+  }, []);
+
+  const fetchReports = async () => {
+    try {
+      if (!user) return;
+      
+      const token = await user.getIdToken();
+      const response = await fetch('/api/admin/moderation/reports', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch reports');
+      }
+
+      const data = await response.json();
+      const formattedReports: ReportedContent[] = data.reports.map((report: ApiReportedContent) => ({
+        id: report.id,
+        type: report.type as ContentType,
+        status: report.status as ContentStatus,
+        reportCount: report.reportCount,
+        reportedBy: report.reportedBy,
+        reportedUser: report.reportedUser,
+        content: report.content,
+        dateReported: report.dateReported
+      }));
+      
+      setReports(formattedReports);
+    } catch (error) {
+      console.error('Error fetching reports:', error);
+      toast.error('Failed to load reports');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchStats = async () => {
+    try {
+      if (!user) return;
+      
+      const token = await user.getIdToken();
+      const response = await fetch('/api/admin/moderation/stats', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch stats');
+      }
+
+      const data = await response.json();
+      setStats(data);
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  };
+
+  const handleModerationAction = async (reportId: string, action: 'approve' | 'reject') => {
+    try {
+      if (!user) return;
+      
+      const token = await user.getIdToken();
+      const response = await fetch('/api/admin/moderation/action', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ reportId, action })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to perform moderation action');
+      }
+
+      const result = await response.json();
+      toast.success(result.message);
+      
+      // Refresh reports and stats
+      fetchReports();
+      fetchStats();
+    } catch (error) {
+      console.error('Error performing moderation action:', error);
+      toast.error('Failed to perform action');
+    }
+  };
 
   const getStatusColor = (status: ContentStatus) => {
     switch (status) {
@@ -120,15 +226,15 @@ export function AdminModeration() {
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="gap-1">
             <div className="h-2 w-2 rounded-full bg-yellow-500" />
-            Pending: 12
+            Pending: {stats.pendingCount}
           </Badge>
           <Badge variant="outline" className="gap-1">
             <div className="h-2 w-2 rounded-full bg-orange-500" />
-            Flagged: 8
+            Flagged: {stats.flaggedCount}
           </Badge>
           <Badge variant="outline" className="gap-1">
             <div className="h-2 w-2 rounded-full bg-red-500" />
-            Rejected: 5
+            Rejected: {stats.rejectedCount}
           </Badge>
         </div>
       </div>
@@ -141,9 +247,9 @@ export function AdminModeration() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">2.5 hours</div>
+            <div className="text-2xl font-bold">{stats.averageResponseTime}</div>
             <p className="text-xs text-muted-foreground">
-              -30min from last week
+              Response time
             </p>
           </CardContent>
         </Card>
@@ -155,9 +261,9 @@ export function AdminModeration() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">24</div>
+            <div className="text-2xl font-bold">{stats.reportsToday}</div>
             <p className="text-xs text-muted-foreground">
-              +8 from yesterday
+              Reports today
             </p>
           </CardContent>
         </Card>
@@ -169,9 +275,9 @@ export function AdminModeration() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">95%</div>
+            <div className="text-2xl font-bold">{stats.resolutionRate}%</div>
             <p className="text-xs text-muted-foreground">
-              +2% from last week
+              Resolution rate
             </p>
           </CardContent>
         </Card>
@@ -233,7 +339,28 @@ export function AdminModeration() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {mockReports.map((report) => (
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center py-8">
+                  Loading reports...
+                </TableCell>
+              </TableRow>
+            ) : reports.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center py-8">
+                  No reports found
+                </TableCell>
+              </TableRow>
+            ) : (
+              reports
+                .filter(report => {
+                  const matchesSearch = report.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                      report.reportedUser.toLowerCase().includes(searchQuery.toLowerCase());
+                  const matchesType = typeFilter === 'all' || report.type === typeFilter;
+                  const matchesStatus = statusFilter === 'all' || report.status === statusFilter;
+                  return matchesSearch && matchesType && matchesStatus;
+                })
+                .map((report) => (
               <TableRow key={report.id}>
                 <TableCell>
                   <div className="flex items-center gap-2">
@@ -269,11 +396,14 @@ export function AdminModeration() {
                       <DropdownMenuItem>View Details</DropdownMenuItem>
                       <DropdownMenuItem>View User</DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleModerationAction(report.id, 'approve')}>
                         <ThumbsUp className="h-4 w-4 mr-2" />
                         Approve
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive">
+                      <DropdownMenuItem 
+                        className="text-destructive"
+                        onClick={() => handleModerationAction(report.id, 'reject')}
+                      >
                         <ThumbsDown className="h-4 w-4 mr-2" />
                         Reject
                       </DropdownMenuItem>
@@ -281,10 +411,11 @@ export function AdminModeration() {
                   </DropdownMenu>
                 </TableCell>
               </TableRow>
-            ))}
+                ))
+            )}
           </TableBody>
         </Table>
       </div>
     </div>
   );
-} 
+}

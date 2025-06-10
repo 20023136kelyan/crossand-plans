@@ -512,6 +512,72 @@ export default function UserProfilePage() {
     if (avatarFileInputRef.current) avatarFileInputRef.current.value = "";
   };
 
+  const handleReportUser = async () => {
+    if (!currentUser || !userProfile || isOwnProfile) {
+      return;
+    }
+    
+    try {
+      const idToken = await currentUser.getIdToken();
+      const response = await fetch('/api/reports/user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({
+          userId: userProfile.uid,
+          reason: 'inappropriate_behavior',
+          description: 'Reported from user profile'
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok) {
+        toast({ title: "User Reported", description: "Thank you for your report. We'll review it shortly." });
+      } else {
+        toast({ title: "Report Failed", description: result.error || "Could not report user", variant: "destructive" });
+      }
+    } catch (error: any) {
+      toast({ title: "Report Error", description: "An error occurred while reporting the user", variant: "destructive" });
+      console.error('Error reporting user:', error);
+    }
+  };
+
+  const handleBlockUser = async () => {
+    if (!currentUser || !userProfile || isOwnProfile) {
+      return;
+    }
+    
+    try {
+      const idToken = await currentUser.getIdToken();
+      const response = await fetch('/api/users/block', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({
+          userId: userProfile.uid
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok) {
+        toast({ title: "User Blocked", description: "You have successfully blocked this user." });
+        // Optionally redirect or update UI
+        router.back();
+      } else {
+        toast({ title: "Block Failed", description: result.error || "Could not block user", variant: "destructive" });
+      }
+    } catch (error: any) {
+      toast({ title: "Block Error", description: "An error occurred while blocking the user", variant: "destructive" });
+      console.error('Error blocking user:', error);
+    }
+  };
+
   const handleSaveAvatarToServer = async () => {
     if (!croppedImageFile || !currentUser) {
       toast({ title: "Save Error", description: "No cropped image to save or user not authenticated.", variant: "destructive" });
@@ -624,8 +690,8 @@ export default function UserProfilePage() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onSelect={() => toast({ title: "Coming Soon!", description: "Report user functionality will be added later." })} className="text-xs cursor-pointer">Report User</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => toast({ title: "Coming Soon!", description: "Block user functionality will be added later." })} className="text-xs cursor-pointer">Block User</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => handleReportUser()} className="text-xs cursor-pointer">Report User</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => handleBlockUser()} className="text-xs cursor-pointer">Block User</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             )}

@@ -10,7 +10,9 @@ export const createSubscription = async (
   priceId: string,
   amount: number,
   currency: string,
-  paymentMethod: { type: 'card' | 'paypal'; lastFour?: string; brand?: string }
+  paymentMethod: { type: 'card' | 'paypal'; lastFour?: string; brand?: string },
+  customerId?: string,
+  stripeSubscriptionId?: string
 ): Promise<string> => {
   if (!firestoreAdmin) {
     throw new Error('Firestore Admin SDK not initialized');
@@ -40,6 +42,8 @@ export const createSubscription = async (
     priceId,
     amount,
     currency,
+    customerId,
+    stripeSubscriptionId,
   };
 
   const docRef = await firestoreAdmin.collection(SUBSCRIPTIONS_COLLECTION).add(subscriptionData);
@@ -114,4 +118,4 @@ export const checkSubscriptionExpiry = async (): Promise<void> => {
   if (!expiredSubscriptions.empty) {
     await batch.commit();
   }
-}; 
+};

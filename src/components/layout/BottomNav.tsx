@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutGrid, Search, PlusCircle, LayoutList, User as UserIcon, Wallet as WalletIcon,
-  Sparkles, Edit3 // Added Sparkles, Edit3 for popover
+  Sparkles, Edit3, Camera // Added Sparkles, Edit3, Camera for popover
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
@@ -153,7 +153,7 @@ export function BottomNav(props: BottomNavProps) {
                       props.handleOpenCreatePostDialog();
                       setIsQuickAddPopoverOpen(false);
                     }}>
-                      <Edit3 className="mr-2 h-4 w-4" /> New Post
+                      <Camera className="mr-2 h-4 w-4" /> New Post
                     </Button>
                   </div>
                 </PopoverContent>

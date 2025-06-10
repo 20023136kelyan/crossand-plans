@@ -1,9 +1,58 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+interface AppSettings {
+  enableRegistration: boolean;
+  maintenanceMode: boolean;
+  requireEmailVerification: boolean;
+}
+
+const defaultSettings: AppSettings = {
+  enableRegistration: true,
+  maintenanceMode: false,
+  requireEmailVerification: true,
+};
+
+// Note: Firebase Admin SDK cannot be used in Edge Runtime middleware
+// Settings checks are now handled client-side or in API routes
+async function getSettings(): Promise<AppSettings> {
+  // Return default settings since we can't access Firestore in Edge Runtime
+  // TODO: Consider moving settings checks to API routes or client-side
+  return defaultSettings;
+}
+
 export async function middleware(request: NextRequest) {
   const requestPath = request.nextUrl.pathname;
   console.log(`[Middleware] Checking request for: ${requestPath}`);
+
+  // Skip middleware for API routes, static files, and internal Next.js routes
+  if (
+    requestPath.startsWith('/api/') ||
+    requestPath.startsWith('/_next/') ||
+    requestPath.startsWith('/favicon.ico') ||
+    requestPath.includes('.')
+  ) {
+    return NextResponse.next();
+  }
+
+  try {
+    const settings = await getSettings();
+
+    // Maintenance mode check
+    if (settings.maintenanceMode) {
+      // Allow access to maintenance page and admin routes
+      if (!requestPath.startsWith('/maintenance') && !requestPath.startsWith('/admin')) {
+        return NextResponse.redirect(new URL('/maintenance', request.url));
+      }
+    }
+
+    // Registration disabled check
+    if (!settings.enableRegistration && requestPath === '/signup') {
+      return NextResponse.redirect(new URL('/login?message=registration-disabled', request.url));
+    }
+  } catch (error) {
+    console.error('Settings middleware error:', error);
+  }
 
   // Public routes that don't require session
   const publicRoutes = [
@@ -65,13 +114,13 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/plans/:path*',
-    '/explore/:path*',
-    '/messages/:path*',
-    '/subscription/:path*',
-    '/wallet/:path*',
-    '/users/:path*', // Includes /users/settings and /users/:profileId, /profile (old)
-    // Added /profile here just in case it was missed and to ensure settings redirect logic in AuthContext is the primary handler for it.
-    '/profile',
+    /*
+     * Match all request paths except for the ones starting with:
+     * - api (API routes)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     */
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ],
 };

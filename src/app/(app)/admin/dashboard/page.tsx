@@ -51,7 +51,9 @@ export default function AdminDashboardPage() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">View users, manage roles, and verify accounts.</p>
-              <Button variant="link" className="p-0 h-auto text-primary text-sm mt-2">Go to User Management (coming soon)</Button>
+              <Link href="/admin/users">
+                <Button variant="link" className="p-0 h-auto text-primary text-sm mt-2">Go to User Management</Button>
+              </Link>
             </CardContent>
           </Card>
           <Card className="bg-card/70 border-border/30">
@@ -60,7 +62,9 @@ export default function AdminDashboardPage() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">Review reported plans, posts, and comments.</p>
-              <Button variant="link" className="p-0 h-auto text-primary text-sm mt-2">Go to Content Moderation (coming soon)</Button>
+              <Link href="/admin/moderation">
+                <Button variant="link" className="p-0 h-auto text-primary text-sm mt-2">Go to Content Moderation</Button>
+              </Link>
             </CardContent>
           </Card>
           <Card className="bg-card/70 border-border/30">
@@ -69,7 +73,9 @@ export default function AdminDashboardPage() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">View key metrics and application usage statistics.</p>
-              <Button variant="link" className="p-0 h-auto text-primary text-sm mt-2">View Analytics (coming soon)</Button>
+              <Link href="/admin/analytics">
+                <Button variant="link" className="p-0 h-auto text-primary text-sm mt-2">View Analytics</Button>
+              </Link>
             </CardContent>
           </Card>
         </div>
@@ -83,7 +89,9 @@ export default function AdminDashboardPage() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">Manage global application settings and features.</p>
-              <Button variant="link" className="p-0 h-auto text-primary text-sm mt-2">Configure Settings (coming soon)</Button>
+              <Button variant="link" className="p-0 h-auto text-primary text-sm mt-2" asChild>
+                <Link href="/admin/management?tab=settings">Configure Settings</Link>
+              </Button>
             </CardContent>
           </Card>
       </section>

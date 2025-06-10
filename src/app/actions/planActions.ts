@@ -486,10 +486,14 @@ export async function copyPlanToMyAccountAction(
       return { success: false, error: 'This plan is not available for copying.' };
     }
 
+    // Create a new plan from template with activity-focused naming
+    const templateName = originalPlan.name.startsWith('Copy of ') ? originalPlan.name : originalPlan.name;
+    const newPlanName = templateName.includes(' in ') ? templateName : `${templateName} in ${originalPlan.city}`;
+    
     const newPlanDataForService: Omit<Plan, 'id' | 'createdAt' | 'updatedAt' | 'hostName' | 'hostAvatarUrl'> = {
-      name: `Copy of ${originalPlan.name}`,
+      name: newPlanName,
       description: originalPlan.description,
-      eventTime: originalPlan.eventTime,
+      eventTime: new Date().toISOString(), // Set to current time as placeholder - user will update
       location: originalPlan.location,
       city: originalPlan.city,
       eventType: originalPlan.eventType,
@@ -497,14 +501,21 @@ export async function copyPlanToMyAccountAction(
       hostId: newHostId,
       invitedParticipantUserIds: [],
       participantResponses: {},
-      itinerary: originalPlan.itinerary.map(item => ({ ...item, id: crypto.randomUUID() })),
+      itinerary: originalPlan.itinerary.map(item => ({ 
+        ...item, 
+        id: crypto.randomUUID(),
+        // Reset time-specific fields to be updated by user
+        startTime: new Date().toISOString(),
+        endTime: new Date(Date.now() + 60 * 60 * 1000).toISOString() // 1 hour later
+      })),
       status: 'draft',
       planType: originalPlan.planType,
       originalPlanId: originalPlan.id,
       sharedByUid: originalPlan.hostId,
       averageRating: null,
       reviewCount: 0,
-      photoHighlights: [],
+      photoHighlights: originalPlan.photoHighlights || [], // Preserve template photos
+      isTemplate: false, // New plan is not a template until completed
     };
     
     const newPlanId = await createPlanAdmin(newPlanDataForService, newHostId);
@@ -1187,6 +1198,7 @@ export async function getPublishedPlansByCityAction(cityName: string): Promise<{
     const plansRef = firestoreAdmin.collection('plans');
     const snapshot = await plansRef
       .where('status', '==', 'published')
+      .where('isTemplate', '==', true)
       .where('city', '==', cityName)
       .orderBy('createdAt', 'desc')
       .limit(20)
@@ -1221,12 +1233,14 @@ export async function getPublishedPlansByCategoryAction(categoryName: string): P
     // First try exact match on eventType
     const exactMatchQuery = await firestoreAdmin.collection('plans')
       .where('status', '==', 'published')
+      .where('isTemplate', '==', true)
       .where('eventType', '==', categoryName)
       .get();
 
     // Then try lowercase match
     const lowercaseQuery = await firestoreAdmin.collection('plans')
       .where('status', '==', 'published')
+      .where('isTemplate', '==', true)
       .where('eventTypeLowercase', '==', categoryName.toLowerCase())
       .get();
 

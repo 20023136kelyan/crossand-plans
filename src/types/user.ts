@@ -55,11 +55,15 @@ export interface UserProfile {
   // App-specific status/role
   role: UserRoleType | null;
   isVerified: boolean;
+  isAdmin?: boolean; // Admin status flag for API compatibility
 
   // Social graph
   followers: string[]; // Array of UIDs of users following this user
   following: string[]; // Array of UIDs of users this user is following
   // 'friends' is derived from mutual follows + friendships subcollection
+  
+  // Saved content
+  savedPlans: string[]; // Array of plan IDs that the user has saved
 
   // Timestamps
   createdAt: AppTimestamp; 
@@ -67,6 +71,14 @@ export interface UserProfile {
 
   // Combined preferences for AI
   preferences: string[]; // Derived from all specific preference fields
+
+  // Google user data for onboarding (only stored during initial account creation)
+  googleUserData?: {
+    given_name?: string | null;
+    family_name?: string | null;
+    locale?: string | null;
+    email_verified?: boolean;
+  } | null;
 }
 
 // Data collected during onboarding, subset of UserProfile
@@ -261,6 +273,11 @@ export interface Plan {
   sharesCount?: number;
   savesCount?: number;
   type?: 'dayInLife' | 'regular';
+  isCompleted?: boolean;
+  completedAt?: string;
+  completionConfirmedBy?: string[];
+  highlightsEnabled?: boolean;
+  isTemplate?: boolean; // For admin-created template plans that don't require specific scheduling
 }
 
 export interface Rating {
@@ -298,6 +315,11 @@ export interface PlanCollection {
   type: PlanCollectionType;
   tags?: string[];
   isFeatured?: boolean;
+  isDefault?: boolean; // Marks system default collections
+  navigationCard?: boolean; // Shows in navigation/browse section
+  icon?: string; // Icon name for navigation cards
+  href?: string; // Navigation link for cards
+  sortOrder?: number; // Display order for navigation cards
   createdAt?: string; // ISO String
   updatedAt?: string; // ISO String
 }
@@ -392,6 +414,7 @@ export interface Category {
 }
 
 export interface City {
+  id: string;
   name: string;
   date: string;
   location: string;

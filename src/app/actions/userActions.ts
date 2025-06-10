@@ -94,17 +94,15 @@ export async function completeOnboardingAction(
   const userId = authUserData.uid;
   
   try {
-    // Don't use Google profile picture URL directly to avoid rate limiting issues
-    // Only use it if the user hasn't set their own avatar yet
+    // Check if we already have a profile with an uploaded avatar
     let avatarUrl = null;
     
-    // Check if we already have a profile with an avatar
     try {
       const existingUserDoc = await firestoreAdmin.collection('users').doc(userId).get();
       if (existingUserDoc.exists) {
         const existingData = existingUserDoc.data();
-        // Keep existing avatar if available
-        if (existingData?.avatarUrl && !existingData.avatarUrl.includes('googleusercontent.com')) {
+        // Keep existing uploaded avatar if available (only from our storage bucket)
+        if (existingData?.avatarUrl && existingData.avatarUrl.includes('storage.googleapis.com')) {
           avatarUrl = existingData.avatarUrl;
         }
       }
@@ -120,10 +118,10 @@ export async function completeOnboardingAction(
       email: string | null;
       avatarUrl: string | null;
     } = {
-      name: clientProfileFormData.name || null,
-      username: clientProfileFormData.username || null,
+      name: authUserData.displayName || null,
+      username: authUserData.email?.split('@')[0] || null,
       email: authUserData.email,
-      avatarUrl: avatarUrl, // Use existing avatar or null (don't use Google URL)
+      avatarUrl: avatarUrl, // Use existing uploaded avatar or null
       bio: clientProfileFormData.bio || null,
       countryDialCode: clientProfileFormData.selectedCountryCode ? 
         countries.find((c: { code: string; dialCode: string }) => c.code === clientProfileFormData.selectedCountryCode)?.dialCode || null : null,
@@ -145,6 +143,8 @@ export async function completeOnboardingAction(
         interactionLevel: clientProfileFormData.socialPreferences.interactionLevel || null
       } : { preferredGroupSize: null, interactionLevel: null },
       availabilityNotes: clientProfileFormData.availabilityNotes || '',
+      // Keep Google user data stored locally - don't clear it so we avoid future API calls
+      // Users can still modify this information through the UI
     };
 
     await createUserProfileAdmin(userId, profileData);

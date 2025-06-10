@@ -330,7 +330,7 @@ export default function PlanDetailPage() {
       if (!idToken) throw new Error("Authentication token not available.");
       const result = await copyPlanToMyAccountAction(plan.id, idToken);
       if (result.success && result.newPlanId) {
-        toast({ title: "Plan Copied!", description: `"${plan.name}" has been added to your Macaroom as a new draft.` });
+        toast({ title: "Activity Template Created!", description: `"${plan.name}" is now ready for you to customize and plan.` });
         router.push(`/plans/${result.newPlanId}`); 
       } else {
         toast({ title: "Copy Error", description: result.error || "Could not copy the plan.", variant: "destructive" });
@@ -753,7 +753,7 @@ export default function PlanDetailPage() {
             {plan.status === 'published' && currentUser?.uid !== plan.hostId && (
               <DropdownMenuItem onSelect={handleCopyToMyPlans} disabled={isCopyingPlan} className="cursor-pointer text-sm">
                 {isCopyingPlan ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CopyPlus className="mr-2 h-4 w-4" />}
-                Add to My Macaroom
+                Use as Activity Template
               </DropdownMenuItem>
             )}
             {currentUser?.uid === plan.hostId && (
@@ -796,7 +796,7 @@ export default function PlanDetailPage() {
           </div>
         </div>
         <CardHeader className="p-4 sm:p-6">
-          <CardTitle className="text-2xl md:text-3xl font-bold text-primary opacity-80">{plan.name}</CardTitle>
+          <CardTitle className="text-2xl md:text-3xl font-bold text-gradient-primary opacity-80">{plan.name}</CardTitle>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground mt-1 text-xs sm:text-sm items-center">
             <div className="flex items-center"><CalendarDays className="h-4 w-4 mr-1.5" /><span>{clientFormattedEventDateTime || "Loading date..."}</span></div>
             <div className="flex items-center"><MapPin className="h-4 w-4 mr-1.5" /><span>{plan.location}, {plan.city}</span></div>

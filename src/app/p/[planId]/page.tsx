@@ -40,12 +40,8 @@ import { format, parseISO, isValid } from 'date-fns';
 import { copyPlanToMyAccountAction, getPublicPlanByIdAction } from '@/app/actions/planActions'; // Updated import
 import { VerificationBadge } from '@/components/ui/verification-badge';
 
-const MacaronLogo = ({ className }: { className?: string }) => (
-  <svg viewBox="0 0 64 64" className={className} fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-    <path d="M52,22.04C52,14.29,43.71,8,34,8H30C20.29,8,12,14.29,12,22.04a2.5,2.5,0,0,0,0,.27C12,25.25,16.42,30,26,30h12C47.58,30,52,25.25,52,22.31A2.5,2.5,0,0,0,52,22.04Z" />
-    <rect x="10" y="30" width="44" height="4" rx="2" ry="2" />
-    <path d="M52,41.96C52,49.71,43.71,56,34,56H30C20.29,56,12,49.71,12,41.96a2.5,2.5,0,0,1,0-.27C12,38.75,16.42,34,26,34h12C47.58,34,52,38.75,52,41.69A2.5,2.5,0,0,1,52,41.96Z" />
-  </svg>
+const CrossandLogo = ({ className }: { className?: string }) => (
+  <img src="/images/crossand-logo.svg" alt="Crossand Logo" className={className} />
 );
 
 export default function PublicPlanPage() {
@@ -125,12 +121,12 @@ export default function PublicPlanPage() {
         return;
     }
     if (!currentUser) {
-      toast({ title: "Login Required", description: "Please log in to add this plan to your Macaroom.", variant: "default" });
+      toast({ title: "Login Required", description: "Please log in to use this activity template.", variant: "default" });
       router.push(`/login?redirect=/p/${plan.id}&action=copy&planIdToCopy=${plan.id}`);
       return;
     }
     if (plan.hostId === currentUser.uid) {
-      toast({ title: "Already Yours!", description: "This plan is already in your Macaroom. Opening it now...", variant: "default" });
+      toast({ title: "Already Yours!", description: "This activity template is already in your collection. Opening it now...", variant: "default" });
       router.push(`/plans/${plan.id}`);
       return;
     }
@@ -141,7 +137,7 @@ export default function PublicPlanPage() {
       const idToken = await currentUser.getIdToken(); // Get the (potentially refreshed) token
       const result = await copyPlanToMyAccountAction(plan.id, idToken);
       if (result.success && result.newPlanId) {
-        toast({ title: "Plan Copied!", description: `"${plan.name}" has been added to your Macaroom as a new draft.` });
+        toast({ title: "Activity Template Created!", description: `"${plan.name}" is now ready for you to customize and plan.` });
         router.push(`/plans/${result.newPlanId}`);
       } else {
         toast({ title: "Copy Error", description: result.error || "Could not copy the plan.", variant: "destructive" });
@@ -243,7 +239,7 @@ export default function PublicPlanPage() {
         </div>
 
         <CardHeader>
-          <CardTitle className="text-2xl md:text-3xl font-bold text-primary opacity-80">{plan.name}</CardTitle>
+          <CardTitle className="text-2xl md:text-3xl font-bold text-gradient-primary opacity-80">{plan.name}</CardTitle>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground mt-1 text-xs sm:text-sm items-center">
             <div className="flex items-center"><MapPin className="h-4 w-4 mr-1.5" /><span>{plan.location}, {plan.city}</span></div>
             {(plan.averageRating !== null && typeof plan.averageRating === 'number' ) && (
@@ -385,7 +381,7 @@ export default function PublicPlanPage() {
               ) : (
                 <Plus className="mr-2 h-4 w-4" />
               )}
-              {currentUser ? 'Add to My Macaroom' : 'Log in to Add to My Macaroom'}
+              {currentUser ? 'Use This Activity Template' : 'Log in to Use This Template'}
             </Button>
           </div>
         </CardContent>

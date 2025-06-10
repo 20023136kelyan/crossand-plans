@@ -35,7 +35,7 @@ export default async function CollectionDetailPage({ params }: { params: { colle
               <ChevronLeft className="h-5 w-5" />
             </Link>
           </Button>
-          <h1 className="text-2xl font-bold text-primary">{collection.title}</h1>
+          <h1 className="text-2xl font-bold text-gradient-primary">{collection.title}</h1>
         </div>
 
         {collection.description && (

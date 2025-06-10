@@ -293,7 +293,7 @@ export default function FriendProfilePage() {
             </Avatar>
             <div className="flex-grow">
               <div className="flex items-center">
-                 <CardTitle className="text-2xl font-bold text-primary opacity-60">{viewedUserProfile?.username || 'Macaroom User'}</CardTitle>
+                 <CardTitle className="text-2xl font-bold text-gradient-primary opacity-60">{viewedUserProfile?.username || 'Macaroom User'}</CardTitle>
                  <VerificationBadge role={viewedUserProfile?.role} isVerified={viewedUserProfile?.isVerified || false} />
               </div>
               <CardDescription className="text-md text-muted-foreground">{viewedUserProfile?.email}</CardDescription>

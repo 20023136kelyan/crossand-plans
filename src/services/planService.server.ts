@@ -682,38 +682,21 @@ export const getCompletedPlansAdmin = async (): Promise<Plan[]> => {
   try {
     console.log("[getCompletedPlansAdmin] Starting to fetch completed plans...");
     const plansRef = firestoreAdmin.collection(PLANS_COLLECTION);
-    const now = new Date().toISOString();
     
     // Query for plans that are:
     // 1. Published AND
-    // 2. Either have no eventTime OR eventTime is in the past
-    const [noEventTimePlans, pastEventPlans] = await Promise.all([
-      // Get plans with no eventTime
-      plansRef
-        .where('status', '==', 'published')
-        .where('eventTime', '==', null)
-        .get(),
-      
-      // Get plans with past eventTime
-      plansRef
-        .where('status', '==', 'published')
-        .where('eventTime', '<=', new Date())
-        .get()
-    ]);
+    // 2. Explicitly marked as completed
+    const completedPlansSnapshot = await plansRef
+      .where('status', '==', 'published')
+      .where('isCompleted', '==', true)
+      .get();
 
     const plans: Plan[] = [];
 
-    // Process plans with no eventTime
-    noEventTimePlans.forEach(docSnap => {
+    // Process completed plans
+    completedPlansSnapshot.forEach(docSnap => {
       const plan = mapAdminDocToPlan(docSnap);
-      console.log(`[getCompletedPlansAdmin] Including plan with no eventTime: ${plan.id}, name: ${plan.name}`);
-      plans.push(plan);
-    });
-
-    // Process plans with past eventTime
-    pastEventPlans.forEach(docSnap => {
-      const plan = mapAdminDocToPlan(docSnap);
-      console.log(`[getCompletedPlansAdmin] Including past plan: ${plan.id}, name: ${plan.name}, eventTime: ${plan.eventTime}`);
+      console.log(`[getCompletedPlansAdmin] Including completed plan: ${plan.id}, name: ${plan.name}, completedAt: ${plan.completedAt}`);
       plans.push(plan);
     });
 

@@ -10,15 +10,15 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-[linear-gradient(to_right,var(--button-primary-gradient-start),var(--button-primary-gradient-end))] text-primary-foreground hover:bg-[linear-gradient(to_right,var(--button-primary-gradient-start-hover),var(--button-primary-gradient-end-hover))]",
+          "bg-gradient-primary text-primary-foreground hover:bg-gradient-primary-hover border border-gray-600/50 backdrop-blur-sm shadow-lg ring-1 ring-gray-600/30",
         destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90 border border-gray-600/50 backdrop-blur-sm shadow-lg ring-1 ring-gray-600/30",
         outline:
-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+          "border border-gray-600/60 bg-gray-900/80 hover:bg-gray-800/90 hover:text-accent-foreground backdrop-blur-md shadow-md ring-1 ring-gray-600/40",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+          "bg-gray-900/80 text-secondary-foreground hover:bg-gray-800/90 border border-gray-600/50 backdrop-blur-sm shadow-lg ring-1 ring-gray-600/30",
         ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 hover:underline",
+        link: "text-gradient-primary underline-offset-4 hover:underline",
       },
       size: {
         default: "h-10 px-4 py-2",

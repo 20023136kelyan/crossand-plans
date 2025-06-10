@@ -36,8 +36,20 @@ export default function AuthLayout({
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-background to-secondary/30 p-4">
-      {children}
+    <div className="flex min-h-screen items-center justify-center p-4 relative" style={{ background: 'none' }}>
+      {/* Background image */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{
+          backgroundImage: 'url("/images/login-background.jpg")',
+          filter: 'brightness(0.4)',
+          backgroundColor: '#1a1a1a'
+        }}
+      />
+      {/* Content */}
+      <div className="relative z-10 w-full max-w-md mx-auto flex justify-center">
+        {children}
+      </div>
     </div>
   );
 }

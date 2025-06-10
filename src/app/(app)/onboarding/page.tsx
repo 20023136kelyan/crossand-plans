@@ -20,7 +20,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import {
-  Loader2, Save, ArrowLeft, ArrowRight, ChevronsUpDown, Check, X as XIcon,
+  Loader2, Save, ArrowLeft, ArrowRight, ChevronsUpDown, Check, X as XIcon, LogOut,
   Users as UsersIcon, ShieldCheck as AdminIcon, CheckCircle, Edit3, CalendarDays, ImageIcon, User, Palette, Heart, Activity, AlertTriangle, ChefHat, Wallet, MessagesSquare as SocialInteractionIcon, UsersRound, MapPin as TravelToleranceIcon
 } from 'lucide-react';
 import Image from 'next/image'; // Use NextImage alias or ensure no conflict if Lucide also exports Image
@@ -42,6 +42,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { OnboardingProgress, createOnboardingSteps } from '@/components/onboarding/OnboardingProgress';
 
 
 const countries = [
@@ -309,8 +310,6 @@ const getCountryFlagEmoji = (countryCode: string | null | undefined): string => 
 };
 
 const onboardingFormSchema = z.object({
-  name: z.string().min(1, "Name is required.").max(100).nullable(),
-  username: z.string().min(3, "Username must be at least 3 characters").max(30, "Username cannot exceed 30 characters").regex(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores").optional().nullable(),
   bio: z.string().max(160, { message: "Bio cannot exceed 160 characters."}).optional().nullable(),
   selectedCountryCode: z.string().optional().nullable(),
   phoneNumber: z.string().optional().nullable(),
@@ -581,7 +580,7 @@ const SingleSelectCombobox: React.FC<SingleSelectComboboxProps> = ({
 
 export default function OnboardingPage() {
   // ALL HOOKS MUST BE AT THE TOP LEVEL
-  const { user, loading: authLoading, currentUserProfile, isNewUserJustSignedUp, acknowledgeNewUserWelcome, refreshProfileStatus, profileExists } = useAuth();
+  const { user, loading: authLoading, currentUserProfile, isNewUserJustSignedUp, acknowledgeNewUserWelcome, refreshProfileStatus, profileExists, signOut } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
@@ -596,8 +595,6 @@ export default function OnboardingPage() {
   const form = useForm<OnboardingFormValues>({
     resolver: zodResolver(onboardingFormSchema),
     defaultValues: {
-      name: currentUserProfile?.name || user?.displayName || '',
-      username: currentUserProfile?.username || user?.email?.split('@')[0] || '',
       bio: currentUserProfile?.bio || '',
       selectedCountryCode: countries.find(c => c.dialCode === currentUserProfile?.countryDialCode)?.code ||
                            countries.find(c => c.code === currentUserProfile?.countryDialCode)?.code || // Fallback if dialCode wasn't stored but country code was
@@ -702,6 +699,8 @@ export default function OnboardingPage() {
       });
     } else if (user && !currentUserProfile && !authLoading) {
       // Pre-fill for a new user if some info is available from Firebase Auth user
+      // For new users, the Google data will be available in the user-data API response
+      // but since currentUserProfile is null here, we'll use the displayName from Firebase Auth
       form.reset({
         name: user.displayName || '',
         bio: '',
@@ -728,7 +727,7 @@ export default function OnboardingPage() {
     try {
       const authUserDataPayload: AuthUserData = {
         uid: user.uid,
-        displayName: data.name || user.displayName,
+        displayName: user.displayName,
         email: user.email,
         photoURL: user.photoURL,
       };
@@ -781,14 +780,16 @@ export default function OnboardingPage() {
 
   if (authLoading && !user && !showWelcomeDialogState) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-background to-secondary/30 p-4">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      <div className="min-h-screen flex flex-col pt-8 pb-4 px-4">
+        <div className="w-full max-w-2xl mx-auto flex flex-col flex-1 items-center justify-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        </div>
       </div>
     );
   }
 
   const currentSelectedCountryData = countries.find(c => c.code === selectedCountryCodeValue);
-  const userInitial = form.watch('name') ? form.watch('name')?.charAt(0).toUpperCase() : (user?.displayName ? user.displayName.charAt(0).toUpperCase() : (user?.email ? user.email.charAt(0).toUpperCase() : 'U'));
+  const userInitial = user?.displayName ? user.displayName.charAt(0).toUpperCase() : (user?.email ? user.email.charAt(0).toUpperCase() : 'U');
   const progressValue = (currentStep / steps.length) * 100;
   
   const CurrentStepIcon = steps[currentStep -1]?.icon || Edit3;
@@ -803,7 +804,7 @@ export default function OnboardingPage() {
               <span>🎉</span>
               <span>✨</span>
             </div>
-            <DialogTitle className="text-3xl font-bold text-primary">Account Created!</DialogTitle>
+            <DialogTitle className="text-3xl font-bold text-gradient-primary">Account Created!</DialogTitle>
             <DialogDescription className="text-lg text-foreground/90 px-4">
               Welcome to Macaroom! Let's personalize your experience.
             </DialogDescription>
@@ -815,70 +816,60 @@ export default function OnboardingPage() {
       </Dialog>
 
       {!showWelcomeDialogState && user && (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-background to-secondary/30 p-4">
-          <div className="w-full max-w-2xl bg-card/90 border-border/50 rounded-xl shadow-xl overflow-hidden">
-            <div className="p-6 space-y-2">
-                <div className="flex items-center gap-2 mb-1">
-                    <CurrentStepIcon className="h-5 w-5 text-primary opacity-80"/>
-                    <h2 className="text-xl font-semibold text-primary opacity-80">
-                        {steps[currentStep - 1]?.title || 'Onboarding'}
-                    </h2>
-                </div>
-                <p className="text-xs text-muted-foreground">Step {currentStep} of {steps.length}</p>
-                <Progress value={progressValue} className="w-full h-1.5 mb-3" />
-                <div className="flex items-center gap-3 mt-6">
-                    <Avatar className="h-12 w-12 border-2 border-primary/30">
-                    {user.photoURL ? (
-                        <Image src={user.photoURL} alt="Your avatar" width={48} height={48} className="rounded-full" data-ai-hint="profile avatar" unoptimized/>
-                    ) : (
-                        <AvatarFallback className="text-lg">{userInitial}</AvatarFallback>
-                    )}
-                    </Avatar>
-                    <div>
-                    <p className="text-md font-semibold text-foreground/90">{form.watch('name') || user.displayName || 'Macaroom User'}</p>
-                    <p className="text-xs text-muted-foreground">{user.email}</p>
-                    </div>
-                </div>
-            </div>
+        <div className="min-h-screen flex flex-col pt-8 pb-4 px-4">
+          <div className="w-full max-w-2xl mx-auto flex flex-col">
+            <div className="p-4 pb-2">
+              {/* Progress Tracker */}
+              <OnboardingProgress 
+                  steps={[
+                    {
+                      id: 'personal-details',
+                      title: '👤 Personal Details',
+                      description: 'Basic information and contact details',
+                      completed: currentStep > 1,
+                      current: currentStep === 1
+                    },
+                    {
+                      id: 'health-culinary',
+                      title: '🍽️ Health & Culinary',
+                      description: 'Dietary preferences and restrictions',
+                      completed: currentStep > 2,
+                      current: currentStep === 2
+                    },
+                    {
+                      id: 'activity-lifestyle',
+                      title: '🏃‍♂️ Activity & Lifestyle',
+                      description: 'Physical preferences and limitations',
+                      completed: currentStep > 3,
+                      current: currentStep === 3
+                    },
+                    {
+                      id: 'social-availability',
+                      title: '👥 Social & Availability',
+                      description: 'Social preferences and schedule',
+                      completed: currentStep > 4,
+                      current: currentStep === 4
+                    }
+                  ]}
+                  className="mb-2"
+                />            </div>
 
             <Separator className="bg-border/30" />
 
-            <div className="p-6 pt-4 max-h-[calc(100vh-380px)] overflow-y-auto custom-scrollbar-vertical">
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <div className="flex flex-col">
+              <div className="p-4 pt-2 overflow-y-auto custom-scrollbar-vertical">
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 h-full flex flex-col">
 
                   {currentStep === 1 && (
                     <div className="space-y-3">
-                        <FormField
-                            control={form.control}
-                            name="name"
-                            render={({ field }) => (
-                            <FormItem className="space-y-1">
-                                <FormLabel className="text-xs">Full Name*</FormLabel>
-                                <FormControl><Input placeholder="Your full name" {...field} value={field.value || ''} className="h-9 text-sm" /></FormControl>
-                                <FormMessage className="text-xs" />
-                            </FormItem>
-                            )}
-                        />
-                        <FormField
-                            control={form.control}
-                            name="username"
-                            render={({ field }) => (
-                            <FormItem className="space-y-1">
-                                <FormLabel className="text-xs">Username*</FormLabel>
-                                <FormControl><Input placeholder="Choose a unique username" {...field} value={field.value || ''} className="h-9 text-sm" /></FormControl>
-                                <FormDescription className="text-xs">This will be used in your profile URL and mentions.</FormDescription>
-                                <FormMessage className="text-xs" />
-                            </FormItem>
-                            )}
-                        />
                          <FormField
                             control={form.control}
                             name="bio"
                             render={({ field }) => (
                             <FormItem className="space-y-1">
-                                <FormLabel className="text-xs">Bio (Optional, max 160 chars)</FormLabel>
-                                <FormControl><Textarea placeholder="Tell us a little about yourself..." {...field} value={field.value || ''} className="min-h-[64px] text-sm" maxLength={160} /></FormControl>
+                                <FormLabel className="text-xs">📝 Bio (Optional, max 160 chars)</FormLabel>
+                                <FormControl><Textarea placeholder="Tell us a little about yourself..." {...field} value={field.value || ''} className="min-h-[64px] text-sm bg-card border-border" maxLength={160} /></FormControl>
                                 <FormMessage className="text-xs" />
                             </FormItem>
                             )}
@@ -889,7 +880,7 @@ export default function OnboardingPage() {
                             name="selectedCountryCode"
                             render={({ field }) => (
                                 <FormItem className="space-y-1 w-[150px] flex-shrink-0">
-                                <FormLabel className="text-xs">Country Code</FormLabel>
+                                <FormLabel className="text-xs">🌍 Country Code</FormLabel>
                                 <Popover open={isCountryPickerOpen} onOpenChange={setIsCountryPickerOpen}>
                                     <PopoverTrigger asChild>
                                     <FormControl>
@@ -958,8 +949,8 @@ export default function OnboardingPage() {
                             name="phoneNumber"
                             render={({ field }) => (
                                 <FormItem className="space-y-1 flex-grow">
-                                <FormLabel className="text-xs">Phone Number (Optional)</FormLabel>
-                                <FormControl><Input type="tel" placeholder="555-123-4567" {...field} value={field.value || ''} className="h-9 text-sm" /></FormControl>
+                                <FormLabel className="text-xs">📱 Phone Number (Optional)</FormLabel>
+                                <FormControl><Input type="tel" placeholder="555-123-4567" {...field} value={field.value || ''} className="h-9 text-sm bg-card border-border" /></FormControl>
                                 <FormMessage className="text-xs" />
                                 </FormItem>
                             )}
@@ -967,34 +958,33 @@ export default function OnboardingPage() {
                         </div>
                         <FormField control={form.control} name="birthDate" render={({ field }) => (
                             <FormItem className="space-y-1">
-                            <FormLabel className="text-xs">Birth Date (Optional)</FormLabel>
-                            <FormControl><Input type="date" {...field} value={field.value || ''} className="h-9 text-sm" /></FormControl>
-                            <FormDescription className="text-xs">YYYY-MM-DD</FormDescription>
+                            <FormLabel className="text-xs">🎂 Birth Date (Optional)</FormLabel>
+                            <FormControl><Input type="date" {...field} value={field.value || ''} className="h-9 text-sm bg-card border-border [&::-webkit-calendar-picker-indicator]:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer" /></FormControl>
                             <FormMessage className="text-xs" />
                             </FormItem>
                         )} />
-                        <FormLabel className="text-xs block pt-1">Physical Address (Optional)</FormLabel>
+                        <FormLabel className="text-xs block pt-1">🏠 Physical Address (Optional)</FormLabel>
                         <FormField control={form.control} name="physicalAddress.street" render={({ field }) => (
                             <FormItem className="space-y-1">
                             <FormLabel className="text-xs sr-only">Street Address</FormLabel>
-                            <FormControl><Input placeholder="Street Address" {...field} value={field.value || ''} className="h-9 text-sm" /></FormControl>
+                            <FormControl><Input placeholder="Street Address" {...field} value={field.value || ''} className="h-9 text-sm bg-card border-border" /></FormControl>
                             <FormMessage className="text-xs" />
                             </FormItem>
                         )} />
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <FormField control={form.control} name="physicalAddress.city" render={({ field }) => (
-                                <FormItem className="space-y-1"> <FormLabel className="text-xs sr-only">City</FormLabel> <FormControl><Input placeholder="City" {...field} value={field.value || ''} className="h-9 text-sm" /></FormControl> <FormMessage className="text-xs" /> </FormItem>
+                                <FormItem className="space-y-1"> <FormLabel className="text-xs sr-only">City</FormLabel> <FormControl><Input placeholder="City" {...field} value={field.value || ''} className="h-9 text-sm bg-card border-border" /></FormControl> <FormMessage className="text-xs" /> </FormItem>
                             )} />
                             <FormField control={form.control} name="physicalAddress.zipCode" render={({ field }) => (
-                                <FormItem className="space-y-1"> <FormLabel className="text-xs sr-only">Zip/Postal Code</FormLabel> <FormControl><Input placeholder="Zip/Postal Code" {...field} value={field.value || ''} className="h-9 text-sm" /></FormControl> <FormMessage className="text-xs" /> </FormItem>
+                                <FormItem className="space-y-1"> <FormLabel className="text-xs sr-only">Zip/Postal Code</FormLabel> <FormControl><Input placeholder="Zip/Postal Code" {...field} value={field.value || ''} className="h-9 text-sm bg-card border-border" /></FormControl> <FormMessage className="text-xs" /> </FormItem>
                             )} />
                         </div>
                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <FormField control={form.control} name="physicalAddress.state" render={({ field }) => (
-                                <FormItem className="space-y-1"> <FormLabel className="text-xs sr-only">State/Province</FormLabel> <FormControl><Input placeholder="State/Province" {...field} value={field.value || ''} className="h-9 text-sm" /></FormControl> <FormMessage className="text-xs" /> </FormItem>
+                                <FormItem className="space-y-1"> <FormLabel className="text-xs sr-only">State/Province</FormLabel> <FormControl><Input placeholder="State/Province" {...field} value={field.value || ''} className="h-9 text-sm bg-card border-border" /></FormControl> <FormMessage className="text-xs" /> </FormItem>
                             )} />
                              <FormField control={form.control} name="physicalAddress.country" render={({ field }) => (
-                                <FormItem className="space-y-1"> <FormLabel className="text-xs sr-only">Country</FormLabel> <FormControl><Input placeholder="Country" {...field} value={field.value || ''} className="h-9 text-sm" /></FormControl> <FormMessage className="text-xs" /> </FormItem>
+                                <FormItem className="space-y-1"> <FormLabel className="text-xs sr-only">Country</FormLabel> <FormControl><Input placeholder="Country" {...field} value={field.value || ''} className="h-9 text-sm bg-card border-border" /></FormControl> <FormMessage className="text-xs" /> </FormItem>
                             )} />
                         </div>
                     </div>
@@ -1004,20 +994,20 @@ export default function OnboardingPage() {
                     <div className="space-y-3">
                       <FormField control={form.control} name="allergies"
                         render={({ field }) => (
-                          <MultiSelectCombobox label="Allergies (Optional)" options={commonAllergies} selected={field.value || []} onChange={field.onChange} placeholder="Select or add allergies..." disabled={isSubmitting} />
+                          <MultiSelectCombobox label="🚫 Allergies (Optional)" options={commonAllergies} selected={field.value || []} onChange={field.onChange} placeholder="Select or add allergies..." disabled={isSubmitting} />
                         )} />
                       <FormField control={form.control} name="dietaryRestrictions"
                         render={({ field }) => (
-                          <MultiSelectCombobox label="Dietary Restrictions (Optional)" options={commonDietaryRestrictions} selected={field.value || []} onChange={field.onChange} placeholder="Select or add restrictions..." disabled={isSubmitting} />
+                          <MultiSelectCombobox label="🥗 Dietary Restrictions (Optional)" options={commonDietaryRestrictions} selected={field.value || []} onChange={field.onChange} placeholder="Select or add restrictions..." disabled={isSubmitting} />
                         )} />
                       <FormField control={form.control} name="favoriteCuisines"
                         render={({ field }) => (
-                          <MultiSelectCombobox label="Favorite Cuisines (Optional)" options={commonFavoriteCuisines} selected={field.value || []} onChange={field.onChange} placeholder="Select or add cuisines..." disabled={isSubmitting} />
+                          <MultiSelectCombobox label="🍜 Favorite Cuisines (Optional)" options={commonFavoriteCuisines} selected={field.value || []} onChange={field.onChange} placeholder="Select or add cuisines..." disabled={isSubmitting} />
                         )} />
                       <FormField control={form.control} name="generalPreferences" render={({ field }) => (
                         <FormItem className="space-y-1">
-                          <FormLabel className="text-xs">Other Food Notes/Preferences (Optional)</FormLabel>
-                          <FormControl><Textarea placeholder="e.g., Love spicy food, dislike olives, prefer organic" {...field} value={field.value ?? ''} className="min-h-[64px] text-sm" disabled={isSubmitting} /></FormControl>
+                          <FormLabel className="text-xs">📋 Other Food Notes/Preferences (Optional)</FormLabel>
+                          <FormControl><Textarea placeholder="e.g., Love spicy food, dislike olives, prefer organic" {...field} value={field.value ?? ''} className="min-h-[64px] text-sm bg-card border-border" disabled={isSubmitting} /></FormControl>
                           <FormMessage className="text-xs" />
                         </FormItem>
                       )} />
@@ -1028,31 +1018,31 @@ export default function OnboardingPage() {
                     <div className="space-y-3">
                       <FormField control={form.control} name="physicalLimitations"
                         render={({ field }) => (
-                          <MultiSelectCombobox label="Physical Limitations (Optional)" options={commonPhysicalLimitations} selected={field.value || []} onChange={field.onChange} placeholder="Select or add limitations..." disabled={isSubmitting} />
+                          <MultiSelectCombobox label="⚠️ Physical Limitations (Optional)" options={commonPhysicalLimitations} selected={field.value || []} onChange={field.onChange} placeholder="Select or add limitations..." disabled={isSubmitting} />
                         )} />
                       <FormField control={form.control} name="activityTypePreferences"
                         render={({ field }) => (
-                          <MultiSelectCombobox label="Preferred Activity Types (Optional)" options={commonActivityTypes} selected={field.value || []} onChange={field.onChange} placeholder="Select or add preferences..." disabled={isSubmitting} />
+                          <MultiSelectCombobox label="❤️ Preferred Activity Types (Optional)" options={commonActivityTypes} selected={field.value || []} onChange={field.onChange} placeholder="Select or add preferences..." disabled={isSubmitting} />
                         )} />
                       <FormField control={form.control} name="activityTypeDislikes"
                         render={({ field }) => (
-                          <MultiSelectCombobox label="Disliked Activity Types (Optional)" options={commonActivityTypes} selected={field.value || []} onChange={field.onChange} placeholder="Select or add dislikes..." disabled={isSubmitting} />
+                          <MultiSelectCombobox label="❌ Disliked Activity Types (Optional)" options={commonActivityTypes} selected={field.value || []} onChange={field.onChange} placeholder="Select or add dislikes..." disabled={isSubmitting} />
                         )} />
                       <FormField control={form.control} name="environmentalSensitivities"
                         render={({ field }) => (
-                          <MultiSelectCombobox label="Environmental Sensitivities (Optional)" options={commonEnvironmentalSensitivities} selected={field.value || []} onChange={field.onChange} placeholder="Select or add sensitivities..." disabled={isSubmitting} />
+                          <MultiSelectCombobox label="🌿 Environmental Sensitivities (Optional)" options={commonEnvironmentalSensitivities} selected={field.value || []} onChange={field.onChange} placeholder="Select or add sensitivities..." disabled={isSubmitting} />
                         )} />
                       <FormField control={form.control} name="travelTolerance" render={({ field }) => (
                         <FormItem className="space-y-1">
-                          <FormLabel className="text-xs">Travel Tolerance (Optional)</FormLabel>
-                          <FormControl><Input placeholder="e.g., Up to 1 hour, prefer local" {...field} value={field.value || ''} className="h-9 text-sm" disabled={isSubmitting} /></FormControl>
+                          <FormLabel className="text-xs">🚗 Travel Tolerance (Optional)</FormLabel>
+                          <FormControl><Input placeholder="e.g., Up to 1 hour, prefer local" {...field} value={field.value || ''} className="h-9 text-sm bg-card border-border" disabled={isSubmitting} /></FormControl>
                           <FormMessage className="text-xs" />
                         </FormItem>
                       )} />
                       <FormField control={form.control} name="budgetFlexibilityNotes" render={({ field }) => (
                         <FormItem className="space-y-1">
-                          <FormLabel className="text-xs">Budget Notes (Optional)</FormLabel>
-                          <FormControl><Textarea placeholder="e.g., Prefer free/cheap, splurge for special occasions" {...field} value={field.value ?? ''} className="min-h-[64px] text-sm" disabled={isSubmitting} /></FormControl>
+                          <FormLabel className="text-xs">💰 Budget Notes (Optional)</FormLabel>
+                          <FormControl><Textarea placeholder="e.g., Prefer free/cheap, splurge for special occasions" {...field} value={field.value ?? ''} className="min-h-[64px] text-sm bg-card border-border" disabled={isSubmitting} /></FormControl>
                           <FormMessage className="text-xs" />
                         </FormItem>
                       )} />
@@ -1066,7 +1056,7 @@ export default function OnboardingPage() {
                         name="socialPreferences.preferredGroupSize"
                         render={({ field }) => (
                           <SingleSelectCombobox
-                            label="Preferred Group Size (Optional)"
+                            label="👥 Preferred Group Size (Optional)"
                             options={preferredGroupSizeOptions}
                             value={field.value}
                             onChange={field.onChange}
@@ -1080,7 +1070,7 @@ export default function OnboardingPage() {
                         name="socialPreferences.interactionLevel"
                         render={({ field }) => (
                           <SingleSelectCombobox
-                            label="Preferred Interaction Level (Optional)"
+                            label="🤝 Preferred Interaction Level (Optional)"
                             options={preferredInteractionLevelOptions}
                             value={field.value}
                             onChange={field.onChange}
@@ -1091,55 +1081,73 @@ export default function OnboardingPage() {
                       />
                       <FormField control={form.control} name="availabilityNotes" render={({ field }) => (
                         <FormItem className="space-y-1">
-                          <FormLabel className="text-xs">General Availability Notes (Optional)</FormLabel>
-                          <FormControl><Textarea placeholder="e.g., Usually free on weekends, prefer evenings" {...field} value={field.value ?? ''} className="min-h-[64px] text-sm" disabled={isSubmitting} /></FormControl>
+                          <FormLabel className="text-xs">📅 General Availability Notes (Optional)</FormLabel>
+                          <FormControl><Textarea placeholder="e.g., Usually free on weekends, prefer evenings" {...field} value={field.value ?? ''} className="min-h-[64px] text-sm bg-card border-border" disabled={isSubmitting} /></FormControl>
                           <FormMessage className="text-xs" />
                         </FormItem>
                       )} />
                     </div>
                   )}
-                  
-                  <Separator className="bg-border/30 mt-6 mb-4" />
-
-                  <div className="flex justify-between items-center pt-2">
+                  </form>
+                </Form>
+              </div>
+              
+              <Separator className="bg-border/30" />
+              
+              <div className="p-4 pt-3">
+                <div className="flex justify-between items-center">
+                  {currentStep === 1 ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={signOut}
+                      disabled={isSubmitting}
+                      className="transition-all duration-150 ease-in-out hover:scale-105 hover:shadow-lg active:scale-95 active:shadow-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      aria-label="Log out"
+                      size="sm"
+                    >
+                      <LogOut className="h-4 w-4" /> <span className="hidden sm:inline ml-1.5">Log Out</span>
+                    </Button>
+                  ) : (
                     <Button
                       type="button"
                       variant="ghost"
                       onClick={handlePrevious}
-                      disabled={isSubmitting || currentStep === 1}
-                      className={cn('transition-all duration-150 ease-in-out hover:scale-105 hover:shadow-lg active:scale-95 active:shadow-sm text-muted-foreground hover:text-primary', currentStep === 1 && "opacity-0 pointer-events-none")}
+                      disabled={isSubmitting}
+                      className="transition-all duration-150 ease-in-out hover:scale-105 hover:shadow-lg active:scale-95 active:shadow-sm text-muted-foreground hover:text-primary"
                       aria-label="Previous step"
                       size="sm"
                     >
                       <ArrowLeft className="h-4 w-4" /> <span className="hidden sm:inline ml-1.5">Previous</span>
                     </Button>
+                  )}
 
-                    {currentStep < steps.length && (
-                      <Button
-                        type="button"
-                        onClick={handleNext}
-                        disabled={isSubmitting}
-                        className='transition-all duration-150 ease-in-out hover:scale-105 hover:shadow-lg active:scale-95 active:shadow-sm'
-                        aria-label="Next step"
-                        size="sm"
-                      >
-                        <span className="hidden sm:inline mr-1.5">Next</span> <ArrowRight className="h-4 w-4" />
-                      </Button>
-                    )}
-                    {currentStep === steps.length && (
-                      <Button
-                        type="submit"
-                        className="w-full md:w-auto ml-auto transition-all duration-150 ease-in-out hover:scale-105 hover:shadow-lg active:scale-95 active:shadow-sm"
-                        disabled={isSubmitting || authLoading}
-                        size="sm"
-                      >
-                        {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                        {currentUserProfile ? 'Save Profile' : 'Complete Profile & Start Planning!'}
-                      </Button>
-                    )}
-                  </div>
-                </form>
-              </Form>
+                  {currentStep < steps.length && (
+                    <Button
+                      type="button"
+                      onClick={handleNext}
+                      disabled={isSubmitting}
+                      className='transition-all duration-150 ease-in-out hover:scale-105 hover:shadow-lg active:scale-95 active:shadow-sm'
+                      aria-label="Next step"
+                      size="sm"
+                    >
+                      <span className="hidden sm:inline mr-1.5">Next</span> <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {currentStep === steps.length && (
+                    <Button
+                      type="submit"
+                      className="w-full md:w-auto ml-auto transition-all duration-150 ease-in-out hover:scale-105 hover:shadow-lg active:scale-95 active:shadow-sm"
+                      disabled={isSubmitting || authLoading}
+                      size="sm"
+                      onClick={form.handleSubmit(onSubmit)}
+                    >
+                      {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                      {currentUserProfile ? 'Save Profile' : 'Complete Profile & Start Planning!'}
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>

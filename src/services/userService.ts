@@ -10,7 +10,8 @@ import {
   orderBy,
   where,
   documentId,
-  onSnapshot, 
+  onSnapshot,
+  updateDoc,
   type Unsubscribe, 
   type DocumentData,
   type QueryDocumentSnapshot,
@@ -242,4 +243,114 @@ export const getFriendships = (
   });
 
   return unsubscribe;
+};
+
+// Save a plan to user's saved plans
+export const savePlanToUser = async (userId: string, planId: string): Promise<boolean> => {
+  if (!db) {
+    console.warn("[userService.ts client] Firestore (db) is not initialized for savePlanToUser.");
+    return false;
+  }
+  if (!userId || !planId) {
+    console.warn("[userService.ts client] savePlanToUser called with missing userId or planId.");
+    return false;
+  }
+
+  try {
+    const userDocRef = doc(db, USER_COLLECTION, userId);
+    const userDoc = await getDoc(userDocRef);
+    
+    if (!userDoc.exists()) {
+      console.warn(`[userService.ts client] User document not found for UID: ${userId}`);
+      return false;
+    }
+
+    const userData = userDoc.data();
+    const currentSavedPlans = userData.savedPlans || [];
+    
+    // Check if plan is already saved
+    if (currentSavedPlans.includes(planId)) {
+      console.log(`[userService.ts client] Plan ${planId} already saved for user ${userId}`);
+      return true; // Already saved, consider it successful
+    }
+
+    // Add the plan to saved plans
+    const updatedSavedPlans = [...currentSavedPlans, planId];
+    await updateDoc(userDocRef, {
+      savedPlans: updatedSavedPlans,
+      updatedAt: new Date().toISOString()
+    });
+
+    console.log(`[userService.ts client] Successfully saved plan ${planId} for user ${userId}`);
+    return true;
+  } catch (error) {
+    console.error('[userService.ts client] Error saving plan to user:', error);
+    return false;
+  }
+};
+
+// Remove a plan from user's saved plans
+export const removeSavedPlan = async (userId: string, planId: string): Promise<boolean> => {
+  if (!db) {
+    console.warn("[userService.ts client] Firestore (db) is not initialized for removeSavedPlan.");
+    return false;
+  }
+  if (!userId || !planId) {
+    console.warn("[userService.ts client] removeSavedPlan called with missing userId or planId.");
+    return false;
+  }
+
+  try {
+    const userDocRef = doc(db, USER_COLLECTION, userId);
+    const userDoc = await getDoc(userDocRef);
+    
+    if (!userDoc.exists()) {
+      console.warn(`[userService.ts client] User document not found for UID: ${userId}`);
+      return false;
+    }
+
+    const userData = userDoc.data();
+    const currentSavedPlans = userData.savedPlans || [];
+    
+    // Remove the plan from saved plans
+    const updatedSavedPlans = currentSavedPlans.filter((id: string) => id !== planId);
+    await updateDoc(userDocRef, {
+      savedPlans: updatedSavedPlans,
+      updatedAt: new Date().toISOString()
+    });
+
+    console.log(`[userService.ts client] Successfully removed saved plan ${planId} for user ${userId}`);
+    return true;
+  } catch (error) {
+    console.error('[userService.ts client] Error removing saved plan:', error);
+    return false;
+  }
+};
+
+// Get user's saved plans
+export const getUserSavedPlans = async (userId: string): Promise<string[]> => {
+  if (!db) {
+    console.warn("[userService.ts client] Firestore (db) is not initialized for getUserSavedPlans.");
+    return [];
+  }
+  if (!userId) {
+    console.warn("[userService.ts client] getUserSavedPlans called with no userId.");
+    return [];
+  }
+
+  try {
+    const userDocRef = doc(db, USER_COLLECTION, userId);
+    const userDoc = await getDoc(userDocRef);
+    
+    if (!userDoc.exists()) {
+      console.warn(`[userService.ts client] User document not found for UID: ${userId}`);
+      return [];
+    }
+
+    const userData = userDoc.data();
+    return userData.savedPlans || [];
+  } catch (error) {
+    console.error('[userService.ts client] Error getting user saved plans:', error);
+    return [];
+  }
 };

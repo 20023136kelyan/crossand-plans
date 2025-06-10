@@ -119,9 +119,10 @@ export default function CategoryPlansPage() {
     }
   }, [categoryName, toast]);
 
-  // Extract event dates from plans
+  // Extract event dates from plans (exclude template plans)
   const eventDates = useMemo(() => {
     return plans
+      .filter(plan => !plan.isTemplate) // Exclude template plans from calendar
       .map(plan => plan.eventTime ? parseISO(plan.eventTime) : null)
       .filter((date): date is Date => date !== null && isValid(date));
   }, [plans]);
@@ -148,11 +149,11 @@ export default function CategoryPlansPage() {
     );
   }, [eventDates, selectedDate]);
 
-  // Filter plans for calendar view
+  // Filter plans for calendar view (exclude template plans)
   const plansForSelectedDate = useMemo(() => {
     if (!selectedDate) return [];
     return plans.filter(plan => {
-      if (!plan.eventTime) return false;
+      if (plan.isTemplate || !plan.eventTime) return false;
       const planDate = parseISO(plan.eventTime);
       return isValid(planDate) && isSameDay(planDate, selectedDate);
     });

@@ -43,18 +43,21 @@ import { useAuth } from '@/context/AuthContext';
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'; // Added useMemo
 import { getFriendships } from '@/services/userService';
 import { getUserCompletedPlans, getPendingPlanSharesForUser, getPendingPlanInvitationsCount } from '@/services/planService';
+import { getUserChats } from '@/services/chatService';
 import type { Chat, Plan, UserProfile, AppTimestamp, FeedPostVisibility, FeedPost, UserRoleType } from '@/types/user';
 import { isValid, parseISO } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { addPhotoHighlightAction } from '@/app/actions/planActions';
+import { UpcomingPlansCalendar } from '@/components/plans/UpcomingPlansCalendar';
+import { PlanSummaryCards } from '@/components/plans/PlanSummaryCards';
 import { createFeedPostAction } from '@/app/actions/feedActions';
 import { cn, commonImageExtensions } from '@/lib/utils';
 import ReactCrop, { type Crop, type PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import Link from 'next/link';
 import {
-  Loader2, PlusCircle, Share2, Globe, Lock as LockIcon, Edit3, Sparkles, X as XIcon, UploadCloud,
-  MessageSquare, User as UserIcon, Search, LayoutGrid, LayoutList, Wallet as WalletIcon, ChevronLeft, ImageIcon, ImagePlus, ArrowRight, ArrowLeft as BackArrowIcon, Check, ChevronsUpDown
+  Loader2, PlusCircle, Share2, Globe, Lock as LockIcon, Edit3, Camera, Sparkles, X as XIcon, UploadCloud,
+  MessageSquare, User as UserIcon, Search, LayoutGrid, LayoutList, Wallet as WalletIcon, ChevronLeft, ImageIcon, ImagePlus, ArrowRight, ArrowLeft as BackArrowIcon, Check, ChevronsUpDown, Settings, LogOut
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useIsMobile } from '@/hooks/use-is-mobile';
@@ -129,11 +132,21 @@ export default function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading: authLoading, currentUserProfile, profileExists, refreshProfileStatus, acknowledgeNewUserWelcome, isNewUserJustSignedUp } = useAuth();
+  const { user, loading: authLoading, currentUserProfile, profileExists, refreshProfileStatus, acknowledgeNewUserWelcome, isNewUserJustSignedUp, signOut } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  
+  // Prevent hydration mismatch by ensuring client-side rendering
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+  
+  // Use stable values during SSR/hydration to prevent layout flash
+  // Always return false during SSR and initial client render to ensure sidebar shows consistently
+  const stableIsMobile = isClient && isMobile;
 
   const [plansNotificationCount, setPlansNotificationCount] = useState(0);
   const [messagesNotificationCount, setMessagesNotificationCount] = useState(0);
@@ -178,8 +191,8 @@ export default function AppLayout({
           updatePlansTotal();
         }, (error) => console.error(`${logPrefix} Error fetching plan invites:`, error));
     }
-    if (typeof (window as any).getUserChats === 'function') { 
-        unsubChats = (window as any).getUserChats(currentUserId, (fetchedChats: Chat[]) => {
+    if (typeof getUserChats === 'function') {
+        unsubChats = getUserChats(currentUserId, (fetchedChats: Chat[]) => {
           let unreadCount = 0;
           fetchedChats.forEach((chat) => {
             if (!chat.lastMessageTimestamp || !chat.lastMessageSenderId || chat.lastMessageSenderId === currentUserId) return;
@@ -219,24 +232,21 @@ export default function AppLayout({
     const isPublicDynamicRoute = pathname.startsWith('/p/') || pathname.startsWith('/u/'); 
     if (profileExists === null && user) return;
     if (user) { 
-      if (profileExists === false && !isOnboardingRelated) router.push('/onboarding');
+      // Prevent immediate redirection for newly signed up users to allow email verification prompt
+      if (profileExists === false && !isOnboardingRelated && !isNewUserJustSignedUp) router.push('/onboarding');
       else if (profileExists === true && (isOnboardingRelated || publicPaths.includes(pathname))) router.push('/feed');
     } else { 
-      if (!isPublicDynamicRoute && !publicPaths.includes(pathname) && !isOnboardingRelated) router.push('/login');
+      if (!isPublicDynamicRoute && !publicPaths.includes(pathname)) router.push('/login');
     }
-  }, [user, authLoading, profileExists, router, pathname]);
+  }, [user, authLoading, profileExists, router, pathname, isNewUserJustSignedUp]);
 
   const [pageAnimationClass, setPageAnimationClass] = useState('');
   const previousPathnameRef = useRef(pathname);
   useEffect(() => {
     const currentPath = pathname; const prevPath = previousPathnameRef.current;
     if (currentPath !== prevPath) {
-      const mainTabs = ['/feed', '/explore']; const prevIndex = mainTabs.indexOf(prevPath); const currentIndex = mainTabs.indexOf(currentPath);
-      if (prevIndex !== -1 && currentIndex !== -1) {
-        if (currentIndex > prevIndex) setPageAnimationClass('animate-slide-in-from-right');
-        else if (currentIndex < prevIndex) setPageAnimationClass('animate-slide-in-from-left');
-        else setPageAnimationClass('');
-      } else setPageAnimationClass('animate-fade-in'); 
+      // Simple fade-in animation for page transitions
+      setPageAnimationClass('animate-fade-in'); 
       const timer = setTimeout(() => setPageAnimationClass(''), 500);
       previousPathnameRef.current = currentPath;
       return () => clearTimeout(timer);
@@ -444,15 +454,10 @@ export default function AppLayout({
       else if (currentScrollY < lastScrollY && !isPageTabsVisible) setIsPageTabsVisible(true);
       setLastScrollY(currentScrollY <= 0 ? 0 : currentScrollY);
     };
-    if (pathname === '/feed' || pathname === '/explore') window.addEventListener('scroll', handleScroll, { passive: true });
+    if (pathname === '/feed') window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, [lastScrollY, isPageTabsVisible, scrollThreshold, pathname]);
-  const activePageTab = pathname === '/feed' ? '/feed' : (pathname === '/explore' ? '/explore' : '/feed');
-  const handlePageTabChange = (value: string) => {
-    if (value === '/feed' && pathname !== '/feed') router.push('/feed');
-    else if (value === '/explore' && pathname !== '/explore') router.push('/explore');
-  };
-  const showPageTabs = pathname === '/feed' || pathname === '/explore';
+  // Removed page tabs logic for explore/for you switch
 
   const filteredCompletedPlans = useMemo(() => {
     if (!planSearchTerm) return userCompletedPlans;
@@ -468,36 +473,107 @@ export default function AppLayout({
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="flex">
-        {!isMobile && user && currentUserProfile && (
-           <SidebarProvider>
-            <Sidebar plansNotificationCount={plansNotificationCount} profileNotificationCount={profileNotificationCount} handleOpenCreatePostDialog={handleOpenCreatePostDialog} />
-          </SidebarProvider>
-        )}
-        <div className={cn("flex-1 min-h-screen", !isMobile && "md:pl-[240px] lg:pl-[256px]")}>
-          <Header messagesNotificationCount={messagesNotificationCount} />
-          {showPageTabs && (
-            <div className={cn("sticky top-16 z-20 flex justify-center items-center transition-all duration-300 ease-in-out h-12 border-b border-border/30 bg-background/90 backdrop-blur-sm", isPageTabsVisible ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0 pointer-events-none")}>
-              <Tabs value={activePageTab} onValueChange={handlePageTabChange} className="w-full max-w-xs sm:max-w-sm"><TabsList className={cn("grid grid-cols-2 p-0.5 rounded-lg h-8 sm:h-9 w-full bg-card/70 shadow-md")}>
-                  <TabsTrigger value="/feed" className="text-xs sm:text-sm data-[state=active]:bg-primary/20 data-[state=active]:text-primary data-[state=active]:shadow-sm rounded h-full px-3 py-1.5 transition-colors duration-150">For You</TabsTrigger>
-                  <TabsTrigger value="/explore" className="text-xs sm:text-sm data-[state=active]:bg-primary/20 data-[state=active]:text-primary data-[state=active]:shadow-sm rounded h-full px-3 py-1.5 transition-colors duration-150">Explore</TabsTrigger>
-              </TabsList></Tabs>
+      {/* Global Header - Only show on feed and explore pages on mobile */}
+      {(stableIsMobile ? (pathname === '/feed' || pathname === '/explore') : true) && (
+        <Header messagesNotificationCount={messagesNotificationCount} />
+      )}
+      
+      {/* Three-column layout */}
+      <div className={`flex ${(stableIsMobile ? (pathname === '/feed' || pathname === '/explore') : true) ? 'pt-8' : 'pt-0'}`}>
+        {/* Left Sidebar */}
+        {!stableIsMobile && user && currentUserProfile && (
+          <div className={`fixed left-4 w-[200px] lg:w-[220px] xl:w-[240px] 2xl:w-[260px] z-30 space-y-3 ${(stableIsMobile ? (pathname === '/feed' || pathname === '/explore') : true) ? 'top-20' : 'top-4'}`}>
+            {/* Main Navigation */}
+            <div className="bg-card/50 backdrop-blur-sm rounded-xl border border-border/50 p-4 h-fit">
+              <Sidebar plansNotificationCount={plansNotificationCount} profileNotificationCount={profileNotificationCount} handleOpenCreatePostDialog={handleOpenCreatePostDialog} />
             </div>
-          )}
-          <main className={cn("flex-1 mx-auto w-full", useFullWidthLayout ? "h-full" : (hideBottomNav ? "py-6" : "py-6 mb-16 md:mb-0"), !useFullWidthLayout && "max-w-5xl px-4 sm:px-6 lg:px-8", pageAnimationClass )}>
-            {children}
-          </main>
-        </div>
+            
+            {/* Quick Settings */}
+            <div className="bg-card/50 backdrop-blur-sm rounded-xl border border-border/50 p-3">
+              <h3 className="text-xs font-medium text-muted-foreground mb-2">Quick Settings</h3>
+              <div className="space-y-1">
+                <Link href="/users/settings" className="w-full flex items-center justify-start text-xs h-8 px-2 rounded-lg hover:bg-accent/50 transition-colors">
+                  <Settings className="mr-2 h-3 w-3" />
+                  Settings
+                </Link>
+                <button 
+                  onClick={async () => {
+                    try {
+                      await signOut();
+                    } catch (error) {
+                      console.error('Logout error:', error);
+                    }
+                  }}
+                  className="w-full flex items-center justify-start text-xs h-8 px-2 rounded-lg hover:bg-destructive/10 text-destructive transition-colors"
+                >
+                  <LogOut className="mr-2 h-3 w-3" />
+                  Log Out
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Main Content */}
+        <main className={cn(
+          "flex-1 min-h-[calc(100vh-4rem)]",
+          !stableIsMobile && user && currentUserProfile 
+            ? pathname.startsWith('/admin') 
+              ? "ml-[220px] lg:ml-[240px] xl:ml-[260px] 2xl:ml-[280px]" 
+              : "ml-[220px] lg:ml-[240px] xl:ml-[260px] 2xl:ml-[280px] mr-[280px]"
+            : "max-w-full"
+        )}>          <div className={pathname.startsWith('/admin') ? "w-full" : "max-w-[600px] mx-auto"}>
+          {/* Removed explore/for you switch tabs */}
+          <div className={cn(
+            "w-full", 
+            useFullWidthLayout ? "h-full" : (hideBottomNav ? "py-1" : "py-1 mb-16 md:mb-0"), 
+            !useFullWidthLayout && (!stableIsMobile && user && currentUserProfile ? (pathname.startsWith('/admin') ? "px-6" : "px-4 sm:px-6") : "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16"), 
+            pageAnimationClass
+          )}>
+              {children}
+            </div>
+          </div>
+        </main>
+        
+        {/* Right Sidebar - Quick Actions and Plans */}
+        {!stableIsMobile && user && currentUserProfile && !pathname.startsWith('/admin') && (
+          <div className="fixed right-4 top-20 w-64 z-30 space-y-4">
+            {/* Quick Actions Card */}
+            <div className="p-3 shadow-xl rounded-xl border-border/50 bg-card/95 backdrop-blur-sm">
+              <div className="px-1 py-1 mb-2">
+                <h3 className="text-sm font-medium text-muted-foreground">Quick Actions</h3>
+              </div>
+              <div className="grid gap-1.5">
+                <Button variant="ghost" className="w-full justify-start text-sm h-10" asChild>
+                  <Link href="/plans/generate"><Sparkles className="mr-2 h-4 w-4" /> New Plan (AI)</Link>
+                </Button>
+                <Button variant="ghost" className="w-full justify-start text-sm h-10" onClick={handleOpenCreatePostDialog}>
+                  <Camera className="mr-2 h-4 w-4" /> New Post
+                </Button>
+              </div>
+            </div>
+            
+            {/* Calendar Card */}
+            <div className="shadow-xl rounded-xl border-border/50 bg-card/95 backdrop-blur-sm">
+              <UpcomingPlansCalendar />
+            </div>
+            
+            {/* Plan Summary Cards */}
+            <div className="shadow-xl rounded-xl border-border/50 bg-card/95 backdrop-blur-sm">
+              <PlanSummaryCards />
+            </div>
+          </div>
+        )}
       </div>
-      {isMobile && !hideBottomNav && user && (
+      {stableIsMobile && !hideBottomNav && user && (
         <BottomNav plansNotificationCount={plansNotificationCount} profileNotificationCount={profileNotificationCount} openQuickAddMenu={() => setIsQuickAddOpen(true)} handleOpenCreatePostDialog={handleOpenCreatePostDialog} />
       )}
       <Popover open={isQuickAddOpen} onOpenChange={setIsQuickAddOpen}>
         <PopoverTrigger asChild><div /></PopoverTrigger>
-        <PopoverContent side={isMobile ? "top" : "right"} align={isMobile ? "center" : "start"} className={cn("w-56 p-2 shadow-xl rounded-xl border-border/50 bg-card/95 backdrop-blur-sm", isMobile ? "mb-2 fixed bottom-16 left-1/2 -translate-x-1/2" : "ml-2")} onOpenAutoFocus={(e) => e.preventDefault()}>
+        <PopoverContent side={stableIsMobile ? "top" : "right"} align={stableIsMobile ? "center" : "start"} className={cn("w-56 p-2 shadow-xl rounded-xl border-border/50 bg-card/95 backdrop-blur-sm", stableIsMobile ? "mb-2 fixed bottom-16 left-1/2 -translate-x-1/2" : "ml-2")} onOpenAutoFocus={(e) => e.preventDefault()}>
           <div className="grid gap-1">
             <Button variant="ghost" className="w-full justify-start text-sm h-9" asChild onClick={() => setIsQuickAddOpen(false)}><Link href="/plans/generate"><Sparkles className="mr-2 h-4 w-4" /> New Plan (AI)</Link></Button>
-            <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() =>{handleOpenCreatePostDialog(); setIsQuickAddOpen(false); }}><Edit3 className="mr-2 h-4 w-4" /> New Post</Button>
+            <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() =>{handleOpenCreatePostDialog(); setIsQuickAddOpen(false); }}><Camera className="mr-2 h-4 w-4" /> New Post</Button>
           </div>
         </PopoverContent>
       </Popover>
@@ -506,6 +582,9 @@ export default function AppLayout({
         <DialogContent className="sm:max-w-md rounded-xl bg-card/90 backdrop-blur-sm shadow-2xl p-0 border-transparent flex flex-col max-h-[90vh] sm:max-h-[85vh]">
           <DialogHeader className="text-left p-4 border-b border-border/30 space-y-1.5">
             <DialogTitle className="text-lg font-semibold text-foreground">{dialogTitle}</DialogTitle>
+            <DialogDescriptionComponent className="text-sm text-muted-foreground">
+              {currentPostCreationStep === 1 ? "Choose a plan to create a highlight post from your completed activities." : "Add details and customize your highlight post before sharing."}
+            </DialogDescriptionComponent>
             <div className="flex items-center space-x-1 h-1.5">
               <div className={cn("h-full rounded-full flex-1 transition-colors", currentPostCreationStep >= 1 ? "bg-primary" : "bg-muted")}></div>
               <div className={cn("h-full rounded-full flex-1 transition-colors", currentPostCreationStep >= 2 ? "bg-primary" : "bg-muted")}></div>

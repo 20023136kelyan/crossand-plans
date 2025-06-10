@@ -13,14 +13,11 @@ import { z } from 'zod';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
+import { useSettings } from '@/context/SettingsContext';
 import { useRouter } from 'next/navigation'; // Removed useSearchParams as it's not used here
 
-const MacaronLogo = ({ className }: { className?: string }) => (
-  <svg viewBox="0 0 64 64" className={className} fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-    <path d="M52,22.04C52,14.29,43.71,8,34,8H30C20.29,8,12,14.29,12,22.04a2.5,2.5,0,0,0,0,.27C12,25.25,16.42,30,26,30h12C47.58,30,52,25.25,52,22.31A2.5,2.5,0,0,0,52,22.04Z" />
-    <rect x="10" y="30" width="44" height="4" rx="2" ry="2" />
-    <path d="M52,41.96C52,49.71,43.71,56,34,56H30C20.29,56,12,49.71,12,41.96a2.5,2.5,0,0,1,0-.27C12,38.75,16.42,34,26,34h12C47.58,34,52,38.75,52,41.69A2.5,2.5,0,0,1,52,41.96Z" />
-  </svg>
+const CrossandLogo = ({ className }: { className?: string }) => (
+  <img src="/images/crossand-logo.svg" alt="Crossand Logo" className={className} />
 );
 
 const GoogleIcon = () => (
@@ -53,7 +50,10 @@ export function LoginForm() {
 
   const { toast } = useToast();
   const { signInWithEmail, signInWithGoogle, sendPasswordReset } = useAuth();
+  const { settings } = useSettings();
   const router = useRouter();
+  
+  const siteName = settings?.siteName || 'Macaroom';
 
   const loginForm = useForm<LoginFormValues>({
     resolver: zodResolver(loginFormSchema),
@@ -154,38 +154,45 @@ export function LoginForm() {
 
 
   return (
-    <Card className="w-full max-w-md shadow-xl bg-card/90 border-border/50">
-      <CardHeader className="text-center space-y-2">
+    <Card className="w-full max-w-sm shadow-lg bg-gray-900/30 backdrop-blur-md border-gray-700/40 overflow-hidden rounded-2xl">
+      <CardHeader className="text-center space-y-3 pb-4">
         <div className="flex flex-col items-center">
-          <Link href="/" className="flex items-center gap-2 mb-1">
-            <MacaronLogo className="h-10 w-10 text-primary" />
-            <span className="text-3xl font-bold text-primary">Macaroom</span>
+          <Link href="/" className="flex items-center gap-2 mb-2">
+            <CrossandLogo className="h-8 w-8" />
+            <span className="text-2xl font-bold text-gradient-primary font-redressed">Crossand</span>
           </Link>
         </div>
-        <CardTitle className="text-xl font-bold text-primary opacity-80">
-          {showPasswordResetForm ? 'Reset Your Password' : 'Welcome Back!'}
-        </CardTitle>
-        <CardDescription className="text-sm text-muted-foreground">
-          {showPasswordResetForm 
-            ? 'Enter your email to receive a password reset link.' 
-            : 'Log in to continue to Macaroom.'}
-        </CardDescription>
+        <div className="space-y-1">
+          <CardTitle className="text-lg font-semibold text-foreground">
+            {showPasswordResetForm ? 'Reset Password' : 'Welcome Back'}
+          </CardTitle>
+          <CardDescription className="text-xs text-muted-foreground">
+            {showPasswordResetForm 
+              ? 'Enter your email to receive a reset link' 
+              : `Sign in to your ${siteName} account`}
+          </CardDescription>
+        </div>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-4 px-6 pb-4">
         {!showPasswordResetForm ? (
           <>
             <Form {...loginForm}>
-              <form onSubmit={loginForm.handleSubmit(onEmailLoginSubmit)} className="space-y-4">
+              <form onSubmit={loginForm.handleSubmit(onEmailLoginSubmit)} className="space-y-3">
                 <FormField
                   control={loginForm.control}
                   name="email"
                   render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email</FormLabel>
+                    <FormItem className="space-y-1">
                       <FormControl>
-                        <Input type="email" placeholder="you@example.com" {...field} autoComplete="email" />
+                        <Input 
+                          type="email" 
+                          placeholder="Email" 
+                          {...field} 
+                          autoComplete="email"
+                          className="h-10"
+                        />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage className="text-xs" />
                     </FormItem>
                   )}
                 />
@@ -193,102 +200,147 @@ export function LoginForm() {
                   control={loginForm.control}
                   name="password"
                   render={({ field }) => (
-                    <FormItem>
-                      <div className="flex justify-between items-center">
-                        <FormLabel>Password</FormLabel>
+                    <FormItem className="space-y-1">
+                      <div className="flex justify-end items-center mb-1">
                         <Button
                           type="button"
                           variant="link"
-                          className="text-xs text-primary hover:underline p-0 h-auto"
+                          className="text-xs text-primary hover:underline p-0 h-auto font-normal"
                           onClick={() => {
                             setShowPasswordResetForm(true);
-                            loginForm.reset(); // Clear login form fields
+                            loginForm.reset();
                           }}
                         >
-                          Forgot password?
+                          Forgot Password?
                         </Button>
                       </div>
                       <FormControl>
-                        <Input type="password" placeholder="••••••••" {...field} autoComplete="current-password" />
+                        <Input 
+                          type="password" 
+                          placeholder="Password" 
+                          {...field} 
+                          autoComplete="current-password"
+                          className="h-10"
+                        />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage className="text-xs" />
                     </FormItem>
                   )}
                 />
-                <Button type="submit" className="w-full" disabled={isSubmitting || isGoogleSubmitting || isSendingResetEmail}>
+                <Button 
+                  type="submit" 
+                  className="w-full h-10 mt-4 bg-orange-500 hover:bg-orange-600 text-white font-medium" 
+                  disabled={isSubmitting || isGoogleSubmitting || isSendingResetEmail}
+                >
                   {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Login
                 </Button>
               </form>
             </Form>
 
-            <div className="relative my-4">
+            <div className="relative my-3">
               <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-border/50" />
+                <span className="w-full border-t border-border/30" />
               </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">
+              <div className="relative flex justify-center text-xs">
+                <span className="bg-gray-900/30 backdrop-blur-sm px-3 text-muted-foreground font-medium">
                   Or continue with
                 </span>
               </div>
             </div>
 
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={handleGoogleSignIn}
-              disabled={isSubmitting || isGoogleSubmitting || isSendingResetEmail}
-            >
-              {isGoogleSubmitting ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <GoogleIcon />
-              )}
-              Sign in with Google
-            </Button>
+            <div className="grid grid-cols-3 gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-10 border-border/50 hover:bg-secondary/50"
+                onClick={handleGoogleSignIn}
+                disabled={isSubmitting || isGoogleSubmitting || isSendingResetEmail}
+              >
+                {isGoogleSubmitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <svg viewBox="0 0 24 24" className="h-4 w-4">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  </svg>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-10 border-border/50 hover:bg-secondary/50"
+                disabled
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                  <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+                </svg>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-10 border-border/50 hover:bg-secondary/50"
+                disabled
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                </svg>
+              </Button>
+            </div>
           </>
         ) : (
           <Form {...resetForm}>
-            <form onSubmit={resetForm.handleSubmit(onResetPasswordSubmit)} className="space-y-4">
+            <form onSubmit={resetForm.handleSubmit(onResetPasswordSubmit)} className="space-y-3">
               <FormField
                 control={resetForm.control}
                 name="resetEmail"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email Address</FormLabel>
+                  <FormItem className="space-y-1">
                     <FormControl>
-                      <Input type="email" placeholder="Enter your account email" {...field} autoComplete="email" />
+                      <Input 
+                        type="email" 
+                        placeholder="Email Address" 
+                        {...field} 
+                        autoComplete="email"
+                        className="h-10"
+                      />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className="text-xs" />
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full" disabled={isSendingResetEmail || isSubmitting || isGoogleSubmitting}>
+              <Button 
+                type="submit" 
+                className="w-full h-10 mt-4 bg-orange-500 hover:bg-orange-600 text-white font-medium" 
+                disabled={isSendingResetEmail || isSubmitting || isGoogleSubmitting}
+              >
                 {isSendingResetEmail && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Send Reset Email
+                Send Reset Link
               </Button>
             </form>
           </Form>
         )}
       </CardContent>
-      <CardFooter className="justify-center text-sm">
+      <CardFooter className="justify-center text-sm py-4 px-6">
         {showPasswordResetForm ? (
           <Button
             type="button"
             variant="link"
-            className="text-muted-foreground hover:text-primary p-0 h-auto"
+            className="text-muted-foreground hover:text-primary p-0 h-auto text-sm font-normal"
             onClick={() => {
               setShowPasswordResetForm(false);
-              resetForm.reset(); // Clear reset form field
+              resetForm.reset();
             }}
           >
             Back to Login
           </Button>
         ) : (
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Don't have an account?{' '}
-            <Link href="/signup" className="font-medium text-primary hover:underline">
-              Sign up
+            <Link href="/signup" className="font-medium text-orange-500 hover:underline">
+              Sign Up
             </Link>
           </p>
         )}

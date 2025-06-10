@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Table,
   TableBody,
@@ -55,29 +55,16 @@ interface User {
   isVerified: boolean;
 }
 
-const initialUsers: User[] = [
-  {
-    id: '1',
-    name: 'John Doe',
-    email: 'john@example.com',
-    role: 'admin',
-    status: 'active',
-    joinDate: '2024-01-01',
-    lastActive: '2024-03-15',
-    isVerified: true,
-  },
-  {
-    id: '2',
-    name: 'Jane Smith',
-    email: 'jane@example.com',
-    role: 'creator',
-    status: 'active',
-    joinDate: '2024-02-15',
-    lastActive: '2024-03-14',
-    isVerified: true,
-  },
-  // Add more mock users as needed
-];
+interface ApiUser {
+  id: string;
+  email: string;
+  displayName?: string;
+  role?: UserRole;
+  isVerified?: boolean;
+  createdAt?: any;
+  lastLoginAt?: any;
+  disabled?: boolean;
+}
 
 export function AdminUserManagement() {
   const { toast } = useToast();
@@ -85,7 +72,100 @@ export function AdminUserManagement() {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<UserRole | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<UserStatus | 'all'>('all');
-  const [users, setUsers] = useState<User[]>(initialUsers);
+  const [users, setUsers] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    if (!user) return;
+    
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/api/admin/users/list', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch users');
+      }
+      
+      const data = await response.json();
+      const formattedUsers: User[] = data.users.map((apiUser: ApiUser) => ({
+        id: apiUser.id,
+        name: apiUser.displayName || 'Unknown User',
+        email: apiUser.email,
+        role: apiUser.role || 'user',
+        status: apiUser.disabled ? 'suspended' : 'active',
+        joinDate: apiUser.createdAt ? new Date(apiUser.createdAt).toISOString().split('T')[0] : 'Unknown',
+        lastActive: apiUser.lastLoginAt ? new Date(apiUser.lastLoginAt).toISOString().split('T')[0] : 'Never',
+        isVerified: apiUser.isVerified || false
+      }));
+      
+      setUsers(formattedUsers);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch users. Please try again.',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const updateUserRole = async (userId: string, newRole: UserRole, isVerified: boolean) => {
+    if (!user) return;
+    
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch('/api/admin/users/update-role', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          userId,
+          role: newRole,
+          isVerified
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update user role');
+      }
+      
+      // Update local state
+      setUsers(prev => prev.map(u => 
+        u.id === userId 
+          ? { ...u, role: newRole, isVerified }
+          : u
+      ));
+      
+      toast({
+        title: 'Success',
+        description: 'User role updated successfully.'
+      });
+      
+      setIsDialogOpen(false);
+      setSelectedUser(null);
+    } catch (error) {
+      console.error('Error updating user role:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update user role. Please try again.',
+        variant: 'destructive'
+      });
+    }
+  };
 
   const getStatusColor = (status: UserStatus) => {
     switch (status) {
@@ -360,4 +440,4 @@ export function AdminUserManagement() {
       </div>
     </div>
   );
-} 
+}

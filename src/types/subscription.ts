@@ -29,4 +29,6 @@ export interface Subscription {
   priceId: string;
   amount: number;
   currency: string;
-} 
+  customerId?: string;
+  stripeSubscriptionId?: string;
+}

@@ -766,25 +766,37 @@ const handleSaveNotifications = async () => {
       // 2. Processing the payment update
       // 3. Updating the subscription record in Firestore
       
-      // For now, we'll simulate redirecting to a payment page
-      toast({
-        title: "Redirecting",
-        description: "You will be redirected to update your payment method.",
-        variant: "default"
+      // Create payment update session
+      const response = await fetch('/api/payments/update-method', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user.uid,
+          returnUrl: window.location.href
+        })
       });
-      
-      // Simulate a delay before "redirecting"
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // In a real implementation, you would redirect to the payment processor
-      // window.location.href = '/api/payments/update?userId=' + user.uid;
-      
-      // For now, we'll just show a success message
-      toast({
-        title: "Payment Updated",
-        description: "Your payment method has been updated successfully.",
-        variant: "default"
-      });
+
+      if (response.ok) {
+        const { updateUrl } = await response.json();
+        
+        toast({
+          title: "Redirecting",
+          description: "You will be redirected to update your payment method.",
+          variant: "default"
+        });
+        
+        // Redirect to payment processor
+        window.location.href = updateUrl;
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Error",
+          description: error.message || "Failed to initiate payment update.",
+          variant: "destructive"
+        });
+       }
     } catch (error) {
       console.error('Error updating payment method:', error);
       toast({

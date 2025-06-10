@@ -3,24 +3,25 @@
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Progress } from '@/components/ui/progress';
 import Link from 'next/link';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Eye, EyeOff, Shield, Check, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
+import { useSettings } from '@/context/SettingsContext';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { EmailVerificationPrompt } from './EmailVerificationPrompt';
+import { sendEmailVerification } from 'firebase/auth';
 
-const MacaronLogo = ({ className }: { className?: string }) => (
-  <svg viewBox="0 0 64 64" className={className} fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-    <path d="M52,22.04C52,14.29,43.71,8,34,8H30C20.29,8,12,14.29,12,22.04a2.5,2.5,0,0,0,0,.27C12,25.25,16.42,30,26,30h12C47.58,30,52,25.25,52,22.31A2.5,2.5,0,0,0,52,22.04Z" />
-    <rect x="10" y="30" width="44" height="4" rx="2" ry="2" />
-    <path d="M52,41.96C52,49.71,43.71,56,34,56H30C20.29,56,12,49.71,12,41.96a2.5,2.5,0,0,1,0-.27C12,38.75,16.42,34,26,34h12C47.58,34,52,38.75,52,41.69A2.5,2.5,0,0,1,52,41.96Z" />
-  </svg>
+const CrossandLogo = ({ className }: { className?: string }) => (
+  <img src="/images/crossand-logo.svg" alt="Crossand Logo" className={className} />
 );
 
 const GoogleIcon = () => (
@@ -34,14 +35,29 @@ const GoogleIcon = () => (
 );
 
 const signupFormSchema = z.object({
-  fullName: z.string().min(2, { message: 'Full name must be at least 2 characters.' }),
+  fullName: z.string()
+    .min(2, { message: 'Full name must be at least 2 characters.' })
+    .max(50, { message: 'Full name cannot exceed 50 characters.' })
+    .regex(/^[a-zA-Z\s'-]+$/, { message: 'Full name can only contain letters, spaces, hyphens, and apostrophes.' }),
   username: z.string()
     .min(3, { message: 'Username must be at least 3 characters.' })
     .max(20, { message: 'Username cannot exceed 20 characters.' })
-    .regex(/^[a-zA-Z0-9_]+$/, { message: 'Username can only contain letters, numbers, and underscores.' }),
-  email: z.string().email({ message: 'Please enter a valid email address.' }),
-  password: z.string().min(6, { message: 'Password must be at least 6 characters.' }),
+    .regex(/^[a-zA-Z0-9_]+$/, { message: 'Username can only contain letters, numbers, and underscores.' })
+    .regex(/^[a-zA-Z]/, { message: 'Username must start with a letter.' }),
+  email: z.string()
+    .email({ message: 'Please enter a valid email address.' })
+    .max(254, { message: 'Email address is too long.' })
+    .refine(email => !email.includes('..'), { message: 'Email cannot contain consecutive dots.' }),
+  password: z.string()
+    .min(8, { message: 'Password must be at least 8 characters.' })
+    .max(128, { message: 'Password cannot exceed 128 characters.' })
+    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/, {
+      message: 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&).'
+    }),
   confirmPassword: z.string(),
+  agreeToTerms: z.boolean().refine(val => val === true, {
+    message: 'You must agree to the terms and conditions.'
+  })
 }).refine(data => data.password === data.confirmPassword, {
   message: 'Passwords do not match.',
   path: ['confirmPassword'],
@@ -52,10 +68,17 @@ type SignupFormValues = z.infer<typeof signupFormSchema>;
 export function SignupForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showEmailVerification, setShowEmailVerification] = useState(false);
+  const [userEmail, setUserEmail] = useState('');
   const { toast } = useToast();
-  const { signUpWithEmail, signInWithGoogle } = useAuth();
+  const { signUpWithEmail, signInWithGoogle, acknowledgeNewUserWelcome } = useAuth();
+  const { settings } = useSettings();
   const router = useRouter();
   const searchParamsHook = useSearchParams();
+  
+  const siteName = settings?.siteName || 'Macaroom';
 
   const form = useForm<SignupFormValues>({
     resolver: zodResolver(signupFormSchema),
@@ -65,8 +88,32 @@ export function SignupForm() {
       email: '',
       password: '',
       confirmPassword: '',
+      agreeToTerms: false,
     },
   });
+
+  // Password strength calculation
+  const calculatePasswordStrength = (password: string) => {
+    let score = 0;
+    if (password.length >= 8) score += 1;
+    if (/[a-z]/.test(password)) score += 1;
+    if (/[A-Z]/.test(password)) score += 1;
+    if (/\d/.test(password)) score += 1;
+    if (/[@$!%*?&]/.test(password)) score += 1;
+    return score;
+  };
+
+  const getPasswordStrengthLabel = (score: number) => {
+    if (score === 0) return { label: '', color: '' };
+    if (score <= 2) return { label: 'Weak', color: 'text-red-500' };
+    if (score <= 3) return { label: 'Fair', color: 'text-yellow-500' };
+    if (score <= 4) return { label: 'Good', color: 'text-blue-500' };
+    return { label: 'Strong', color: 'text-green-500' };
+  };
+
+  const passwordValue = form.watch('password');
+  const passwordStrength = calculatePasswordStrength(passwordValue);
+  const strengthInfo = getPasswordStrengthLabel(passwordStrength);
 
   const handleGoogleSignUp = async () => {
     setIsGoogleSubmitting(true);
@@ -105,22 +152,54 @@ export function SignupForm() {
   const onEmailSubmit = async (data: SignupFormValues) => {
     setIsSubmitting(true);
     try {
-      await signUpWithEmail(data.email, data.password, data.fullName, data.username);
-      const searchParams = new URLSearchParams(window.location.search);
-      const redirectPath = searchParams.get('redirect');
-      searchParams.delete('redirect');
+      console.log('[SignupForm] Starting signup process...');
+      const user = await signUpWithEmail(data.email, data.password, data.fullName, data.username);
       
-      if (redirectPath) {
-        const finalRedirect = redirectPath + (searchParams.toString() ? `?${searchParams.toString()}` : '');
-        router.push(finalRedirect);
-        return;
+      if (user) {
+        console.log('[SignupForm] User created successfully, sending email verification...');
+        // Send email verification
+        try {
+          await sendEmailVerification(user);
+          console.log('[SignupForm] Email verification sent successfully');
+          setUserEmail(data.email);
+          setShowEmailVerification(true);
+          console.log('[SignupForm] showEmailVerification set to true');
+          toast({
+            title: 'Account Created Successfully!',
+            description: 'Please check your email to verify your account.',
+          });
+        } catch (verificationError) {
+          console.error('[SignupForm] Email verification error:', verificationError);
+          // Still show success but mention verification issue
+          toast({
+            title: 'Account Created',
+            description: 'Account created but verification email failed to send. You can resend it from your profile.',
+            variant: 'default',
+          });
+          setUserEmail(data.email);
+          setShowEmailVerification(true);
+          console.log('[SignupForm] showEmailVerification set to true (after error)');
+        }
+      } else {
+        console.log('[SignupForm] User creation returned null/undefined');
       }
-      // AuthContext will handle default redirect
     } catch (error: any) {
       console.error('Email Sign-Up error:', error);
+      let errorMessage = 'An unexpected error occurred.';
+      
+      if (error.code === 'auth/email-already-in-use') {
+        errorMessage = 'An account with this email already exists. Please try logging in instead.';
+      } else if (error.code === 'auth/weak-password') {
+        errorMessage = 'Password is too weak. Please choose a stronger password.';
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = 'Please enter a valid email address.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: 'Sign-Up Failed',
-        description: error.message || 'An unexpected error occurred.',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
@@ -128,57 +207,102 @@ export function SignupForm() {
     }
   };
 
+  const handleEmailVerified = () => {
+    // Reset the new user flag so layout won't prevent redirection
+    acknowledgeNewUserWelcome();
+    console.log('[SignupForm] Email verified, acknowledged new user welcome');
+    
+    // Redirect to onboarding or dashboard after verification
+    const searchParams = new URLSearchParams(window.location.search);
+    const redirectPath = searchParams.get('redirect');
+    searchParams.delete('redirect');
+    
+    if (redirectPath) {
+      const finalRedirect = redirectPath + (searchParams.toString() ? `?${searchParams.toString()}` : '');
+      router.push(finalRedirect);
+    } else {
+      router.push('/onboarding');
+    }
+  };
+
+  // Show email verification prompt after successful signup
+  if (showEmailVerification) {
+    return (
+      <EmailVerificationPrompt 
+        email={userEmail} 
+        onVerified={handleEmailVerified}
+      />
+    );
+  }
+
   return (
-    <Card className="w-full max-w-md shadow-xl bg-card/90 border-border/50">
-      <CardHeader className="text-center space-y-2">
+    <Card className="w-full max-w-sm shadow-lg bg-gray-900/30 backdrop-blur-md border-gray-700/40 overflow-hidden rounded-2xl">
+      <CardHeader className="text-center space-y-3 pb-4">
         <div className="flex flex-col items-center">
-          <Link href="/" className="flex items-center gap-2 mb-1">
-            <MacaronLogo className="h-10 w-10 text-primary" />
-            <span className="text-3xl font-bold text-primary">Macaroom</span>
+          <Link href="/" className="flex items-center gap-2 mb-2">
+            <CrossandLogo className="h-8 w-8" />
+            <span className="text-2xl font-bold text-gradient-primary font-redressed">Crossand</span>
           </Link>
         </div>
-        <CardTitle className="text-xl font-bold text-primary opacity-80">Create Your Account</CardTitle>
-        <CardDescription className="text-sm text-muted-foreground">Join Macaroom and start planning today!</CardDescription>
+        <div className="space-y-1">
+          <CardTitle className="text-lg font-semibold text-foreground">Let's Get Started</CardTitle>
+          <CardDescription className="text-xs text-muted-foreground">Join our community to discover meaningful activities and build genuine connections</CardDescription>
+        </div>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-4 px-6 pb-4">
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onEmailSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="fullName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Full Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="John Doe" {...field} autoComplete="name" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="username"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Username</FormLabel>
-                  <FormControl>
-                    <Input placeholder="johndoe123" {...field} autoComplete="username" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+          <form onSubmit={form.handleSubmit(onEmailSubmit)} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={form.control}
+                name="fullName"
+                render={({ field }) => (
+                  <FormItem className="space-y-1">
+                    <FormControl>
+                      <Input 
+                        placeholder="Full Name" 
+                        {...field} 
+                        autoComplete="name"
+                        className="h-10"
+                      />
+                    </FormControl>
+                    <FormMessage className="text-xs" />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="username"
+                render={({ field }) => (
+                  <FormItem className="space-y-1">
+                    <FormControl>
+                      <Input 
+                        placeholder="Username" 
+                        {...field} 
+                        autoComplete="username"
+                        className="h-10"
+                      />
+                    </FormControl>
+                    <FormMessage className="text-xs" />
+                  </FormItem>
+                )}
+              />
+            </div>
             <FormField
               control={form.control}
               name="email"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email</FormLabel>
+                <FormItem className="space-y-1">
                   <FormControl>
-                    <Input type="email" placeholder="you@example.com" {...field} autoComplete="email" />
+                    <Input 
+                      type="email" 
+                      placeholder="Email" 
+                      {...field} 
+                      autoComplete="email"
+                      className="h-10"
+                    />
                   </FormControl>
-                  <FormMessage />
+                  <FormMessage className="text-xs" />
                 </FormItem>
               )}
             />
@@ -186,12 +310,41 @@ export function SignupForm() {
               control={form.control}
               name="password"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Password</FormLabel>
+                <FormItem className="space-y-1">
                   <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} autoComplete="new-password" />
+                    <div className="relative">
+                      <Input 
+                        type={showPassword ? "text" : "password"} 
+                        placeholder="Password" 
+                        {...field} 
+                        autoComplete="new-password"
+                        className="h-10 pr-10"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setShowPassword(!showPassword)}
+                        disabled={isSubmitting}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
                   </FormControl>
-                  <FormMessage />
+                  {passwordValue && passwordStrength > 0 && (
+                    <div className="flex items-center gap-2">
+                      <Progress value={(passwordStrength / 5) * 100} className="h-1.5 flex-1" />
+                      <span className={`text-xs font-medium ${strengthInfo.color}`}>
+                        {strengthInfo.label}
+                      </span>
+                    </div>
+                  )}
+                  <FormMessage className="text-xs" />
                 </FormItem>
               )}
             />
@@ -199,18 +352,71 @@ export function SignupForm() {
               control={form.control}
               name="confirmPassword"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Confirm Password</FormLabel>
+                <FormItem className="space-y-1">
                   <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} autoComplete="new-password" />
+                    <div className="relative">
+                      <Input 
+                        type={showConfirmPassword ? "text" : "password"} 
+                        placeholder="Confirm Password" 
+                        {...field} 
+                        autoComplete="new-password"
+                        className="h-10 pr-10"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        disabled={isSubmitting}
+                      >
+                        {showConfirmPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
                   </FormControl>
-                  <FormMessage />
+                  <FormMessage className="text-xs" />
                 </FormItem>
               )}
             />
-            <Button type="submit" className="w-full" disabled={isSubmitting || isGoogleSubmitting}>
+            <FormField
+              control={form.control}
+              name="agreeToTerms"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      disabled={isSubmitting}
+                    />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel className="text-sm font-normal">
+                      I agree to the{' '}
+                      <Link href="/terms" className="text-primary hover:underline" target="_blank">
+                        Terms of Service
+                      </Link>
+                      {' '}and{' '}
+                      <Link href="/privacy" className="text-primary hover:underline" target="_blank">
+                        Privacy Policy
+                      </Link>
+                    </FormLabel>
+                    <FormMessage />
+                  </div>
+                </FormItem>
+              )}
+            />
+            <Button 
+              type="submit" 
+              className="w-full h-10 bg-orange-500 hover:bg-orange-600 text-white font-medium transition-colors duration-200" 
+              disabled={isSubmitting || isGoogleSubmitting || !form.formState.isValid}
+            >
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Sign Up
+              {isSubmitting ? 'Creating...' : 'Create Account'}
             </Button>
           </form>
         </Form>
@@ -220,31 +426,42 @@ export function SignupForm() {
             <span className="w-full border-t border-border/50" />
           </div>
           <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-card px-2 text-muted-foreground">
+            <span className="bg-gray-900/30 backdrop-blur-sm px-2 text-muted-foreground">
               Or continue with
             </span>
           </div>
         </div>
 
-        <Button
-          variant="outline"
-          className="w-full"
-          onClick={handleGoogleSignUp}
-          disabled={isSubmitting || isGoogleSubmitting}
-        >
-          {isGoogleSubmitting ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <GoogleIcon />
-          )}
-          Sign up with Google
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="flex-1 h-10"
+            onClick={handleGoogleSignUp}
+            disabled={isSubmitting || isGoogleSubmitting}
+          >
+            {isGoogleSubmitting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <GoogleIcon />
+            )}
+          </Button>
+          <Button 
+            type="button" 
+            variant="outline" 
+            className="flex-1 h-10" 
+            disabled={isSubmitting}
+          >
+            <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+            </svg>
+          </Button>
+        </div>
       </CardContent>
-      <CardFooter className="justify-center text-sm">
-        <p className="text-muted-foreground">
+      <CardFooter className="justify-center py-3">
+        <p className="text-xs text-muted-foreground">
           Already have an account?{' '}
-          <Link href="/login" className="font-medium text-primary hover:underline">
-            Log in
+          <Link href="/login" className="font-medium text-orange-500 hover:text-orange-600">
+            Sign in
           </Link>
         </p>
       </CardFooter>

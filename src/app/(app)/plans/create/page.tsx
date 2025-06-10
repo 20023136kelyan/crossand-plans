@@ -11,6 +11,8 @@ import { createPlanAction, updatePlanAction, getPlanForEditingAction } from '@/a
 import type { Plan } from '@/types/user';
 import { Loader2, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { LimitGuard } from '@/components/limits/LimitGuard';
+import { cn } from '@/lib/utils';
 
 export default function CreateOrEditPlanPage() {
   const { toast } = useToast();
@@ -136,23 +138,61 @@ export default function CreateOrEditPlanPage() {
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
-        <header className="shrink-0 flex items-center justify-between p-3 border-b border-muted-foreground/50 bg-background/80 backdrop-blur-sm z-20 shadow-sm">
-            <Button variant="ghost" size="icon" onClick={() => router.back()} aria-label="Go back">
-                <ChevronLeft className="h-5 w-5" />
-            </Button>
-            <h1 className="text-md font-semibold text-foreground/90">
-                {formMode === 'edit' ? 'Edit Plan' : 'Create Plan Manually'}
-            </h1>
-            <div className="w-9 h-9"></div> {}
-        </header>
+
+        
+        <div className="p-3 text-center">
+          <div className="flex items-center justify-center">
+            <div className="flex items-center">
+              <div
+                className={cn(
+                  "px-4 py-2 text-sm font-medium transition-colors relative cursor-pointer",
+                  "text-muted-foreground hover:text-foreground"
+                )}
+                onClick={() => router.push('/plans/generate')}
+              >
+                AI Generated
+              </div>
+              <div
+                className={cn(
+                  "px-4 py-2 text-sm font-medium transition-colors relative cursor-pointer",
+                  "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary after:rounded-full"
+                )}
+              >
+                Manual
+              </div>
+            </div>
+          </div>
+        </div>
+        
         <div className="flex-1 overflow-y-auto"> {}
-            <PlanForm 
-                initialData={initialPlanData} 
-                onSubmit={handleSubmit} 
-                isSubmitting={isSubmitting} 
-                formMode={formMode}
-                formTitle={formMode === 'edit' ? 'Edit Your Plan Details' : 'Craft Your Plan Manually'}
-            />
+            {formMode === 'create' ? (
+                <LimitGuard 
+                    type="plan-creation"
+                    onLimitReached={() => {
+                        toast({
+                            title: 'Plan Limit Reached',
+                            description: 'You have reached your maximum number of plans. Please delete some existing plans or upgrade your account.',
+                            variant: 'destructive',
+                        });
+                    }}
+                >
+                    <PlanForm 
+                        initialData={initialPlanData} 
+                        onSubmit={handleSubmit} 
+                        isSubmitting={isSubmitting} 
+                        formMode={formMode}
+                        formTitle={formMode === 'edit' ? 'Edit Your Plan Details' : 'Craft Your Plan Manually'}
+                    />
+                </LimitGuard>
+            ) : (
+                <PlanForm 
+                    initialData={initialPlanData} 
+                    onSubmit={handleSubmit} 
+                    isSubmitting={isSubmitting} 
+                    formMode={formMode}
+                    formTitle={formMode === 'edit' ? 'Edit Your Plan Details' : 'Craft Your Plan Manually'}
+                />
+            )}
         </div>
     </div>
   );

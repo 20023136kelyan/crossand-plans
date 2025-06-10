@@ -284,6 +284,70 @@ export const updateUserProfileAdmin = async (userId: string, profileData: Partia
 const isEmailAdmin = (term: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(term);
 const isPhoneNumberAdmin = (term: string): boolean => /^\+?[0-9\s-()]+$/.test(term) && term.length > 5;
 
+// Enhanced search result with ranking data
+interface SearchResultWithRanking extends SearchedUser {
+  score: number;
+  matchType: 'email' | 'phone' | 'name_exact' | 'name_prefix' | 'name_substring' | 'username_exact' | 'username_prefix' | 'username_substring';
+  mutualFriends?: number;
+  locationScore?: number;
+}
+
+// Calculate location similarity score (0-1)
+const calculateLocationScore = (currentUserLocation: any, targetUserLocation: any): number => {
+  if (!currentUserLocation || !targetUserLocation) return 0;
+  
+  let score = 0;
+  if (currentUserLocation.country === targetUserLocation.country) {
+    score += 0.3;
+    if (currentUserLocation.state === targetUserLocation.state) {
+      score += 0.3;
+      if (currentUserLocation.city === targetUserLocation.city) {
+        score += 0.4;
+      }
+    }
+  }
+  return score;
+};
+
+// Calculate mutual friends count
+const calculateMutualFriends = async (db: Firestore, currentUserId: string, targetUserId: string): Promise<number> => {
+  try {
+    const currentUserFriendsRef = db.collection(USER_COLLECTION).doc(currentUserId).collection(FRIENDSHIPS_SUBCOLLECTION);
+    const targetUserFriendsRef = db.collection(USER_COLLECTION).doc(targetUserId).collection(FRIENDSHIPS_SUBCOLLECTION);
+    
+    const [currentFriends, targetFriends] = await Promise.all([
+      currentUserFriendsRef.where('status', '==', 'friends').get(),
+      targetUserFriendsRef.where('status', '==', 'friends').get()
+    ]);
+    
+    const currentFriendIds = new Set(currentFriends.docs.map(doc => doc.id));
+    const targetFriendIds = new Set(targetFriends.docs.map(doc => doc.id));
+    
+    return Array.from(currentFriendIds).filter(id => targetFriendIds.has(id)).length;
+  } catch (e) {
+    console.error('[calculateMutualFriends] Error:', e);
+    return 0;
+  }
+};
+
+// Check if text contains search term (case-insensitive)
+const containsText = (text: string | null, searchTerm: string): boolean => {
+  if (!text) return false;
+  return text.toLowerCase().includes(searchTerm.toLowerCase());
+};
+
+// Check if text starts with search term (case-insensitive)
+const startsWithText = (text: string | null, searchTerm: string): boolean => {
+  if (!text) return false;
+  return text.toLowerCase().startsWith(searchTerm.toLowerCase());
+};
+
+// Check if text exactly matches search term (case-insensitive)
+const exactMatch = (text: string | null, searchTerm: string): boolean => {
+  if (!text) return false;
+  return text.toLowerCase() === searchTerm.toLowerCase();
+};
+
 export const searchUsersAdmin = async (searchTerm: string, currentUserId: string): Promise<SearchedUser[]> => {
   if (!firestoreAdmin) {
     console.error("[searchUsersAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
@@ -295,10 +359,22 @@ export const searchUsersAdmin = async (searchTerm: string, currentUserId: string
   if (!trimmedSearchTerm) return [];
 
   const usersRef = db.collection(USER_COLLECTION);
-  const resultsMap = new Map<string, SearchedUser>();
-  const FINAL_LIMIT = 10;
+  const resultsMap = new Map<string, SearchResultWithRanking>();
+  const SEARCH_LIMIT = 50; // Get more results for better ranking
+  const FINAL_LIMIT = 15; // Return top 15 after ranking
 
-  // Get current user's friendships from their subcollection
+  // Get current user's data for location comparison
+  let currentUserData: UserProfile | null = null;
+  try {
+    const currentUserDoc = await usersRef.doc(currentUserId).get();
+    if (currentUserDoc.exists) {
+      currentUserData = currentUserDoc.data() as UserProfile;
+    }
+  } catch (e) {
+    console.error('[searchUsersAdmin] Error fetching current user data:', e);
+  }
+
+  // Get current user's friendships
   const currentUserFriendshipsRef = usersRef.doc(currentUserId).collection(FRIENDSHIPS_SUBCOLLECTION);
   const friendshipsSnapshot = await currentUserFriendshipsRef.get();
   
@@ -312,94 +388,129 @@ export const searchUsersAdmin = async (searchTerm: string, currentUserId: string
     friendshipStatuses.set(otherUserId, data.status as FriendStatus);
   });
 
-  // Search by Email (exact match, case-insensitive)
+  const addUserToResults = (docSnap: QueryDocumentSnapshot, matchType: SearchResultWithRanking['matchType'], baseScore: number) => {
+    if (docSnap.id === currentUserId || resultsMap.has(docSnap.id)) return;
+    
+    const data = docSnap.data() as UserProfile;
+    const userObj: SearchResultWithRanking = {
+      uid: docSnap.id,
+      name: data.name,
+      username: data.username || null,
+      email: data.email,
+      avatarUrl: data.avatarUrl,
+      role: data.role || 'user',
+      isVerified: data.isVerified || false,
+      friendshipStatus: friendshipStatuses.get(docSnap.id) || 'not_friends',
+      score: baseScore,
+      matchType,
+      locationScore: currentUserData ? calculateLocationScore(currentUserData.physicalAddress, data.physicalAddress) : 0
+    };
+    resultsMap.set(docSnap.id, userObj);
+  };
+
+  // Search by Email (exact match, case-insensitive) - Highest priority
   if (isEmailAdmin(trimmedSearchTerm)) {
     try {
       const emailQuerySnapshot = await usersRef
         .where("email", "==", trimmedSearchTerm.toLowerCase())
-        .limit(FINAL_LIMIT)
+        .limit(SEARCH_LIMIT)
         .get();
       emailQuerySnapshot.forEach((docSnap: QueryDocumentSnapshot) => {
-        if (docSnap.id !== currentUserId) { 
-          const data = docSnap.data() as UserProfile;
-          const userObj = {
-            uid: docSnap.id,
-            name: data.name,
-            username: data.username || null,
-            email: data.email,
-            avatarUrl: data.avatarUrl,
-            role: data.role || 'user',
-            isVerified: data.isVerified || false,
-            friendshipStatus: docSnap.id === currentUserId 
-              ? 'is_self' 
-              : friendshipStatuses.get(docSnap.id) || 'not_friends'
-          } as SearchedUser;
-          resultsMap.set(docSnap.id, userObj);
-        }
+        addUserToResults(docSnap, 'email', 100);
       });
     } catch (e) { console.error("[searchUsersAdmin] Error during email search:", e); }
   }
 
-  // Search by Phone Number (exact match)
-  if (resultsMap.size < FINAL_LIMIT && isPhoneNumberAdmin(trimmedSearchTerm)) {
+  // Search by Phone Number (exact match) - High priority
+  if (resultsMap.size < SEARCH_LIMIT && isPhoneNumberAdmin(trimmedSearchTerm)) {
      try {
       const phoneQuerySnapshot = await usersRef
         .where("phoneNumber", "==", trimmedSearchTerm) 
-        .limit(FINAL_LIMIT - resultsMap.size)
+        .limit(SEARCH_LIMIT - resultsMap.size)
         .get();
       phoneQuerySnapshot.forEach((docSnap: QueryDocumentSnapshot) => {
-        if (docSnap.id !== currentUserId && !resultsMap.has(docSnap.id)) { 
-          const data = docSnap.data() as UserProfile;
-          const userObj = {
-            uid: docSnap.id,
-            name: data.name,
-            username: data.username || null,
-            email: data.email,
-            avatarUrl: data.avatarUrl,
-            role: data.role || 'user',
-            isVerified: data.isVerified || false,
-            friendshipStatus: docSnap.id === currentUserId 
-              ? 'is_self' 
-              : friendshipStatuses.get(docSnap.id) || 'not_friends'
-          } as SearchedUser;
-          resultsMap.set(docSnap.id, userObj);
-        }
+        addUserToResults(docSnap, 'phone', 95);
       });
     } catch (e) { console.error("[searchUsersAdmin] Error during phone search:", e); }
   }
-  
-  // Search by Name (prefix match, case-insensitive using name_lowercase)
-  if (resultsMap.size < FINAL_LIMIT && !isEmailAdmin(trimmedSearchTerm) && !isPhoneNumberAdmin(trimmedSearchTerm)) {
-    const lowerSearchTermForName = trimmedSearchTerm.toLowerCase();
+
+  // For non-email/phone searches, do comprehensive text matching
+  if (resultsMap.size < SEARCH_LIMIT && !isEmailAdmin(trimmedSearchTerm) && !isPhoneNumberAdmin(trimmedSearchTerm)) {
     try {
-      const nameQuerySnapshot = await usersRef
-        .orderBy("name_lowercase")
-        .startAt(lowerSearchTermForName)
-        .endAt(lowerSearchTermForName + '\uf8ff')
-        .limit(FINAL_LIMIT - resultsMap.size)
-        .get();
-      nameQuerySnapshot.forEach((docSnap: QueryDocumentSnapshot) => {
-        if (docSnap.id !== currentUserId && !resultsMap.has(docSnap.id)) { 
-          const data = docSnap.data() as UserProfile;
-          const userObj = {
-            uid: docSnap.id,
-            name: data.name,
-            username: data.username || null,
-            email: data.email,
-            avatarUrl: data.avatarUrl,
-            role: data.role || 'user',
-            isVerified: data.isVerified || false,
-            friendshipStatus: docSnap.id === currentUserId 
-              ? 'is_self' 
-              : friendshipStatuses.get(docSnap.id) || 'not_friends'
-          } as SearchedUser;
-          resultsMap.set(docSnap.id, userObj);
+      // Get a broader set of users to search through
+      const allUsersSnapshot = await usersRef.limit(500).get();
+      
+      allUsersSnapshot.forEach((docSnap: QueryDocumentSnapshot) => {
+        if (docSnap.id === currentUserId || resultsMap.has(docSnap.id)) return;
+        
+        const data = docSnap.data() as UserProfile;
+        const name = data.name;
+        const username = data.username;
+        
+        // Check for exact matches first (highest scores)
+        if (exactMatch(name, trimmedSearchTerm)) {
+          addUserToResults(docSnap, 'name_exact', 90);
+        } else if (exactMatch(username, trimmedSearchTerm)) {
+          addUserToResults(docSnap, 'username_exact', 85);
+        }
+        // Check for prefix matches (high scores)
+        else if (startsWithText(name, trimmedSearchTerm)) {
+          addUserToResults(docSnap, 'name_prefix', 80);
+        } else if (startsWithText(username, trimmedSearchTerm)) {
+          addUserToResults(docSnap, 'username_prefix', 75);
+        }
+        // Check for substring matches (medium scores)
+        else if (containsText(name, trimmedSearchTerm)) {
+          addUserToResults(docSnap, 'name_substring', 60);
+        } else if (containsText(username, trimmedSearchTerm)) {
+          addUserToResults(docSnap, 'username_substring', 55);
         }
       });
-    } catch (e) { console.error("[searchUsersAdmin] Error during name search:", e); }
+    } catch (e) { console.error("[searchUsersAdmin] Error during comprehensive search:", e); }
   }
-  
-  return Array.from(resultsMap.values());
+
+  // Calculate mutual friends for ranking (async operation)
+  const resultsArray = Array.from(resultsMap.values());
+  const mutualFriendsPromises = resultsArray.map(async (user) => {
+    const mutualFriends = await calculateMutualFriends(db, currentUserId, user.uid);
+    user.mutualFriends = mutualFriends;
+    return user;
+  });
+
+  const resultsWithMutualFriends = await Promise.all(mutualFriendsPromises);
+
+  // Enhanced ranking algorithm
+  const rankedResults = resultsWithMutualFriends
+    .map(user => {
+      let finalScore = user.score;
+      
+      // Boost score based on mutual friends (up to +20 points)
+      if (user.mutualFriends && user.mutualFriends > 0) {
+        finalScore += Math.min(user.mutualFriends * 5, 20);
+      }
+      
+      // Boost score based on location proximity (up to +15 points)
+      if (user.locationScore && user.locationScore > 0) {
+        finalScore += user.locationScore * 15;
+      }
+      
+      // Boost verified users slightly (+5 points)
+      if (user.isVerified) {
+        finalScore += 5;
+      }
+      
+      // Boost users with friendship status (+10 points)
+      if (user.friendshipStatus && user.friendshipStatus !== 'not_friends') {
+        finalScore += 10;
+      }
+      
+      return { ...user, score: finalScore };
+    })
+    .sort((a, b) => b.score - a.score) // Sort by score descending
+    .slice(0, FINAL_LIMIT) // Take top results
+    .map(({ score, matchType, mutualFriends, locationScore, ...user }) => user); // Remove ranking metadata
+
+  return rankedResults;
 };
 
 
@@ -618,7 +729,13 @@ export const getUserStatsAdmin = async (userId: string): Promise<UserStats> => {
     let plansExperiencedCount = 0;
     experiencedSnapshot.forEach(doc => {
       const planData = doc.data();
-      if (planData.eventTime) {
+      
+      // Check if plan is completed and user confirmed completion
+      if (planData.isCompleted && planData.completionConfirmedBy && 
+          planData.completionConfirmedBy.includes(userId)) {
+        plansExperiencedCount++;
+      } else if (planData.eventTime && !planData.isCompleted) {
+        // Fallback to old logic for plans without completion tracking
         let eventDate;
         if (planData.eventTime instanceof AdminTimestamp) {
             eventDate = planData.eventTime.toDate();

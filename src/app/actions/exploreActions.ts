@@ -4,7 +4,8 @@
 import { getCompletedPlansAdmin } from '@/services/planService.server';
 import { 
   getFeaturedCreatorsAdmin, 
-  getFeaturedPlanCollectionsAdmin 
+  getFeaturedPlanCollectionsAdmin,
+  getNavigationCollectionsAdmin
 } from '@/services/exploreService.server';
 import type { Plan, Influencer, PlanCollection, Profile, Category, City, UserPreferences, GeoPoint } from '@/types/user';
 import { firestoreAdmin } from '@/lib/firebaseAdmin';
@@ -40,6 +41,7 @@ interface ExplorePageData {
   completedPlans: Plan[];
   featuredCities: City[];
   categories: Category[];
+  navigationCollections: PlanCollection[];
 }
 
 interface LocationData {
@@ -53,47 +55,26 @@ interface RankedPlan extends Plan {
   score: number;
 }
 
+// Note: This function is deprecated in favor of calculateEnhancedPlanScore
+// Keeping for backward compatibility but should not be used for new implementations
 async function rankPlans(plans: Plan[], userLocation?: LocationData): Promise<Plan[]> {
-  const now = new Date();
+  // Use the enhanced ranking system instead
+  const userLocationGeoPoint = userLocation?.latitude && userLocation?.longitude 
+    ? { latitude: userLocation.latitude, longitude: userLocation.longitude }
+    : null;
+    
+  const scoredPlans = plans.map(plan => ({
+    ...plan,
+    score: calculateEnhancedPlanScore(
+      plan,
+      userLocationGeoPoint,
+      undefined, // userPreferences - not available in this context
+      undefined  // userHistory - not available in this context
+    )
+  })) as RankedPlan[];
   
-  const rankedPlans = plans.map(plan => {
-    let score = 0;
-    
-    // Featured plans get highest priority (1000 point boost)
-    if (plan.featured) {
-      score += 1000;
-    }
-    
-    // Base score from ratings (40% weight)
-    score += (plan.rating || 0) * 10;
-    
-    // Popularity score (30% weight total)
-    // - Likes: 5% weight
-    // - Shares: 10% weight (shares indicate stronger endorsement)
-    // - Saves: 15% weight (saves indicate strongest interest/intent)
-    score += (plan.likesCount || 0) * 0.5;  // 0.5 points per like
-    score += (plan.sharesCount || 0) * 1.0; // 1.0 points per share
-    score += (plan.savesCount || 0) * 1.5;  // 1.5 points per save
-    
-    // Location relevance (20% weight)
-    if (userLocation?.city && plan.city) {
-      if (plan.city.toLowerCase() === userLocation.city.toLowerCase()) {
-        score += 50; // High boost for same city
-      }
-    }
-    
-    // Time relevance (10% weight - favor upcoming plans but not too far in future)
-    const planDate = new Date(plan.eventTime);
-    const daysUntilEvent = (planDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-    if (daysUntilEvent > 0 && daysUntilEvent < 30) {
-      score += 30 - daysUntilEvent; // Higher score for closer events
-    }
-    
-    return { ...plan, score };
-  }) as RankedPlan[];
-  
-  // Sort by composite score
-  return rankedPlans
+  // Sort by enhanced score
+  return scoredPlans
     .sort((a, b) => b.score - a.score)
     .map(({ score, ...plan }) => plan);
 }
@@ -113,7 +94,7 @@ async function getFeaturedProfiles(): Promise<Profile[]> {
 async function getCategories(): Promise<Category[]> {
   if (!firestoreAdmin) return [];
   try {
-    const plansRef = (firestoreAdmin as Firestore).collection(COLLECTIONS.PLANS).where('status', '==', 'published');
+    const plansRef = (firestoreAdmin as Firestore).collection(COLLECTIONS.PLANS).where('status', '==', 'published').where('isTemplate', '==', true);
     const snapshot = await plansRef.get();
     
     const uniqueCategories = new Set<string>();
@@ -142,7 +123,7 @@ interface CityWithCount extends Omit<City, 'imageUrl'> {
 async function getFeaturedCities(): Promise<City[]> {
   if (!firestoreAdmin) return [];
   try {
-    const plansRef = (firestoreAdmin as Firestore).collection(COLLECTIONS.PLANS).where('status', '==', 'published');
+    const plansRef = (firestoreAdmin as Firestore).collection(COLLECTIONS.PLANS).where('status', '==', 'published').where('isTemplate', '==', true);
     const snapshot = await plansRef.get();
     
     const cityCounts = new Map<string, number>();
@@ -182,25 +163,28 @@ export const fetchExplorePageDataAction = async (
   }
 
   try {
-    // First fetch featured plans
+    // First fetch featured template plans
     const featuredPlansSnapshot = await firestoreAdmin
       .collection(COLLECTIONS.PLANS)
       .where('status', '==', 'published')
+      .where('isTemplate', '==', true)
       .where('featured', '==', true)
       .get();
 
-    // Then fetch regular plans
+    // Then fetch regular template plans
     const regularPlansSnapshot = await firestoreAdmin
       .collection(COLLECTIONS.PLANS)
       .where('status', '==', 'published')
+      .where('isTemplate', '==', true)
       .where('featured', '==', false)
       .get();
 
     // Fetch other data in parallel
-    const [profiles, categories, cities] = await Promise.all([
+    const [profiles, categories, cities, navigationCollections] = await Promise.all([
       getFeaturedProfiles(),
       getCategories(),
       getFeaturedCities(),
+      getNavigationCollectionsAdmin(),
     ]);
 
     // Combine and process all plans
@@ -256,7 +240,8 @@ export const fetchExplorePageDataAction = async (
       featuredProfiles: profiles.map(profile => serializeTimestamps(profile)),
       completedPlans: plans,
       featuredCities: cities.map(city => serializeTimestamps(city)),
-      categories
+      categories,
+      navigationCollections: navigationCollections.map(collection => serializeTimestamps(collection))
     };
 
     return {
@@ -288,7 +273,7 @@ export async function fetchAllFeaturedCreatorsAction(lastVisibleName?: string): 
   }
 }
 
-export async function fetchAllPlanCollectionsAction(lastVisibleTitle?: string): Promise<{ 
+export async function fetchAllPlanCollectionsAction(lastVisibleTitle?: string): Promise<{
   success: boolean; 
   collections?: PlanCollection[]; 
   error?: string;
@@ -301,6 +286,94 @@ export async function fetchAllPlanCollectionsAction(lastVisibleTitle?: string): 
   } catch (error: any) {
     console.error("[fetchAllPlanCollectionsAction] Error fetching collections:", error);
     return { success: false, error: error.message || "Failed to load collections." };
+  }
+}
+
+export async function searchCollectionsAction(searchTerm: string): Promise<{
+  success: boolean;
+  collections?: PlanCollection[];
+  error?: string;
+}> {
+  if (!firestoreAdmin) {
+    return { success: false, error: 'Admin SDK not initialized' };
+  }
+  
+  try {
+    if (!searchTerm.trim()) {
+      return { success: true, collections: [] };
+    }
+
+    const searchTermLower = searchTerm.toLowerCase();
+    
+    // Search in planCollections
+    const collectionsSnapshot = await (firestoreAdmin as Firestore)
+      .collection('planCollections')
+      .where('isFeatured', '==', true)
+      .limit(20)
+      .get();
+
+    const matchingCollections: PlanCollection[] = [];
+    
+    collectionsSnapshot.forEach(doc => {
+      const data = doc.data();
+      const title = (data.title || '').toLowerCase();
+      const description = (data.description || '').toLowerCase();
+      const curatorName = (data.curatorName || '').toLowerCase();
+      const tags = (data.tags || []).map((tag: string) => tag.toLowerCase());
+      
+      // Check if search term matches title, description, curator name, or tags
+      if (title.includes(searchTermLower) || 
+          description.includes(searchTermLower) ||
+          curatorName.includes(searchTermLower) ||
+          tags.some((tag: string) => tag.includes(searchTermLower))) {
+        
+        const timestamps = {
+          createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
+          updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : new Date().toISOString()
+        };
+        
+        matchingCollections.push({
+          id: doc.id,
+          title: data.title || "Untitled Collection",
+          description: data.description || "",
+          curatorName: data.curatorName || "Macaroom Team",
+          curatorAvatarUrl: data.curatorAvatarUrl || null,
+          planIds: data.planIds || [],
+          coverImageUrl: data.coverImageUrl || null,
+          dataAiHint: data.dataAiHint || data.title?.toLowerCase() || "collection",
+          type: data.type || 'curated_by_team',
+          tags: data.tags || [],
+          isFeatured: data.isFeatured || false,
+          createdAt: timestamps.createdAt,
+          updatedAt: timestamps.updatedAt,
+        } as PlanCollection);
+      }
+    });
+
+    // Sort by relevance (exact title matches first, then by title alphabetically)
+    matchingCollections.sort((a, b) => {
+      const aTitle = a.title.toLowerCase();
+      const bTitle = b.title.toLowerCase();
+      
+      const aExactMatch = aTitle === searchTermLower;
+      const bExactMatch = bTitle === searchTermLower;
+      
+      if (aExactMatch && !bExactMatch) return -1;
+      if (!aExactMatch && bExactMatch) return 1;
+      
+      const aStartsWith = aTitle.startsWith(searchTermLower);
+      const bStartsWith = bTitle.startsWith(searchTermLower);
+      
+      if (aStartsWith && !bStartsWith) return -1;
+      if (!aStartsWith && bStartsWith) return 1;
+      
+      return aTitle.localeCompare(bTitle);
+    });
+
+    return { success: true, collections: matchingCollections };
+  } catch (error: any) {
+    console.error('[searchCollectionsAction] Error searching collections:', error);
+    return { success: false, error: error.message || 'Failed to search collections' };
   }
 }
 

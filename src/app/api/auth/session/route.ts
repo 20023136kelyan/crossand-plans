@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     console.log(`${requestLogId} Creating session cookie for UID: ${decodedToken.uid}, expiresIn: ${expiresIn}ms.`);
     const sessionCookie = await currentAuthAdmin.createSessionCookie(idToken, { expiresIn });
     
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     cookieStore.set(SESSION_COOKIE_NAME, sessionCookie, {
       httpOnly: true,
       maxAge: COOKIE_MAX_AGE_SECONDS,
@@ -85,11 +85,23 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function HEAD() {
+  // Health check endpoint for authentication service
+  try {
+    if (!authAdmin) {
+      return new NextResponse(null, { status: 503 }); // Service Unavailable
+    }
+    return new NextResponse(null, { status: 200 });
+  } catch (error) {
+    return new NextResponse(null, { status: 503 });
+  }
+}
+
 export async function DELETE(request: NextRequest) {
   const requestLogId = `[${new Date().toISOString()}] [/api/auth/session DELETE]`;
   console.log(`${requestLogId} Received request to clear session.`);
   try {
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const sessionCookieValue = cookieStore.get(SESSION_COOKIE_NAME)?.value;
     
     if (sessionCookieValue && authAdmin) {

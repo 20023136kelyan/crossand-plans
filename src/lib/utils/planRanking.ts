@@ -16,8 +16,39 @@ const calculateLocationScore = (planLocation: string, userLocation?: { city: str
   const userCity = userLocation.city.toLowerCase();
   
   if (planCity === userCity) return 1;
-  // TODO: Add distance-based scoring if coordinates are available
-  return 0.3; // Default score for non-local plans
+  
+  // Distance-based scoring if coordinates are available
+  if (userLocation.coordinates && plan.coordinates) {
+    const distance = calculateDistance(
+      userLocation.coordinates.lat,
+      userLocation.coordinates.lng,
+      plan.coordinates.lat,
+      plan.coordinates.lng
+    );
+    
+    // Score based on distance (closer = higher score)
+    // 0-10km: 0.9, 10-50km: 0.7, 50-100km: 0.5, 100-200km: 0.3, >200km: 0.1
+    if (distance <= 10) return 0.9;
+    if (distance <= 50) return 0.7;
+    if (distance <= 100) return 0.5;
+    if (distance <= 200) return 0.3;
+    return 0.1;
+  }
+  
+  return 0.3; // Default score for non-local plans without coordinates
+};
+
+// Calculate distance between two coordinates using Haversine formula
+const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+  const R = 6371; // Earth's radius in kilometers
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 };
 
 // Calculate popularity score (0-1)
@@ -127,4 +158,4 @@ export const calculateDiscountMultiplier = (
   const affinityMultiplier = 1 + (affinityScore * 0.5); // Up to 1.5x for perfect affinity
   
   return baseDiscount * tierMultiplier * affinityMultiplier;
-}; 
+};

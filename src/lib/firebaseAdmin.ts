@@ -96,7 +96,7 @@ function initializeAdminApp(): void {
     // Initialize app with credentials
     const appOptions: admin.AppOptions = {
       credential: admin.credential.cert(serviceAccountJson),
-      storageBucket: `${serviceAccountJson.projectId}.appspot.com`
+      storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || `${serviceAccountJson.projectId}.appspot.com`
     };
 
     // Initialize the app

@@ -173,6 +173,50 @@ export const getFeaturedPlanCollectionsAdmin = async (
 };
 
 
+export const getNavigationCollectionsAdmin = async (): Promise<PlanCollection[]> => {
+  if (!firestoreAdmin) {
+    console.error("[getNavigationCollectionsAdmin] Firestore Admin SDK is not initialized.");
+    return [];
+  }
+  try {
+    const collectionsSnapshot = await firestoreAdmin.collection(PLAN_COLLECTIONS)
+      .where('navigationCard', '==', true)
+      .orderBy('sortOrder', 'asc')
+      .get();
+    
+    const collections: PlanCollection[] = [];
+    collectionsSnapshot.forEach(doc => {
+      const data = doc.data();
+      const timestamps = convertAdminCollectionTimestampsToISO(data);
+      collections.push({
+        id: doc.id,
+        title: data.title || "Untitled Collection",
+        description: data.description || "",
+        curatorName: data.curatorName || "Macaroom Team",
+        curatorAvatarUrl: data.curatorAvatarUrl || null,
+        planIds: data.planIds || [],
+        coverImageUrl: data.coverImageUrl || null,
+        dataAiHint: data.dataAiHint || data.title?.toLowerCase() || "collection",
+        type: data.type || 'curated_by_team',
+        tags: data.tags || [],
+        isFeatured: data.isFeatured || false,
+        isDefault: data.isDefault || false,
+        navigationCard: data.navigationCard || false,
+        icon: data.icon || '',
+        href: data.href || '',
+        sortOrder: data.sortOrder || 0,
+        createdAt: timestamps.createdAt,
+        updatedAt: timestamps.updatedAt,
+      } as PlanCollection);
+    });
+
+    return collections;
+  } catch (error) {
+    console.error("[getNavigationCollectionsAdmin] Error fetching navigation collections:", error);
+    return [];
+  }
+};
+
 export const getCollectionByIdAdmin = async (collectionId: string): Promise<PlanCollection | null> => {
   if (!firestoreAdmin) {
     console.error("[getCollectionByIdAdmin] Firestore Admin SDK is not initialized.");
@@ -199,6 +243,11 @@ export const getCollectionByIdAdmin = async (collectionId: string): Promise<Plan
       type: data.type || 'curated_by_team',
       tags: data.tags || [],
       isFeatured: data.isFeatured || false,
+      isDefault: data.isDefault || false,
+      navigationCard: data.navigationCard || false,
+      icon: data.icon || '',
+      href: data.href || '',
+      sortOrder: data.sortOrder || 0,
       createdAt: timestamps.createdAt,
       updatedAt: timestamps.updatedAt,
     } as PlanCollection;

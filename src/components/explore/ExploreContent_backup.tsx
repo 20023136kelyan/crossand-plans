@@ -8,6 +8,7 @@ import { format } from 'date-fns';
 import { useEffect, useState, useMemo } from 'react';
 import { fetchExplorePageDataAction } from '@/app/actions/exploreActions';
 import { getUserLocationAction, searchUsersAction, sendFriendRequestAction, acceptFriendRequestAction, declineFriendRequestAction, removeFriendAction } from '@/app/actions/userActions';
+import { savePlanToUser } from '@/services/userService';
 import { useToast } from '@/hooks/use-toast';
 import { Plan, Profile, Category, City, SearchedUser, Influencer } from '@/types/user';
 import { useAuth } from '@/context/AuthContext';
@@ -199,11 +200,31 @@ const PlanCard = ({ plan }: { plan: Plan }) => {
 
     setSaving(true);
     try {
-      // Add save plan logic here
-      toast({
-        title: "Plan Saved",
-        description: "Plan has been added to My Macaroon",
-      });
+      // Check if plan is already completed (past event time)
+      const eventDate = new Date(plan.eventTime);
+      const isCompleted = eventDate < new Date();
+      if (isCompleted) {
+        toast({
+          title: "Cannot Save",
+          description: "This plan has already been completed and cannot be saved",
+          variant: "destructive",
+        });
+        setSaving(false);
+        return;
+      }
+      const success = await savePlanToUser(user.uid, plan.id);
+      if (success) {
+        toast({
+          title: "Plan Saved",
+          description: "Plan has been added to your saved collection",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to save plan",
+          variant: "destructive"
+        });
+      }
     } catch (error) {
       console.error('Error saving plan:', error);
       toast({
@@ -353,7 +374,7 @@ const PlanCard = ({ plan }: { plan: Plan }) => {
               ) : (
                 <>
                   <BookmarkPlus className="h-4 w-4 mr-2" />
-                  Add to My Macaroon
+                  Save Plan
                 </>
               )}
             </Button>

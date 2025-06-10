@@ -136,6 +136,7 @@ const FeedPostCard = React.memo(({
   const [newCommentText, setNewCommentText] = useState('');
   const [isSubmittingCardComment, setIsSubmittingCardComment] = useState(false);
   const [isFriendPickerOpen, setIsFriendPickerOpen] = useState(false);
+  const [isReporting, setIsReporting] = useState(false);
 
   useEffect(() => {
     setOptimisticLikedByCurrentUser(item.likedBy?.includes(currentUserId || "") || false);
@@ -322,6 +323,42 @@ const FeedPostCard = React.memo(({
     }
   };
 
+  const handleReportPost = async (postId: string) => {
+    if (!user || !currentUserId || isReporting) {
+      return;
+    }
+    
+    setIsReporting(true);
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/reports/post', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({
+          postId,
+          reason: 'inappropriate_content',
+          description: 'Reported from feed'
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok) {
+        toast({ title: "Post Reported", description: "Thank you for your report. We'll review it shortly." });
+      } else {
+        toast({ title: "Report Failed", description: result.error || "Could not report post", variant: "destructive" });
+      }
+    } catch (error: any) {
+      toast({ title: "Report Error", description: "An error occurred while reporting the post", variant: "destructive" });
+      console.error('Error reporting post:', error);
+    } finally {
+      setIsReporting(false);
+    }
+  };
+
   const handleSharePlanWithFriendFromPost = async (selectedFriend: FriendEntry) => {
     if (!user || !currentUserId || !currentUserProfile || !item) {
       toast({ title: "Action Failed", description: "User not authenticated or post data missing.", variant: "destructive" });
@@ -343,60 +380,189 @@ const FeedPostCard = React.memo(({
     }
   };
 
+  // Generate a gradient background that complements the media content
+  const getMediaInspiredGradient = (planName: string, mediaUrl?: string) => {
+    // Enhanced color mapping based on media characteristics and content analysis
+    const getColorFromMediaUrl = (url: string) => {
+      const urlLower = url.toLowerCase();
+      
+      // Analyze URL for content hints
+      if (urlLower.includes('sunset') || urlLower.includes('orange') || urlLower.includes('warm')) {
+        return 'bg-gradient-to-br from-orange-400/30 via-amber-400/15 to-transparent';
+      }
+      if (urlLower.includes('ocean') || urlLower.includes('blue') || urlLower.includes('water') || urlLower.includes('sky')) {
+        return 'bg-gradient-to-br from-blue-400/30 via-cyan-400/15 to-transparent';
+      }
+      if (urlLower.includes('forest') || urlLower.includes('green') || urlLower.includes('nature') || urlLower.includes('plant')) {
+        return 'bg-gradient-to-br from-green-400/30 via-emerald-400/15 to-transparent';
+      }
+      if (urlLower.includes('purple') || urlLower.includes('violet') || urlLower.includes('night')) {
+        return 'bg-gradient-to-br from-purple-400/30 via-violet-400/15 to-transparent';
+      }
+      if (urlLower.includes('pink') || urlLower.includes('rose') || urlLower.includes('flower')) {
+        return 'bg-gradient-to-br from-pink-400/30 via-rose-400/15 to-transparent';
+      }
+      if (urlLower.includes('gold') || urlLower.includes('yellow') || urlLower.includes('sun')) {
+        return 'bg-gradient-to-br from-yellow-400/30 via-amber-400/15 to-transparent';
+      }
+      
+      return null;
+    };
+    
+    // If media URL exists, try to extract color from it
+    if (mediaUrl) {
+      const mediaColor = getColorFromMediaUrl(mediaUrl);
+      if (mediaColor) return mediaColor;
+    }
+    
+    // Enhanced plan-based color mapping with more nuanced colors
+    const planBasedGradients = [
+      'bg-gradient-to-br from-orange-400/30 via-red-400/15 to-transparent',
+      'bg-gradient-to-br from-cyan-400/30 via-blue-400/15 to-transparent', 
+      'bg-gradient-to-br from-green-400/30 via-teal-400/15 to-transparent',
+      'bg-gradient-to-br from-purple-400/30 via-indigo-400/15 to-transparent',
+      'bg-gradient-to-br from-pink-400/30 via-purple-400/15 to-transparent',
+      'bg-gradient-to-br from-yellow-400/30 via-orange-400/15 to-transparent',
+      'bg-gradient-to-br from-indigo-400/30 via-purple-400/15 to-transparent',
+      'bg-gradient-to-br from-emerald-400/30 via-green-400/15 to-transparent',
+      'bg-gradient-to-br from-amber-400/30 via-yellow-400/15 to-transparent',
+      'bg-gradient-to-br from-rose-400/30 via-pink-400/15 to-transparent',
+      'bg-gradient-to-br from-teal-400/30 via-cyan-400/15 to-transparent',
+      'bg-gradient-to-br from-violet-400/30 via-purple-400/15 to-transparent'
+    ];
+    
+    // Create hash from plan name with media presence consideration
+    const baseString = planName + (mediaUrl ? 'media' : 'text');
+    const hash = baseString.split('').reduce((a, b) => {
+      a = ((a << 5) - a) + b.charCodeAt(0);
+      return a & a;
+    }, 0);
+    
+    return planBasedGradients[Math.abs(hash) % planBasedGradients.length];
+  };
+
   return (
     <>
-    <Card className="overflow-hidden border-0 shadow-lg rounded-xl mx-auto w-full mb-4 transition-all hover:shadow-xl">
-      {item.mediaUrl && (
-        <div className="relative w-full">
-          <div className="relative aspect-square bg-muted overflow-hidden w-full">
-            <Image src={item.mediaUrl} alt={item.text || `Highlight from ${item.planName}`} fill style={{ objectFit: 'cover' }} data-ai-hint="feed post image" priority={true} className="w-full h-full cursor-pointer" sizes="(max-width: 639px) 100vw, (max-width: 1023px) 672px, 768px"
-              onClick={(e) => { e.stopPropagation(); onOpenDetailModal(item); }} />
-            <div className="absolute top-3 left-3 right-3 backdrop-blur-md bg-black/30 rounded-full px-3 py-2 shadow-md flex items-center justify-between z-10">
-              <div className="flex items-center gap-2.5 flex-grow min-w-0">
-                <Link href={`/users/${item.userId}`} className="flex-shrink-0 group">
-                  <Avatar className="h-8 w-8 border border-white/20 group-hover:opacity-90 transition-opacity"><AvatarImage src={item.userAvatarUrl || undefined} alt={item.userName} data-ai-hint="person avatar" /><AvatarFallback>{userInitial}</AvatarFallback></Avatar>
-                </Link>
-                <div className="flex-grow min-w-0">
-                  <div className="flex items-center">
-                    <Link href={`/users/${item.userId}`} className="hover:underline"><span className="font-medium text-sm text-white">{item.username || item.userName}</span></Link>
-                    <VerificationBadge role={item.userRole} isVerified={item.userIsVerified} />
-                    <VisibilityBadge visibility={item.visibility} isOwnPost={isOwnPost} />
-                  </div>
-                  <CardDescription className="text-xs text-white/80 mt-0 truncate">
-                    <Link href={`/p/${item.planId}`} className="text-white/90 hover:underline font-medium">{item.planName}</Link> • {postedAtRelative}
-                  </CardDescription>
-                </div>
-              </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-white hover:bg-white/20"><span className="sr-only">More options</span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 3.5C8.82843 3.5 9.5 2.82843 9.5 2C9.5 1.17157 8.82843 0.5 8 0.5C7.17157 0.5 6.5 1.17157 6.5 2C6.5 2.82843 7.17157 3.5 8 3.5Z" fill="currentColor"/><path d="M8 9.5C8.82843 9.5 9.5 8.82843 9.5 8C9.5 7.17157 8.82843 6.5 8 6.5C7.17157 6.5 6.5 7.17157 6.5 8C6.5 8.82843 7.17157 9.5 8 9.5Z" fill="currentColor"/><path d="M8 15.5C8.82843 15.5 9.5 14.8284 9.5 14C9.5 13.1716 8.82843 12.5 8 12.5C7.17157 12.5 6.5 13.1716 6.5 14C6.5 14.8284 7.17157 15.5 8 15.5Z" fill="currentColor"/></svg></Button></DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onSelect={() => onHidePost(item.id)} className="cursor-pointer text-xs"><EyeOff className="mr-2 h-3.5 w-3.5"/> Hide Post</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => toast({ title: "Report Post", description: "Reporting feature is coming soon!", duration: 3000 })} className="cursor-pointer text-xs"><AlertTriangle className="mr-2 h-3.5 w-3.5 text-destructive/70"/> Report Post</DropdownMenuItem>
-                  {isOwnPost && (<><DropdownMenuSeparator /><DropdownMenuItem onSelect={() => toast({ title: "Edit Post", description: "Edit feature is coming soon!", duration: 3000 })} className="cursor-pointer text-xs"><Edit3 className="mr-2 h-3.5 w-3.5"/> Edit Post</DropdownMenuItem><DropdownMenuItem onSelect={() => onRequestDeletePost(item)} className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer text-xs"><Trash2 className="mr-2 h-3.5 w-3.5"/> Delete Post</DropdownMenuItem></>)}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-            <div className="absolute bottom-3 right-3 backdrop-blur-md bg-black/30 rounded-full px-4 py-2 shadow-md flex items-center gap-3 z-10">
-              <Button variant="ghost" size="sm" className={cn("hover:text-red-400 p-0 h-auto flex items-center gap-1.5", optimisticLikedByCurrentUser ? "text-red-400" : "text-white")} onClick={handleLikeClick} disabled={!currentUserId} aria-pressed={optimisticLikedByCurrentUser ? true : false} aria-label={optimisticLikedByCurrentUser ? "Unlike post" : "Like post"}><Heart className={cn("h-5 w-5", optimisticLikedByCurrentUser && "fill-red-400")} /><span className="text-xs font-medium tabular-nums">{optimisticLikesCount || 349}</span></Button>
-              <Button variant="ghost" size="sm" className="text-white hover:text-primary/90 p-0 h-auto flex items-center gap-1.5" onClick={() => onOpenCommentsModal(item)}><MessageSquare className="h-5 w-5" fill="none" /><span className="text-xs font-medium tabular-nums">{optimisticCommentsCount || 760}</span></Button>
-              <Popover><PopoverTrigger asChild><Button variant="ghost" size="sm" className="text-white hover:text-primary/90 p-0 h-auto"><Share2 className="h-5 w-5" fill="none" /></Button></PopoverTrigger>
-                <PopoverContent className="w-56 p-2">
-                  <div className="grid gap-1">
-                    <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() => { handleSharePost(); }}><ExternalLink className="mr-2 h-4 w-4"/> Share via Link/Native</Button>
-                    <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() => setIsFriendPickerOpen(true)}><Send className="mr-2 h-4 w-4"/> Share Plan with Friend</Button>
-                  </div>
-                </PopoverContent>
-              </Popover>
+    <Card className={cn("overflow-hidden border border-white/20 shadow-2xl rounded-3xl w-full max-w-md transition-all duration-500 hover:shadow-3xl hover:scale-[1.03] cursor-pointer relative transform-gpu backdrop-blur-xl bg-transparent", getMediaInspiredGradient(item.planName, item.mediaUrl))} onClick={() => onOpenDetailModal(item)}>
+      {/* Light-infused glass gradient radiating from media center */}
+      <div className="absolute inset-0 bg-gradient-to-t from-transparent via-transparent to-transparent rounded-3xl transition-opacity duration-500 group-hover:opacity-70" style={{background: 'radial-gradient(ellipse at center, transparent 0%, rgba(255,255,255,0.05) 40%, transparent 100%)'}} />
+      <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-transparent rounded-3xl transition-opacity duration-500 group-hover:opacity-60" style={{background: 'radial-gradient(ellipse at 50% 60%, transparent 20%, rgba(255,255,255,0.08) 50%, transparent 80%)'}} />
+      {/* Enhanced glass effect with transparency */}
+      <div className="absolute inset-0 backdrop-blur-md rounded-3xl transition-all duration-500 group-hover:backdrop-blur-lg" />
+      {/* Header with user info */}
+      <div className="relative px-3 pt-3 pb-2 z-10">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link href={`/users/${item.userId}`} className="flex-shrink-0 group/avatar" onClick={(e) => e.stopPropagation()}>
+              <Avatar className="h-10 w-10 border-2 border-white/50 shadow-lg group-hover/avatar:opacity-90 transition-all duration-300 group-hover/avatar:scale-110 ring-1 ring-white/20">
+                <AvatarImage src={item.userAvatarUrl || undefined} alt={item.userName} data-ai-hint="person avatar" />
+                <AvatarFallback className="bg-white/95 text-gray-800 text-sm font-semibold shadow-lg">{userInitial}</AvatarFallback>
+              </Avatar>
+            </Link>
+            <div className="space-y-0.5">
+              <Link href={`/users/${item.userId}`} className="hover:underline transition-all duration-200" onClick={(e) => e.stopPropagation()}>
+                <span className="font-bold text-sm text-white/80 drop-shadow-lg hover:text-white/90 tracking-tight">{item.username || item.userName}</span>
+              </Link>
+              <VerificationBadge role={item.userRole} isVerified={item.userIsVerified} />
             </div>
           </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-white/70 hover:text-white hover:bg-white/25 backdrop-blur-md transition-all duration-300 hover:scale-110" onClick={(e) => e.stopPropagation()}>
+                <span className="sr-only">More options</span>
+                <MoreVertical className="h-4 w-4 drop-shadow-md" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onSelect={() => onHidePost(item.id)} className="cursor-pointer text-xs"><EyeOff className="mr-2 h-3.5 w-3.5"/> Hide Post</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => handleReportPost(item.id)} className="cursor-pointer text-xs"><AlertTriangle className="mr-2 h-3.5 w-3.5 text-destructive/70"/> Report Post</DropdownMenuItem>
+              {isOwnPost && (<><DropdownMenuSeparator /><DropdownMenuItem onSelect={() => toast({ title: "Edit Post", description: "Edit feature is coming soon!", duration: 3000 })} className="cursor-pointer text-xs"><Edit3 className="mr-2 h-3.5 w-3.5"/> Edit Post</DropdownMenuItem><DropdownMenuItem onSelect={() => onRequestDeletePost(item)} className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer text-xs"><Trash2 className="mr-2 h-3.5 w-3.5"/> Delete Post</DropdownMenuItem></>)}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      {/* Plan name with icon */}
+      <div className="relative px-3 pb-2 z-10">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 bg-white/95 backdrop-blur-md rounded-lg flex items-center justify-center shadow-md border border-white/40 transition-transform duration-300 hover:scale-110">
+            <span className="text-orange-600 text-sm">📅</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <Link href={`/p/${item.planId}`} className="text-white/80 font-bold text-base hover:underline drop-shadow-lg hover:text-white/90 transition-all duration-200 tracking-tight block truncate" onClick={(e) => e.stopPropagation()}>
+              {item.planName}
+            </Link>
+            <p className="text-white/60 text-xs drop-shadow-md font-medium">{postedAtRelative}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Main content area with image */}
+      <div className="relative h-72 mx-3 rounded-xl overflow-hidden z-10 shadow-2xl ring-1 ring-white/20">
+        {/* Subtle light glow radiating from media */}
+        <div className="absolute -inset-3 opacity-25 blur-xl -z-10" style={{background: `radial-gradient(ellipse at center, ${getMediaInspiredGradient(item.planName, item.mediaUrl).includes('orange') ? 'rgba(251, 146, 60, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('blue') ? 'rgba(59, 130, 246, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('cyan') ? 'rgba(34, 211, 238, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('green') ? 'rgba(34, 197, 94, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('purple') ? 'rgba(147, 51, 234, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('pink') ? 'rgba(236, 72, 153, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('yellow') ? 'rgba(234, 179, 8, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('indigo') ? 'rgba(99, 102, 241, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('emerald') ? 'rgba(16, 185, 129, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('amber') ? 'rgba(245, 158, 11, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('rose') ? 'rgba(244, 63, 94, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('teal') ? 'rgba(20, 184, 166, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('violet') ? 'rgba(139, 92, 246, 0.12)' : 'rgba(99, 102, 241, 0.12)'} 40%, transparent 80%)`}} />
+        {item.mediaUrl ? (
+          <>
+            <Image src={item.mediaUrl} alt={item.text || `Highlight from ${item.planName}`} fill style={{ objectFit: 'cover' }} data-ai-hint="feed post image" priority={true} className="w-full h-full drop-shadow-2xl" sizes="(max-width: 639px) 100vw, (max-width: 1023px) 336px, 384px" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" />
+            <div className="absolute -inset-1 bg-black/20 blur-xl -z-10" />
+          </>
+        ) : (
+          <>
+            {/* Enhanced placeholder for posts without media */}
+            <div className={cn("absolute inset-0", getMediaInspiredGradient(item.planName, item.mediaUrl).replace('/60', '/30').replace('/20', '/15'))} />
+            <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center space-y-4">
+                <div className="w-24 h-24 bg-white/95 backdrop-blur-md rounded-3xl flex items-center justify-center mx-auto shadow-2xl border border-white/50 transition-transform duration-300 hover:scale-110">
+                  <span className="text-4xl">📝</span>
+                </div>
+                <p className="text-white/80 font-bold text-lg drop-shadow-lg tracking-tight">Text Post</p>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Caption below media */}
+      {item.text && (
+        <div className="relative px-3 py-2 z-10">
+          <p className="text-white/75 text-xs leading-snug line-clamp-2 font-medium drop-shadow-lg">{item.text}</p>
         </div>
       )}
-      {item.text && (
-        <CardContent className="pt-3 px-4 pb-4">
-          <p ref={captionRef} className={cn("text-sm", !isCaptionExpanded && canShowMoreCaption && "line-clamp-3")}>{item.text}</p>
-          {canShowMoreCaption && (<button className="text-muted-foreground text-xs mt-1" onClick={toggleCaptionExpansion} aria-expanded={isCaptionExpanded}>{isCaptionExpanded ? "show less" : "... more"}</button>)}
-        </CardContent>
-      )}
+
+      {/* Action buttons */}
+      <div className="relative px-3 pb-3 pt-1 z-10">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" className={cn("hover:text-red-400 p-0 h-auto flex items-center gap-1.5 text-white/90 hover:bg-white/30 backdrop-blur-lg rounded-full px-2.5 py-1.5 transition-all duration-300 drop-shadow-lg hover:scale-105 border border-white/30 ring-1 ring-white/20", optimisticLikedByCurrentUser ? "text-red-400 bg-white/30 scale-105" : "")} onClick={(e) => { e.stopPropagation(); handleLikeClick(); }} disabled={!currentUserId} aria-pressed={optimisticLikedByCurrentUser ? true : false} aria-label={optimisticLikedByCurrentUser ? "Unlike post" : "Like post"}>
+               <Heart className={cn("h-4 w-4 drop-shadow-lg transition-transform duration-300", optimisticLikedByCurrentUser && "fill-red-400 scale-110")} />
+               <span className="text-xs font-semibold tabular-nums drop-shadow-lg">{optimisticLikesCount || 0}</span>
+             </Button>
+             <Button variant="ghost" size="sm" className="text-white/90 hover:text-white hover:bg-white/30 backdrop-blur-lg p-0 h-auto flex items-center gap-1.5 rounded-full px-2.5 py-1.5 transition-all duration-300 drop-shadow-lg hover:scale-105 border border-white/30 ring-1 ring-white/20" onClick={(e) => { e.stopPropagation(); onOpenCommentsModal(item); }}>
+               <MessageSquare className="h-4 w-4 drop-shadow-lg" fill="none" />
+               <span className="text-xs font-semibold tabular-nums drop-shadow-lg">{optimisticCommentsCount || 0}</span>
+             </Button>
+          </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="sm" className="text-white/90 hover:text-white hover:bg-white/30 backdrop-blur-lg p-1.5 h-auto rounded-full transition-all duration-300 drop-shadow-lg hover:scale-110 border border-white/30 ring-1 ring-white/20" onClick={(e) => e.stopPropagation()}>
+                  <Share2 className="h-4 w-4 drop-shadow-lg" fill="none" />
+                </Button>
+             </PopoverTrigger>
+            <PopoverContent className="w-56 p-2">
+              <div className="grid gap-1">
+                <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() => { handleSharePost(); }}>
+                  <ExternalLink className="mr-2 h-4 w-4"/> Share via Link/Native
+                </Button>
+                <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() => setIsFriendPickerOpen(true)}>
+                  <Send className="mr-2 h-4 w-4"/> Share Plan with Friend
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
+      </div>
     </Card>
     <FriendPickerDialog open={isFriendPickerOpen} onOpenChange={setIsFriendPickerOpen} onFriendSelect={handleSharePlanWithFriendFromPost} title={`Share "${item.planName}" with a Friend`} description="Select a friend to send this plan to." />
     </>
@@ -713,18 +879,18 @@ export default function FeedPage() {
   if (authLoading && !user) { return (<div className="flex min-h-[calc(100vh-10rem)] items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>); }
 
   return (
-    <div className="space-y-0"> {/* Removed Tabs container as it's now in AppLayout */}
-      <div className={cn("mx-auto pt-4 pb-20 px-0 sm:max-w-2xl lg:max-w-3xl")}>
+    <div className="min-h-screen"> {/* Removed Tabs container as it's now in AppLayout */}
+      <div className="mx-auto max-w-7xl pt-6 pb-20 px-4">
         {/* This is where the "For You" content will now directly live */}
-        {loadingFeed && visibleFeedPosts.length === 0 && (<div className="flex min-h-[calc(100vh-15rem)] items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>)}
-        {!loadingFeed && visibleFeedPosts.length === 0 && (<div className="text-center py-10 text-muted-foreground min-h-[calc(100vh-15rem)] flex flex-col justify-center items-center"><PackageOpen className="mx-auto h-12 w-12 mb-4 opacity-50" /><p className="text-lg font-semibold">Your feed is looking a bit quiet.</p><p>Share your plan highlights or explore to find content!</p></div>)}
+        {loadingFeed && visibleFeedPosts.length === 0 && (<div className="flex min-h-[calc(100vh-15rem)] items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-gray-600" /></div>)}
+        {!loadingFeed && visibleFeedPosts.length === 0 && (<div className="text-center py-10 text-gray-600 min-h-[calc(100vh-15rem)] flex flex-col justify-center items-center"><PackageOpen className="mx-auto h-12 w-12 mb-4 opacity-70" /><p className="text-lg font-semibold">Your feed is looking a bit quiet.</p><p>Share your plan highlights or explore to find content!</p></div>)}
         {visibleFeedPosts.length > 0 && (
           <>
-            <div className="space-y-8 sm:space-y-10">
+            <div className="grid grid-cols-1 gap-6 justify-items-center">
               {visibleFeedPosts.map(item => (<FeedPostCard key={item.id} item={item} currentUserId={user?.uid} currentUserProfile={currentUserProfile} onOpenCommentsModal={openCommentsModal} onUpdatePostInList={updateFeedPostInList} onHidePost={hidePostLocally} onRequestDeletePost={handleRequestDeletePost} onOpenDetailModal={handleOpenPostDetailModal} />))}
             </div>
-            {hasMore && (<div className="flex justify-center mt-6 mb-4"><Button onClick={loadMorePosts} disabled={loadingMore}>{loadingMore ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading...</>) : ("Load More Posts")}</Button></div>)}
-            {!hasMore && (<p className="text-center text-muted-foreground mt-6 mb-4">You've reached the end of the feed.</p>)}
+            {hasMore && (<div className="flex justify-center mt-8 mb-4"><Button onClick={loadMorePosts} disabled={loadingMore} className="bg-primary text-primary-foreground hover:bg-primary/90">{loadingMore ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading...</>) : ("Load More Posts")}</Button></div>)}
+            {!hasMore && (<p className="text-center text-gray-500 mt-8 mb-4">You've reached the end of the feed.</p>)}
           </>
         )}
       </div>

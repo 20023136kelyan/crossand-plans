@@ -139,6 +139,18 @@ export function calculateEnhancedRatingScore(plan: Plan): number {
   return (bayesianAverage / 5) * ratingWeight;
 }
 
+// Calculate recency score based on when the plan was created/completed
+function calculateRecencyScore(plan: Plan): number {
+  const now = new Date();
+  // Use completedAt if available (for completed plans), otherwise use createdAt
+  const relevantDate = plan.completedAt ? new Date(plan.completedAt) : new Date(plan.createdAt);
+  const ageInDays = (now.getTime() - relevantDate.getTime()) / (1000 * 60 * 60 * 24);
+  
+  // Exponential decay over time - templates stay relevant longer than events
+  const HALF_LIFE_DAYS = 60; // Score halves every 60 days for activity templates
+  return Math.exp(-Math.log(2) * ageInDays / HALF_LIFE_DAYS);
+}
+
 // Main enhanced ranking function
 export function calculateEnhancedPlanScore(
   plan: Plan,
@@ -159,11 +171,14 @@ export function calculateEnhancedPlanScore(
     userLocation
   );
 
-  // Trending score
+  // Trending score (based on recent engagement)
   const trendingScore = calculateTrendingScore(plan);
 
   // Enhanced rating score
   const ratingScore = calculateEnhancedRatingScore(plan);
+
+  // Recency score (based on when template was created/completed)
+  const recencyScore = calculateRecencyScore(plan);
 
   // Personalization score (if user data available)
   const personalizationScore = userPreferences && userHistory
@@ -175,8 +190,9 @@ export function calculateEnhancedPlanScore(
     (locationScore * WEIGHTS.LOCATION) +
     (trendingScore * WEIGHTS.POPULARITY) +
     (ratingScore * WEIGHTS.RATING) +
+    (recencyScore * WEIGHTS.RECENCY) +
     (personalizationScore * WEIGHTS.PERSONALIZED)
   ) * 100; // Scale up for better differentiation
 
   return score;
-} 
+}
