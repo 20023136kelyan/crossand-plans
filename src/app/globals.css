@@ -3,6 +3,37 @@
 @tailwind components;
 @tailwind utilities;
 
+@media (prefers-color-scheme: dark) {
+  .pac-container {
+    background-color: #333 !important;
+    border-color: #555 !important;
+    color: #fff !important;
+  }
+  .pac-item {
+    color: #fff !important;
+    border-top: 1px solid #555 !important;
+  }
+  .pac-item:hover {
+    background-color: #444 !important;
+  }
+  .pac-item-query {
+    color: #bbb !important;
+  }
+  .pac-matched {
+    color: #fff !important;
+    font-weight: bold;
+  }
+  .pac-icon {
+    filter: invert(1) hue-rotate(180deg);
+  }
+  .hdpi .pac-icon {
+    background-image: url(https://maps.gstatic.com/mapfiles/api-3/images/autocomplete-icons.png) !important; 
+  }
+  .pac-icon-marker {
+     background-position: -1px -167px !important;
+  }
+}
+
 @layer base {
   :root {
     --background: 240 15% 2%; /* Deep black with a hint of blue/purple */
@@ -312,47 +343,85 @@
 }
 
 /* Style the autocomplete input */
+/* Enhanced Google Places Autocomplete styling */
 gmp-place-autocomplete {
   color: hsl(var(--foreground)) !important;
   background-color: transparent !important;
   border: none !important;
   outline: none !important;
   width: 100% !important;
+  height: 32px !important;
+  display: flex !important;
+  align-items: center !important;
+  position: relative !important;
 }
 
+/* Update for white search bar container */
 gmp-place-autocomplete input {
-  color: hsl(var(--foreground)) !important;
+  color: #374151 !important; /* Gray-700 for better contrast on white */
   background-color: transparent !important;
   border: none !important;
   outline: none !important;
+  box-shadow: none !important;
   width: 100% !important;
+  height: 32px !important;
   font-size: 14px !important;
   font-family: inherit !important;
+  line-height: 32px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  vertical-align: middle !important;
+}
+
+gmp-place-autocomplete input::placeholder {
+  color: #9CA3AF !important; /* Gray-400 for placeholder */
+  line-height: 32px !important;
+}
+
+/* Remove focus outline and blue border */
+gmp-place-autocomplete input:focus {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  background-color: transparent !important;
 }
 
 gmp-place-autocomplete input::placeholder {
   color: hsl(var(--muted-foreground)) !important;
+  line-height: 32px !important;
 }
 
-/* Override any internal styling that might cause white backgrounds */
-gmp-place-autocomplete * {
-  background-color: transparent !important;
-  border: none !important;
-}
-
-/* Ensure the autocomplete container itself is transparent */
-gmp-place-autocomplete::part(input) {
-  background-color: transparent !important;
-  border: none !important;
-  outline: none !important;
-  color: hsl(var(--foreground)) !important;
-}
-
-/* Additional overrides for Google's internal elements */
+/* Force all internal elements to be transparent and properly aligned */
+gmp-place-autocomplete *,
 gmp-place-autocomplete div,
 gmp-place-autocomplete span {
   background-color: transparent !important;
   color: hsl(var(--foreground)) !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  height: auto !important;
+  line-height: inherit !important;
+}
+
+/* Ensure the autocomplete suggestions dropdown matches container width */
+.pac-container {
+  background-color: hsl(var(--background)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1) !important;
+  margin-top: 8px !important;
+  min-width: 384px !important; /* Changed from max-width to min-width */
+  width: auto !important; /* Allow width to expand */
+  z-index: 1000 !important;
+  left: 0 !important;
+}
+
+/* Make search bar container responsive to autocomplete width */
+.pac-container {
+  /* Dynamic width calculation - will expand based on content */
+  width: max-content !important;
+  max-width: calc(100vw - 2rem) !important; /* Prevent overflow on small screens */
 }
 
 /* Hide the default Google logo in suggestions */
@@ -367,15 +436,30 @@ gmp-place-autocomplete {
   width: 100%;
 }
 
-/* Force override for any remaining white backgrounds */
+/* Force override for any remaining styling issues */
 .pac-container,
 .pac-container * {
   background-color: hsl(var(--background)) !important;
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 .pac-item,
 .pac-item * {
   background-color: hsl(var(--background)) !important;
   color: hsl(var(--foreground)) !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Additional focus state overrides */
+gmp-place-autocomplete:focus,
+gmp-place-autocomplete:focus-within,
+gmp-place-autocomplete input:focus,
+gmp-place-autocomplete input:focus-visible {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  background-color: transparent !important;
 }
     

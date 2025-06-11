@@ -47,6 +47,55 @@ import {
   getUserAffinities
 } from '@/services/planCompletionService.server';
 
+// Helper functions for Place ID validation and refresh (server-side)
+async function validatePlaceId(placeId: string): Promise<boolean> {
+  try {
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      console.error('[validatePlaceId] Google Maps API key not found');
+      return false;
+    }
+
+    const response = await fetch(
+      `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=place_id&key=${apiKey}`
+    );
+
+    const data = await response.json();
+    return data.status === 'OK';
+  } catch (error) {
+    console.error('[validatePlaceId] Error validating Place ID:', error);
+    return false;
+  }
+}
+
+async function refreshPlaceId(placeName: string, city?: string): Promise<string | null> {
+  try {
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      console.error('[refreshPlaceId] Google Maps API key not found');
+      return null;
+    }
+
+    const searchQuery = city ? `${placeName}, ${city}` : placeName;
+    const encodedQuery = encodeURIComponent(searchQuery);
+
+    const response = await fetch(
+      `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodedQuery}&key=${apiKey}`
+    );
+
+    const data = await response.json();
+    
+    if (data.status === 'OK' && data.results && data.results[0]) {
+      return data.results[0].place_id || null;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('[refreshPlaceId] Error refreshing Place ID:', error);
+    return null;
+  }
+}
+
 const PLANS_COLLECTION = 'plans';
 
 // Schema for data coming from the client to the generatePlanWithAIAction
@@ -179,6 +228,32 @@ export async function generatePlanWithAIAction(
       generatedPlanOutput.hostId = validatedClientData.hostUid; 
       generatedPlanOutput.hostName = hostProfileData.name || null;
       generatedPlanOutput.hostAvatarUrl = hostProfileData.avatarUrl || null;
+
+      // Validate and refresh invalid Place IDs for AI-generated plans
+      if (generatedPlanOutput.itinerary && generatedPlanOutput.itinerary.length > 0) {
+        for (const item of generatedPlanOutput.itinerary) {
+          if (item.googlePlaceId && item.placeName) {
+            try {
+              // Test if Place ID is valid by attempting to get place details
+              const isValid = await validatePlaceId(item.googlePlaceId);
+              if (!isValid) {
+                console.log(`[generatePlanWithAIAction] Invalid Place ID detected for ${item.placeName}, attempting refresh...`);
+                const newPlaceId = await refreshPlaceId(item.placeName, item.city);
+                if (newPlaceId) {
+                  item.googlePlaceId = newPlaceId;
+                  console.log(`[generatePlanWithAIAction] Successfully refreshed Place ID for ${item.placeName}`);
+                } else {
+                  console.warn(`[generatePlanWithAIAction] Could not refresh Place ID for ${item.placeName}`);
+                  item.googlePlaceId = null; // Clear invalid Place ID
+                }
+              }
+            } catch (error) {
+              console.error(`[generatePlanWithAIAction] Error validating Place ID for ${item.placeName}:`, error);
+              // Keep the original Place ID if validation fails
+            }
+          }
+        }
+      }
 
       // console.log('[generatePlanWithAIAction] Successfully generated plan (partial):', {name: generatedPlanOutput.name, id: generatedPlanOutput.id});
       return { success: true, plan: generatedPlanOutput };

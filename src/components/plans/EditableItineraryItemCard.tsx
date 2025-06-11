@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import type { Control, UseFieldArrayRemove, UseFieldArrayMove } from 'react-hook-form';
 import { useFormContext, Controller, useWatch } from 'react-hook-form';
@@ -7,9 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from '@/components/ui/form';
-import { Trash2, Sparkles, CheckCircle, XCircle, ExternalLink, Clock, Car, Footprints, Bike, TramFront, Loader2, Edit3, Save, Ban, MoveUp, MoveDown, CalendarClock } from 'lucide-react';
+import { Trash2, Sparkles, CheckCircle, XCircle, ExternalLink, Clock, Car, Footprints, Bike, TramFront, Loader2, Edit3, Save, Ban, MoveUp, MoveDown, CalendarClock, Star, Info } from 'lucide-react';
 import type { PlanFormValues, ItineraryItemSchemaValues } from './PlanForm';
-import React, { useEffect, useRef, useState, useCallback, memo, useMemo } from 'react'; // Added memo and useMemo
+import React, { useEffect, useRef, useState, useCallback, memo, useMemo } from 'react';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -20,6 +20,7 @@ import { useToast } from '@/hooks/use-toast';
 import { format, parseISO, isValid } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { getGooglePlacePhotoUrl } from '@/utils/googleMapsHelpers';
+import { PlaceAutocomplete } from '@/components/ui/place-autocomplete';
 
 interface EditableItineraryItemCardProps {
   control: Control<PlanFormValues>;
@@ -44,6 +45,17 @@ const transitModeOptions: { value: TransitMode; label: string; icon: React.Eleme
   { value: 'transit', label: 'Transit', icon: TramFront },
 ];
 
+// Helper function to abbreviate large numbers
+const abbreviateNumber = (num: number): string => {
+  if (num >= 1000000) {
+    return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+  }
+  if (num >= 1000) {
+    return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+  }
+  return num.toString();
+};
+
 // Renamed to EditableItineraryItemCardImpl and changed to a const
 const EditableItineraryItemCardImpl = ({
   control,
@@ -60,7 +72,7 @@ const EditableItineraryItemCardImpl = ({
   isLast,
   isOnlyItem,
 }: EditableItineraryItemCardProps) => {
-  const { setValue, watch, getValues, formState: { errors } } = useFormContext<PlanFormValues>();
+  const { setValue, watch, getValues, trigger, formState: { errors } } = useFormContext<PlanFormValues>();
   const { toast } = useToast();
   const [imageError, setImageError] = useState(false);
   
@@ -76,399 +88,308 @@ const EditableItineraryItemCardImpl = ({
   const [isEditing, setIsEditing] = useState(
     !placeName && (!itemId || !String(itemId).startsWith('initial-'))
   );
-  
-  const [itemDataBeforeEdit, setItemDataBeforeEdit] = useState<Partial<ItineraryItemSchemaValues> | null>(null);
+  const [placeInfo, setPlaceInfo] = useState<{
+    rating?: number;
+    reviewCount?: number;
+    types?: string[];
+    isOperational?: boolean;
+    priceLevel?: number;
+  } | null>(null);
+  const [loadingPlaceInfo, setLoadingPlaceInfo] = useState(false);
   
   const placeNameInputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<google.maps.places.PlaceAutocompleteElement | null>(null);
-
-  const watchedRhfPlaceName = useWatch({ control, name: getFieldPath('placeName') }) || '';
-  const [internalPlaceName, setInternalPlaceName] = useState<string>(String(watchedRhfPlaceName));
   const placeNameDebounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [autocompleteSetupTrigger, setAutocompleteSetupTrigger] = useState(0);
-
-  useEffect(() => {
-    if (watchedRhfPlaceName !== internalPlaceName) {
-      setInternalPlaceName(String(watchedRhfPlaceName));
-    }
-  }, [watchedRhfPlaceName]); // Removed internalPlaceName from deps
-
-  useEffect(() => {
-    return () => {
-      if (placeNameDebounceTimeoutRef.current) {
-        clearTimeout(placeNameDebounceTimeoutRef.current);
-      }
-      if (transitTimeDebounceRef.current) {
-        clearTimeout(transitTimeDebounceRef.current);
-      }
-    };
-  }, []);
-
-  // Memoize the current item to prevent unnecessary re-renders
-  const currentItemMemo = useMemo(() => watch(`itinerary.${index}`), [watch, index]);
   
-  // Function to clean up existing addresses that might have full formatted address
-  const cleanAddress = useCallback((rawAddress: string | null | undefined): string => {
-    if (!rawAddress) return '';
+  // Watch fields for transit time calculation
+  const startTime = watch(getFieldPath('startTime'));
+  const endTime = watch(getFieldPath('endTime'));
+  const transitMode = watch(getFieldPath('transitMode'));
+  const lat = watch(getFieldPath('lat'));
+  const lng = watch(getFieldPath('lng'));
+  
+  // State for transit time calculation
+  const [isCalculatingTransit, setIsCalculatingTransit] = useState(false);
+  const [transitTimeDebounceTimeout, setTransitTimeDebounceTimeout] = useState<NodeJS.Timeout | null>(null);
+  
+  // Handle place selection from autocomplete
+  const handlePlaceSelect = useCallback((place: any) => {
+    console.log('EditableItineraryItemCard handlePlaceSelect called with place:', place);
     
-    // If address contains state/country info, clean it up
-    const parts = rawAddress.split(',').map(part => part.trim());
+    // Extract city from address components
+    let city = '';
+    if (place.address_components) {
+      const cityComponent = place.address_components.find((component: any) => 
+        component.types.includes('locality') || 
+        component.types.includes('administrative_area_level_1') ||
+        component.types.includes('administrative_area_level_2')
+      );
+      if (cityComponent) {
+        city = cityComponent.long_name;
+      }
+    }
     
-    // Remove parts that look like state codes, zip codes, or countries
-    const cleanedParts = parts.filter((part, index) => {
-      // Skip if it's a 2-letter state code (like "CA", "NY")
-      if (part.length === 2 && /^[A-Z]{2}$/.test(part)) return false;
-      
-      // Skip if it's a zip code (5 digits or 5+4 format)
-      if (/^\d{5}(-\d{4})?$/.test(part)) return false;
-      
-      // Skip if it's "USA", "United States", or other common country names
-      if (['USA', 'United States', 'US'].includes(part)) return false;
-      
-      // Keep first 2 parts (usually street + city)
-      return index < 2;
+    // Extract photo reference from place photos
+    let photoReference = null;
+    if (place.photos && place.photos.length > 0) {
+      photoReference = place.photos[0].photo_reference;
+      console.log('Found photo reference:', photoReference);
+    }
+    
+    // Update form fields with place details
+    setValue(getFieldPath('placeName'), place.name || place.formatted_address, { 
+      shouldValidate: true, 
+      shouldDirty: true 
+    });
+    setValue(getFieldPath('address'), place.formatted_address, { 
+      shouldValidate: true, 
+      shouldDirty: true 
+    });
+    setValue(getFieldPath('city'), city, { 
+      shouldValidate: true, 
+      shouldDirty: true 
+    });
+    setValue(getFieldPath('lat'), place.geometry.location.lat, { 
+      shouldValidate: true, 
+      shouldDirty: true 
+    });
+    setValue(getFieldPath('lng'), place.geometry.location.lng, { 
+      shouldValidate: true, 
+      shouldDirty: true 
+    });
+    // Save the Google Place ID to prevent invalid Place ID errors
+    setValue(getFieldPath('googlePlaceId'), place.place_id, { 
+      shouldValidate: true, 
+      shouldDirty: true 
+    });
+    // Set the photo reference if available
+    setValue(getFieldPath('googlePhotoReference'), photoReference, { 
+      shouldValidate: true, 
+      shouldDirty: true 
     });
     
-    return cleanedParts.join(', ');
-  }, []);
-  
-  const { 
-    address: rawAddress, city, description, startTime, endTime,
-    lat: itemLat, 
-    lng: itemLng, 
-    googlePhotoReference, 
-    rating, 
-    reviewCount, 
-    isOperational, 
-    statusText, 
-    activitySuggestions, 
-    openingHours, 
-    phoneNumber, 
-    website, 
-    types, 
-    priceLevel,
-    transitMode,
-    transitTimeFromPreviousMinutes 
-  } = currentItem || {} as ItineraryItemSchemaValues;
-  
-  // Clean the address for display
-  const address = cleanAddress(rawAddress);
-  
-  const [isFetchingTransitTime, setIsFetchingTransitTime] = useState(false);
-  const transitTimeDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // console.log(`Rendering EditableItineraryItemCard for index: ${index}, placeName: ${placeName}`);
-
-  const toggleEditMode = () => {
-    if (!isEditing) {
-      setItemDataBeforeEdit(JSON.parse(JSON.stringify(getValues(`itinerary.${index}`))));
-    }
-    setIsEditing(prev => !prev);
-  };
-
-  const handleSaveItem = () => {
-    // Trigger validation for the current item if needed, though react-hook-form handles it on submit
-    setIsEditing(false);
-    // Recalculate transit time if location changed, potentially needed here if coords changed
-    fetchTransitTimeCallback(); 
-  };
-
-  const handleCancelEdit = () => {
-    if (itemDataBeforeEdit) {
-      Object.keys(itemDataBeforeEdit).forEach(key => {
-        const fieldKey = key as keyof ItineraryItemSchemaValues;
-        setValue(`itinerary.${index}.${fieldKey}`, itemDataBeforeEdit[fieldKey]);
-      });
-    }
-    setIsEditing(false);
-  };
-
-  const handlePlaceChanged = useCallback((place: google.maps.places.PlaceResult) => {
-    if (!place) return;
-
-    // Extract address components for a clean, minimal display
-    const addressComponents = place.address_components || [];
-    const streetNumber = addressComponents.find(c => c.types.includes('street_number'))?.long_name || '';
-    const streetName = addressComponents.find(c => c.types.includes('route'))?.long_name || '';
-    const city = addressComponents.find(c => 
-      c.types.includes('locality') || 
-      c.types.includes('postal_town') || 
-      c.types.includes('administrative_area_level_2')
-    )?.long_name || '';
-    
-    // Create a minimal address display (only street number + street name + city)
-    // Explicitly exclude state, zip code, and country for cleaner visual presentation
-    let conciseAddress = '';
-    if (streetNumber && streetName && city) {
-      conciseAddress = `${streetNumber} ${streetName}, ${city}`;
-    } else if (streetName && city) {
-      conciseAddress = `${streetName}, ${city}`;
-    } else if (city) {
-      conciseAddress = city;
-    } else {
-      // If no components available, extract only essential parts from formatted address
-      const formatted = place.formatted_address || '';
-      // Try to extract just the first part before any state/country info
-      const parts = formatted.split(',');
-      if (parts.length >= 2) {
-        // Take first two parts (usually street + city) and exclude the rest
-        conciseAddress = parts.slice(0, 2).join(',').trim();
-      } else {
-        conciseAddress = formatted;
-      }
-    }
-
-    // Batch our setValue calls to reduce re-renders
-    // placeName is now set directly in the place_changed listener
-    const updates: Partial<Record<keyof ItineraryItemSchemaValues, unknown>> = {
-      address: conciseAddress,
-      city: city || null,
-      lat: place.geometry?.location?.lat() ?? null,
-      lng: place.geometry?.location?.lng() ?? null,
-      googlePlaceId: place.place_id || null,
-      googlePhotoReference: place.photos?.[0]?.getUrl?.() || null,
-      rating: place.rating ?? null,
-      reviewCount: place.user_ratings_total ?? null,
-      openingHours: place.opening_hours?.weekday_text || [],
-      phoneNumber: place.international_phone_number || null,
-      website: place.website || null,
-      priceLevel: place.price_level ?? null,
-      types: place.types || [],
-      isOperational: place.business_status === 'OPERATIONAL',
-      statusText: place.business_status || null
-      // transitMode: (place.types?.includes('transit_station') ? 'transit' : 'driving') as TransitMode, // Keep original transitMode unless explicitly changed by place type
-    };
-
-    // Update all fields at once with type-safe paths
-    (Object.entries(updates) as [keyof ItineraryItemSchemaValues, unknown][]).forEach(([key, value]) => {
-      setValue(getFieldPath(key), value as any, { shouldValidate: false });
-    });
+    console.log('Updated form fields with place details, city:', city, 'googlePlaceId:', place.place_id, 'photoReference:', photoReference);
   }, [setValue, getFieldPath]);
-
+  
+  // Calculate transit time when relevant fields change
   useEffect(() => {
-    if (!isEditing || !isGoogleMapsApiLoaded || !placeNameInputRef.current || typeof window === 'undefined' || !window.google || !window.google.maps || !window.google.maps.places) {
+    // Clear existing timeout
+    if (transitTimeDebounceTimeout) {
+      clearTimeout(transitTimeDebounceTimeout);
+    }
+    
+    // Only calculate if we have the necessary data
+    if (!previousItemLat || !previousItemLng || !lat || !lng || !transitMode) {
       return;
     }
-
-    // Only create a new autocomplete instance if we don't have one or if the input has changed
-    if (autocompleteRef.current?.input === placeNameInputRef.current) {
-      return;
-    }
-
-    // Clean up any existing autocomplete
-    if (autocompleteRef.current) {
-      autocompleteRef.current.remove();
-      autocompleteRef.current = null;
-    }
-
-    // @ts-ignore - PlaceAutocompleteElement is available in the new Places API
-    const newAutocomplete = new window.google.maps.places.PlaceAutocompleteElement({
-      includedPrimaryTypes: ['geocode', 'establishment']
-    });
-
-    // Replace the input element with the new autocomplete element
-    if (placeNameInputRef.current && placeNameInputRef.current.parentNode) {
-      placeNameInputRef.current.parentNode.replaceChild(newAutocomplete, placeNameInputRef.current);
-      // Update the ref to point to the new element
-      placeNameInputRef.current = newAutocomplete as any;
-    }
-
-    // @ts-ignore - gmp-select event is available in the new Places API
-    newAutocomplete.addEventListener('gmp-select', async (event: any) => {
-      const { placePrediction } = event;
-      if (!placePrediction) return;
-
-      const place = placePrediction.toPlace();
-      await place.fetchFields({
-        fields: [
-          'displayName', 
-          'formattedAddress', 
-          'addressComponents', 
-          'location', 
-          'id', 
-          'photos', 
-          'rating', 
-          'userRatingCount', 
-          'regularOpeningHours', 
-          'internationalPhoneNumber', 
-          'websiteURI', 
-          'priceLevel', 
-          'types', 
-          'businessStatus'
-        ]
-      });
-
-      // Convert new API fields to legacy format for compatibility
-      const legacyPlace = {
-        name: place.displayName,
-        formatted_address: place.formattedAddress,
-        address_components: place.addressComponents,
-        geometry: place.location ? {
-          location: {
-            lat: () => place.location.lat,
-            lng: () => place.location.lng
-          }
-        } : undefined,
-        place_id: place.id,
-        photos: place.photos,
-        rating: place.rating,
-        user_ratings_total: place.userRatingCount,
-        opening_hours: place.regularOpeningHours,
-        international_phone_number: place.internationalPhoneNumber,
-        website: place.websiteURI,
-        price_level: place.priceLevel,
-        types: place.types,
-        business_status: place.businessStatus
-      };
-
-      // Ensure place has a name or formatted_address to proceed
-      if (legacyPlace.name || legacyPlace.formatted_address) {
-        const placeNameValue = legacyPlace.name || ''; // Only use place.name for the place name field
-        
-        // Immediately update local state for responsive UI
-        setInternalPlaceName(placeNameValue); 
-  
-        // Immediately update React Hook Form state for 'placeName'
-        setValue(getFieldPath('placeName'), placeNameValue, { 
-          shouldValidate: true, 
-          shouldDirty: true 
-        });
-  
-        // Clear any debounce timeout that might have been set by typing
-        if (placeNameDebounceTimeoutRef.current) {
-          clearTimeout(placeNameDebounceTimeoutRef.current);
-        }
-  
-        // Call handlePlaceChanged with the legacy-formatted place object
-        handlePlaceChanged(legacyPlace);
-      }
-    });
-
-    autocompleteRef.current = newAutocomplete;
-
-    return () => {
-      if (autocompleteRef.current) {
-        autocompleteRef.current.remove();
-        autocompleteRef.current = null;
-      }
-    };
-  }, [isEditing, isGoogleMapsApiLoaded, handlePlaceChanged, autocompleteSetupTrigger]);
-
-  // Additional useEffect to handle autocomplete setup on mount for items that start in editing mode
-  useEffect(() => {
-    // Small delay to ensure the input ref is properly set
-    const timer = setTimeout(() => {
-      if (isEditing && isGoogleMapsApiLoaded && placeNameInputRef.current && !autocompleteRef.current) {
-        // Trigger the autocomplete setup by incrementing the trigger
-        setAutocompleteSetupTrigger(prev => prev + 1);
-      }
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, []); // Only run on mount
-
-  const fetchTransitTimeCallback = useCallback(async () => {
-    // Only fetch if we have all required data and something has changed
-    if (index > 0 && 
-        previousItemLat && 
-        previousItemLng && 
-        itemLat && 
-        itemLng && 
-        transitMode &&
-        !isFetchingTransitTime) { // Add check to prevent concurrent fetches
-      setIsFetchingTransitTime(true);
+    
+    // Debounce the calculation
+    const timeout = setTimeout(async () => {
+      setIsCalculatingTransit(true);
+      
       try {
-        const departureTimeForAction = previousItemEndTime || previousItemStartTime;
-        if (!departureTimeForAction || !isValid(parseISO(departureTimeForAction))) {
-            console.warn(`[EditableItineraryItemCard] Invalid or missing departure time for transit calculation from previous item. Prev End: ${previousItemEndTime}, Prev Start: ${previousItemStartTime}`);
-            setValue(`itinerary.${index}.transitTimeFromPreviousMinutes`, null, { shouldValidate: false });
-            setIsFetchingTransitTime(false);
-            return;
-        }
         const result = await getDirectionsAction({
           originLat: previousItemLat,
           originLng: previousItemLng,
-          destinationLat: itemLat,
-          destinationLng: itemLng,
+          destinationLat: lat,
+          destinationLng: lng,
           mode: transitMode,
-          departureTime: departureTimeForAction,
         });
-        if (result.success) {
-          setValue(`itinerary.${index}.transitTimeFromPreviousMinutes`, result.durationMinutes, { shouldValidate: false });
-        } else {
-          console.warn(`Directions Error for stop ${index}: ${result.error}`);
-          setValue(`itinerary.${index}.transitTimeFromPreviousMinutes`, null, { shouldValidate: false });
-          toast({ title: "Transit Info", description: `Could not fetch directions: ${result.error}`, variant: "default"});
+        
+        if (result.success && result.durationMinutes) {
+          setValue(getFieldPath('transitTimeFromPreviousMinutes'), result.durationMinutes, { 
+            shouldValidate: true, 
+            shouldDirty: true 
+          });
         }
-      } catch (error: any) {
-        console.error("Error fetching directions:", error);
-        setValue(`itinerary.${index}.transitTimeFromPreviousMinutes`, null, { shouldValidate: false });
-        toast({ title: "Transit Error", description: error.message || "Failed to fetch directions.", variant: "destructive"});
+      } catch (error) {
+        console.error('Error calculating transit time:', error);
       } finally {
-        setIsFetchingTransitTime(false);
+        setIsCalculatingTransit(false);
       }
-    } else if (index > 0 && (!previousItemLat || !previousItemLng || !itemLat || !itemLng)) {
-       setValue(`itinerary.${index}.transitTimeFromPreviousMinutes`, null, { shouldValidate: false });
-    }
-  }, [index, previousItemLat, previousItemLng, previousItemEndTime, previousItemStartTime, itemLat, itemLng, transitMode, setValue, toast]); 
-
-  useEffect(() => {
-    // Clear any existing timeout
-    if (transitTimeDebounceRef.current) {
-      clearTimeout(transitTimeDebounceRef.current);
-    }
+    }, 500); // 500ms debounce
     
-    // Only call fetchTransitTimeCallback if we're not in edit mode
-    if (!isEditing) {
-      // Debounce the transit time calculation to prevent excessive API calls
-      transitTimeDebounceRef.current = setTimeout(() => {
-        fetchTransitTimeCallback();
-      }, 500); // 500ms debounce
-    }
+    setTransitTimeDebounceTimeout(timeout);
     
-    // Cleanup function
+    // Cleanup on unmount
     return () => {
-      if (transitTimeDebounceRef.current) {
-        clearTimeout(transitTimeDebounceRef.current);
+      if (timeout) {
+        clearTimeout(timeout);
       }
     };
-  }, [fetchTransitTimeCallback, isEditing]);
-
-  const staticMapApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-  const placeholderErrorUrl = `https://placehold.co/600x300.png?text=Image+Not+Available`;
+  }, [previousItemLat, previousItemLng, lat, lng, transitMode, setValue, getFieldPath]);
   
-  // Memoize the image URL to prevent unnecessary re-renders
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (transitTimeDebounceTimeout) {
+        clearTimeout(transitTimeDebounceTimeout);
+      }
+    };
+  }, [transitTimeDebounceTimeout]);
+
+  // Fetch basic place info using Places API
+  const fetchPlaceInfo = useCallback(() => {
+    if (!currentItem?.googlePlaceId || loadingPlaceInfo) return;
+    
+    setLoadingPlaceInfo(true);
+    
+    // Check if Google Maps is loaded
+    if (typeof window !== 'undefined' && window.google && window.google.maps && window.google.maps.places) {
+      const dummyDiv = document.createElement('div');
+      const placesService = new window.google.maps.places.PlacesService(dummyDiv);
+      
+      const request = {
+        placeId: currentItem.googlePlaceId,
+        fields: ['rating', 'user_ratings_total', 'types', 'business_status', 'price_level']
+      };
+      
+      placesService.getDetails(request, (place, status) => {
+        setLoadingPlaceInfo(false);
+        if (status === window.google.maps.places.PlacesServiceStatus.OK && place) {
+          setPlaceInfo({
+            rating: place.rating,
+            reviewCount: place.user_ratings_total,
+            types: place.types,
+            isOperational: place.business_status === 'OPERATIONAL',
+            priceLevel: place.price_level
+          });
+        } else if (status === window.google.maps.places.PlacesServiceStatus.INVALID_REQUEST) {
+          // Handle invalid Place ID - attempt to refresh it
+          console.warn('Invalid Place ID detected, attempting to refresh:', currentItem.googlePlaceId);
+          refreshPlaceId(currentItem.placeName);
+        } else {
+          // Handle other error statuses silently
+          console.warn('Place details request failed with status:', status);
+          setPlaceInfo(null);
+        }
+      });
+    } else {
+      setLoadingPlaceInfo(false);
+    }
+  }, [currentItem?.googlePlaceId, loadingPlaceInfo]);
+
+    // Function to refresh Place ID when it becomes invalid
+    const refreshPlaceId = useCallback((placeName: string) => {
+      if (!placeName || !window.google?.maps?.places) {
+        console.warn('Cannot refresh Place ID: missing place name or Google Maps not loaded');
+        setValue(getFieldPath('googlePlaceId'), null, { shouldValidate: false });
+        setPlaceInfo(null);
+        return;
+      }
+
+      const service = new window.google.maps.places.PlacesService(document.createElement('div'));
+      const request = {
+        query: placeName,
+        fields: ['place_id', 'name', 'formatted_address', 'geometry']
+      };
+
+      service.textSearch(request, (results, status) => {
+        if (status === window.google.maps.places.PlacesServiceStatus.OK && results && results.length > 0) {
+          const newPlace = results[0];
+          console.log('Successfully refreshed Place ID:', newPlace.place_id);
+          
+          // Update the form with the new Place ID
+          setValue(getFieldPath('googlePlaceId'), newPlace.place_id, { shouldValidate: false });
+          
+          // Fetch place info with the new Place ID
+          const detailsRequest = {
+            placeId: newPlace.place_id!,
+            fields: ['name', 'formatted_address', 'rating', 'user_ratings_total', 'types', 'business_status', 'price_level']
+          };
+          
+          service.getDetails(detailsRequest, (place, detailsStatus) => {
+            if (detailsStatus === window.google.maps.places.PlacesServiceStatus.OK && place) {
+              setPlaceInfo({
+                rating: place.rating,
+                reviewCount: place.user_ratings_total,
+                types: place.types,
+                isOperational: place.business_status === 'OPERATIONAL',
+                priceLevel: place.price_level
+              });
+            } else {
+              console.warn('Failed to fetch details for refreshed Place ID:', detailsStatus);
+              setPlaceInfo(null);
+            }
+          });
+        } else {
+          console.warn('Failed to refresh Place ID for place:', placeName, 'Status:', status);
+          setValue(getFieldPath('googlePlaceId'), null, { shouldValidate: false });
+          setPlaceInfo(null);
+        }
+      });
+    }, [setValue, getFieldPath]);
+  
+  // Fetch place info on component load if googlePlaceId exists
+  useEffect(() => {
+    if (currentItem?.googlePlaceId && !isEditing) {
+      fetchPlaceInfo();
+    }
+  }, [currentItem?.googlePlaceId, isEditing, fetchPlaceInfo]);
+  
+  const handleSave = useCallback(async () => {
+    // Clear any pending debounced timeouts to ensure immediate form update
+    if (placeNameDebounceTimeoutRef.current) {
+      clearTimeout(placeNameDebounceTimeoutRef.current);
+      placeNameDebounceTimeoutRef.current = null;
+    }
+    
+    // Trigger form validation
+    const isValid = await trigger([
+      getFieldPath('placeName'),
+      getFieldPath('startTime')
+    ]);
+    
+    if (isValid) {
+      setIsEditing(false);
+      // Fetch place info after successful save
+      await fetchPlaceInfo();
+    } else {
+      // Form has validation errors, keep editing mode
+      console.log('Form validation failed, staying in edit mode');
+    }
+  }, [trigger, getFieldPath, fetchPlaceInfo]);
+  
+  const handleEdit = useCallback(() => {
+    setIsEditing(true);
+  }, []);
+  
+  const handleCancel = useCallback(() => {
+    setIsEditing(false);
+  }, []);
+  
+  const handleRemove = useCallback(() => {
+    remove(index);
+  }, [remove, index]);
+  
+  // Get static map API key from environment
+  const staticMapApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  
+  // Watch for Google photo reference
+  const googlePhotoReference = watch(getFieldPath('googlePhotoReference'));
+  
+  // Memoize the photo URL calculation
   const itemPhotoUrl = useMemo(() => {
-  // placeName is from: const placeName = watch(getFieldPath('placeName'));
-  // googlePhotoReference is from: const { ..., googlePhotoReference, ... } = currentItem || {}
-  // staticMapApiKey is from: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-  // currentItem is from: const currentItem = watch(`itinerary.${index}`)
-
-  const placeNameStr = typeof placeName === 'string' ? placeName.trim() : '';
-
-  // Primary image sources
+  const placeNameStr = typeof placeName === 'string' ? placeName : '';
+  
+  // Priority 1: Google photo reference
   if (googlePhotoReference && staticMapApiKey) {
-    return getGooglePlacePhotoUrl(googlePhotoReference, 600, staticMapApiKey);
+    return getGooglePlacePhotoUrl(googlePhotoReference, 600, 300, staticMapApiKey);
   }
-  // Check currentItem.googleMapsImageUrl before warning about API key for googlePhotoReference
+  
+  // Priority 2: Existing Google Maps image URL
   if (currentItem?.googleMapsImageUrl) {
     return currentItem.googleMapsImageUrl;
   }
   
-  // If googlePhotoReference exists but API key is missing for it, show a specific placeholder
-  if (googlePhotoReference && !staticMapApiKey) {
-    const warningText = encodeURIComponent(placeNameStr ? `${placeNameStr} - API Key Missing` : 'API Key Missing');
-    // console.warn is a side effect, should ideally not be in useMemo's main execution path if it can be avoided,
-    // but for a warning it's sometimes tolerated. For this task, keep it if it was there.
-    // Consider if this console.warn should be moved to an effect if it causes issues.
-    // Original code had: console.warn(`[EditableItineraryItemCard] Google Maps API key is missing for photo. Plan: ${watch('name')}, Item: ${placeNameStr}`);
-    // The watch('name') call here is problematic for useMemo. Let's simplify the warning or remove it from useMemo.
-    // For now, let's focus on the URL stability. The console.warn can be addressed separately if it's an issue.
-    // Simplified warning for this context:
-    // console.warn(`[EditableItineraryItemCard] Google Maps API key is missing for photo for item with photo reference. Place name: ${placeNameStr}`);
-    return `https://placehold.co/600x300.png?text=${warningText}`;
+  // Priority 3: Static map based on coordinates
+  if (lat && lng && staticMapApiKey) {
+    const zoom = 15;
+    const size = '600x300';
+    const mapType = 'roadmap';
+    const marker = `color:red|${lat},${lng}`;
+    return `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=${zoom}&size=${size}&maptype=${mapType}&markers=${marker}&key=${staticMapApiKey}`;
   }
-
+  
   // Fallback placeholder if no primary sources are available
   const fallbackText = encodeURIComponent(placeNameStr || "Location Image"); 
   return `https://placehold.co/600x300.png?text=${fallbackText}`;
@@ -488,397 +409,475 @@ const EditableItineraryItemCardImpl = ({
     setImageError(false);
   }, [itemPhotoUrl]);
 
+  // Helper function to convert ISO string to datetime-local format
+  const formatForDatetimeLocal = (isoString: string | null | undefined): string => {
+    if (!isoString || !isValid(parseISO(isoString))) return '';
+    const date = parseISO(isoString);
+    return format(date, "yyyy-MM-dd'T'HH:mm");
+  };
+
+  // Format times for display
   const formattedStartTime = startTime && isValid(parseISO(startTime)) ? format(parseISO(startTime), 'p') : 'N/A';
   const formattedEndTime = endTime && isValid(parseISO(endTime)) ? format(parseISO(endTime), 'p') : 'N/A';
 
   return (
-    <Card className="mb-4 border-border/50 shadow-sm bg-card/90">
-      <CardHeader className="flex flex-row items-center justify-between py-3 px-4 border-b">
-        <CardTitle className="text-base font-medium text-primary/80 truncate pr-2">Stop {index + 1}: {isEditing ? 'Editing...' : (placeName || 'New Stop')}</CardTitle>
-        <div className="flex items-center gap-0.5 sm:gap-1 flex-shrink-0">
-          {!isFirst && <Button type="button" variant="ghost" size="icon" onClick={() => move(index, index - 1)} className="h-7 w-7 text-muted-foreground hover:text-primary"><MoveUp className="h-4 w-4" /></Button>}
-          {!isLast && <Button type="button" variant="ghost" size="icon" onClick={() => move(index, index + 1)} className="h-7 w-7 text-muted-foreground hover:text-primary"><MoveDown className="h-4 w-4" /></Button>}
-          
-          <Button type="button" variant="ghost" size="icon" onClick={isEditing ? handleSaveItem : toggleEditMode} className="h-7 w-7 text-muted-foreground hover:text-primary">
-            {isEditing ? <Save className="h-4 w-4" /> : <Edit3 className="h-4 w-4" />}
-          </Button>
-          {isEditing && <Button type="button" variant="ghost" size="icon" onClick={handleCancelEdit} className="h-7 w-7 text-muted-foreground hover:text-destructive"><Ban className="h-4 w-4" /></Button>}
-          
-          {!(isOnlyItem && isFirst) && ( // Don't allow removal if it's the only item (e.g. single-stop plan)
-            <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} className="h-7 w-7 text-destructive hover:bg-destructive/10">
-              <Trash2 className="h-4 w-4" /><span className="sr-only">Remove Stop</span>
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="p-4 space-y-3">
-        {!isEditing ? (
-          // SUMMARY VIEW - Sleek and modern layout
-          <div className="space-y-3">
-            <div className="flex gap-4">
-              {/* Left side - Image */}
-              <div className="h-28 w-28 flex-shrink-0 bg-muted rounded-lg overflow-hidden relative shadow-sm">
-                {imageError ? (
-                  <Image 
-                    key="placeholderImage"
-                    src={placeholderErrorUrl} 
-                    alt={`Image Not Available for ${placeName || 'itinerary stop'}`} 
-                    fill
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                    style={{ objectFit: 'cover' }}
-                    className="rounded-lg"
-                    unoptimized
-                  />
-                ) : itemPhotoUrl.startsWith('https://') ? (
-                  <Image 
-                    key={itemPhotoUrl}
-                    src={itemPhotoUrl} 
-                    alt={`Image of ${placeName || 'itinerary stop'}`} 
-                    fill
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                    style={{ objectFit: 'cover' }}
-                    className="rounded-lg"
-                    data-ai-hint={types?.[0] || 'activity location'}
-                    unoptimized={itemPhotoUrl.includes('maps.googleapis.com')}
-                    onError={() => {
-                      if (!itemPhotoUrl.includes('placehold.co')) {
-                        setImageError(true);
-                      }
-                    }}
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-muted text-sm text-muted-foreground p-2 text-center font-medium">{placeName || "Location"}</div>
-                )}
-              </div>
-              
-              {/* Right side - Essential info */}
-              <div className="flex-1 min-w-0 space-y-2">
-                <div>
-                  <h4 className="font-semibold text-base text-foreground truncate leading-tight">{placeName || "Unnamed Place"}</h4>
-                  {address && <p className="text-sm text-muted-foreground truncate mt-0.5">{address}</p>}
+    <Card className="mb-6 border border-border shadow-lg bg-card rounded-2xl overflow-hidden hover:shadow-xl transition-shadow duration-300">
+      <CardHeader className="p-0">
+        {/* Header with image background */}
+        <div className="relative h-32 sm:h-40 w-full rounded-t-lg overflow-hidden">
+          {!imageError ? (
+            <Image
+              src={itemPhotoUrl}
+              alt={typeof placeName === 'string' ? placeName : 'Location'}
+              fill
+              className="object-cover"
+              onError={() => setImageError(true)}
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-muted/30 to-muted/50 text-muted-foreground">
+              <div className="text-center">
+                <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-muted flex items-center justify-center">
+                  <ExternalLink className="h-6 w-6 text-muted-foreground" />
                 </div>
-                
-                <div className="flex items-center text-sm text-muted-foreground">
-                  <Clock className="inline h-4 w-4 mr-1.5 flex-shrink-0" />
-                  <span className="truncate font-medium">{formattedStartTime} - {formattedEndTime}</span>
-                  {currentItem?.durationMinutes != null && <span className="ml-2 whitespace-nowrap text-xs bg-muted px-2 py-0.5 rounded-full">({currentItem.durationMinutes} mins)</span>}
-                </div>
-                
-                {/* Key details in modern row */}
-                <div className="flex flex-wrap gap-2 text-sm">
-                  {typeof rating === 'number' && (
-                    <div className="flex items-center bg-amber-50 text-amber-700 px-2 py-1 rounded-full">
-                      <Sparkles className="w-3.5 h-3.5 mr-1 text-amber-500 flex-shrink-0"/> 
-                      <span className="font-medium">{rating.toFixed(1)}</span>
-                    </div>
-                  )}
-                  {priceLevel !== null && priceLevel !== undefined && (
-                    <div className="bg-green-50 text-green-700 px-2 py-1 rounded-full font-medium">
-                      {'$'.repeat(priceLevel) || 'N/A'}
-                    </div>
-                  )}
-                  {isOperational !== null && isOperational !== undefined && (
-                    <Badge variant={isOperational ? "default" : "destructive"} className="h-6 px-2 text-xs font-medium">
-                      {isOperational ? <CheckCircle className="w-3 h-3 mr-1 flex-shrink-0"/> : <XCircle className="w-3 h-3 mr-1 flex-shrink-0"/>}
-                      <span>{isOperational ? "Open" : "Closed"}</span>
-                    </Badge>
-                  )}
-                  {openingHours && openingHours.length > 0 && (
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm" className="h-6 px-2 text-xs font-medium hover:bg-primary/5 border-primary/20">
-                          <CalendarClock className="w-3 h-3 mr-1" />
-                          Hours
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-72 p-0 bg-background/95 backdrop-blur-sm border border-border/50 shadow-lg" align="start">
-                        <div className="p-4">
-                          <h4 className="font-semibold text-base mb-3 text-foreground">{placeName || "Location"} - Opening Hours</h4>
-                          <div className="space-y-1">
-                            <table className="w-full text-sm">
-                              <tbody>
-                                {openingHours.map((line, i) => {
-                                  const parts = line.split(': ');
-                                  const day = parts[0];
-                                  const hours = parts[1] || '';
-                                  return (
-                                    <tr key={i} className="border-b border-border/30 last:border-b-0">
-                                      <td className="py-2 pr-3 font-medium text-muted-foreground">{day}</td>
-                                      <td className="py-2 text-foreground">{hours}</td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  )}
-                  {website && (
-                    <a href={website} target="_blank" rel="noopener noreferrer" className="text-primary hover:text-primary/80 flex items-center bg-primary/5 px-2 py-1 rounded-full transition-colors">
-                      <ExternalLink className="w-3 h-3 flex-shrink-0"/>
-                    </a>
-                  )}
-                </div>
+                <span className="text-sm text-muted-foreground">No image available</span>
               </div>
             </div>
-            
-            {/* Description */}
-            {description && (
-              <div className="bg-muted/30 rounded-lg p-3">
-                <p className="text-sm text-foreground/90 line-clamp-2 break-words leading-relaxed">{description}</p>
-              </div>
-            )}
-            
-            {/* Categories as modern badges */}
-            {types && types.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {types.slice(0,3).map(type => (
-                  <Badge key={type} variant="secondary" className="text-xs px-2 py-1 h-auto font-medium bg-secondary/60">
-                    {type.replace(/_/g, ' ')}
-                  </Badge>
-                ))}
-              </div>
-            )}
-            
-            {/* Activities section */}
-            {activitySuggestions?.length > 0 && (
-              <details className="text-sm group">
-                <summary className="cursor-pointer text-primary hover:text-primary/80 font-medium flex items-center transition-colors">
-                  <span className="group-open:rotate-90 transition-transform mr-1">▶</span>
-                  Suggested Activities
-                </summary>
-                <div className="pt-2 pl-4">
-                  <ul className="space-y-1">
-                    {activitySuggestions.map((sugg, i) => (
-                      <li key={i} className="text-foreground/80 break-words flex items-start">
-                        <span className="w-1.5 h-1.5 bg-primary/60 rounded-full mt-2 mr-2 flex-shrink-0"></span>
-                        {sugg}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </details>
-            )}
-            
-            {/* Transit info - Modern styling */}
-            {index > 0 && transitMode && (
-              <div className="bg-muted/20 rounded-lg p-3 border border-border/30">
-                <div className="text-sm text-muted-foreground flex items-center">
-                  {transitModeOptions.find(opt => opt.value === transitMode)?.icon ? React.createElement(transitModeOptions.find(opt => opt.value === transitMode)!.icon, {className: "w-4 h-4 mr-2 flex-shrink-0 text-primary"}) : <Car className="w-4 h-4 mr-2 flex-shrink-0 text-primary"/> }
-                  <span className="font-medium">From previous stop:</span>
-                  {isFetchingTransitTime ? (
-                    <Loader2 className="w-4 h-4 ml-2 animate-spin text-primary" />
-                  ) : (
-                    <span className="ml-2 font-semibold text-foreground bg-primary/10 px-2 py-0.5 rounded-full text-xs">
-                      {transitTimeFromPreviousMinutes !== null && transitTimeFromPreviousMinutes !== undefined 
-                        ? `${transitTimeFromPreviousMinutes} mins` 
-                        : 'N/A'}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-            
-            {/* Notes section */}
-            {currentItem?.notes && (
-              <div className="bg-blue-50/50 border border-blue-200/50 rounded-lg p-3">
-                <p className="text-sm font-semibold text-blue-900/80 mb-1">Your Notes:</p>
-                <p className="text-sm text-blue-800/90 whitespace-pre-wrap break-words leading-relaxed">{currentItem.notes}</p>
+          )}
+          
+          {/* Overlay gradient */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+          
+          {/* Schedule pill overlay */}
+          <div className="absolute top-3 left-3 flex flex-col gap-2">
+            <div className="bg-black/80 backdrop-blur-sm rounded-full px-3 py-2 flex items-center gap-2 shadow-lg">
+              <CalendarClock className="h-4 w-4 text-white" />
+              <span className="text-white text-sm font-medium">
+                {formattedStartTime} - {formattedEndTime}
+              </span>
+            </div>
+            {index > 0 && currentItem?.transitTimeFromPreviousMinutes && (
+              <div className="bg-accent/90 backdrop-blur-sm rounded-full px-3 py-1.5 flex items-center gap-1.5 shadow-lg">
+                {transitModeOptions.find(option => option.value === transitMode)?.icon && (
+                  React.createElement(transitModeOptions.find(option => option.value === transitMode)!.icon, {
+                    className: "h-3.5 w-3.5 text-white"
+                  })
+                )}
+                <span className="text-white text-xs font-medium">
+                  {currentItem.transitTimeFromPreviousMinutes} min
+                </span>
               </div>
             )}
           </div>
-        ) : (
-          // EDIT VIEW
-          <>
-            <FormField
-              control={control}
-              name={`itinerary.${index}.placeName`}
-              render={({ field }) => ( // field provides field.onChange (for RHF), field.onBlur, field.value (RHF value)
-                <FormItem>
-                  <FormLabel className="text-xs">Place Name / Search</FormLabel>
-                  <FormControl>
-                    <Input 
-                      placeholder="e.g., Eiffel Tower"
-                      ref={placeNameInputRef} // Keep original ref for Google Places Autocomplete
-                      value={internalPlaceName || ''}
-                      onChange={(e) => {
-                        const typedValue = e.target.value;
-                        setInternalPlaceName(typedValue);
-                        if (placeNameDebounceTimeoutRef.current) {
-                          clearTimeout(placeNameDebounceTimeoutRef.current);
-                        }
-                        placeNameDebounceTimeoutRef.current = setTimeout(() => {
-                          field.onChange(typedValue);
-                        }, 300);
-                      }}
-                      onBlur={() => {
-                        if (placeNameDebounceTimeoutRef.current) {
-                          clearTimeout(placeNameDebounceTimeoutRef.current);
-                        }
-                        if (field.value !== internalPlaceName) { // Check against field.value from RHF
-                            field.onChange(internalPlaceName);
-                        }
-                        if (typeof field.onBlur === 'function') { // Call original RHF onBlur
-                            field.onBlur();
-                        }
-                      }}
-                      disabled={!isGoogleMapsApiLoaded} 
-                      className="text-sm h-9" 
-                    />
-                  </FormControl>
-                  {!isGoogleMapsApiLoaded && <FormDescription className="text-xs text-muted-foreground">Maps API loading...</FormDescription>}
-                  <FormMessage className="text-xs" />
-                </FormItem>
-              )}
-            />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FormField control={control} name={`itinerary.${index}.address`}
-                render={({ field }) => (
-                  <FormItem><FormLabel className="text-xs">Address</FormLabel><FormControl><Input placeholder="Auto-filled from search" {...field} value={field.value ?? ''} className="text-sm h-9" readOnly /></FormControl><FormMessage className="text-xs" /></FormItem>
-                )}
-              />
-              <FormField control={control} name={`itinerary.${index}.city`}
-                render={({ field }) => (
-                  <FormItem><FormLabel className="text-xs">City</FormLabel><FormControl><Input placeholder="Auto-filled from search" {...field} value={field.value ?? ''} className="text-sm h-9" readOnly /></FormControl><FormMessage className="text-xs" /></FormItem>
-                )}
-              />
+          
+          {/* Title overlay */}
+          <div className="absolute bottom-0 left-0 right-0 p-4">
+            <div className="flex items-center gap-3">
+              {/* Position number indicator */}
+              <div className="flex-shrink-0 w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center border border-white/30">
+                <span className="text-white font-bold text-sm">{index + 1}</span>
+              </div>
+              <h3 className="text-white font-semibold text-lg sm:text-xl leading-tight drop-shadow-lg flex-1">
+                {typeof placeName === 'string' && placeName ? placeName : `Stop ${index + 1}`}
+              </h3>
             </div>
-            <FormField control={control} name={`itinerary.${index}.description`}
-              render={({ field }) => (
-                <FormItem><FormLabel className="text-xs">Description / Activity</FormLabel><FormControl><Textarea placeholder="e.g., Sightseeing, lunch" {...field} value={field.value ?? ''} className="text-sm min-h-[60px]" /></FormControl><FormMessage className="text-xs" /></FormItem>
-              )}
-            />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FormField control={control} name={`itinerary.${index}.startTime`}
-                render={({ field }) => (
-                  <FormItem><FormLabel className="text-xs">Start Time</FormLabel>
-                    <FormControl>
-                      <Input 
-                        type="datetime-local" 
-                        {...field} 
-                        value={field.value && isValid(parseISO(field.value)) ? format(parseISO(field.value), "yyyy-MM-dd'T'HH:mm") : ''} 
-                        onChange={(e) => {
-                          const newDate = e.target.value ? new Date(e.target.value).toISOString() : '';
-                          field.onChange(newDate);
-                        }}
-                        className="text-sm h-9" 
-                      />
-                    </FormControl>
-                    <FormMessage className="text-xs" />
-                  </FormItem>
-                )}
-              />
-              <FormField control={control} name={`itinerary.${index}.endTime`}
-                render={({ field }) => (
-                  <FormItem><FormLabel className="text-xs">End Time</FormLabel>
-                    <FormControl>
-                      <Input 
-                        type="datetime-local" 
-                        {...field} 
-                        value={field.value && isValid(parseISO(field.value)) ? format(parseISO(field.value), "yyyy-MM-dd'T'HH:mm") : ''} 
-                        onChange={(e) => {
-                          const newDate = e.target.value ? new Date(e.target.value).toISOString() : '';
-                          field.onChange(newDate);
-                        }}
-                        className="text-sm h-9" 
-                      />
-                    </FormControl>
-                    <FormMessage className="text-xs" />
-                  </FormItem>
-                )}
-              />
-            </div>
-            <FormField control={control} name={`itinerary.${index}.durationMinutes`}
-              render={({ field }) => (
-                <FormItem className="mt-1">
-                  <FormLabel className="text-xs">Estimated Duration (minutes)</FormLabel>
-                  <FormControl><Input type="number" placeholder="e.g., 60" {...field} onChange={e => field.onChange(parseInt(e.target.value, 10) || null)} value={field.value ?? ''} className="text-sm h-9" /></FormControl>
-                  <FormMessage className="text-xs" />
-                </FormItem>
-              )}
-            />
-            {index > 0 && (
-              <div className="mt-3 space-y-1">
-                <Controller
-                  control={control}
-                  name={`itinerary.${index}.transitMode`}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs">Mode of Transit to this Stop</FormLabel>
-                      <Select 
-                        value={field.value || 'driving'} 
-                        onValueChange={field.onChange}
-                        disabled={!isEditing}
-                      >
-                        <FormControl>
-                          <SelectTrigger className="text-sm h-9">
-                            <SelectValue placeholder="Select mode" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {transitModeOptions.map(opt => (
-                            <SelectItem key={opt.value} value={opt.value} className="text-sm">
-                              <div className="flex items-center">
-                                <opt.icon className="w-4 h-4 mr-2" />
-                                {opt.label}
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage className="text-xs" />
-                    </FormItem>
+          </div>
+          
+          {/* Basic place info pill - bottom right */}
+          {placeInfo && (
+            <div className="absolute bottom-3 right-3 bg-black/80 backdrop-blur-sm rounded-lg px-3 py-2 shadow-lg max-w-48">
+              <div className="flex items-center gap-2 text-white">
+                <Info className="h-4 w-4 flex-shrink-0" />
+                <div className="text-xs space-y-1">
+                  {placeInfo.rating && (
+                    <div className="flex items-center gap-1">
+                      <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                      <span className="font-medium">{placeInfo.rating.toFixed(1)}</span>
+                      {placeInfo.reviewCount && (
+                        <span className="text-white/70">({abbreviateNumber(placeInfo.reviewCount)})</span>
+                      )}
+                    </div>
                   )}
-                />
-                <div className="text-xs text-muted-foreground flex items-center">
-                  <Clock className="w-3 h-3 mr-1.5" />
-                  Est. transit from previous:
-                  {isFetchingTransitTime ? (
-                    <Loader2 className="w-3 h-3 ml-1.5 animate-spin" />
-                  ) : (
-                    <span className="ml-1 font-medium text-foreground/90">
-                      {transitTimeFromPreviousMinutes !== null && transitTimeFromPreviousMinutes !== undefined 
-                        ? `${transitTimeFromPreviousMinutes} mins` 
-                        : 'N/A'}
-                    </span>
+                  {placeInfo.types && placeInfo.types.length > 0 && (
+                    <div className="text-white/90 capitalize">
+                      {placeInfo.types[0].replace(/_/g, ' ')}
+                    </div>
+                  )}
+                  {placeInfo.isOperational !== undefined && (
+                    <div className={`text-xs ${
+                      placeInfo.isOperational ? 'text-green-400' : 'text-red-400'
+                    }`}>
+                      {placeInfo.isOperational ? 'Open' : 'Closed'}
+                    </div>
+                  )}
+                  {placeInfo.priceLevel !== undefined && placeInfo.priceLevel > 0 && (
+                    <div className="text-white/90">
+                      {'$'.repeat(placeInfo.priceLevel)}
+                    </div>
                   )}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Action buttons overlay */}
+          <div className="absolute top-3 right-3 flex items-center gap-1">
+            {/* Move buttons */}
+            <Button 
+              type="button" 
+              variant="secondary" 
+              size="icon" 
+              onClick={() => move(index, index - 1)} 
+              disabled={isFirst}
+              className="h-8 w-8 bg-card/90 hover:bg-card text-card-foreground shadow-sm backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed border border-border/50"
+            >
+              <MoveUp className="h-4 w-4" />
+            </Button>
+            
+            <Button 
+              type="button" 
+              variant="secondary" 
+              size="icon" 
+              onClick={() => move(index, index + 1)} 
+              disabled={isLast}
+              className="h-8 w-8 bg-card/90 hover:bg-card text-card-foreground shadow-sm backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed border border-border/50"
+            >
+              <MoveDown className="h-4 w-4" />
+            </Button>
+            
+            {isEditing ? (
+              <>
+                <Button 
+                  type="button" 
+                  variant="secondary" 
+                  size="icon" 
+                  onClick={handleSave} 
+                  className="h-8 w-8 bg-gradient-primary/90 hover:bg-gradient-primary-hover text-primary-foreground shadow-sm backdrop-blur-sm"
+                >
+                  <Save className="h-4 w-4" />
+                </Button>
+                <Button 
+                  type="button" 
+                  variant="secondary" 
+                  size="icon" 
+                  onClick={handleCancel} 
+                  className="h-8 w-8 bg-muted/90 hover:bg-muted text-muted-foreground shadow-sm backdrop-blur-sm"
+                >
+                  <Ban className="h-4 w-4" />
+                </Button>
+              </>
+            ) : (
+              <Button 
+                type="button" 
+                variant="secondary" 
+                size="icon" 
+                onClick={handleEdit} 
+                className="h-8 w-8 bg-secondary/90 hover:bg-secondary text-secondary-foreground shadow-sm backdrop-blur-sm"
+              >
+                <Edit3 className="h-4 w-4" />
+              </Button>
             )}
-            <FormField control={control} name={`itinerary.${index}.notes`}
+            
+            {!isOnlyItem && (
+              <Button 
+                type="button" 
+                variant="secondary" 
+                size="icon" 
+                onClick={handleRemove} 
+                className="h-8 w-8 bg-destructive/90 hover:bg-destructive text-destructive-foreground shadow-sm backdrop-blur-sm"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      
+      <CardContent className="p-4 sm:p-6 space-y-6">
+        {/* Transit Information - Only show in editing mode */}
+        {isEditing && index > 0 && (
+          <div className="bg-gradient-to-r from-accent/10 to-accent/5 rounded-xl p-4 border border-accent/20">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-accent/20 rounded-lg">
+                  {transitModeOptions.find(option => option.value === transitMode)?.icon && (
+                    React.createElement(transitModeOptions.find(option => option.value === transitMode)!.icon, {
+                      className: "h-5 w-5 text-accent"
+                    })
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground capitalize">{transitMode || 'driving'}</p>
+                  {isCalculatingTransit ? (
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <span>Calculating route...</span>
+                    </div>
+                  ) : (
+                    currentItem?.transitTimeFromPreviousMinutes && (
+                      <p className="text-xs text-muted-foreground">{currentItem.transitTimeFromPreviousMinutes} minutes</p>
+                    )
+                  )}
+                </div>
+              </div>
+              
+              <FormField
+                control={control}
+                name={getFieldPath('transitMode')}
+                render={({ field }) => (
+                  <FormItem>
+                    <Select onValueChange={field.onChange} defaultValue={field.value || 'driving'}>
+                      <FormControl>
+                        <SelectTrigger className="w-[120px] h-8 bg-background border-border">
+                          <SelectValue placeholder="Travel mode" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {transitModeOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            <div className="flex items-center gap-2">
+                              <option.icon className="h-4 w-4" />
+                              {option.label}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
+        )}
+        
+        {/* Form Fields */}
+        {isEditing ? (
+          <div className="space-y-6">
+            {/* Place Name Field */}
+            <FormField
+              control={control}
+              name={getFieldPath('placeName')}
               render={({ field }) => (
-                <FormItem className="mt-1"><FormLabel className="text-xs">Your Notes (Optional)</FormLabel><FormControl><Textarea placeholder="e.g., Book tickets in advance" {...field} value={field.value ?? ''} className="text-sm min-h-[40px]" /></FormControl><FormMessage className="text-xs" /></FormItem>
+                <FormItem>
+                  <FormControl>
+                    <PlaceAutocomplete
+                      value={field.value || ''}
+                      onPlaceSelect={handlePlaceSelect}
+                      onInputChange={(value) => {
+                        // Immediately update the form field
+                        setValue(getFieldPath('placeName'), value, { 
+                          shouldValidate: false, 
+                          shouldDirty: true 
+                        });
+                        
+                        // Clear existing timeout
+                        if (placeNameDebounceTimeoutRef.current) {
+                          clearTimeout(placeNameDebounceTimeoutRef.current);
+                        }
+                        
+                        // Set new timeout for validation
+                        placeNameDebounceTimeoutRef.current = setTimeout(() => {
+                          trigger(getFieldPath('placeName'));
+                        }, 300);
+                      }}
+                      placeholder="Place Name *"
+                      className="h-12 text-base"
+                      isGoogleMapsApiLoaded={isGoogleMapsApiLoaded}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
               )}
             />
-          </>
+            
+            {/* Address and City in a grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField
+                control={control}
+                name={getFieldPath('address')}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        value={field.value || ''}
+                        placeholder="Address"
+                        className="h-11"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={control}
+                name={getFieldPath('city')}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        value={field.value || ''}
+                        placeholder="City"
+                        className="h-11"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            
+            {/* Description Field */}
+            <FormField
+              control={control}
+              name={getFieldPath('description')}
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      value={field.value || ''}
+                      placeholder="Describe what you'll do here, what to see, or any special notes..."
+                      className="min-h-[100px] resize-none"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            {/* Activity Suggestions Display */}
+            {currentItem?.activitySuggestions && currentItem.activitySuggestions.length > 0 && (
+              <div className="bg-muted/30 rounded-xl p-4 border border-border">
+                <h4 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  Activity Suggestions
+                </h4>
+                <div className="space-y-2">
+                  {currentItem.activitySuggestions.map((suggestion, suggestionIndex) => (
+                    <div key={suggestionIndex} className="flex items-start gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
+                      <p className="text-sm text-muted-foreground leading-relaxed">{suggestion}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Time Fields */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField
+                control={control}
+                name={getFieldPath('startTime')}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        value={formatForDatetimeLocal(field.value)}
+                        onChange={(e) => {
+                          const datetimeLocalValue = e.target.value;
+                          if (datetimeLocalValue) {
+                            const isoString = new Date(datetimeLocalValue).toISOString();
+                            field.onChange(isoString);
+                          } else {
+                            field.onChange('');
+                          }
+                        }}
+                        type="datetime-local"
+                        className="h-11"
+                        placeholder="Start Time"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={control}
+                name={getFieldPath('endTime')}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        value={formatForDatetimeLocal(field.value)}
+                        onChange={(e) => {
+                          const datetimeLocalValue = e.target.value;
+                          if (datetimeLocalValue) {
+                            const isoString = new Date(datetimeLocalValue).toISOString();
+                            field.onChange(isoString);
+                          } else {
+                            field.onChange('');
+                          }
+                        }}
+                        type="datetime-local"
+                        className="h-11"
+                        placeholder="End Time"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
+        ) : (
+          /* Read-only view with modern cards */
+          <div className="space-y-4">
+            {/* Location Details */}
+            <div className="bg-muted/30 rounded-xl p-4 space-y-3 border border-border">
+              {(placeName || currentItem?.address) && (
+                <div className="space-y-2">
+                  {currentItem?.address && (
+                    <div className="flex items-start gap-2">
+                      <div className="w-5 h-5 mt-0.5 rounded bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <ExternalLink className="h-3 w-3 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Address</p>
+                        <p className="text-sm text-muted-foreground">{currentItem.address}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            {/* Description */}
+            {currentItem?.description && (
+              <div className="bg-muted/30 rounded-xl p-4 border border-border">
+                <h4 className="text-sm font-medium text-foreground mb-2">Description</h4>
+                <p className="text-sm text-muted-foreground leading-relaxed">{currentItem.description}</p>
+              </div>
+            )}
+            
+            {/* Activity Suggestions */}
+            {currentItem?.activitySuggestions && currentItem.activitySuggestions.length > 0 && (
+              <div className="bg-muted/30 rounded-xl p-4 border border-border">
+                <h4 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  Activity Suggestions
+                </h4>
+                <div className="space-y-2">
+                  {currentItem.activitySuggestions.map((suggestion, suggestionIndex) => (
+                    <div key={suggestionIndex} className="flex items-start gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
+                      <p className="text-sm text-muted-foreground leading-relaxed">{suggestion}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>
   );
 };
 
-// Memoize the component to prevent unnecessary re-renders
-export const EditableItineraryItemCard = memo(EditableItineraryItemCardImpl, (prevProps, nextProps) => {
-  // Deep compare important props
-  const arePropsEqual = 
-    prevProps.index === nextProps.index &&
-    prevProps.isFirst === nextProps.isFirst &&
-    prevProps.isLast === nextProps.isLast &&
-    prevProps.isOnlyItem === nextProps.isOnlyItem &&
-    prevProps.isGoogleMapsApiLoaded === nextProps.isGoogleMapsApiLoaded &&
-    prevProps.previousItemLat === nextProps.previousItemLat &&
-    prevProps.previousItemLng === nextProps.previousItemLng &&
-    prevProps.previousItemStartTime === nextProps.previousItemStartTime &&
-    prevProps.previousItemEndTime === nextProps.previousItemEndTime &&
-    // Compare control reference - if it's the same form control instance
-    prevProps.control === nextProps.control &&
-    // Compare remove and move functions - they should be stable references
-    prevProps.remove === nextProps.remove &&
-    prevProps.move === nextProps.move;
-
-  return arePropsEqual;
-});
-
-EditableItineraryItemCard.displayName = 'EditableItineraryItemCard';
+// Export the memoized component
+export const EditableItineraryItemCard = memo(EditableItineraryItemCardImpl);

@@ -7,7 +7,8 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { GoogleMap, useJsApiLoader, CircleF } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, CircleF, AdvancedMarker as GoogleMapsAdvancedMarker, InfoWindow } from '@react-google-maps/api';
+import { PlaceAutocomplete } from '@/components/ui/place-autocomplete';
 import { format, parseISO, isValid, addHours } from 'date-fns';
 import { CalendarIcon, ChevronLeft, Edit3, Loader2, SearchIcon, Sparkles, ChevronDown, ChevronUp, MapPin, Clock, Users, DollarSign, Target, MessageSquare, CheckCircle, ChevronRight, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -139,6 +140,27 @@ function isDateValid(date: Date): boolean {
   return isValid(date) && date > new Date();
 }
 
+// Helper function to get the preferred color scheme
+const getPreferredMapMode = () => {
+  if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    // It's important to ensure google.maps is loaded before accessing its properties.
+    // This might require careful handling depending on when this function is called
+    // relative to the API script load.
+    // Assuming 'google' is available globally when this is used in mapOptions.
+    // @ts-ignore google.maps.rendering might not be in standard types yet
+    if (window.google && window.google.maps && window.google.maps.rendering && window.google.maps.rendering.resources && window.google.maps.rendering.resources.MapMode) {
+        // @ts-ignore
+        return google.maps.rendering.resources.MapMode.DARK;
+    }
+  }
+  // @ts-ignore
+  if (window.google && window.google.maps && window.google.maps.rendering && window.google.maps.rendering.resources && window.google.maps.rendering.resources.MapMode) {
+      // @ts-ignore
+      return google.maps.rendering.resources.MapMode.LIGHT;
+  }
+  return undefined; // Or a sensible default if google.maps is not ready
+};
+
 
 type GeneratePlanInputFormValues = Omit<z.infer<typeof GeneratePlanInputClientSchema>, 'hostUid' | 'planDateTime'> & { planDateTime: Date };
 
@@ -168,7 +190,7 @@ const defaultDateTime = (() => {
 })();
 
 // Static libraries array to prevent recreation on each render
-const GOOGLE_MAPS_LIBRARIES: ("places" | "geocoding" | "marker")[] = ['places', 'geocoding', 'marker'];
+const GOOGLE_MAPS_LIBRARIES: ("places" | "marker" | "geocoding")[] = ['places', 'geocoding', 'marker'];
 
 export default function GeneratePlanPage() {
   const { toast } = useToast();
@@ -179,7 +201,7 @@ export default function GeneratePlanPage() {
   const [generatedPlan, setGeneratedPlan] = useState<Plan | null>(null);
 
   const locationQueryInputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<google.maps.places.PlaceAutocompleteElement | null>(null);
+  const [searchValue, setSearchValue] = useState("");
   const mapRef = useRef<google.maps.Map | null>(null);
   
   // Collapsible states
@@ -199,6 +221,7 @@ export default function GeneratePlanPage() {
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: googleMapsApiKey || "",
     libraries: GOOGLE_MAPS_LIBRARIES,
+    version: "beta", // Added beta channel for mapMode and PlaceAutocompleteElement styling
   });
 
   const form = useForm<GeneratePlanInputFormValues>({
@@ -228,6 +251,39 @@ export default function GeneratePlanPage() {
     }
     return defaultMapCenter;
   }, [selectedLat, selectedLng]);
+
+  // Calculate zoom level based on radius to ensure entire circle is visible
+  const calculateZoomForRadius = useCallback((radiusKm: number) => {
+    if (!radiusKm || radiusKm === 0) return 12;
+    
+    // Approximate zoom levels for different radius sizes
+    // These values ensure the entire circle fits in the viewport
+    if (radiusKm <= 1) return 14;
+    if (radiusKm <= 2) return 13;
+    if (radiusKm <= 5) return 12;
+    if (radiusKm <= 10) return 11;
+    if (radiusKm <= 20) return 10;
+    if (radiusKm <= 30) return 9;
+    if (radiusKm <= 50) return 8;
+    return 7; // For very large radius
+  }, []);
+
+  const mapZoom = useMemo(() => {
+    if (selectedLat != null && selectedLng != null && watchedSearchRadius) {
+      return calculateZoomForRadius(watchedSearchRadius);
+    }
+    return selectedLat != null && selectedLng != null ? 12 : 5;
+  }, [selectedLat, selectedLng, watchedSearchRadius, calculateZoomForRadius]);
+
+  const mapOptions = useMemo(() => ({
+    ...mapThemeOptions, // Spread existing theme options
+    mapId: process.env.NEXT_PUBLIC_GOOGLE_MAP_ID || 'DEMO_MAP_ID',
+    clickableIcons: true, // New option from plan
+    scrollwheel: true,    // New option from plan
+    // Dynamically set mapMode
+    // @ts-ignore mapMode might not be in standard MapOptions type yet
+    mapMode: isLoaded ? getPreferredMapMode() : undefined, // Call only if API is loaded
+  }), [isLoaded]); // Recompute if isLoaded changes
 
  // Function to detect user location when requested
   const detectUserLocation = useCallback(() => {
@@ -313,131 +369,68 @@ export default function GeneratePlanPage() {
     }
   }, [isMapCollapsed, manualMapControl]);
 
-  useEffect(() => {
-    if (!isLoaded || typeof window === 'undefined' || !window.google || !window.google.maps.places) return;
-    if (isLocationSearchCollapsed) return; // Only create when search is expanded
+  // Handle place selection from autocomplete
+  const handlePlaceSelect = (place: any) => {
+    console.log('handlePlaceSelect called with:', place);
     
-    const container = document.getElementById('autocomplete-container');
-    if (!container) return;
+    const lat = typeof place.geometry.location.lat === 'function' 
+      ? place.geometry.location.lat() 
+      : place.geometry.location.lat;
+    const lng = typeof place.geometry.location.lng === 'function' 
+      ? place.geometry.location.lng() 
+      : place.geometry.location.lng;
     
-    // Clean up any existing autocomplete
-    if (autocompleteRef.current) {
-      autocompleteRef.current.remove();
-      autocompleteRef.current = null;
+    console.log('Extracted coordinates:', { lat, lng });
+    
+    // Update form values
+    form.setValue('locationQuery', place.name || place.formatted_address || '', { shouldValidate: true });
+    form.setValue('selectedLocationLat', lat, { shouldValidate: true });
+    form.setValue('selectedLocationLng', lng, { shouldValidate: true });
+    
+    console.log('Form values updated');
+    
+    // Pan map to location
+    if (mapRef.current) {
+      console.log('Panning map to:', { lat, lng });
+      mapRef.current.panTo({ lat, lng });
+      mapRef.current.setZoom(15);
+    } else {
+      console.log('mapRef.current is null');
     }
-
-    // @ts-ignore - PlaceAutocompleteElement is available in the new Places API
-    const newAutocomplete = new window.google.maps.places.PlaceAutocompleteElement({
-      includedPrimaryTypes: ['geocode', 'establishment'],
-      // Configure for popup-style display
-      requestedRegion: 'US', // Adjust based on your target region
-      locationBias: selectedLat && selectedLng ? {
-        center: { lat: selectedLat, lng: selectedLng },
-        radius: 50000 // 50km radius
-      } : undefined
-    });
-
-    // Enhanced styling for better popup integration
-    newAutocomplete.style.width = '100%';
-    newAutocomplete.style.height = '32px';
-    newAutocomplete.style.border = 'none';
-    newAutocomplete.style.outline = 'none';
-    newAutocomplete.style.backgroundColor = 'transparent';
-    newAutocomplete.style.fontSize = '14px';
-    newAutocomplete.style.padding = '0';
-    newAutocomplete.style.fontFamily = 'inherit';
-    newAutocomplete.style.color = 'hsl(var(--foreground))';
-    newAutocomplete.placeholder = 'Search for places, addresses...';
-
-    // Set placeholder color to match theme
-    const style = document.createElement('style');
-    style.textContent = `
-      gmp-place-autocomplete::placeholder {
-        color: hsl(var(--muted-foreground)) !important;
-      }
-      gmp-place-autocomplete {
-        color: hsl(var(--foreground)) !important;
-      }
-    `;
-    document.head.appendChild(style);
-
-    // Prevent the default dropdown from showing outside our container
-    newAutocomplete.style.position = 'relative';
     
-    // Add focus and blur event listeners
-    newAutocomplete.addEventListener('focus', () => {
-      setIsAutocompleteFocused(true);
-    });
+    // Auto-collapse the search after selection and show area selector
+    console.log('Collapsing search interface');
+    setIsLocationSearchCollapsed(true);
+    setIsAutocompleteFocused(false);
     
-    newAutocomplete.addEventListener('blur', (event) => {
-      // Use setTimeout to allow for potential refocus or interaction with close button
-      setTimeout(() => {
-        // Check if focus moved to the close button or stayed within the search container
-        const activeElement = document.activeElement;
-        const searchContainer = document.querySelector('#autocomplete-container')?.parentElement;
-        
-        if (!searchContainer?.contains(activeElement)) {
-          setIsAutocompleteFocused(false);
-          // Only collapse if not clicking on close button or other search elements
-          if (!activeElement?.closest('[data-search-element]')) {
-            setIsLocationSearchCollapsed(true);
-          }
+    // Automatically open the search radius selector
+    setTimeout(() => {
+      setIsSearchRadiusCollapsed(false);
+      setIsRadiusFocused(true);
+    }, 300); // Small delay to allow search interface to close first
+  };
+
+  // Effect to update mapMode when system theme changes
+  useEffect(() => {
+    if (!isLoaded || !mapRef.current || typeof window === 'undefined' || !window.matchMedia) return;
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    
+    const handleChange = () => {
+      if (mapRef.current) {
+        const newMode = getPreferredMapMode();
+        if (newMode !== undefined) { // Ensure mode is valid before setting
+            // @ts-ignore mapMode might not be in standard MapOptions type yet
+            mapRef.current.setOptions({ mapMode: newMode });
         }
-      }, 150);
-    });
-
-    // @ts-ignore - gmp-select event is available in the new Places API
-    newAutocomplete.addEventListener('gmp-select', async (event: any) => {
-      const { placePrediction } = event;
-      if (!placePrediction) return;
-
-      const place = placePrediction.toPlace();
-      await place.fetchFields({
-        fields: ['displayName', 'formattedAddress', 'addressComponents', 'location', 'id']
-      });
-
-      if (place.location) {
-        // Extract lat/lng values - they might be functions or properties
-        const lat = typeof place.location.lat === 'function' ? place.location.lat() : place.location.lat;
-        const lng = typeof place.location.lng === 'function' ? place.location.lng() : place.location.lng;
-        
-        form.setValue('locationQuery', place.displayName || place.formattedAddress || '', { shouldValidate: true });
-        form.setValue('selectedLocationLat', lat ?? null, { shouldValidate: true });
-        form.setValue('selectedLocationLng', lng ?? null, { shouldValidate: true });
-        
-        if (mapRef.current && typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng)) {
-          const latLng = new window.google.maps.LatLng(lat, lng);
-          mapRef.current.panTo(latLng);
-        }
-        // Auto-collapse the search after selection
-        setIsLocationSearchCollapsed(true);
-        setIsAutocompleteFocused(false);
-      } else if (place.displayName && window.google && window.google.maps.Geocoder) {
-        const geocoder = new window.google.maps.Geocoder();
-        geocoder.geocode({ address: place.displayName }, (results, status) => {
-          if (status === 'OK' && results && results[0]?.geometry.location) {
-            form.setValue('locationQuery', results[0].formatted_address || place.displayName || '', { shouldValidate: true });
-            form.setValue('selectedLocationLat', results[0].geometry.location.lat() ?? null, { shouldValidate: true });
-            form.setValue('selectedLocationLng', results[0].geometry.location.lng() ?? null, { shouldValidate: true });
-            if (mapRef.current) mapRef.current.panTo(results[0].geometry.location);
-            setIsLocationSearchCollapsed(true);
-            setIsAutocompleteFocused(false);
-          }
-        });
-      }
-    });
-    
-    // Insert the autocomplete element into the container
-    container.appendChild(newAutocomplete);
-    autocompleteRef.current = newAutocomplete;
-
-    return () => { 
-      if (autocompleteRef.current) {
-        autocompleteRef.current.remove();
-        autocompleteRef.current = null;
       }
     };
-  }, [isLoaded, form, isLocationSearchCollapsed]);
+
+    handleChange(); // Set initial mode based on current preference
+    mediaQuery.addEventListener('change', handleChange);
+    
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, [isLoaded]);
 
   const onMapLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
@@ -661,14 +654,19 @@ export default function GeneratePlanPage() {
                 <div className="w-full h-full bg-muted">
                   {isLoaded ? (
                     <GoogleMap 
-                      mapContainerStyle={{ width: '100%', height: '100%' }} 
-                      center={mapCenter} 
-                      zoom={selectedLat != null && selectedLng != null ? 12 : 5} 
-                      options={{
-                        ...mapThemeOptions,
-                        mapId: process.env.NEXT_PUBLIC_GOOGLE_MAP_ID || 'DEMO_MAP_ID'
-                      }} 
+                      mapContainerClassName="w-full flex-grow h-full" // Changed from mapContainerStyle as per plan
+                      center={mapCenter} // Kept original mapCenter
+                      zoom={mapZoom} // Dynamic zoom based on radius
+                      options={mapOptions} // Use new mapOptions from useMemo
                       onClick={(e) => {
+                        // Check if radius selector is open and prevent accidental pin drops
+                        if (!isSearchRadiusCollapsed && isRadiusFocused) {
+                          // Only collapse the radius selector, don't drop a pin
+                          setIsSearchRadiusCollapsed(true);
+                          setIsRadiusFocused(false);
+                          return;
+                        }
+                        
                         onMapClick(e);
                         // Collapse floating buttons when clicking on map
                         setIsLocationSearchCollapsed(true);
@@ -720,11 +718,14 @@ export default function GeneratePlanPage() {
                     size="icon"
                     onClick={() => {
                       setIsLocationSearchCollapsed(!isLocationSearchCollapsed);
+                      // Auto-focus the input when opening the search
                       if (isLocationSearchCollapsed) {
-                        setIsAutocompleteFocused(true);
                         setTimeout(() => {
-                          autocompleteRef.current?.focus();
-                        }, 150); // Increased delay for better animation
+                          const input = document.querySelector('[data-search-element] input') as HTMLInputElement;
+                          if (input) {
+                            input.focus();
+                          }
+                        }, 100);
                       }
                     }}
                     className={cn(
@@ -752,45 +753,42 @@ export default function GeneratePlanPage() {
                   </Button>
                   
                   {/* Expandable Search Bar */}
-                  {!isLocationSearchCollapsed && (
-                    <div 
-                      className={cn(
-                        "absolute top-0 left-0 bg-background/95 backdrop-blur-md rounded-full shadow-xl border border-border/20 transition-all duration-300 flex items-center gap-2 p-2",
-                        "w-96 max-w-[calc(100vw-2rem)]" // Fixed width with responsive max-width
-                      )} 
-                      onClick={(e) => e.stopPropagation()}
-                      data-search-element
-                    >
-                      {/* Search Icon */}
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted/50 flex-shrink-0 ml-1">
-                        <SearchIcon className="w-4 h-4 text-muted-foreground" />
-                      </div>
-                      
-                      {/* Search Input Container */}
-                      <div 
-                        id="autocomplete-container" 
-                        className="flex-1 min-h-[32px] px-2"
-                        data-search-element
-                      >
-                        {/* PlaceAutocompleteElement will be inserted here */}
-                      </div>
-                      
-                      {/* Close Button */}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          setIsLocationSearchCollapsed(true);
-                          setIsAutocompleteFocused(false);
-                        }}
-                        className="h-8 w-8 rounded-full hover:bg-muted/50 flex-shrink-0 mr-1"
-                        data-search-element
-                      >
-                        <X className="h-4 w-4 text-muted-foreground" />
-                      </Button>
-                    </div>
-                  )}
+                      {!isLocationSearchCollapsed && (
+                        <div
+                          className={cn(
+                            "absolute top-0 left-0 bg-black/80 backdrop-blur-md border border-gray-600/50 rounded-2xl shadow-2xl transition-all duration-300 flex items-center gap-3 p-3",
+                            "w-96 min-w-96 h-16" // Fixed width to prevent squishing
+                          )} 
+                          onClick={(e) => e.stopPropagation()}
+                          data-search-element
+                        >
+                          {/* Search Icon */}
+                          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gray-800/60 flex-shrink-0">
+                            <SearchIcon className="w-5 h-5 text-gray-300" />
+                          </div>
+                          
+                          {/* Search Input Container */}
+                          <div className="flex-1 flex items-center" data-search-element>
+                            <PlaceAutocomplete
+                              value={searchValue}
+                              onInputChange={setSearchValue}
+                              onPlaceSelect={handlePlaceSelect}
+                              onFocus={() => setIsAutocompleteFocused(true)}
+                              onBlur={() => setIsAutocompleteFocused(false)}
+                              placeholder="Search for places, addresses..."
+                              className="w-full"
+                              locationBias={selectedLat && selectedLng ? {
+                                center: { lat: selectedLat, lng: selectedLng },
+                                radius: 50000
+                              } : undefined}
+                              requestedRegion="US"
+                              isGoogleMapsApiLoaded={isLoaded}
+                            />
+                          </div>
+                          
+
+                        </div>
+                      )}
                 </div>
                 
                 {/* Floating Radius Button */}
@@ -818,7 +816,7 @@ export default function GeneratePlanPage() {
                   {/* Expandable Radius Slider */}
                   {!isSearchRadiusCollapsed && isRadiusFocused && (
                     <div 
-                      className="absolute top-0 right-14 w-80 bg-background/95 backdrop-blur-md rounded-full shadow-lg border border-border/20 p-4" 
+                      className="fixed top-24 md:top-52 left-1/2 -translate-x-1/2 w-96 bg-background/80 backdrop-blur-lg rounded-full shadow-2xl drop-shadow-xl border border-border/30 p-4 z-30" 
                       onClick={(e) => e.stopPropagation()}
                       data-radius-element
                     >
@@ -831,9 +829,9 @@ export default function GeneratePlanPage() {
                             <FormItem className="flex-1">
                               <FormControl>
                                 <Slider 
-                                  value={[field.value ?? 5]} 
+                                  value={[field.value ?? 0]} 
                                   onValueChange={(value) => field.onChange(value[0] === 0 ? null : value[0])} 
-                                  min={0} max={50} step={1} 
+                                  min={0} max={50} step={2} 
                                   disabled={!selectedLat || !selectedLng} 
                                   className="[&>span:first-child]:h-3 [&>span>span]:h-3 [&>button]:h-8 [&>button]:w-8 [&>button]:border-2 [&>button]:shadow-md [&>button]:touch-manipulation py-2"
                                   data-radius-element
@@ -858,20 +856,7 @@ export default function GeneratePlanPage() {
                         <span className="text-sm font-semibold text-primary whitespace-nowrap">
                           {(form.watch('searchRadius') ?? 0) === 0 ? 'Broad' : `${form.watch('searchRadius')} km`}
                         </span>
-                        {/* Close button */}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                             setIsSearchRadiusCollapsed(true);
-                             setIsRadiusFocused(false);
-                           }}
-                          className="h-8 w-8 rounded-full hover:bg-muted/50 flex-shrink-0 ml-2"
-                          data-radius-element
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
+
                       </div>
                     </div>
                   )}
@@ -905,7 +890,7 @@ export default function GeneratePlanPage() {
 
           {/* Step Explanation when Map is Expanded */}
           {!isMapCollapsed && (
-            <div className="flex-1 flex items-center justify-center p-8">
+            <div className="flex-1 flex items-center justify-center p-4">
               <div className="text-center max-w-md mx-auto space-y-4">
                 <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
                   <MapPin className="w-8 h-8 text-primary" />
@@ -927,7 +912,7 @@ export default function GeneratePlanPage() {
 
           {/* Form Fields - Only visible when map is collapsed */}
           {isMapCollapsed && (
-            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar-vertical">
+            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar-vertical">
               {/* Header Section */}
               <div className="text-center space-y-3 pb-2">
                 <div className="w-12 h-12 bg-gradient-to-br from-primary/20 to-primary/10 rounded-2xl flex items-center justify-center mx-auto">

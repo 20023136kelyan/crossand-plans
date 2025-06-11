@@ -434,35 +434,29 @@ function ItinerarySection({ form, isGoogleMapsApiLoaded, googleMapsApiKey }: Iti
     name: "itinerary",
   });
 
-  // Custom move function that maintains chronological order
+  // Custom move function that keeps time slots static
    const move = useCallback((fromIndex: number, toIndex: number) => {
+     // Get current values before moving
+     const currentValues = form.getValues('itinerary');
+     
+     // Store the time slots in their original positions
+     const timeSlots = currentValues.map(item => ({
+       startTime: item.startTime,
+       endTime: item.endTime
+     }));
+     
      // Perform the original move
      originalMove(fromIndex, toIndex);
      
-     // After moving, recalculate all time slots to maintain chronological order
+     // After moving, restore time slots to their original positions
      setTimeout(() => {
-       const currentValues = form.getValues('itinerary');
+       const movedValues = form.getValues('itinerary');
        
-       // Recalculate time slots for all items to maintain chronological order
-       currentValues.forEach((item, index) => {
-         if (index === 0) {
-           // First item keeps its current time or uses current time if none
-           if (!item.startTime) {
-             const now = new Date();
-             form.setValue(`itinerary.${index}.startTime`, now.toISOString());
-             form.setValue(`itinerary.${index}.endTime`, new Date(now.getTime() + 60 * 60 * 1000).toISOString());
-           }
-         } else {
-           // Subsequent items start 1 hour after the previous item ends
-           const previousItem = currentValues[index - 1];
-           if (previousItem && previousItem.endTime) {
-             const previousEndTime = new Date(previousItem.endTime);
-             const newStartTime = new Date(previousEndTime.getTime() + 60 * 60 * 1000);
-             const newEndTime = new Date(newStartTime.getTime() + 60 * 60 * 1000);
-             
-             form.setValue(`itinerary.${index}.startTime`, newStartTime.toISOString());
-             form.setValue(`itinerary.${index}.endTime`, newEndTime.toISOString());
-           }
+       // Apply the original time slots to the moved items
+       movedValues.forEach((item, index) => {
+         if (timeSlots[index]) {
+           form.setValue(`itinerary.${index}.startTime`, timeSlots[index].startTime);
+           form.setValue(`itinerary.${index}.endTime`, timeSlots[index].endTime);
          }
        });
      }, 0);
@@ -496,8 +490,8 @@ function ItinerarySection({ form, isGoogleMapsApiLoaded, googleMapsApiKey }: Iti
     const newItem: ItineraryItemSchemaValues = {
       id: crypto.randomUUID(),
       placeName: '',
-      address: null,
-      city: null,
+      address: '',
+      city: '',
       startTime,
       endTime,
       description: null,
@@ -717,6 +711,7 @@ export function PlanForm({
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: googleMapsApiKey || "",
     libraries: GOOGLE_MAPS_LIBRARIES,
+    version: "beta",
   });
 
   const form = useForm<PlanFormValues>({
@@ -753,8 +748,8 @@ export function PlanForm({
       })) || [{
         id: crypto.randomUUID(),
         placeName: '',
-        address: null,
-        city: null,
+        address: '',
+        city: '',
         startTime: new Date().toISOString(),
         endTime: null,
         description: null,
