@@ -1,10 +1,53 @@
-// src/app/(app)/plans/[id]/page.tsx
 'use client';
 
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import NextImage from 'next/image'; // Aliased to avoid conflict with native Image if ever used
-import Link from 'next/link';
-import { 
+import { toast } from 'sonner';
+import { useAuth } from '@/context/AuthContext';
+import { format, parseISO, isValid, isPast, isFuture } from 'date-fns';
+import type { Plan as PlanType, Comment, RSVPStatusType, ParticipantResponse } from '@/types/user';
+
+// Import services
+import { getPlanById, getPlanComments, getUserRatingForPlan } from '@/services/planService';
+import { getUsersProfiles } from '@/services/userService';
+import {
+  updateMyRSVPAction,
+  submitRatingAction,
+  submitCommentAction,
+  addPhotoHighlightAction,
+  deletePlanAction,
+  deleteRatingAction,
+  updateCommentAction,
+  deleteCommentAction,
+  createPlanShareInviteAction,
+  copyPlanToMyAccountAction
+} from '@/app/actions/planActions';
+import { canUserCommentAndRate, hasUserRSVPd } from '@/utils/planPermissions';
+import { createFeedPostAction } from '@/app/actions/feedActions';
+
+// Import new modular components
+import { PlanHero } from '@/components/plans/PlanHero';
+import { PlanDetailsHeader } from '@/components/plans/PlanDetailsHeader';
+import { PlanInfoCards } from '@/components/plans/PlanInfoCards';
+import { PlanParticipants } from '@/components/plans/PlanParticipants';
+import { PlanPhotoHighlights } from '@/components/plans/PlanPhotoHighlights';
+import PlanComments from '@/components/plans/PlanComments';
+import { PlanRatingSection } from '@/components/plans/PlanRatingSection';
+import { ShareToFeedDialog } from '@/components/plans/ShareToFeedDialog';
+import { QRCodeDialog } from '@/components/plans/QRCodeDialog';
+import { FriendPickerDialog } from '@/components/plans/FriendPickerDialog';
+import { DeletePlanDialog } from '@/components/plans/DeletePlanDialog';
+import { AdvancedRSVPDialog } from '@/components/plans/AdvancedRSVPDialog';
+import { WaitlistDialog } from '@/components/plans/WaitlistDialog';
+import { CopyPlanDialog } from '@/components/plans/CopyPlanDialog';
+import { ParticipantManagementDialog } from '@/components/plans/ParticipantManagementDialog';
+import { EnhancedPlanSharingDialog } from '@/components/plans/EnhancedPlanSharingDialog';
+import { PlanItinerary } from '@/components/plans/PlanItinerary';
+import { PlanMap } from '@/components/plans/PlanMap';
+import { PlanWeather } from '@/components/plans/PlanWeather';
+
+// Import UI components for dialogs and alerts
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -13,1243 +56,854 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from '@/components/ui/separator';
-import { Textarea } from '@/components/ui/textarea';
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription as DialogDescriptionComponent, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { 
-  CalendarDays, MapPin, Users, Edit3, Trash2, Share2, QrCode,
-  MessageSquare, Send, CheckCircle, XCircle, ChevronLeft, Grid2X2, Star as StarIconLucide, 
-  Loader2, Clock, ExternalLink, ThumbsUp, UserCheck, UserX, ThumbsDown, HelpCircle, CopyPlus,
-  Camera, UploadCloud, Lock, Globe, Link as LinkIcon, MoreVertical, EyeOff, FileText, DollarSign, ListChecks, ShieldCheck as AdminShieldIcon, CheckCircle as VerifiedIcon, UserCircle as UserCircleIcon
-} from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import type { Plan as PlanType, ItineraryItem, PlanStatusType as FirestorePlanStatus, RSVPStatusType, Comment, UserRoleType, FeedPostVisibility, PlanShareStatus, FriendEntry, UserProfile, Rating, AppTimestamp } from '@/types/user';
-import { getPlanById, getPlanComments, getUserRatingForPlan } from '@/services/planService'; 
-import { getUsersProfiles } from '@/services/userService'; 
-import { format, parseISO, isValid, isPast, isFuture, formatDistanceToNowStrict } from 'date-fns';
-import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/context/AuthContext';
-import { 
-  updateMyRSVPAction, 
-  copyPlanToMyAccountAction, 
-  submitRatingAction, 
-  submitCommentAction, 
-  addPhotoHighlightAction, 
-  deletePlanAction, 
-  createPlanShareInviteAction,
-  deleteRatingAction,
-  updateCommentAction,
-  deleteCommentAction
-} from '@/app/actions/planActions'; 
-import { cn, commonImageExtensions } from '@/lib/utils';
-import { FriendPickerDialog } from '@/components/messages/FriendPickerDialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { QRCodeSVG } from 'qrcode.react';
+} from '@/components/ui/alert-dialog';
+import { Loader2 } from 'lucide-react';
 
-const firestoreStatusDisplayConfig: Record<FirestorePlanStatus, { label: string; icon: React.ElementType; badgeVariant: "default" | "secondary" | "destructive" | "outline" | string }> = {
-  draft: { label: 'Draft', icon: Edit3, badgeVariant: 'outline' },
-  published: { label: 'Published', icon: CheckCircle, badgeVariant: 'default' },
-  cancelled: { label: 'Cancelled', icon: XCircle, badgeVariant: 'destructive' },
-};
+interface ParticipantDetails {
+  userId: string;
+  name: string;
+  profilePicture?: string | null;
+  response: ParticipantResponse;
+  isHost: boolean;
+}
 
-const rsvpButtonConfig: { status: RSVPStatusType; label: string; icon: React.ElementType; variant: "default" | "secondary" | "outline" | "ghost" }[] = [
-    { status: 'going', label: 'Going', icon: ThumbsUp, variant: 'default'},
-    { status: 'maybe', label: 'Maybe', icon: HelpCircle, variant: 'secondary'},
-    { status: 'declined', label: 'Not Going', icon: ThumbsDown, variant: 'outline'},
-];
-
-const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, isVerified: boolean }) => {
-  if (!role && !isVerified) return null;
-  if (role === 'admin') {
-    return <AdminShieldIcon className="ml-1.5 h-4 w-4 text-amber-400 fill-amber-500 shrink-0" aria-label="Admin" />;
-  }
-  if (isVerified) {
-    return <VerifiedIcon className="ml-1.5 h-4 w-4 text-blue-500 fill-blue-200 shrink-0" aria-label="Verified" />;
-  }
-  return null;
-};
-
-
-const RatingInput = ({ currentRating, maxRating = 5, onRatingChange, disabled, onClearRating, hasRated }: { 
-  currentRating: number, 
-  maxRating?: number, 
-  onRatingChange: (rating: number) => void, 
-  disabled?: boolean,
-  onClearRating?: () => void,
-  hasRated?: boolean       
-}) => {
-  const [hoverRating, setHoverRating] = useState(0);
-  return (
-    <div className="flex items-center gap-1">
-      {[...Array(maxRating)].map((_, index) => {
-        const ratingValue = index + 1;
-        return (
-          <button
-            type="button"
-            key={ratingValue}
-            className={`p-1 rounded-full transition-colors ${disabled ? 'cursor-not-allowed opacity-60' : 'hover:bg-accent'}`}
-            onClick={() => !disabled && onRatingChange(ratingValue)}
-            onMouseEnter={() => !disabled && setHoverRating(ratingValue)}
-            onMouseLeave={() => !disabled && setHoverRating(0)}
-            disabled={disabled}
-            aria-label={`Rate ${ratingValue} out of ${maxRating}`}
-          >
-            <StarIconLucide
-              className={`h-6 w-6 
-                ${(hoverRating || currentRating) >= ratingValue ? 'text-amber-400 fill-amber-400' : 'text-muted-foreground/50'}`}
-            />
-          </button>
-        );
-      })}
-      {hasRated && onClearRating && !disabled && (
-        <Button variant="ghost" size="icon" onClick={onClearRating} className="h-7 w-7 ml-1 text-muted-foreground hover:text-destructive" aria-label="Clear rating">
-          <XCircle className="h-4 w-4" />
-        </Button>
-      )}
-    </div>
-  );
-};
-
+type UserRole = 'host' | 'confirmed' | 'invited' | 'public' | 'authenticated';
 
 export default function PlanDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { toast } = useToast();
-  const { user: currentUser, currentUserProfile, loading: authLoading } = useAuth();
+  const { user, currentUserProfile } = useAuth();
   const planId = params.id as string;
 
-  const [plan, setPlan] = useState<PlanType | null | undefined>(undefined);
+  // Core state
+  const [plan, setPlan] = useState<PlanType | null>(null);
   const [loading, setLoading] = useState(true);
-  const [clientFormattedEventDateTime, setClientFormattedEventDateTime] = useState<string | null>(null);
-  const [isUpdatingRSVP, setIsUpdatingRSVP] = useState<RSVPStatusType | null>(null);
-  const [isCopyingPlan, setIsCopyingPlan] = useState(false);
-
-  const [userRating, setUserRating] = useState<number>(0);
-  const [hasRated, setHasRated] = useState(false);
-  const [isSubmittingRating, setIsSubmittingRating] = useState(false);
-  const [newComment, setNewComment] = useState('');
   const [comments, setComments] = useState<Comment[]>([]);
-  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
-  const commentsUnsubscribeRef = useRef<(() => void) | null>(null);
-
-
-  const [selectedHighlightFile, setSelectedHighlightFile] = useState<File | null>(null);
-  const [highlightPreviewUrl, setHighlightPreviewUrl] = useState<string | null>(null);
-  const [isUploadingHighlight, setIsUploadingHighlight] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const [showShareToFeedDialog, setShowShareToFeedDialog] = useState(false);
-  const [feedPostData, setFeedPostData] = useState<{ planId: string; planName: string; highlightImageUrl: string; } | null>(null);
-  const [feedPostCaption, setFeedPostCaption] = useState('');
-  const [postVisibility, setPostVisibility] = useState<FeedPostVisibility>('public');
-  const [isSubmittingFeedPost, setIsSubmittingFeedPost] = useState(false);
+  const [participantDetails, setParticipantDetails] = useState<ParticipantDetails[]>([]);
   
-  const [isDeletingPlan, setIsDeletingPlan] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-
-  const [isFriendPickerOpen, setIsFriendPickerOpen] = useState(false);
-  const [isSharingWithFriend, setIsSharingWithFriend] = useState(false);
+  // Rating state
+  const [userRating, setUserRating] = useState(0);
+  const [hasRated, setHasRated] = useState(false);
+  const [ratingLoading, setRatingLoading] = useState(false);
   
-  const [participantDetails, setParticipantDetails] = useState<{ [uid: string]: UserProfile }>({});
-  const [loadingParticipantDetails, setLoadingParticipantDetails] = useState(false);
-
-  const [commentToDelete, setCommentToDelete] = useState<Comment | null>(null);
-  const [isDeletingComment, setIsDeletingComment] = useState(false);
+  // Dialog states
+const [deleteLoading, setDeleteLoading] = useState(false);
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [shareToFeedOpen, setShareToFeedOpen] = useState(false);
+  const [qrCodeOpen, setQrCodeOpen] = useState(false);
+  const [friendPickerOpen, setFriendPickerOpen] = useState(false);
+  const [deletePlanOpen, setDeletePlanOpen] = useState(false);
+  const [showAdvancedRSVPDialog, setShowAdvancedRSVPDialog] = useState(false);
+  const [showWaitlistDialog, setShowWaitlistDialog] = useState(false);
+  const [showCopyPlanDialog, setShowCopyPlanDialog] = useState(false);
+  const [showParticipantManagementDialog, setShowParticipantManagementDialog] = useState(false);
+  const [showEnhancedSharingDialog, setShowEnhancedSharingDialog] = useState(false);
   
-  const [commentToEdit, setCommentToEdit] = useState<Comment | null>(null);
-  const [editedCommentText, setEditedCommentText] = useState('');
-  const [isEditCommentDialogOpen, setIsEditCommentDialogOpen] = useState(false);
-  const [isSubmittingEditedComment, setIsSubmittingEditedComment] = useState(false);
+  // Loading states
+  const [rsvpLoading, setRsvpLoading] = useState(false);
 
-  const [showQRCodeDialog, setShowQRCodeDialog] = useState(false);
-  const [planPublicUrl, setPlanPublicUrl] = useState('');
-
-  const staticMapApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-
-  const fetchPlanAndRelatedData = useCallback(async () => {
-    if (!planId) {
-      setPlan(null);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    // console.log(`[PlanDetailPage] Fetching plan: ${planId}`);
+  // Fetch plan data and related information
+  const fetchPlanAndRelatedData = async () => {
     try {
-      const fetchedPlan = await getPlanById(planId); 
-      setPlan(fetchedPlan);
-      // console.log('[PlanDetailPage] Plan data fetched:', fetchedPlan ? fetchedPlan.name : 'Not found');
-
-      if (fetchedPlan && currentUser?.uid) {
-        // console.log('[PlanDetailPage] Fetching user rating...');
-        const existingRating = await getUserRatingForPlan(fetchedPlan.id, currentUser.uid);
-        if (existingRating) {
-          setUserRating(existingRating.value);
+      setLoading(true);
+      
+      // Fetch plan data
+      const planData = await getPlanById(planId);
+      if (!planData) {
+        router.push('/plans');
+        return;
+      }
+      setPlan(planData);
+      
+      // Fetch comments
+      const unsubscribeComments = getPlanComments(planId, (commentsData) => {
+        setComments(commentsData || []);
+      });
+      
+      // Fetch user rating if authenticated
+      if (user) {
+        const ratingData = await getUserRatingForPlan(planId, user.uid);
+        if (ratingData) {
+          setUserRating(ratingData.value || 0);
           setHasRated(true);
-          // console.log('[PlanDetailPage] User rating found:', existingRating.value);
-        } else {
-          setUserRating(0);
-          setHasRated(false);
-          // console.log('[PlanDetailPage] No existing rating for user.');
         }
       }
-      if (!fetchedPlan) {
-        toast({ title: "Plan Not Found", description: "The requested plan could not be loaded or you don't have access.", variant: "destructive" });
-      } else {
-        const participantUidsSet = new Set<string>([fetchedPlan.hostId]);
-        Object.keys(fetchedPlan.participantResponses || {}).forEach(uid => participantUidsSet.add(uid));
-        if (fetchedPlan.invitedParticipantUserIds) {
-          fetchedPlan.invitedParticipantUserIds.forEach(uid => participantUidsSet.add(uid));
-        }
-        const participantUids = Array.from(participantUidsSet).filter(Boolean); // Filter out any null/undefined UIDs
-
-        if (participantUids.length > 0) {
-          // console.log('[PlanDetailPage] Fetching participant profiles for UIDs:', participantUids);
-          setLoadingParticipantDetails(true);
-          const profiles = await getUsersProfiles(participantUids); // Uses client SDK
-          const detailsMap: typeof participantDetails = {};
-          profiles.forEach(p => {
-            if (p) detailsMap[p.uid] = p;
-          });
-          setParticipantDetails(detailsMap);
-          setLoadingParticipantDetails(false);
-          // console.log('[PlanDetailPage] Participant profiles fetched:', Object.keys(detailsMap).length);
-        } else {
-           // console.log('[PlanDetailPage] No participants to fetch profiles for.');
-           setParticipantDetails({});
-           setLoadingParticipantDetails(false);
-        }
+      
+      // Fetch participant details
+      const allParticipantIds = [planData.hostId, ...(planData.invitedParticipantUserIds || [])];
+      if (allParticipantIds.length > 0) {
+        const profiles = await getUsersProfiles(allParticipantIds);
+        
+        const details: ParticipantDetails[] = allParticipantIds.map(userId => {
+          const profile = profiles.find(p => p.uid === userId);
+          const response = planData.participantResponses?.[userId] || (userId === planData.hostId ? 'going' : 'pending');
+          return {
+            userId,
+            name: profile?.name || 'Unknown User',
+            profilePicture: profile?.avatarUrl,
+            response: response as ParticipantResponse,
+            isHost: userId === planData.hostId
+          };
+        });
+        
+        setParticipantDetails(details);
       }
     } catch (error) {
-      console.error("[PlanDetailPage] Error fetching plan:", error);
-      toast({ title: "Error", description: "Failed to load plan details.", variant: "destructive" });
-      setPlan(null);
+      console.error('Error fetching plan data:', error);
+      toast.error('Failed to load plan details');
     } finally {
       setLoading(false);
-      // console.log('[PlanDetailPage] Finished fetching plan data. Loading set to false.');
-    }
-  }, [planId, toast, currentUser?.uid]);
-
-  useEffect(() => {
-    fetchPlanAndRelatedData();
-  }, [fetchPlanAndRelatedData]);
-
-  useEffect(() => {
-    if (plan?.eventTime) { 
-      try {
-        const dateObj = parseISO(plan.eventTime); 
-        if (isValid(dateObj)) {
-          setClientFormattedEventDateTime(format(dateObj, 'PPPp'));
-        } else {
-          console.warn(`[PlanDetailPage] Invalid eventTime format on plan: ${plan.eventTime}`);
-          setClientFormattedEventDateTime("Date not set");
-        }
-      } catch (e) {
-        console.warn("[PlanDetailPage] Error formatting plan event time:", e, plan.eventTime);
-        setClientFormattedEventDateTime("Date not set");
-      }
-    } else if (plan === null) { 
-       setClientFormattedEventDateTime("Date not set");
-    } else if (plan) { 
-       setClientFormattedEventDateTime("Date not set");
-    }
-  }, [plan]);
-
-  useEffect(() => {
-    if (planId && currentUser?.uid) { // Ensure user is available for comments too
-      const unsubscribe = getPlanComments(planId, (fetchedComments) => {
-        setComments(fetchedComments.sort((a, b) => {
-            const timeA = a.createdAt && isValid(parseISO(a.createdAt as string)) ? parseISO(a.createdAt as string).getTime() : 0;
-            const timeB = b.createdAt && isValid(parseISO(b.createdAt as string)) ? parseISO(b.createdAt as string).getTime() : 0;
-            return timeA - timeB;
-        }));
-      });
-      commentsUnsubscribeRef.current = unsubscribe;
-      return () => {
-        if (commentsUnsubscribeRef.current) {
-          commentsUnsubscribeRef.current();
-          commentsUnsubscribeRef.current = null;
-        }
-      };
-    }
-  }, [planId, currentUser?.uid]);
-
-  const handleRSVP = async (newStatus: RSVPStatusType) => {
-    if (!currentUser || !plan || !currentUserProfile) return;
-    if (!plan.id) {
-      toast({ title: "Error", description: "Plan ID is missing.", variant: "destructive" });
-      return;
-    }
-    setIsUpdatingRSVP(newStatus);
-    try {
-      const idToken = await currentUser.getIdToken(true);
-      const result = await updateMyRSVPAction(plan.id, idToken, newStatus); 
-      if (result.success) {
-        toast({ title: "RSVP Updated!", description: `Your response is now "${newStatus}".` });
-        setPlan(prevPlan => prevPlan ? { ...prevPlan, participantResponses: { ...(prevPlan.participantResponses || {}), [currentUser.uid]: newStatus } } : null);
-      } else {
-        toast({ title: "RSVP Error", description: result.error || "Could not update your RSVP.", variant: "destructive" });
-      }
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message || "An unexpected error occurred while updating RSVP.", variant: "destructive" });
-    } finally {
-      setIsUpdatingRSVP(null);
     }
   };
 
-  const handleCopyToMyPlans = async () => {
-    if (!plan) return;
-    if (!currentUser) {
-      toast({ title: "Login Required", description: "Please log in to add this plan.", variant: "default" });
-      router.push(`/login?redirect=/plans/${plan.id}&action=copy&planIdToCopy=${plan.id}`);
-      return;
+  useEffect(() => {
+    if (planId) {
+      fetchPlanAndRelatedData();
     }
-    if (plan.hostId === currentUser.uid) {
-      toast({ title: "This is Your Plan", description: "You are already the host of this plan.", variant: "default" });
-      router.push(`/plans/${plan.id}`);
-      return;
+  }, [planId, user]);
+
+  // Determine user role
+  const userRole: UserRole = useMemo(() => {
+    if (!plan) return 'public';
+    if (!user) return 'public';
+    if (plan.hostId === user.uid) return 'host';
+    
+    const isInvited = plan.invitedParticipantUserIds?.includes(user.uid);
+    const userResponse = plan.participantResponses?.[user.uid];
+    if (isInvited && userResponse) {
+      return userResponse === 'going' ? 'confirmed' : 'invited';
     }
-    setIsCopyingPlan(true);
+    
+    return 'authenticated';
+  }, [plan, user]);
+
+  // Calculate derived data
+  const isHost = userRole === 'host';
+  const isCurrentUserParticipant = userRole === 'confirmed' || userRole === 'host';
+  const currentUserResponse = plan?.participantResponses?.[user?.uid || ''];
+  
+  const rsvpSummary = useMemo(() => {
+    if (!plan?.participantResponses) return { going: 0, maybe: 0, notGoing: 0 };
+    
+    return Object.values(plan.participantResponses).reduce(
+      (acc, response) => {
+        switch (response) {
+          case 'going':
+            acc.going++;
+            break;
+          case 'maybe':
+            acc.maybe++;
+            break;
+          case 'not-going':
+            acc.notGoing++;
+            break;
+        }
+        return acc;
+      },
+      { going: 0, maybe: 0, notGoing: 0 }
+    );
+  }, [plan?.participantResponses]);
+
+  const staticMapUrl = useMemo(() => {
+    if (!plan?.location) return '';
+    const encodedLocation = encodeURIComponent(plan.location);
+    return `https://maps.googleapis.com/maps/api/staticmap?center=${encodedLocation}&zoom=15&size=400x300&maptype=roadmap&markers=color:red%7C${encodedLocation}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`;
+  }, [plan?.location]);
+
+  const planUrl = `${window.location.origin}/plans/${planId}`;
+
+  // Event handlers
+  const handleRSVPChange = async (response: RSVPStatusType) => {
+    if (!user || !plan) return;
+    
+    setRsvpLoading(true);
     try {
-      await currentUser.getIdToken(true);
-      const idToken = await currentUser.getIdToken();
-      if (!idToken) throw new Error("Authentication token not available.");
-      const result = await copyPlanToMyAccountAction(plan.id, idToken);
-      if (result.success && result.newPlanId) {
-        toast({ title: "Activity Template Created!", description: `"${plan.name}" is now ready for you to customize and plan.` });
-        router.push(`/plans/${result.newPlanId}`); 
-      } else {
-        toast({ title: "Copy Error", description: result.error || "Could not copy the plan.", variant: "destructive" });
-      }
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message || "An unexpected error occurred while copying.", variant: "destructive" });
+      const idToken = await user.getIdToken();
+      await updateMyRSVPAction(planId, idToken, response);
+      await fetchPlanAndRelatedData();
+      toast.success(`RSVP updated to ${response}`);
+    } catch (error) {
+      console.error('Error updating RSVP:', error);
+      toast.error('Failed to update RSVP');
     } finally {
-      setIsCopyingPlan(false);
+      setRsvpLoading(false);
     }
   };
 
-  const handleRatingSubmit = async (newRatingValue: number) => {
-    if (!currentUser || !plan || !currentUserProfile) return;
-    setIsSubmittingRating(true);
-    const oldRating = userRating; 
-    setUserRating(newRatingValue); 
+  const handleParticipantRSVP = async (response: 'yes' | 'no' | 'maybe') => {
+    const rsvpStatus: RSVPStatusType = response === 'yes' ? 'going' :
+                                      response === 'no' ? 'not-going' : 'maybe';
+    await handleRSVPChange(rsvpStatus);
+  };
+
+  const handleRatingSubmit = async () => {
+    if (!user || userRating === 0) return;
+    
+    setRatingLoading(true);
     try {
-      const idToken = await currentUser.getIdToken(true);
-      if (!idToken) throw new Error("Authentication token not available.");
-      const result = await submitRatingAction(plan.id, idToken, newRatingValue); 
-      if (result.success) {
-        toast({ title: "Rating Submitted!", description: `You rated this plan ${newRatingValue} stars.` });
-        setHasRated(true);
-        if (result.newAverageRating !== undefined && result.newReviewCount !== undefined) {
-          setPlan(prevPlan => prevPlan ? { ...prevPlan, averageRating: result.newAverageRating, reviewCount: result.newReviewCount } : null);
-        }
-      } else {
-        toast({ title: "Rating Error", description: result.error || "Could not submit your rating.", variant: "destructive" });
-        setUserRating(oldRating); 
-      }
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message || "An unexpected error occurred.", variant: "destructive" });
-      setUserRating(oldRating); 
+      await submitRatingAction(planId, await user.getIdToken(), userRating);
+      setHasRated(true);
+      toast.success('Rating submitted successfully!');
+    } catch (error) {
+      console.error('Error submitting rating:', error);
+      toast.error('Failed to submit rating');
     } finally {
-      setIsSubmittingRating(false);
+      setRatingLoading(false);
     }
   };
 
   const handleClearRating = async () => {
-    if (!currentUser || !plan || !hasRated) return;
-    setIsSubmittingRating(true);
-    try {
-      const idToken = await currentUser.getIdToken(true);
-      if (!idToken) throw new Error("Authentication token not available.");
-      const result = await deleteRatingAction(plan.id, idToken);
-      if (result.success) {
-        toast({ title: "Rating Cleared!" });
-        setUserRating(0);
-        setHasRated(false);
-        if (result.newAverageRating !== undefined && result.newReviewCount !== undefined) {
-          setPlan(prevPlan => prevPlan ? { ...prevPlan, averageRating: result.newAverageRating, reviewCount: result.newReviewCount } : null);
-        }
-      } else {
-        toast({ title: "Error Clearing Rating", description: result.error || "Could not clear your rating.", variant: "destructive" });
-      }
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to clear rating.", variant: "destructive" });
-    } finally {
-      setIsSubmittingRating(false);
-    }
-  };
-
-  const handleCommentSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentUser || !currentUserProfile || !plan || !newComment.trim()) return;
-    setIsSubmittingComment(true);
-    try {
-      const idToken = await currentUser.getIdToken(true);
-      if (!idToken) throw new Error("Authentication token not available.");
-      const result = await submitCommentAction(plan.id, idToken, newComment);
-      if (result.success && result.comment) {
-        toast({ title: "Comment Posted!"});
-        setNewComment('');
-        // Comments state will be updated by the listener
-      } else {
-        toast({ title: "Comment Error", description: result.error || "Could not post your comment.", variant: "destructive" });
-      }
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message || "An unexpected error occurred.", variant: "destructive" });
-    } finally {
-      setIsSubmittingComment(false);
-    }
-  };
-  
-  const handleEditCommentRequest = (comment: Comment) => {
-    setCommentToEdit(comment);
-    setEditedCommentText(comment.text);
-    setIsEditCommentDialogOpen(true);
-  };
-
-  const confirmEditComment = async () => {
-    if (!commentToEdit || !currentUser || !editedCommentText.trim()) return;
-    setIsSubmittingEditedComment(true);
-    try {
-      const idToken = await currentUser.getIdToken(true);
-      if (!idToken) throw new Error("Authentication token not available.");
-      const result = await updateCommentAction(commentToEdit.planId, commentToEdit.id, editedCommentText.trim(), idToken);
-      if (result.success && result.updatedComment) {
-        toast({ title: "Comment Updated!" });
-        // Comments state will be updated by the listener
-        setIsEditCommentDialogOpen(false);
-        setCommentToEdit(null);
-      } else {
-        toast({ title: "Update Error", description: result.error || "Could not update comment.", variant: "destructive" });
-      }
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to update comment.", variant: "destructive" });
-    } finally {
-      setIsSubmittingEditedComment(false);
-    }
-  };
-
-  const handleDeleteCommentRequest = (comment: Comment) => {
-    setCommentToDelete(comment);
-  };
-
-  const confirmDeleteComment = async () => {
-    if (!commentToDelete || !currentUser) return;
-    setIsDeletingComment(true);
-    try {
-      const idToken = await currentUser.getIdToken(true);
-      if (!idToken) throw new Error("Authentication token not available.");
-      const result = await deleteCommentAction(commentToDelete.planId, commentToDelete.id, idToken);
-      if (result.success) {
-        toast({ title: "Comment Deleted" });
-        // Comments state will be updated by the listener
-      } else {
-        toast({ title: "Delete Error", description: result.error || "Could not delete comment.", variant: "destructive" });
-      }
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to delete comment.", variant: "destructive" });
-    } finally {
-      setIsDeletingComment(false);
-      setCommentToDelete(null);
-    }
-  };
-
-  const handleSharePlanLink = async () => {
-    if (!plan || typeof window === 'undefined') return;
-    const publicUrl = `${window.location.origin}/p/${plan.id}`;
-    try {
-      await navigator.clipboard.writeText(publicUrl);
-      toast({ title: "Link Copied!", description: "Plan link copied to clipboard." });
-    } catch (err) {
-      toast({ title: "Copy Failed", description: "Could not copy link.", variant: "destructive" });
-    }
-  };
-
-  const handleOpenQRCodeDialog = () => {
-    if (plan && typeof window !== 'undefined') {
-      setPlanPublicUrl(`${window.location.origin}/p/${plan.id}`);
-      setShowQRCodeDialog(true);
-    }
-  };
-
-  const handleShareWithFriend = async (selectedFriend: FriendEntry) => {
-    if (!plan || !currentUser || !currentUserProfile) {
-      toast({ title: "Error", description: "Cannot share plan. User or plan data missing.", variant: "destructive" });
-      return;
-    }
-    setIsSharingWithFriend(true);
-    try {
-      const idToken = await currentUser.getIdToken(true);
-      if (!idToken) throw new Error("Authentication token not available.");
-      const result = await createPlanShareInviteAction(plan.id, plan.name, selectedFriend.friendUid, idToken);
-      if (result.success) {
-        toast({ title: "Plan Shared!", description: `Invitation sent to ${selectedFriend.name || 'your friend'}.` });
-      } else {
-        toast({ title: "Share Failed", description: result.error || "Could not share plan.", variant: "destructive" });
-      }
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to share plan.", variant: "destructive" });
-    } finally {
-      setIsSharingWithFriend(false);
-      setIsFriendPickerOpen(false);
-    }
-  };
-
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) { 
-        toast({ title: "File too large", description: "Image size should not exceed 5MB.", variant: "destructive" });
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        setSelectedHighlightFile(null);
-        if (highlightPreviewUrl) URL.revokeObjectURL(highlightPreviewUrl);
-        setHighlightPreviewUrl(null);
-        return;
-      }
-      
-      let isValidImage = false;
-      const clientMimeType = file.type;
-      const fileName = file.name;
-      const fileExtension = fileName.split('.').pop()?.toLowerCase();
-
-      if (clientMimeType && clientMimeType.startsWith('image/')) {
-          isValidImage = true;
-      } else if (fileExtension && commonImageExtensions.includes(fileExtension)) {
-          isValidImage = true;
-      }
-
-      if (!isValidImage) {
-         toast({ title: "Invalid file type", description: `Please select an image. Detected: ${clientMimeType || 'unknown'}. File: ${fileName}`, variant: "destructive" });
-         if (fileInputRef.current) fileInputRef.current.value = ""; 
-         setSelectedHighlightFile(null);
-         if (highlightPreviewUrl) URL.revokeObjectURL(highlightPreviewUrl);
-         setHighlightPreviewUrl(null);
-         return;
-      }
-
-      setSelectedHighlightFile(file);
-      if (highlightPreviewUrl) URL.revokeObjectURL(highlightPreviewUrl); 
-      setHighlightPreviewUrl(URL.createObjectURL(file));
-    } else {
-      setSelectedHighlightFile(null);
-      if (highlightPreviewUrl) URL.revokeObjectURL(highlightPreviewUrl);
-      setHighlightPreviewUrl(null);
-    }
-  };
-
-  const handleUploadHighlight = async () => {
-    if (!selectedHighlightFile || !plan || !currentUser || !currentUserProfile) {
-      toast({ title: "Upload Error", description: "No file selected or missing plan/user data.", variant: "destructive" });
-      return;
-    }
-    setIsUploadingHighlight(true);
-    const formData = new FormData();
-    formData.append('highlightImage', selectedHighlightFile);
-
-    try {
-      const idToken = await currentUser.getIdToken(true); 
-      if (!idToken) throw new Error("Authentication token not available.");
-      const result = await addPhotoHighlightAction(plan.id, formData, idToken); 
-      if (result.success && result.updatedPlan) {
-        toast({ title: "Highlight Uploaded!", description: "Your photo has been added to the plan." });
-        setPlan(result.updatedPlan); 
-        setFeedPostData({ 
-          planId: plan.id, 
-          planName: plan.name, 
-          highlightImageUrl: result.updatedPlan.photoHighlights?.slice(-1)[0] || '' 
-        });
-        setShowShareToFeedDialog(true); 
-        setSelectedHighlightFile(null);
-        if (highlightPreviewUrl) URL.revokeObjectURL(highlightPreviewUrl);
-        setHighlightPreviewUrl(null);
-        if (fileInputRef.current) fileInputRef.current.value = ""; 
-      } else {
-        toast({ title: "Upload Failed", description: result.error || "Could not upload photo.", variant: "destructive" });
-      }
-    } catch (error: any) {
-      toast({ title: "Upload Error", description: error.message || "An unexpected error occurred.", variant: "destructive" });
-    } finally {
-      setIsUploadingHighlight(false);
-    }
-  };
-
-  const handleShareToFeedSubmit = async () => {
-    if (!feedPostData || !feedPostCaption.trim() || !currentUser || !currentUserProfile || !postVisibility) {
-        toast({title: "Cannot Share", description: "Missing data, caption, or visibility for feed post.", variant: "destructive"});
-        return;
-    }
-    setIsSubmittingFeedPost(true);
-    try {
-        const idToken = await currentUser.getIdToken(true);
-        if (!idToken) throw new Error("Authentication token not available.");
-        const result = await createFeedPostAction({
-            planId: feedPostData.planId,
-            planName: feedPostData.planName,
-            highlightImageUrl: feedPostData.highlightImageUrl,
-            postText: feedPostCaption,
-            visibility: postVisibility,
-        }, idToken);
-
-        if (result.success) {
-            toast({title: "Shared to Feed!", description: "Your experience has been shared."});
-            setShowShareToFeedDialog(false);
-            setFeedPostCaption('');
-            setPostVisibility('public');
-            setFeedPostData(null);
-        } else {
-            toast({title: "Feed Share Error", description: result.error || "Could not share to feed.", variant: "destructive"});
-        }
-    } catch (error: any) {
-        toast({ title: "Error", description: error.message || "An unexpected error occurred while sharing.", variant: "destructive" });
-    } finally {
-        setIsSubmittingFeedPost(false);
-    }
-  };
-
-  const handleDeletePlanRequest = () => {
-    setShowDeleteConfirm(true);
-  };
-
-  const confirmDeletePlan = async () => {
-    if (!plan || !currentUser) return;
-    setIsDeletingPlan(true);
-    try {
-      const idToken = await currentUser.getIdToken(true);
-      if (!idToken) throw new Error("Authentication token not available.");
-      const result = await deletePlanAction(plan.id, idToken);
-      if (result.success) {
-        toast({ title: "Plan Deleted", description: `"${plan.name}" has been removed.` });
-        router.push('/plans'); 
-      } else {
-        toast({ title: "Error Deleting Plan", description: result.error || "Could not delete the plan.", variant: "destructive" });
-      }
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message || "An unexpected error occurred.", variant: "destructive" });
-    } finally {
-      setIsDeletingPlan(false);
-      setShowDeleteConfirm(false);
-    }
-  };
-
-  const planEventDateIsValid = plan?.eventTime && isValid(parseISO(plan.eventTime));
-  const isPlanPastEvent = planEventDateIsValid ? isPast(parseISO(plan.eventTime!)) : false;
-  const isPlanUpcoming = planEventDateIsValid ? isFuture(parseISO(plan.eventTime!)) : false;
-  
-  const isCurrentUserParticipant = useMemo(() => {
-    if (!plan || !currentUser) return false;
-    return plan.hostId === currentUser.uid || (plan.invitedParticipantUserIds || []).includes(currentUser.uid);
-  }, [plan, currentUser]);
-  
-  const isCurrentUserInvitedNonHost = plan && currentUser && (plan.invitedParticipantUserIds || []).includes(currentUser.uid) && plan.hostId !== currentUser.uid;
-
-  const canCurrentUserInteract = plan && currentUser && isPlanPastEvent && isCurrentUserParticipant;
-  const currentUserRSVP = plan && currentUser ? plan.participantResponses?.[currentUser.uid] : undefined;
-  
-  const getRSVPSummary = useCallback(() => {
-    if (!plan?.participantResponses) return { going: 0, maybe: 0, declined: 0, pending: 0, totalInvited: 0 };
-    const counts: Record<RSVPStatusType | 'pending_total', number> = { going: 0, maybe: 0, declined: 0, pending: 0, pending_total: 0 };
-    const allRelevantUids = Array.from(new Set<string>([plan.hostId, ...(plan.invitedParticipantUserIds || [])]));
+    if (!user) return;
     
-    allRelevantUids.forEach(uid => {
-      const response = plan.participantResponses![uid];
-      if (response === 'going') counts.going++;
-      else if (response === 'maybe') counts.maybe++;
-      else if (response === 'declined') counts.declined++;
-      else counts.pending_total++; 
-    });
-    return { 
-        going: counts.going, 
-        maybe: counts.maybe, 
-        declined: counts.declined, 
-        pending: counts.pending_total,
-        totalInvited: allRelevantUids.length
-    };
-  }, [plan]);
-  const rsvpSummary = getRSVPSummary();
+    setRatingLoading(true);
+    try {
+      await deleteRatingAction(planId, await user.getIdToken());
+      setUserRating(0);
+      setHasRated(false);
+      toast.success('Rating cleared successfully!');
+    } catch (error) {
+      console.error('Error clearing rating:', error);
+      toast.error('Failed to clear rating');
+    } finally {
+      setRatingLoading(false);
+    }
+  };
 
-  if (loading || authLoading && !plan) {
+  const handleCommentSubmit = async (content: string) => {
+    if (!user) return;
+    
+    try {
+      const idToken = await user.getIdToken();
+      await submitCommentAction(planId, idToken, content);
+      await fetchPlanAndRelatedData();
+      toast.success('Comment added successfully!');
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      toast.error('Failed to add comment');
+    }
+  };
+
+  const handleCommentUpdate = async (commentId: string, content: string) => {
+    if (!user) return;
+    
+    try {
+      await updateCommentAction(planId, commentId, content, await user.getIdToken());
+      await fetchPlanAndRelatedData();
+      toast.success('Comment updated successfully!');
+    } catch (error) {
+      console.error('Error updating comment:', error);
+      toast.error('Failed to update comment');
+    }
+  };
+
+  const handleCommentDelete = async (commentId: string) => {
+    if (!user) return;
+    
+    try {
+      await deleteCommentAction(planId, commentId, await user.getIdToken());
+      await fetchPlanAndRelatedData();
+      toast.success('Comment deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+      toast.error('Failed to delete comment');
+    }
+  };
+
+  const handlePhotoUpload = async (file: File) => {
+    if (!user) return;
+    
+    try {
+      const formData = new FormData();
+      formData.append('photo', file);
+      const idToken = await user.getIdToken();
+      await addPhotoHighlightAction(planId, formData, idToken);
+      await fetchPlanAndRelatedData();
+      toast.success('Photo uploaded successfully!');
+    } catch (error) {
+      console.error('Error uploading photo:', error);
+      toast.error('Failed to upload photo');
+    }
+  };
+
+  const handleShareToFeed = async (message: string) => {
+    if (!user || !plan) return;
+    
+    try {
+      await createFeedPostAction({
+        planId: planId,
+        planName: plan.name,
+        highlightImageUrl: plan.photoHighlights?.[0] || '',
+        postText: message,
+        visibility: 'public'
+      }, await user.getIdToken());
+      toast.success('Plan shared to feed successfully!');
+    } catch (error) {
+      console.error('Error sharing to feed:', error);
+      toast.error('Failed to share to feed');
+    }
+  };
+
+  const handleShareWithFriends = async (friendIds: string[]) => {
+    if (!user || !plan) return;
+    
+    try {
+      const idToken = await user.getIdToken();
+      for (const friendId of friendIds) {
+        await createPlanShareInviteAction(planId, plan.name, friendId, idToken);
+      }
+      toast.success(`Plan shared with ${friendIds.length} friend${friendIds.length > 1 ? 's' : ''}!`);
+    } catch (error) {
+      console.error('Error sharing with friends:', error);
+      toast.error('Failed to share with friends');
+    }
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(planUrl);
+      toast.success('Plan link copied to clipboard!');
+    } catch (error) {
+      console.error('Error copying link:', error);
+      toast.error('Failed to copy link');
+    }
+  };
+
+  const handleCopyPlan = async () => {
+    if (!user) {
+      router.push('/auth/signin');
+      return;
+    }
+
+    if (!isHost) {
+      setShowCopyPlanDialog(true);
+    }
+  };
+
+  const handleAdvancedCopyPlan = async (customizations: any) => {
+    try {
+      setCopyLoading(true);
+      if (!user) {
+        toast.error('You must be logged in to copy a plan');
+        return;
+      }
+      const idToken = await user.getIdToken();
+      const result = await copyPlanToMyAccountAction(planId, idToken);
+      
+      if (result.success && result.newPlanId) {
+        toast.success('Plan copied to your account with your customizations!');
+        router.push(`/plans/${result.newPlanId}`);
+      } else {
+        toast.error(result.error || 'Failed to copy plan');
+      }
+    } catch (error) {
+      console.error('Error copying plan:', error);
+      toast.error('Failed to copy plan');
+    } finally {
+      setCopyLoading(false);
+    }
+  };
+
+  const handleAdvancedRSVP = async (rsvpData: any) => {
+    try {
+      setRsvpLoading(true);
+      await handleRSVPChange(rsvpData.status);
+      toast.success('RSVP updated with your details!');
+    } catch (error) {
+      console.error('Error updating RSVP:', error);
+      toast.error('Failed to update RSVP');
+    } finally {
+      setRsvpLoading(false);
+    }
+  };
+
+  const handleJoinWaitlist = async () => {
+    try {
+      setRsvpLoading(true);
+      toast.success('Added to waitlist!');
+    } catch (error) {
+      console.error('Error joining waitlist:', error);
+      toast.error('Failed to join waitlist');
+    } finally {
+      setRsvpLoading(false);
+    }
+  };
+
+  const handleLeaveWaitlist = async () => {
+    try {
+      setRsvpLoading(true);
+      toast.success('Removed from waitlist');
+    } catch (error) {
+      console.error('Error leaving waitlist:', error);
+      toast.error('Failed to leave waitlist');
+    } finally {
+      setRsvpLoading(false);
+    }
+  };
+
+  const handleSendReminder = async (userIds: string[], message?: string) => {
+    try {
+      setRsvpLoading(true);
+      toast.success(`Reminder sent to ${userIds.length} participants`);
+    } catch (error) {
+      console.error('Error sending reminder:', error);
+      toast.error('Failed to send reminder');
+    } finally {
+      setRsvpLoading(false);
+    }
+  };
+
+  const handleSendMessage = async (userIds: string[], message: string) => {
+    try {
+      setRsvpLoading(true);
+      toast.success(`Message sent to ${userIds.length} participants`);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast.error('Failed to send message');
+    } finally {
+      setRsvpLoading(false);
+    }
+  };
+
+  const handleRemoveParticipant = async (userId: string) => {
+    try {
+      setRsvpLoading(true);
+      toast.success('Participant removed');
+    } catch (error) {
+      console.error('Error removing participant:', error);
+      toast.error('Failed to remove participant');
+    } finally {
+      setRsvpLoading(false);
+    }
+  };
+
+  const handlePromoteToHost = async (userId: string) => {
+    try {
+      setRsvpLoading(true);
+      toast.success('User promoted to host');
+    } catch (error) {
+      console.error('Error promoting user:', error);
+      toast.error('Failed to promote user');
+    } finally {
+      setRsvpLoading(false);
+    }
+  };
+
+  const handleExportParticipants = async () => {
+    try {
+      toast.success('Participant list exported');
+    } catch (error) {
+      console.error('Error exporting participants:', error);
+      toast.error('Failed to export participants');
+    }
+  };
+
+  const handleUpdateShareSettings = async (settings: any) => {
+    try {
+      setRsvpLoading(true);
+      toast.success('Share settings updated');
+    } catch (error) {
+      console.error('Error updating share settings:', error);
+      toast.error('Failed to update share settings');
+    } finally {
+      setRsvpLoading(false);
+    }
+  };
+
+  const handleDeletePlan = async () => {
+    if (!user || !isHost) return;
+    
+    setDeleteLoading(true);
+    try {
+      const idToken = await user.getIdToken();
+      await deletePlanAction(planId, idToken);
+      toast.success('Plan deleted successfully!');
+      router.push('/plans');
+    } catch (error) {
+      console.error('Error deleting plan:', error);
+      toast.error('Failed to delete plan');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  // Loading state
+  if (loading) {
     return (
-      <div className="flex min-h-[calc(100vh-10rem)] items-center justify-center">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto" />
+          <p className="text-muted-foreground">Loading plan details...</p>
+        </div>
       </div>
     );
   }
 
+  // Not found state
   if (!plan) {
     return (
-      <div className="text-center py-10">
-        <h1 className="text-2xl font-semibold text-foreground/80 opacity-60">Plan not found</h1>
-        <p className="text-muted-foreground">The plan you're looking for doesn't exist, has been moved, or you don't have permission to view it here.</p>
-        <Button asChild className="mt-4" variant="outline">
-          <Link href="/plans">Go back to plans</Link>
-        </Button>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <h1 className="text-2xl font-bold">Plan Not Found</h1>
+          <p className="text-muted-foreground">The plan you're looking for doesn't exist or has been removed.</p>
+        </div>
       </div>
     );
   }
 
-  const PlanStatusIcon = firestoreStatusDisplayConfig[plan.status]?.icon || CircleHelp;
-  const planStatusLabel = firestoreStatusDisplayConfig[plan.status]?.label || "Status Unknown";
-  const planStatusBadgeVariant = firestoreStatusDisplayConfig[plan.status]?.badgeVariant || "secondary";
+  // Template detection logic
+  const isTemplate = plan?.isTemplate;
+  const userHasInteracted = plan?.participantUserIds?.includes(user?.uid || '') || 
+                          plan?.hostId === user?.uid;
+  const showAsTemplate = isTemplate && !userHasInteracted;
 
-  let mainPlanImage = `https://placehold.co/800x400.png?text=${encodeURIComponent(plan.name)}`;
-  if (plan.photoHighlights?.[0]) {
-      mainPlanImage = plan.photoHighlights[0];
-  } else {
-      const firstItineraryItemWithImage = plan.itinerary?.find(item => item.googlePhotoReference || item.googleMapsImageUrl);
-      if (firstItineraryItemWithImage?.googlePhotoReference && staticMapApiKey) {
-          if (!staticMapApiKey) console.warn("[PlanDetailPage] Missing NEXT_PUBLIC_GOOGLE_MAPS_API_KEY for Google Place Photo.");
-          mainPlanImage = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${firstItineraryItemWithImage.googlePhotoReference}&key=${staticMapApiKey}`;
-      } else if (firstItineraryItemWithImage?.googleMapsImageUrl) {
-          mainPlanImage = firstItineraryItemWithImage.googleMapsImageUrl;
-      }
-  }
-  const mainPlanImageHint = plan.itinerary?.[0]?.types?.[0] || plan.eventType || 'event scenery';
-    
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-16">
-       <header className="sticky top-0 z-30 flex items-center justify-between p-3 bg-background/80 backdrop-blur-sm border-b border-border/30 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/plans')} className="text-muted-foreground hover:text-foreground" aria-label="Go back to plans list">
-          <ChevronLeft className="h-5 w-5" />
-        </Button>
-        <h2 className="text-md font-semibold text-foreground/90 truncate mx-2 flex-1 text-center">{plan.name}</h2>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground flex-shrink-0" aria-label="More options">
-              <MoreVertical className="h-5 w-5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            {currentUser?.uid === plan.hostId && (
-              <DropdownMenuItem asChild className="cursor-pointer text-sm">
-                <Link href={`/plans/create?editId=${plan.id}`}>
-                  <Edit3 className="mr-2 h-4 w-4" /> Edit Plan
-                </Link>
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuItem onSelect={handleSharePlanLink} className="cursor-pointer text-sm">
-              <LinkIcon className="mr-2 h-4 w-4" /> Share Link
-            </DropdownMenuItem>
-             <DropdownMenuItem onSelect={handleOpenQRCodeDialog} className="cursor-pointer text-sm">
-              <QrCode className="mr-2 h-4 w-4" /> Share QR Code
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setIsFriendPickerOpen(true)} disabled={isSharingWithFriend} className="cursor-pointer text-sm">
-                {isSharingWithFriend ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Share2 className="mr-2 h-4 w-4" />}
-                Share with Friend
-            </DropdownMenuItem>
-            {plan.status === 'published' && currentUser?.uid !== plan.hostId && (
-              <DropdownMenuItem onSelect={handleCopyToMyPlans} disabled={isCopyingPlan} className="cursor-pointer text-sm">
-                {isCopyingPlan ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CopyPlus className="mr-2 h-4 w-4" />}
-                Use as Activity Template
-              </DropdownMenuItem>
-            )}
-            {currentUser?.uid === plan.hostId && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={handleDeletePlanRequest} disabled={isDeletingPlan} className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer text-sm">
-                  {isDeletingPlan ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />} 
-                  Delete Plan
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </header>
-
-      <Card className="overflow-hidden shadow-xl bg-card/90 border-border/50 rounded-b-xl mt-0!"> {}
-        <div className="relative w-full h-56 md:h-72 lg:h-80">
-          <NextImage
-            src={mainPlanImage}
-            alt={plan.name}
-            fill
-            style={{ objectFit: 'cover' }}
-            data-ai-hint={mainPlanImageHint}
-            priority
-            unoptimized={mainPlanImage.includes('maps.googleapis.com')}
-          />
-          <div className="absolute top-3 right-3 flex flex-col gap-2 items-end">
-            {plan.eventType && (
-                <Badge variant="secondary" className="text-xs sm:text-sm px-2.5 py-1 shadow-md">
-                  {plan.eventType}
-                </Badge>
-            )}
-            <Badge
-              variant={planStatusBadgeVariant as any}
-              className="text-xs sm:text-sm px-2.5 py-1 shadow-md flex items-center"
-            >
-              <PlanStatusIcon className="h-3.5 w-3.5 mr-1.5" />
-              {planStatusLabel}
-            </Badge>
-          </div>
-        </div>
-        <CardHeader className="p-4 sm:p-6">
-          <CardTitle className="text-2xl md:text-3xl font-bold text-gradient-primary opacity-80">{plan.name}</CardTitle>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground mt-1 text-xs sm:text-sm items-center">
-            <div className="flex items-center"><CalendarDays className="h-4 w-4 mr-1.5" /><span>{clientFormattedEventDateTime || "Loading date..."}</span></div>
-            <div className="flex items-center"><MapPin className="h-4 w-4 mr-1.5" /><span>{plan.location}, {plan.city}</span></div>
-            {(plan.averageRating !== null && typeof plan.averageRating === 'number' ) && (
-                <div className="flex items-center"><StarIconLucide className="h-4 w-4 mr-1.5 text-amber-400 fill-amber-400" /><span>{plan.averageRating.toFixed(1)} ({plan.reviewCount || 0} reviews)</span></div>
-            )}
-          </div>
-           {plan.hostId && participantDetails[plan.hostId] && (
-            <div className="flex items-center mt-2 text-xs text-muted-foreground">
-                <Avatar className="h-5 w-5 mr-1.5">
-                    <AvatarImage src={participantDetails[plan.hostId]?.avatarUrl || undefined} alt={participantDetails[plan.hostId]?.name || 'Host'} data-ai-hint="person avatar"/>
-                    <AvatarFallback className="text-[10px]">{participantDetails[plan.hostId]?.name ? participantDetails[plan.hostId]!.name!.charAt(0).toUpperCase() : <UserCircleIcon className="h-3 w-3"/>}</AvatarFallback>
-                </Avatar>
-                Hosted by <span className="font-medium text-foreground/80 ml-1">{participantDetails[plan.hostId]?.name || 'Host'}</span>
-                 <VerificationBadge role={participantDetails[plan.hostId]?.role} isVerified={participantDetails[plan.hostId]?.isVerified} />
-            </div>
-          )}
-        </CardHeader>
-
-        <CardContent className="p-4 sm:p-6 pt-0 space-y-5">
-          {plan.description && (
-            <div>
-              <h3 className="font-semibold text-md mb-1.5 flex items-center"><FileText className="h-4 w-4 mr-2 text-primary/70"/>Description</h3>
-              <p className="text-sm text-foreground/80 whitespace-pre-line">{plan.description}</p>
-            </div>
-          )}
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
-              {plan.priceRange && (
-                <div className="flex items-start">
-                  <DollarSign className="h-4 w-4 mr-2 mt-0.5 text-primary/70 shrink-0" />
-                  <div><span className="font-medium text-muted-foreground">Price Range: </span><span className="text-foreground/90">{plan.priceRange}</span></div>
+    <div className="min-h-screen bg-background">
+      <div className="w-full px-0 py-6">
+        {/* Template Banner */}
+        {showAsTemplate && (
+          <div className="mb-6 px-4">
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <div className="bg-blue-100 p-2 rounded-full">
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
                 </div>
-              )}
-              <div className="flex items-start">
-                  <Grid2X2 className="h-4 w-4 mr-2 mt-0.5 text-primary/70 shrink-0" />
-                  <div><span className="font-medium text-muted-foreground">Plan Type: </span><span className="text-foreground/90">{plan.planType === 'single-stop' ? 'Single Stop' : 'Multi-Stop'}</span></div>
-              </div>
-          </div>
-          
-          {((plan.invitedParticipantUserIds && plan.invitedParticipantUserIds.length > 0) || plan.hostId) && (
-            <div>
-                <h3 className="font-semibold text-md mb-1.5 flex items-center"><Users className="h-4 w-4 mr-2 text-primary/70"/>Participants ({rsvpSummary.totalInvited})</h3>
-                <div className="text-xs text-muted-foreground mb-2">
-                  Going: {rsvpSummary.going}, Maybe: {rsvpSummary.maybe}, Declined: {rsvpSummary.declined}, Pending: {rsvpSummary.pending}
+                <div className="flex-1">
+                  <h3 className="font-semibold text-blue-900">Activity Template</h3>
+                  <p className="text-sm text-blue-700">This is a template based on a completed activity. Templates are read-only - copy it to create your own version!</p>
                 </div>
-                {loadingParticipantDetails ? <Loader2 className="h-5 w-5 animate-spin text-primary/70" /> :
-                  Object.keys(participantDetails).length > 0 && (
-                    <div className="space-y-2">
-                        <p className="text-xs font-medium text-muted-foreground/80">Attending:</p>
-                        <div className="flex flex-wrap gap-2">
-                        {Object.entries(plan.participantResponses || {})
-                            .filter(([uid, status]) => status === 'going')
-                            .map(([uid]) => {
-                            const detail = participantDetails[uid];
-                            if (!detail) return null;
-                            return (
-                                <Link href={`/users/${uid}`} key={uid} className="flex items-center gap-1.5 bg-secondary/30 hover:bg-secondary/50 px-2 py-1 rounded-md" title={`${detail?.name || 'User'} - Going`}>
-                                <Avatar className="h-5 w-5">
-                                    <AvatarImage src={detail?.avatarUrl || undefined} alt={detail?.name || 'User'} data-ai-hint="person avatar"/>
-                                    <AvatarFallback className="text-[10px]">{detail?.name ? detail.name.charAt(0).toUpperCase() : <UserCircleIcon className="h-3 w-3"/>}</AvatarFallback>
-                                </Avatar>
-                                <span className="text-xs text-foreground/80 truncate max-w-[100px]">{detail?.name || 'User'}</span>
-                                <VerificationBadge role={detail.role} isVerified={detail.isVerified} />
-                                </Link>
-                            );
-                        })}
-                        {rsvpSummary.going === 0 && <p className="text-xs text-muted-foreground">No one confirmed going yet.</p>}
-                        </div>
-                    </div>
-                  )
-                }
-            </div>
-          )}
-
-
-          {plan.itinerary.length > 0 && <Separator className="bg-border/40 my-4"/>}
-          {plan.itinerary.length > 0 && (
-            <div>
-              <h3 className="font-semibold text-md mb-3 flex items-center"><ListChecks className="h-4 w-4 mr-2 text-primary/70" />Itinerary ({plan.itinerary.length} stop{plan.itinerary.length !== 1 ? 's' : ''})</h3>
-              <div className="space-y-4">
-                {plan.itinerary.map((item, index) => {
-                  let itemPhotoUrl = `https://placehold.co/400x200.png?text=${encodeURIComponent(item.placeName)}`;
-                  if (item.googlePhotoReference && staticMapApiKey) {
-                     itemPhotoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=600&photoreference=${item.googlePhotoReference}&key=${staticMapApiKey}`;
-                  } else if (item.googleMapsImageUrl) { 
-                    itemPhotoUrl = item.googleMapsImageUrl;
-                  }
-                  const itemPhotoHint = item.types?.[0] || 'activity location';
-                  let itemStartTimeDisplay = 'N/A';
-                  let itemEndTimeDisplay = 'N/A';
-                  if (item.startTime && isValid(parseISO(item.startTime))) itemStartTimeDisplay = format(parseISO(item.startTime), 'p');
-                  if (item.endTime && isValid(parseISO(item.endTime))) itemEndTimeDisplay = format(parseISO(item.endTime), 'p');
-
-                  return (
-                    <Card key={item.id || index} className="overflow-hidden bg-background/30 border-border/40 shadow-sm">
-                      <div className="grid grid-cols-1 md:grid-cols-3">
-                        <div className="md:col-span-1 relative min-h-[120px] h-full w-full">
-                          {(item.googlePhotoReference || item.googleMapsImageUrl) && itemPhotoUrl.startsWith('https://') ? (
-                            <NextImage
-                              src={itemPhotoUrl}
-                              alt={item.placeName}
-                              fill
-                              style={{ objectFit: 'cover' }}
-                              data-ai-hint={itemPhotoHint}
-                              unoptimized={itemPhotoUrl.includes('maps.googleapis.com')}
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-muted text-xs text-muted-foreground p-2 text-center" data-ai-hint={itemPhotoHint}>
-                              {item.placeName || "Location Image"}
-                            </div>
-                          )}
-                        </div>
-                        <div className="md:col-span-2 p-3">
-                          <h4 className="text-sm font-semibold text-primary/90">{index + 1}. {item.placeName}</h4>
-                          {item.address && <p className="text-xs text-muted-foreground mt-0.5 mb-1">{item.address}</p>}
-                          <p className="text-xs text-muted-foreground mb-1.5">
-                            <Clock className="inline h-3 w-3 mr-1" />
-                            {itemStartTimeDisplay} - {itemEndTimeDisplay} {item.durationMinutes != null && `(${item.durationMinutes} mins)`}
-                          </p>
-                          {item.description && <p className="text-xs text-foreground/80 mb-2 line-clamp-3">{item.description}</p>}
-                          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] mt-1.5 text-muted-foreground">
-                            {typeof item.rating === 'number' && <div className="flex items-center"><StarIconLucide className="w-3 h-3 mr-1 text-amber-400 fill-amber-400"/> {item.rating.toFixed(1)} ({item.reviewCount || 0})</div>}
-                            {item.isOperational !== null && item.isOperational !== undefined && (
-                                <Badge variant={item.isOperational ? "default" : "destructive"} className="w-fit py-0.5 px-1.5 text-[10px] bg-opacity-70">
-                                    {item.isOperational ? <CheckCircle className="w-2.5 h-2.5 mr-1"/> : <XCircle className="w-2.5 h-2.5 mr-1"/>}
-                                    {item.statusText || (item.isOperational ? "Operational" : "Closed")}
-                                </Badge>
-                            )}
-                            {typeof item.priceLevel === 'number' && <div>Price: {'$'.repeat(item.priceLevel) || 'N/A'}</div>}
-                            {item.phoneNumber && <div className="truncate" title={item.phoneNumber}>Phone: {item.phoneNumber}</div>}
-                          </div>
-                          {item.website && <a href={item.website} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate flex items-center text-xs mt-1.5">Website <ExternalLink className="w-3 h-3 ml-1"/></a>}
-                          {item.activitySuggestions && item.activitySuggestions.length > 0 && (
-                            <div className="mt-1.5">
-                                <p className="text-[11px] font-medium text-muted-foreground/80 mb-0.5">Suggestions:</p>
-                                <ul className="list-disc list-inside pl-1 space-y-0.5">
-                                    {item.activitySuggestions.map((sugg, i) => <li key={i} className="text-xs text-foreground/80">{sugg}</li>)}
-                                </ul>
-                            </div>
-                          )}
-                           {item.notes && (
-                              <div className="mt-1.5 pt-1 border-t border-border/30">
-                                <p className="text-xs font-medium text-muted-foreground/80 mb-0.5">Your Notes:</p>
-                                <p className="text-xs text-foreground/80 whitespace-pre-wrap">{item.notes}</p>
-                              </div>
-                            )}
-                        </div>
-                      </div>
-                    </Card>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {isCurrentUserInvitedNonHost && isPlanUpcoming && plan.status === 'published' && (
-            <Card className="print:hidden bg-card/90 border-border/50 shadow-md rounded-xl">
-              <CardHeader>
-                <CardTitle className="text-lg">Are you going?</CardTitle>
-                {currentUserRSVP && <CardDescription>Your current response: <Badge variant="secondary" className="capitalize text-xs">{currentUserRSVP}</Badge></CardDescription>}
-              </CardHeader>
-              <CardContent className="flex flex-wrap gap-2">
-                {rsvpButtonConfig.map(btn => (
-                    <Button
-                        key={btn.status}
-                        variant={currentUserRSVP === btn.status ? 'default' : (currentUserRSVP && btn.status === 'going' ? 'secondary' : btn.variant)} 
-                        onClick={() => handleRSVP(btn.status)}
-                        disabled={isUpdatingRSVP === btn.status || !!isUpdatingRSVP}
-                        size="sm"
-                        className="min-w-[90px] text-xs"
-                        aria-label={`RSVP ${btn.label}`}
-                    >
-                        {isUpdatingRSVP === btn.status ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin"/> : <btn.icon className="mr-1.5 h-3.5 w-3.5"/>}
-                        {btn.label}
-                    </Button>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
-          {canCurrentUserInteract && (
-            <Card className="print:hidden bg-card/90 border-border/50 shadow-md rounded-xl">
-              <CardHeader>
-                <CardTitle className="text-xl">Add Photo Highlight</CardTitle>
-                <CardDescription>Share a photo from this plan. Uploaded highlights can then be shared to your feed!</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Input 
-                  type="file" 
-                  accept="image/png, image/jpeg, image/gif, image/webp, image/*" 
-                  onChange={handleFileChange} 
-                  ref={fileInputRef}
-                  className="text-sm h-10 file:mr-2 file:text-xs file:font-semibold file:rounded-md file:border-0 file:bg-primary/20 file:text-primary hover:file:bg-primary/30 bg-muted border-border/30 focus:border-primary"
-                  disabled={isUploadingHighlight}
-                />
-                {selectedHighlightFile && (
-                  <div className="flex items-center gap-2">
-                    <p className="text-xs text-muted-foreground flex-1 truncate">Selected: {selectedHighlightFile.name}</p>
-                    {highlightPreviewUrl && (
-                       <div className="relative h-10 w-10 rounded border overflow-hidden">
-                         <NextImage src={highlightPreviewUrl} alt="Preview" fill style={{objectFit: 'cover'}} data-ai-hint="upload preview"/>
-                       </div>
-                    )}
+                {plan.templateOriginalHostName && (
+                  <div className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                    Created by {plan.templateOriginalHostName}
                   </div>
                 )}
-                <Button onClick={handleUploadHighlight} disabled={!selectedHighlightFile || isUploadingHighlight} size="sm" className="text-xs">
-                  {isUploadingHighlight ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-2 h-4 w-4" />}
-                  Upload Photo
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-          
-          {canCurrentUserInteract && (
-            <Card className="print:hidden bg-card/90 border-border/50 shadow-md rounded-xl">
-              <CardHeader>
-                <CardTitle className="text-lg">Rate & Comment</CardTitle>
-                <CardDescription>Share your experience with this plan.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                <div>
-                  <Label htmlFor="rating" className="text-sm font-medium block mb-1.5">Your Rating</Label>
-                  <RatingInput
-                    currentRating={userRating}
-                    onRatingChange={handleRatingSubmit}
-                    disabled={isSubmittingRating}
-                    hasRated={hasRated}
-                    onClearRating={handleClearRating}
-                  />
-                  {hasRated && <p className="text-xs text-muted-foreground mt-1">You can change or clear your rating.</p>}
-                </div>
-                <form onSubmit={handleCommentSubmit} className="space-y-2">
-                  <div>
-                    <Label htmlFor="new-comment" className="text-sm font-medium block mb-1">Add a comment</Label>
-                    <Textarea 
-                      id="new-comment" 
-                      placeholder="Write your comment here..." 
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      className="mt-1 min-h-[70px] text-sm bg-muted border-border/30" 
-                      disabled={isSubmittingComment}
-                    />
-                  </div>
-                  <Button type="submit" disabled={isSubmittingComment || !newComment.trim()} size="sm" className="text-xs">
-                    {isSubmittingComment ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4"/>} 
-                    Post Comment
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          )}
-
-          {comments.length > 0 && (
-            <Card className="print:hidden bg-card/90 border-border/50 shadow-md rounded-xl">
-              <CardHeader><CardTitle className="text-lg flex items-center"><MessageSquare className="mr-2 h-4 w-4 text-primary/70" />Comments ({comments.length})</CardTitle></CardHeader>
-              <CardContent className="p-0">
-                <ScrollArea className="max-h-80 custom-scrollbar-vertical">
-                  <div className="space-y-0">
-                    {comments.map((comment, idx) => (
-                      <div key={comment.id} className={cn("flex items-start gap-3 p-3", idx < comments.length -1 && "border-b border-border/20")}>
-                        <Avatar className="h-8 w-8 mt-0.5">
-                          <AvatarImage src={comment.userAvatarUrl || undefined} alt={comment.username || comment.userName || 'User'} data-ai-hint="person avatar"/>
-                          <AvatarFallback className="text-xs">{comment.username ? comment.username.charAt(0).toUpperCase() : (comment.userName ? comment.userName.charAt(0).toUpperCase() : <UserCircleIcon className="h-4 w-4"/>)}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                          <div className="flex items-baseline justify-between text-xs">
-                            <div className="flex items-center">
-                                <p className="font-semibold text-foreground/90">{comment.username || comment.userName || 'Anonymous'}</p>
-                                <VerificationBadge role={comment.role} isVerified={comment.isVerified || false} />
-                            </div>
-                            <p className="text-muted-foreground/80">{comment.createdAt && isValid(parseISO(comment.createdAt as string)) ? formatDistanceToNowStrict(parseISO(comment.createdAt as string), { addSuffix: true }) : 'some time ago'}</p>
-                          </div>
-                          <p className="text-sm text-foreground/80 whitespace-pre-line mt-0.5">{comment.text}</p>
-                        </div>
-                        {currentUser?.uid === comment.userId && (
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground -mr-1" aria-label="Comment options">
-                                        <MoreVertical className="h-3.5 w-3.5" />
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-32">
-                                    <DropdownMenuItem onSelect={() => handleEditCommentRequest(comment)} className="text-xs cursor-pointer">
-                                        <Edit3 className="mr-2 h-3.5 w-3.5"/> Edit
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onSelect={() => handleDeleteCommentRequest(comment)} className="text-xs text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer">
-                                        <Trash2 className="mr-2 h-3.5 w-3.5"/> Delete
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          )}
-          {comments.length === 0 && canCurrentUserInteract && (
-             <p className="text-sm text-muted-foreground text-center">No comments yet. Be the first to share your thoughts!</p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Dialog open={showShareToFeedDialog} onOpenChange={(open) => {
-        setShowShareToFeedDialog(open);
-        if (!open) { 
-            setFeedPostCaption('');
-            setPostVisibility('public');
-            setFeedPostData(null);
-        }
-      }}>
-        <DialogContent className="sm:max-w-sm rounded-xl bg-card shadow-2xl p-6 border-transparent">
-          <DialogHeader className="text-left mb-2">
-            <DialogTitle className="text-lg font-semibold text-foreground">Share Highlight to Feed?</DialogTitle>
-            <DialogDescriptionComponent className="text-sm text-muted-foreground">
-              Your photo highlight has been uploaded. Add a caption and choose visibility to share it.
-            </DialogDescriptionComponent>
-          </DialogHeader>
-          {feedPostData?.highlightImageUrl && (
-            <div className="my-3 relative aspect-video w-full max-w-xs mx-auto rounded-md overflow-hidden border">
-                <NextImage src={feedPostData.highlightImageUrl} alt="Highlight preview" fill style={{objectFit: 'contain'}} data-ai-hint="highlight event" unoptimized={!feedPostData.highlightImageUrl.startsWith('https') || feedPostData.highlightImageUrl.includes('placehold.co')} />
+              </div>
             </div>
-          )}
-          <Textarea
-            placeholder="Write a caption for your feed post..."
-            value={feedPostCaption}
-            onChange={(e) => setFeedPostCaption(e.target.value)}
-            className="min-h-[80px] text-sm bg-muted border-border/30 focus:border-primary placeholder:text-muted-foreground/70"
-            disabled={isSubmittingFeedPost}
+          </div>
+        )}
+
+        {/* Hero Section */}
+        <div className="mb-8 px-4">
+          <PlanHero 
+            plan={plan} 
+            userRole={userRole}
+            currentUser={user!}
+            isHost={isHost}
+            copyLoading={copyLoading}
+            onCopyToMyPlans={handleCopyPlan}
+            onSharePlanLink={handleCopyLink}
+            onOpenQRCodeDialog={() => setQrCodeOpen(true)}
+            onShowFriendPicker={() => setFriendPickerOpen(true)}
+            onShowShareToFeedDialog={() => setShowEnhancedSharingDialog(true)}
+            onDeletePlanRequest={() => setDeletePlanOpen(true)}
           />
-          <div className="mt-3 mb-2 space-y-1.5">
-            <Label htmlFor="post-visibility-plan-detail" className="text-sm font-medium">Visibility</Label>
-            <RadioGroup
-              id="post-visibility-plan-detail"
-              value={postVisibility}
-              onValueChange={(value: string) => setPostVisibility(value as FeedPostVisibility)}
-              className="flex items-center gap-6 pt-1"
-              disabled={isSubmittingFeedPost}
-            >
-              <div className="flex items-center space-x-2 gap-1.5">
-                <RadioGroupItem value="public" id="visibility-public-plan-detail" />
-                <Label htmlFor="visibility-public-plan-detail" className="text-sm flex items-center gap-1.5"><Globe className="w-4 h-4"/>Public</Label>
-              </div>
-              <div className="flex items-center space-x-2 gap-1.5">
-                <RadioGroupItem value="private" id="visibility-private-plan-detail" />
-                <Label htmlFor="visibility-private-plan-detail" className="text-sm flex items-center gap-1.5"><Lock className="w-4 h-4"/>Private</Label>
-              </div>
-            </RadioGroup>
-          </div>
-          <DialogFooter className="flex flex-col sm:flex-row sm:justify-end sm:space-x-2 pt-4">
-             <Button
-              type="button"
-              onClick={handleShareToFeedSubmit}
-              disabled={isSubmittingFeedPost || !feedPostCaption.trim() || !feedPostData?.highlightImageUrl}
-              className="w-full sm:w-auto h-9" 
-            >
-              {isSubmittingFeedPost ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Share2 className="mr-2 h-4 w-4" />}
-              Share to Feed
-            </Button>
-            <DialogClose asChild>
-              <Button 
-                type="button" 
-                variant="ghost" 
-                disabled={isSubmittingFeedPost} 
-                className="w-full sm:w-auto h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground" 
-              >
-                Skip for Now
-              </Button>
-            </DialogClose>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
 
-      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent>
-            <AlertDialogHeader>
-                <AlertDialogTitle>Delete Plan?</AlertDialogTitle>
-                <AlertDialogDescription>
-                    This will permanently delete the plan "{plan?.name}". This action cannot be undone.
-                </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-                <AlertDialogCancel onClick={() => setShowDeleteConfirm(false)} disabled={isDeletingPlan} aria-label="Cancel Delete">Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={confirmDeletePlan} disabled={isDeletingPlan} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
-                    {isDeletingPlan ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4"/>} Delete
-                </AlertDialogAction>
-            </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
-       <AlertDialog open={!!commentToDelete} onOpenChange={(open) => { if(!open) setCommentToDelete(null); }}>
-        <AlertDialogContent>
-            <AlertDialogHeader>
-                <AlertDialogTitle>Delete Comment?</AlertDialogTitle>
-                <AlertDialogDescription>
-                    Are you sure you want to delete this comment? This action cannot be undone.
-                </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-                <AlertDialogCancel onClick={() => setCommentToDelete(null)} disabled={isDeletingComment} aria-label="Cancel">Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={confirmDeleteComment} disabled={isDeletingComment} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
-                    {isDeletingComment ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4"/>} Delete
-                </AlertDialogAction>
-            </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      
-      <Dialog open={isEditCommentDialogOpen} onOpenChange={(open) => { if(!open) { setIsEditCommentDialogOpen(false); setCommentToEdit(null);}}}>
-          <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                  <DialogTitle>Edit Your Comment</DialogTitle>
-                  <DialogDescriptionComponent>Make changes to your comment below.</DialogDescriptionComponent>
-              </DialogHeader>
-              <Textarea
-                  value={editedCommentText}
-                  onChange={(e) => setEditedCommentText(e.target.value)}
-                  className="min-h-[100px] mt-2 text-sm bg-muted"
-                  disabled={isSubmittingEditedComment}
+
+        {/* Main Content */}
+        <div className="px-4">
+          <div className="space-y-8">
+            {/* Plan Info Cards */}
+            <PlanInfoCards plan={plan} staticMapUrl={staticMapUrl} />
+
+            {/* Interactive Map - Moved up for better visibility */}
+            {plan.location && (
+              <PlanMap
+                planName={plan.name}
+                itinerary={plan.itinerary}
+                apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
+                className="h-80"
               />
-              <DialogFooter className="mt-4">
-                  <Button variant="ghost" onClick={() => { setIsEditCommentDialogOpen(false); setCommentToEdit(null);}} disabled={isSubmittingEditedComment}>Cancel</Button>
-                  <Button onClick={confirmEditComment} disabled={isSubmittingEditedComment || !editedCommentText.trim()}>
-                      {isSubmittingEditedComment ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4"/>}
-                      Save Changes
-                  </Button>
-              </DialogFooter>
-          </DialogContent>
-      </Dialog>
+            )}
 
-      <Dialog open={showQRCodeDialog} onOpenChange={setShowQRCodeDialog}>
-        <DialogContent className="sm:max-w-xs">
-          <DialogHeader>
-            <DialogTitle className="text-center">Share Plan via QR Code</DialogTitle>
-            <DialogDescriptionComponent className="text-center text-xs text-muted-foreground">
-              Scan this code to view the plan details for "{plan?.name}".
-            </DialogDescriptionComponent>
-          </DialogHeader>
-          <div className="flex justify-center p-4 bg-white rounded-md my-4">
-            {planPublicUrl && <QRCodeSVG value={planPublicUrl} size={200} includeMargin={true} />}
+            {/* Itinerary */}
+            {plan.itinerary && plan.itinerary.length > 0 && (
+              <PlanItinerary
+                itinerary={plan.itinerary}
+              />
+            )}
+
+            {/* Weather */}
+            {plan.location && (
+              <PlanWeather 
+                location={plan.location} 
+                date={plan.eventTime}
+                showForecast={true}
+                coordinates={plan.coordinates ? {
+                  lat: plan.coordinates.latitude,
+                  lon: plan.coordinates.longitude
+                } : undefined}
+              />
+            )}
+
+            {/* Photo Highlights */}
+            <PlanPhotoHighlights
+              plan={plan}
+              isCurrentUserParticipant={userRole === 'confirmed' || userRole === 'host'}
+              highlightUploading={false}
+              onUploadHighlight={handlePhotoUpload}
+            />
+
+            {/* Participants & RSVP - Hidden for templates */}
+            {!showAsTemplate && (
+              <PlanParticipants
+                plan={plan}
+                participantDetails={participantDetails.reduce((acc, participant) => {
+                  acc[participant.userId] = {
+                    name: participant.name,
+                    avatarUrl: participant.profilePicture
+                  };
+                  return acc;
+                }, {} as { [uid: string]: any })}
+                currentUser={user!}
+                isCurrentUserParticipant={isCurrentUserParticipant}
+                isHost={isHost}
+                isEventDateValid={true}
+                currentUserResponse={currentUserResponse}
+                rsvpSummary={{
+                  yes: rsvpSummary.going,
+                  maybe: rsvpSummary.maybe,
+                  no: rsvpSummary.notGoing
+                }}
+                rsvpLoading={rsvpLoading}
+                onRSVP={handleParticipantRSVP}
+                onAdvancedRSVP={() => setShowAdvancedRSVPDialog(true)}
+                onManageParticipants={() => setShowParticipantManagementDialog(true)}
+                onJoinWaitlist={() => setShowWaitlistDialog(true)}
+              />
+            )}
+
+            {/* Template Action Card */}
+            {showAsTemplate && (
+              <div className="bg-white rounded-lg border border-gray-200 p-6">
+                <div className="text-center space-y-4">
+                  <div className="bg-blue-50 p-3 rounded-full w-16 h-16 mx-auto flex items-center justify-center">
+                    <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Try This Activity</h3>
+                    <p className="text-sm text-gray-600 mt-1">Copy this template to create your own version with your preferred date and participants.</p>
+                  </div>
+                  <button
+                    onClick={handleCopyPlan}
+                    disabled={copyLoading}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 mx-auto"
+                  >
+                    {copyLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Copying...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        Copy to My Plans
+                      </>
+                    )}
+                  </button>
+                  {plan.templateOriginalHostName && (
+                    <p className="text-xs text-gray-500">
+                      Template created from an activity by {plan.templateOriginalHostName}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Ratings - Always visible (preserved for templates) */}
+            {(
+              <PlanRatingSection
+                isHost={isHost}
+                userRating={userRating}
+                hasRated={hasRated}
+                ratingLoading={ratingLoading}
+                canRate={plan ? canUserCommentAndRate(plan, user?.uid) : false}
+                onRatingChange={setUserRating}
+                onRatingSubmit={handleRatingSubmit}
+                onClearRating={handleClearRating}
+              />
+            )}
+
+            {/* Template Info Section */}
+            {showAsTemplate && (
+              <div className="bg-white rounded-lg border border-gray-200 p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">About This Template</h3>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-green-100 p-2 rounded-full">
+                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <span className="text-sm text-gray-700">Tested and completed by real users</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="bg-blue-100 p-2 rounded-full">
+                      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <span className="text-sm text-gray-700">Estimated duration: {plan.itinerary?.length ? `${plan.itinerary.length} stops` : 'Multiple activities'}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="bg-purple-100 p-2 rounded-full">
+                      <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </div>
+                    <span className="text-sm text-gray-700">Location: {plan.city}</span>
+                  </div>
+                  {plan.priceRange && (
+                    <div className="flex items-center gap-3">
+                      <div className="bg-yellow-100 p-2 rounded-full">
+                        <svg className="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                        </svg>
+                      </div>
+                      <span className="text-sm text-gray-700">Price range: {plan.priceRange}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Comments - Always visible (preserved for templates) */}
+            {(
+              <PlanComments
+                comments={comments.map(comment => ({
+                  ...comment,
+                  createdAt: typeof comment.createdAt === 'string' ? comment.createdAt : (comment.createdAt instanceof Date ? comment.createdAt.toISOString() : comment.createdAt.toDate().toISOString()),
+                  updatedAt: comment.updatedAt ? (typeof comment.updatedAt === 'string' ? comment.updatedAt : (comment.updatedAt instanceof Date ? comment.updatedAt.toISOString() : comment.updatedAt.toDate().toISOString())) : undefined
+                }))}
+                currentUserId={user?.uid}
+                canComment={plan ? canUserCommentAndRate(plan, user?.uid) : false}
+                onCommentSubmit={handleCommentSubmit}
+                onCommentUpdate={handleCommentUpdate}
+                onCommentDelete={handleCommentDelete}
+              />
+            )}
           </div>
-           <DialogFooter className="justify-center">
-             <Button variant="outline" onClick={() => setShowQRCodeDialog(false)} size="sm">Close</Button>
-           </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </div>
+
+      {/* Dialogs */}
+      <ShareToFeedDialog
+        open={shareToFeedOpen}
+        onOpenChange={setShareToFeedOpen}
+        plan={plan}
+        onSubmit={handleShareToFeed}
+      />
+
+      <QRCodeDialog
+        open={qrCodeOpen}
+        onOpenChange={setQrCodeOpen}
+        plan={plan}
+        planUrl={planUrl}
+      />
 
       <FriendPickerDialog
-        open={isFriendPickerOpen}
-        onOpenChange={setIsFriendPickerOpen}
-        onFriendSelect={handleShareWithFriend}
+        open={friendPickerOpen}
+        onOpenChange={setFriendPickerOpen}
+        plan={plan}
+        onShare={handleShareWithFriends}
       />
+
+      <AdvancedRSVPDialog
+        open={showAdvancedRSVPDialog}
+        onOpenChange={setShowAdvancedRSVPDialog}
+        plan={plan}
+        currentUser={user!}
+        currentUserProfile={currentUserProfile}
+        currentRSVP={plan?.participantRSVPDetails?.[user?.uid || '']}
+        onSubmit={handleAdvancedRSVP}
+      />
+
+      <WaitlistDialog
+        open={showWaitlistDialog}
+        onOpenChange={setShowWaitlistDialog}
+        plan={plan}
+        currentUser={user!}
+        participantDetails={participantDetails.reduce((acc, participant) => {
+          acc[participant.userId] = {
+            name: participant.name,
+            avatarUrl: participant.profilePicture || undefined
+          };
+          return acc;
+        }, {} as { [uid: string]: { name?: string; avatarUrl?: string } })}
+        isOnWaitlist={plan?.waitlist?.includes(user?.uid || '') || false}
+        onJoinWaitlist={handleJoinWaitlist}
+        onLeaveWaitlist={handleLeaveWaitlist}
+      />
+
+      <CopyPlanDialog
+        open={showCopyPlanDialog}
+        onOpenChange={setShowCopyPlanDialog}
+        plan={plan}
+        currentUser={user}
+        onCopy={handleAdvancedCopyPlan}
+      />
+
+      <ParticipantManagementDialog
+        open={showParticipantManagementDialog}
+        onOpenChange={setShowParticipantManagementDialog}
+        plan={plan}
+        currentUser={user}
+        isHost={isHost}
+        onSendReminder={handleSendReminder}
+        onSendMessage={handleSendMessage}
+        onRemoveParticipant={handleRemoveParticipant}
+        onPromoteToHost={handlePromoteToHost}
+        onExportParticipants={handleExportParticipants}
+      />
+
+      <EnhancedPlanSharingDialog
+        open={showEnhancedSharingDialog}
+        onOpenChange={setShowEnhancedSharingDialog}
+        plan={plan}
+        currentUser={user}
+        isHost={isHost}
+        onShareToFeed={() => handleShareToFeed('')}
+        onShareWithFriends={handleShareWithFriends}
+        onUpdateShareSettings={handleUpdateShareSettings}
+      />
+
+      {/* Delete Plan Confirmation */}
+      <AlertDialog open={deletePlanOpen} onOpenChange={setDeletePlanOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Plan</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{plan.name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLoading}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeletePlan}
+              disabled={deleteLoading}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete Plan'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

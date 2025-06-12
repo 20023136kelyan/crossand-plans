@@ -18,6 +18,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Slider } from '@/components/ui/slider';
 import { Calendar } from '@/components/ui/calendar';
 import { 
   CalendarIcon, 
@@ -59,7 +60,14 @@ import { Separator } from '../ui/separator';
 const GOOGLE_MAPS_LIBRARIES: Libraries = ['places', 'geocoding', 'marker'];
 const planStatusOptions = ['published', 'draft', 'cancelled'] as const;
 const planTypeOptions = ['single-stop', 'multi-stop'] as const;
-const priceRangeOptions = ['Free', '$', '$$', '$$$', '$$$$'] as const;
+const priceRangeOptions: Array<{ value: PriceRangeType | '', label: string }> = [
+  { value: '', label: 'Any' },
+  { value: 'Free', label: 'Free' },
+  { value: '$', label: '$ (Cheap)' },
+  { value: '$$', label: '$$ (Moderate)' },
+  { value: '$$$', label: '$$$ (Pricey)' },
+  { value: '$$$$', label: '$$$$ (Very Pricey)' },
+];
 const transitModeValues = ['driving', 'walking', 'bicycling', 'transit'] as const;
 
 // Schemas
@@ -102,6 +110,59 @@ export const itineraryItemSchema = z.object({
   path: ["endTime"],
 });
 
+// Helper function to validate if itinerary is complete and saved (not just autocompleting)
+const isItineraryValid = (itinerary: ItineraryItemSchemaValues[]): boolean => {
+  if (!itinerary || itinerary.length === 0) return false;
+  
+  return itinerary.every(item => {
+    // Ensure all required fields are complete and not just partial autocomplete strings
+    return item.placeName && item.placeName.trim().length > 0 && 
+           item.address && item.address.trim().length > 0 && // Ensure address is saved
+           item.city && item.city.trim().length > 0 && // Ensure city is saved
+           item.startTime && isDateValid(parseISO(item.startTime)) &&
+           item.lat && item.lng; // Ensure coordinates are saved (indicates place was selected, not just typed)
+  });
+};
+
+// Helper function to extract auto-populated data from itinerary
+const getAutoPopulatedData = (itinerary: ItineraryItemSchemaValues[]) => {
+  if (!itinerary || itinerary.length === 0) return {};
+  
+  const firstItem = itinerary[0];
+  const averagePriceLevel = itinerary.reduce((sum, item) => {
+    return sum + (item.priceLevel || 0);
+  }, 0) / itinerary.length;
+  
+  // Convert average price level to price range
+  let priceRange: PriceRangeType = 'Free';
+  if (averagePriceLevel >= 3.5) priceRange = '$$$$';
+  else if (averagePriceLevel >= 2.5) priceRange = '$$$';
+  else if (averagePriceLevel >= 1.5) priceRange = '$$';
+  else if (averagePriceLevel >= 0.5) priceRange = '$';
+  
+  // Use the complete address as primary location, fallback to place name
+  const primaryLocation = firstItem.address && firstItem.address.trim() ? firstItem.address : (firstItem.placeName || '');
+  
+  // Ensure we get the city from the saved itinerary item
+  const city = firstItem.city && firstItem.city.trim() ? firstItem.city : '';
+  
+  // Extract photo highlights from itinerary items with images
+  const photoHighlights: string[] = [];
+  for (const item of itinerary) {
+    if (item.googleMapsImageUrl && item.googleMapsImageUrl.trim()) {
+      photoHighlights.push(item.googleMapsImageUrl);
+    }
+  }
+  
+  return {
+    primaryLocation,
+    city,
+    eventDateTime: firstItem.startTime ? parseISO(firstItem.startTime) : undefined,
+    priceRange: averagePriceLevel > 0 ? priceRange : undefined,
+    photoHighlights: photoHighlights.length > 0 ? photoHighlights : undefined,
+  };
+};
+
 export type ItineraryItemSchemaValues = z.infer<typeof itineraryItemSchema>;
 
 const planFormSchema = z.object({
@@ -112,11 +173,12 @@ const planFormSchema = z.object({
   primaryLocation: z.string().min(2, { message: 'Primary location is required.' }).max(150),
   city: z.string().min(2, { message: 'City is required.' }).max(100),
   eventType: z.string().max(100).optional().nullable(),
-  priceRange: z.enum(priceRangeOptions).optional().nullable(),
+  priceRange: z.enum(['Free', '$', '$$', '$$$', '$$$$']).optional().nullable(),
   invitedParticipantUserIds: z.array(z.string()).optional().default([]),
   status: z.enum(planStatusOptions),
   planType: z.enum(planTypeOptions),
   itinerary: z.array(itineraryItemSchema).min(1, "At least one itinerary item is required.").optional().default([]),
+  photoHighlights: z.array(z.string().url()).optional().default([]),
 });
 
 export type PlanFormValues = z.infer<typeof planFormSchema>;
@@ -136,20 +198,39 @@ interface SectionHeaderProps {
   icon: React.ReactNode;
   title: string;
   description?: string;
+  isCollapsible?: boolean;
+  isExpanded?: boolean;
+  onToggle?: () => void;
 }
 
-function SectionHeader({ icon, title, description }: SectionHeaderProps) {
+function SectionHeader({ icon, title, description, isCollapsible = false, isExpanded = true, onToggle }: SectionHeaderProps) {
   return (
-    <div className="flex items-center space-x-2">
-      <div className="flex items-center justify-center w-7 h-7 rounded-md bg-primary/10 border border-primary/20">
-        {icon}
+    <div 
+      className={cn(
+        "flex items-center justify-between w-full",
+        isCollapsible && "cursor-pointer hover:bg-muted/30 rounded-md p-2 -m-2 transition-colors"
+      )}
+      onClick={isCollapsible ? onToggle : undefined}
+    >
+      <div className="flex items-center space-x-2">
+        <div className="flex items-center justify-center w-7 h-7 rounded-md bg-primary/10 border border-primary/20">
+          {icon}
+        </div>
+        <div>
+          <h3 className="text-base font-semibold text-foreground">{title}</h3>
+          {description && (
+            <p className="text-xs text-muted-foreground">{description}</p>
+          )}
+        </div>
       </div>
-      <div>
-        <h3 className="text-base font-semibold text-foreground">{title}</h3>
-        {description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
-        )}
-      </div>
+      {isCollapsible && (
+        <ChevronDown 
+          className={cn(
+            "h-4 w-4 text-muted-foreground transition-transform duration-200",
+            isExpanded && "rotate-180"
+          )} 
+        />
+      )}
     </div>
   );
 }
@@ -161,8 +242,34 @@ interface FormSectionProps {
 
 function FormSection({ children, className }: FormSectionProps) {
   return (
-    <div className={cn("space-y-3 p-4 rounded-lg bg-card/30 border border-border/20", className)}>
+    <div className={cn("group bg-card/80 backdrop-blur-sm border border-border/40 rounded-2xl p-5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 space-y-4", className)}>
       {children}
+    </div>
+  );
+}
+
+interface CollapsibleSectionProps {
+  header: React.ReactNode;
+  children: React.ReactNode;
+  isExpanded: boolean;
+  onToggle: () => void;
+  className?: string;
+}
+
+function CollapsibleSection({ header, children, isExpanded, onToggle, className }: CollapsibleSectionProps) {
+  return (
+    <div className={cn("space-y-3", className)}>
+      <div onClick={onToggle}>
+        {header}
+      </div>
+      <div 
+        className={cn(
+          "overflow-hidden transition-all duration-300 ease-in-out",
+          isExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
+        )}
+      >
+        {children}
+      </div>
     </div>
   );
 }
@@ -172,14 +279,22 @@ interface CoreDetailsSectionProps {
   form: any;
 }
 
-function CoreDetailsSection({ form }: CoreDetailsSectionProps) {
+function CoreDetailsSection({ form, isExpanded, onToggle }: CoreDetailsSectionProps & { isExpanded: boolean; onToggle: () => void }) {
   return (
-    <div className="space-y-3">
-      <SectionHeader 
-        icon={<Sparkles className="h-4 w-4 text-primary" />}
-        title="Plan Basics"
-        description="Essential details for your plan"
-      />
+    <CollapsibleSection
+      header={
+        <SectionHeader 
+          icon={<Sparkles className="h-4 w-4 text-primary" />}
+          title="Plan Basics"
+          description="Essential details for your plan"
+          isCollapsible={true}
+          isExpanded={isExpanded}
+          onToggle={onToggle}
+        />
+      }
+      isExpanded={isExpanded}
+      onToggle={onToggle}
+    >
       <FormSection>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <FormField
@@ -187,16 +302,11 @@ function CoreDetailsSection({ form }: CoreDetailsSectionProps) {
             name="name"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-sm font-medium flex items-center space-x-1">
-                  <FileText className="h-3 w-3 text-primary" />
-                  <span>Plan Name</span>
-                  <span className="text-destructive">*</span>
-                </FormLabel>
                 <FormControl>
                   <Input 
-                    placeholder="Give your plan a catchy name..." 
+                    placeholder="Plan Name *" 
                     {...field} 
-                    className="h-9 text-sm border-border/40 focus:border-primary/50 transition-colors" 
+                    className="h-10 text-sm border-border/40 focus:border-primary/50 transition-colors" 
                   />
                 </FormControl>
                 <FormMessage />
@@ -209,35 +319,30 @@ function CoreDetailsSection({ form }: CoreDetailsSectionProps) {
             name="eventDateTime"
             render={({ field }) => (
               <FormItem className="flex flex-col">
-                <FormLabel className="text-sm font-medium flex items-center space-x-1">
-                  <Clock className="h-3 w-3 text-primary" />
-                  <span>Date & Time</span>
-                  <span className="text-destructive">*</span>
-                </FormLabel>
                 <Popover>
                   <PopoverTrigger asChild>
                     <FormControl>
                       <Button 
                         variant={'outline'} 
                         className={cn(
-                          'w-full h-9 justify-start text-left font-normal border-border/40 hover:border-primary/50 transition-colors text-sm', 
+                          'w-full h-10 justify-start text-left font-normal border-border/40 hover:border-primary/50 transition-colors text-sm', 
                           !field.value && 'text-muted-foreground'
                         )}
                       >
                         {field.value && isDateValid(field.value) ? (
                           <span className="flex items-center space-x-1">
-                            <CalendarIcon className="h-3 w-3 text-primary" />
+                            <CalendarIcon className="h-4 w-4 text-primary" />
                             <span>{format(field.value, 'MMM d, yyyy')}</span>
-                            <Clock className="h-3 w-3 text-primary" />
+                            <Clock className="h-4 w-4 text-primary" />
                             <span>{format(field.value, 'p')}</span>
                           </span>
                         ) : (
                           <span className="flex items-center space-x-1">
-                            <CalendarIcon className="h-3 w-3 text-muted-foreground" />
-                            <span>Select date and time</span>
+                            <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                            <span>Event Date & Time *</span>
                           </span>
                         )}
-                        <ChevronDown className="ml-auto h-3 w-3 opacity-50" />
+                        <ChevronDown className="ml-auto h-4 w-4 opacity-50" />
                       </Button>
                     </FormControl>
                   </PopoverTrigger>
@@ -257,7 +362,7 @@ function CoreDetailsSection({ form }: CoreDetailsSectionProps) {
           />
         </div>
       </FormSection>
-    </div>
+    </CollapsibleSection>
   );
 }
 
@@ -266,14 +371,22 @@ interface LocationSectionProps {
   form: any;
 }
 
-function LocationSection({ form }: LocationSectionProps) {
+function LocationSection({ form, isExpanded, onToggle }: LocationSectionProps & { isExpanded: boolean; onToggle: () => void }) {
   return (
-    <div className="space-y-3">
-      <SectionHeader 
-        icon={<MapPinIcon className="h-4 w-4 text-primary" />}
-        title="Location Details"
-        description="Where will your plan take place?"
-      />
+    <CollapsibleSection
+      header={
+        <SectionHeader 
+          icon={<MapPinIcon className="h-4 w-4 text-primary" />}
+          title="Starting Location Details"
+          description="Where your itinerary begins. These fields are auto-filled from your completed itinerary."
+          isCollapsible={true}
+          isExpanded={isExpanded}
+          onToggle={onToggle}
+        />
+      }
+      isExpanded={isExpanded}
+      onToggle={onToggle}
+    >
       <FormSection>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField
@@ -283,12 +396,12 @@ function LocationSection({ form }: LocationSectionProps) {
               <FormItem>
                 <FormLabel className="text-sm font-medium flex items-center space-x-1">
                   <MapPinIcon className="h-3 w-3 text-primary" />
-                  <span>Primary Location</span>
+                  <span>Starting Location</span>
                   <span className="text-destructive">*</span>
                 </FormLabel>
                 <FormControl>
                   <Input 
-                    placeholder="e.g., Central Park, Times Square" 
+                    placeholder="e.g., Central Park, Times Square (auto-filled from first itinerary stop)" 
                     {...field} 
                     className="h-9 text-sm border-border/40 focus:border-primary/50 transition-colors" 
                   />
@@ -305,12 +418,12 @@ function LocationSection({ form }: LocationSectionProps) {
               <FormItem>
                 <FormLabel className="text-sm font-medium flex items-center space-x-1">
                   <Building className="h-3 w-3 text-primary" />
-                  <span>City</span>
+                  <span>Starting City</span>
                   <span className="text-destructive">*</span>
                 </FormLabel>
                 <FormControl>
                   <Input 
-                    placeholder="e.g., New York, San Francisco" 
+                    placeholder="e.g., New York, San Francisco (auto-filled from itinerary)" 
                     {...field} 
                     className="h-9 text-sm border-border/40 focus:border-primary/50 transition-colors" 
                   />
@@ -321,7 +434,7 @@ function LocationSection({ form }: LocationSectionProps) {
           />
         </div>
       </FormSection>
-    </div>
+    </CollapsibleSection>
   );
 }
 
@@ -330,14 +443,22 @@ interface PlanDetailsSectionProps {
   form: any;
 }
 
-function PlanDetailsSection({ form }: PlanDetailsSectionProps) {
+function PlanDetailsSection({ form, isExpanded, onToggle }: PlanDetailsSectionProps & { isExpanded: boolean; onToggle: () => void }) {
   return (
-    <div className="space-y-3">
-      <SectionHeader 
-        icon={<FileText className="h-4 w-4 text-primary" />}
-        title="Plan Details"
-        description="Tell us more about your plan"
-      />
+    <CollapsibleSection
+      header={
+        <SectionHeader 
+          icon={<FileText className="h-4 w-4 text-primary" />}
+          title="Plan Details"
+          description="Tell us more about your plan"
+          isCollapsible={true}
+          isExpanded={isExpanded}
+          onToggle={onToggle}
+        />
+      }
+      isExpanded={isExpanded}
+      onToggle={onToggle}
+    >
       <FormSection>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2">
@@ -346,16 +467,13 @@ function PlanDetailsSection({ form }: PlanDetailsSectionProps) {
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-sm font-medium flex items-center space-x-1">
-                    <MessageSquare className="h-3 w-3 text-primary" />
-                    <span>Description</span>
-                  </FormLabel>
+                  <FormLabel className="text-sm font-medium text-muted-foreground mb-2">Description</FormLabel>
                   <FormControl>
                     <Textarea 
                       placeholder="Describe the overall plan, vibe, and what makes it special..." 
                       {...field} 
                       value={field.value ?? ''} 
-                      className="min-h-[60px] text-sm border-border/40 focus:border-primary/50 transition-colors resize-none" 
+                      className="min-h-[100px] text-sm border-border/40 focus:border-primary/50 transition-colors resize-none" 
                     />
                   </FormControl>
                   <FormMessage />
@@ -370,16 +488,12 @@ function PlanDetailsSection({ form }: PlanDetailsSectionProps) {
               name="eventType"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-sm font-medium flex items-center space-x-1">
-                    <CalendarLucide className="h-3 w-3 text-primary" />
-                    <span>Event Type</span>
-                  </FormLabel>
                   <FormControl>
                     <Input 
-                      placeholder="e.g., Birthday Party, Date Night" 
+                      placeholder="Event Type" 
                       {...field} 
                       value={field.value ?? ''} 
-                      className="h-9 text-sm border-border/40 focus:border-primary/50 transition-colors" 
+                      className="h-10 text-sm border-border/40 focus:border-primary/50 transition-colors" 
                     />
                   </FormControl>
                   <FormMessage />
@@ -390,34 +504,66 @@ function PlanDetailsSection({ form }: PlanDetailsSectionProps) {
             <FormField
               control={form.control}
               name="priceRange"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium flex items-center space-x-1">
-                    <DollarSign className="h-3 w-3 text-primary" />
-                    <span>Price Range</span>
-                  </FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value || undefined}>
-                    <FormControl ref={field.ref}>
-                      <SelectTrigger className="h-9 text-sm border-border/40 focus:border-primary/50 transition-colors">
-                        <SelectValue placeholder="Select budget" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {priceRangeOptions.map(opt => (
-                        <SelectItem key={opt} value={opt} className="text-sm py-1">
-                          {opt}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
+              render={({ field }) => {
+                const priceIndex = priceRangeOptions.findIndex(option => option.value === field.value);
+                const currentIndex = priceIndex === -1 ? 0 : priceIndex;
+                
+                return (
+                  <FormItem className="space-y-3">
+                    <FormLabel className="text-sm font-medium text-muted-foreground">Price Range</FormLabel>
+                    <div className="space-y-3">
+                      <FormControl>
+                        <Slider
+                          value={[currentIndex]}
+                          onValueChange={(value) => {
+                            const selectedOption = priceRangeOptions[value[0]];
+                            field.onChange(selectedOption.value === '' ? null : selectedOption.value as PriceRangeType);
+                          }}
+                          min={0}
+                          max={priceRangeOptions.length - 1}
+                          step={1}
+                          className="[&>span:first-child]:h-3 [&>span>span]:h-3 [&>button]:h-6 [&>button]:w-6 [&>button]:border-2 [&>button]:shadow-md [&>button]:bg-primary [&>button]:border-primary [&>button]:touch-manipulation py-2"
+                        />
+                      </FormControl>
+                      {/* Notch Labels */}
+                      <div className="flex justify-between text-xs text-muted-foreground px-1">
+                        {priceRangeOptions.map((option, index) => {
+                          // Show simplified labels: Any, Free, then just dollar signs
+                          let displayLabel = option.label;
+                          if (option.value === '$') displayLabel = '$';
+                          else if (option.value === '$$') displayLabel = '$$';
+                          else if (option.value === '$$$') displayLabel = '$$$';
+                          else if (option.value === '$$$$') displayLabel = '$$$$';
+                          
+                          return (
+                            <span 
+                              key={option.value} 
+                              className={cn(
+                                "transition-colors duration-200 text-center flex-1",
+                                index === currentIndex ? "text-primary font-medium" : "hover:text-foreground"
+                              )}
+                            >
+                              {displayLabel}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      {/* Current Selection Display */}
+                      <div className="text-center">
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                          {priceRangeOptions[currentIndex].label}
+                        </span>
+                      </div>
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                );
+              }}
             />
           </div>
         </div>
       </FormSection>
-    </div>
+    </CollapsibleSection>
   );
 }
 
@@ -521,15 +667,7 @@ function ItinerarySection({ form, isGoogleMapsApiLoaded, googleMapsApiKey }: Iti
   return (
     <div className="space-y-2">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
-            <ListChecks className="h-3.5 w-3.5 text-primary" />
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">Event Itinerary</h3>
-            <p className="text-xs text-muted-foreground hidden sm:block">Plan your stops and activities</p>
-          </div>
-        </div>
+        <div></div>
         <FormField
           control={form.control}
           name="planType"
@@ -625,14 +763,22 @@ interface ParticipantsSectionProps {
   form: any;
 }
 
-function ParticipantsSection({ form }: ParticipantsSectionProps) {
+function ParticipantsSection({ form, isExpanded, onToggle }: ParticipantsSectionProps & { isExpanded: boolean; onToggle: () => void }) {
   return (
-    <div className="space-y-3">
-      <SectionHeader 
-        icon={<UsersIcon className="h-4 w-4 text-primary" />}
-        title="Invite Participants"
-        description="Who would you like to invite?"
-      />
+    <CollapsibleSection
+      header={
+        <SectionHeader 
+          icon={<UsersIcon className="h-4 w-4 text-primary" />}
+          title="Invite Participants"
+          description="Who would you like to invite?"
+          isCollapsible={true}
+          isExpanded={isExpanded}
+          onToggle={onToggle}
+        />
+      }
+      isExpanded={isExpanded}
+      onToggle={onToggle}
+    >
       <FormSection>
         <FriendMultiSelectInput
           control={form.control}
@@ -641,7 +787,7 @@ function ParticipantsSection({ form }: ParticipantsSectionProps) {
           description="They will be able to see this plan if it's published."
         />
       </FormSection>
-    </div>
+    </CollapsibleSection>
   );
 }
 
@@ -650,14 +796,22 @@ interface FinalizeSectionProps {
   form: any;
 }
 
-function FinalizeSection({ form }: FinalizeSectionProps) {
+function FinalizeSection({ form, isExpanded, onToggle }: FinalizeSectionProps & { isExpanded: boolean; onToggle: () => void }) {
   return (
-    <div className="space-y-3">
-      <SectionHeader 
-        icon={<CheckCircle className="h-4 w-4 text-primary" />}
-        title="Finalize & Publish"
-        description="Set your plan's visibility and status"
-      />
+    <CollapsibleSection
+      header={
+        <SectionHeader 
+          icon={<CheckCircle className="h-4 w-4 text-primary" />}
+          title="Finalize & Publish"
+          description="Set your plan's visibility and status"
+          isCollapsible={true}
+          isExpanded={isExpanded}
+          onToggle={onToggle}
+        />
+      }
+      isExpanded={isExpanded}
+      onToggle={onToggle}
+    >
       <FormSection>
         <div className="max-w-xs">
           <FormField
@@ -665,15 +819,10 @@ function FinalizeSection({ form }: FinalizeSectionProps) {
             name="status"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-sm font-medium flex items-center space-x-1">
-                  <Settings className="h-3 w-3 text-primary" />
-                  <span>Plan Status</span>
-                  <span className="text-destructive">*</span>
-                </FormLabel>
                 <Select onValueChange={field.onChange} value={field.value}>
                   <FormControl ref={field.ref}>
-                    <SelectTrigger className="h-9 text-sm border-border/40 focus:border-primary/50 transition-colors">
-                      <SelectValue placeholder="Choose plan visibility" />
+                    <SelectTrigger className="h-11 text-sm border-border/40 focus:border-primary/50 transition-colors">
+                      <SelectValue placeholder="Plan Status *" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
@@ -690,7 +839,7 @@ function FinalizeSection({ form }: FinalizeSectionProps) {
           />
         </div>
       </FormSection>
-    </div>
+    </CollapsibleSection>
   );
 }
 
@@ -698,16 +847,46 @@ function FinalizeSection({ form }: FinalizeSectionProps) {
 export function PlanForm({ 
   initialData, 
   onSubmit, 
-  isSubmitting: propIsSubmitting, 
-  formMode: propFormMode, 
-  formTitle, 
+  isSubmitting: propIsSubmitting = false, 
+  formMode: propFormMode,
+  formTitle,
   onBackToAICriteria 
 }: PlanFormProps) {
   const { toast } = useToast();
-  const [isSubmittingForm, setIsSubmittingForm] = useState(propIsSubmitting || false);
+  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
+  const [hasValidatedItinerary, setHasValidatedItinerary] = useState(false);
+  const [hasAutoPopulated, setHasAutoPopulated] = useState(false);
+  const [currentStep, setCurrentStep] = useState(1);
+  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
   const formMode = propFormMode || (initialData?.id ? 'edit' : 'create');
 
-  const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  // Step navigation
+  const goToStep = (step: number) => {
+    setCurrentStep(step);
+  };
+
+  const goToNextStep = () => {
+    if (currentStep < 4) {
+      setCompletedSteps(prev => new Set([...prev, currentStep]));
+      setCurrentStep(currentStep + 1);
+    }
+  };
+
+  const goToPreviousStep = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+
+  // Step definitions
+  const steps = [
+    { id: 1, title: 'Build Itinerary', description: 'Add places and activities' },
+    { id: 2, title: 'Plan Information', description: 'Basic details and location' },
+    { id: 3, title: 'Additional Details', description: 'Description and participants' },
+    { id: 4, title: 'Review & Publish', description: 'Finalize your plan' }
+  ];
+
+  const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: googleMapsApiKey || "",
     libraries: GOOGLE_MAPS_LIBRARIES,
@@ -717,35 +896,23 @@ export function PlanForm({
   const form = useForm<PlanFormValues>({
     resolver: zodResolver(planFormSchema),
     defaultValues: {
-      id: initialData?.id,
+      id: initialData?.id || undefined,
       name: initialData?.name || '',
       description: initialData?.description || '',
-      eventDateTime: initialData?.eventTime && isDateValid(parseISO(initialData.eventTime)) 
-        ? parseISO(initialData.eventTime) 
-        : new Date(),
-      primaryLocation: initialData?.location || initialData?.itinerary?.[0]?.placeName || '',
-      city: initialData?.city || initialData?.itinerary?.[0]?.city || '',
+      eventDateTime: initialData?.eventDateTime ? new Date(initialData.eventDateTime) : new Date(),
+      primaryLocation: initialData?.primaryLocation || '',
+      city: initialData?.city || '',
       eventType: initialData?.eventType || '',
-      priceRange: initialData?.priceRange || 'Free',
+      priceRange: initialData?.priceRange || undefined,
       invitedParticipantUserIds: initialData?.invitedParticipantUserIds || [],
       status: initialData?.status || 'published',
       planType: initialData?.planType || 'single-stop',
-      itinerary: initialData?.itinerary?.map(item => ({
+      photoHighlights: initialData?.photoHighlights || [],
+      itinerary: initialData?.itinerary?.length ? initialData.itinerary.map(item => ({
         ...item,
-        id: item.id || crypto.randomUUID(),
-        startTime: item.startTime && isDateValid(parseISO(item.startTime)) 
-          ? item.startTime 
-          : new Date().toISOString(),
-        endTime: item.endTime && isDateValid(parseISO(item.endTime)) 
-          ? item.endTime 
-          : undefined,
-        activitySuggestions: item.activitySuggestions || [],
-        openingHours: item.openingHours || [],
-        types: item.types || [],
-        durationMinutes: item.durationMinutes ?? 60,
-        transitMode: item.transitMode ?? 'driving',
-        transitTimeFromPreviousMinutes: item.transitTimeFromPreviousMinutes ?? null,
-      })) || [{
+        startTime: item.startTime,
+        endTime: item.endTime || null,
+      })) : [{
         id: crypto.randomUUID(),
         placeName: '',
         address: '',
@@ -776,6 +943,72 @@ export function PlanForm({
     },
   });
 
+  // Step validation
+  const isStepValid = (step: number): boolean => {
+    switch (step) {
+      case 1: // Itinerary
+        return hasValidatedItinerary;
+      case 2: // Plan Information
+        const values = form.getValues();
+        return !!(values.name && values.eventDateTime && values.primaryLocation && values.city);
+      case 3: // Additional Details
+        return true; // Optional fields
+      case 4: // Review & Publish
+        return !!(form.getValues().status);
+      default:
+        return false;
+    }
+  };
+
+  const canProceedToNext = isStepValid(currentStep);
+
+  // Watch itinerary changes for validation and auto-population
+  const currentItinerary = useWatch({ control: form.control, name: 'itinerary' });
+  
+  // Check if itinerary is valid and handle auto-population
+  useEffect(() => {
+    if (currentItinerary && isItineraryValid(currentItinerary)) {
+      setHasValidatedItinerary(true);
+      
+      // Auto-populate fields only once when itinerary becomes valid
+      if (!hasAutoPopulated && formMode === 'create') {
+        const autoData = getAutoPopulatedData(currentItinerary);
+        
+        // Only update fields that are empty
+        const currentValues = form.getValues();
+        if (!currentValues.primaryLocation && autoData.primaryLocation) {
+          form.setValue('primaryLocation', autoData.primaryLocation);
+        }
+        if (!currentValues.city && autoData.city) {
+          form.setValue('city', autoData.city);
+        }
+        if (autoData.eventDateTime && !currentValues.eventDateTime) {
+          form.setValue('eventDateTime', autoData.eventDateTime);
+        }
+        if (autoData.priceRange && !currentValues.priceRange) {
+          form.setValue('priceRange', autoData.priceRange);
+        }
+        if (autoData.photoHighlights && autoData.photoHighlights.length > 0 && (!currentValues.photoHighlights || currentValues.photoHighlights.length === 0)) {
+          form.setValue('photoHighlights', autoData.photoHighlights);
+        }
+        
+        setHasAutoPopulated(true);
+      }
+    } else {
+      setHasValidatedItinerary(false);
+    }
+  }, [currentItinerary, hasAutoPopulated, formMode, form]);
+  
+  // For edit mode, start at step 4 (review) and mark all steps as completed
+  useEffect(() => {
+    if (formMode === 'edit' && initialData?.itinerary?.length) {
+      setHasValidatedItinerary(true);
+      setHasAutoPopulated(true);
+      setCurrentStep(4);
+      setCompletedSteps(new Set([1, 2, 3]));
+    }
+  }, [formMode, initialData]);
+
   useEffect(() => {
     setIsSubmittingForm(propIsSubmitting || false);
   }, [propIsSubmitting]);
@@ -798,76 +1031,217 @@ export function PlanForm({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(processAndSubmit)} className="flex flex-col h-full">
-        {/* Header */}
-        <div className="sticky top-0 z-10 bg-gradient-to-r from-background/98 to-background/95 backdrop-blur-md border-b border-border/30 px-3 py-2 shadow-lg">
+      <form onSubmit={form.handleSubmit(processAndSubmit)} className="flex flex-col h-full bg-gradient-to-br from-background via-background/95 to-background/90">
+        {/* Modern Header */}
+        <div className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl border-b border-border/20 px-4 py-3 shadow-sm">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="w-1 h-4 bg-gradient-to-b from-primary to-primary/60 rounded-full"></div>
-              <h2 className="text-base font-bold bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent">
-                {formTitle || (formMode === 'edit' ? 'Edit Plan' : 'Create Plan')}
-              </h2>
+            <div className="flex items-center space-x-3">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/10">
+                {currentStep === 1 && <ListChecks className="h-5 w-5 text-primary" />}
+                {currentStep === 2 && <FileText className="h-5 w-5 text-primary" />}
+                {currentStep === 3 && <MessageSquare className="h-5 w-5 text-primary" />}
+                {currentStep === 4 && <CheckCircle className="h-5 w-5 text-primary" />}
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-foreground">
+                  {steps[currentStep - 1].title}
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  {steps[currentStep - 1].description}
+                </p>
+              </div>
+            </div>
+            <div className="text-xs font-medium text-muted-foreground bg-muted/50 px-2 py-1 rounded-full">
+              {currentStep}/{steps.length}
             </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5 ml-3">
-            {formMode === 'edit' 
-              ? 'Update your plan details below' 
-              : 'Create an amazing experience for you and your friends'
-            }
-          </p>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4 custom-scrollbar-vertical">
-          <ItinerarySection 
-            form={form} 
-            isGoogleMapsApiLoaded={isLoaded} 
-            googleMapsApiKey={googleMapsApiKey} 
-          />
-          <Separator className="my-3 bg-border/30" />
-          
-          <CoreDetailsSection form={form} />
-          <Separator className="my-3 bg-border/30" />
-          
-          <LocationSection form={form} />
-          <Separator className="my-3 bg-border/30" />
-          
-          <PlanDetailsSection form={form} />
-          <Separator className="my-3 bg-border/30" />
-          
-          <ParticipantsSection form={form} />
-          <Separator className="my-3 bg-border/30" />
-          
-          <FinalizeSection form={form} />
+        {/* Compact Progress Indicator */}
+        <div className="px-4 py-2 bg-muted/20">
+          <div className="relative">
+            {/* Progress Bar */}
+            <div className="h-2 bg-muted/50 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-primary to-primary/80 transition-all duration-700 ease-out rounded-full"
+                style={{ width: `${((currentStep - 1) / (steps.length - 1)) * 100}%` }}
+              />
+            </div>
+            
+            {/* Step Dots */}
+            <div className="flex justify-between absolute -top-1 left-0 right-0">
+              {steps.map((step, index) => (
+                <div 
+                  key={step.id}
+                  className={cn(
+                    "w-4 h-4 rounded-full transition-all duration-300 cursor-pointer border-2 shadow-sm",
+                    currentStep === step.id 
+                      ? "bg-primary border-primary scale-110 shadow-primary/25" 
+                      : completedSteps.has(step.id)
+                        ? "bg-primary/70 border-primary/70"
+                        : "bg-background border-muted-foreground/30 hover:border-primary/50"
+                  )}
+                  onClick={() => {
+                    if (completedSteps.has(step.id) || step.id <= currentStep) {
+                      goToStep(step.id);
+                    }
+                  }}
+                />
+              ))}
+            </div>
+          </div>
         </div>
 
-        {/* Footer */}
-        <div className="sticky bottom-0 left-0 right-0 p-3 bg-card/95 backdrop-blur-sm border-t border-border/30 z-10 flex flex-col sm:flex-row justify-end items-stretch sm:items-center gap-2">
-          {onBackToAICriteria && (
-            <Button 
-              type="button" 
-              variant="ghost" 
-              onClick={onBackToAICriteria} 
-              disabled={isSubmittingForm} 
-              className="h-8 px-3 text-xs font-medium hover:bg-muted/50 transition-colors order-2 sm:order-1"
-            >
-              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" /> 
-              Back to AI
-            </Button>
+        {/* Modern Content Area */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 custom-scrollbar-vertical">
+          {/* Step 1: Itinerary */}
+          {currentStep === 1 && (
+            <div className="space-y-4">
+              <ItinerarySection 
+                form={form} 
+                isGoogleMapsApiLoaded={isLoaded} 
+                googleMapsApiKey={googleMapsApiKey} 
+              />
+              
+              {!hasValidatedItinerary && (
+                <div className="p-4 rounded-xl bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 shadow-sm">
+                  <div className="flex items-center space-x-3 mb-2">
+                    <div className="p-1.5 rounded-lg bg-primary/10">
+                      <CheckCircle className="h-4 w-4 text-primary" />
+                    </div>
+                    <h3 className="text-sm font-semibold text-foreground">Complete Your Itinerary</h3>
+                  </div>
+                  <p className="text-sm text-muted-foreground ml-8">
+                    Please add at least one stop with a name and start time to continue.
+                  </p>
+                </div>
+              )}
+            </div>
           )}
-          <Button 
-            type="submit" 
-            disabled={isSubmittingForm || (!isLoaded && !!googleMapsApiKey && !loadError && formMode === 'create')} 
-            className="h-8 px-4 text-xs font-semibold bg-primary hover:bg-primary/90 transition-all duration-200 shadow-lg hover:shadow-xl order-1 sm:order-2"
-          >
-            {(isSubmittingForm || (!isLoaded && !!googleMapsApiKey && !loadError && formMode === 'create')) && (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+
+          {/* Step 2: Plan Information */}
+          {currentStep === 2 && (
+            <div className="space-y-6">
+              <CoreDetailsSection form={form} isExpanded={true} onToggle={() => {}} />
+              <div className="h-px bg-gradient-to-r from-transparent via-border/50 to-transparent" />
+              <LocationSection form={form} isExpanded={true} onToggle={() => {}} />
+            </div>
+          )}
+
+          {/* Step 3: Additional Details */}
+          {currentStep === 3 && (
+            <div className="space-y-6">
+              <PlanDetailsSection form={form} isExpanded={true} onToggle={() => {}} />
+              <div className="h-px bg-gradient-to-r from-transparent via-border/50 to-transparent" />
+              <ParticipantsSection form={form} isExpanded={true} onToggle={() => {}} />
+            </div>
+          )}
+
+          {/* Step 4: Review & Publish */}
+          {currentStep === 4 && (
+            <div className="space-y-6">
+              {/* Modern Summary Card */}
+              <div className="p-6 rounded-xl bg-gradient-to-br from-card/50 to-card/30 border border-border/30 shadow-sm">
+                <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center space-x-3">
+                  <div className="p-2 rounded-lg bg-primary/10">
+                    <FileText className="h-5 w-5 text-primary" />
+                  </div>
+                  <span>Plan Summary</span>
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <span className="font-medium text-muted-foreground min-w-[60px]">Name:</span>
+                      <span className="text-foreground">{form.watch('name') || 'Untitled Plan'}</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-medium text-muted-foreground min-w-[60px]">Date:</span>
+                      <span className="text-foreground">{form.watch('eventDateTime') ? format(form.watch('eventDateTime'), 'PPP p') : 'Not set'}</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-medium text-muted-foreground min-w-[60px]">Stops:</span>
+                      <span className="text-foreground">{form.watch('itinerary')?.length || 0} location(s)</span>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <span className="font-medium text-muted-foreground min-w-[60px]">Location:</span>
+                      <span className="text-foreground">{form.watch('primaryLocation') || 'Not set'}</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-medium text-muted-foreground min-w-[60px]">City:</span>
+                      <span className="text-foreground">{form.watch('city') || 'Not set'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <FinalizeSection form={form} isExpanded={true} onToggle={() => {}} />
+            </div>
+          )}
+        </div>
+
+        {/* Modern Navigation */}
+        <div className="relative bg-card/50 backdrop-blur-sm border-t border-border/20">
+          <div className="p-4">
+            <div className="flex items-center justify-between gap-4">
+              {currentStep > 1 ? (
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={goToPreviousStep}
+                  className="h-11 px-6 text-sm font-medium border-border/50 hover:border-primary/40 hover:bg-primary/5 transition-all duration-300 rounded-xl shadow-sm hover:shadow-md"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" /> 
+                  Previous
+                </Button>
+              ) : (
+                <div className="w-24"></div>
+              )}
+              
+              {currentStep < 4 ? (
+                <Button 
+                  type="button" 
+                  onClick={goToNextStep}
+                  disabled={!canProceedToNext}
+                  className="h-11 px-8 text-sm font-semibold bg-gradient-to-r from-primary via-primary/95 to-primary/90 hover:from-primary/95 hover:to-primary/85 shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl"
+                >
+                  Continue
+                  <ChevronDown className="ml-2 h-4 w-4 rotate-[-90deg]" />
+                </Button>
+              ) : (
+                <Button 
+                  type="submit" 
+                  disabled={isSubmittingForm || (!isLoaded && !!googleMapsApiKey && !loadError && formMode === 'create')} 
+                  className="h-11 px-8 text-sm font-semibold bg-gradient-to-r from-green-600 via-green-500 to-green-400 hover:from-green-500 hover:to-green-300 text-white shadow-lg hover:shadow-xl transition-all duration-300 rounded-xl"
+                >
+                  {(isSubmittingForm || (!isLoaded && !!googleMapsApiKey && !loadError && formMode === 'create')) && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  {formMode === 'create' 
+                    ? (initialData?.id ? 'Save Generated Plan' : 'Publish Plan') 
+                    : 'Save Changes'
+                  }
+                </Button>
+              )}
+            </div>
+            
+            {/* Back to AI Button (if available) */}
+            {onBackToAICriteria && (
+              <div className="mt-3 pt-3 border-t border-border/20">
+                <Button 
+                  type="button" 
+                  variant="ghost" 
+                  onClick={onBackToAICriteria} 
+                  disabled={isSubmittingForm} 
+                  className="h-9 px-4 text-xs font-medium hover:bg-muted/50 transition-colors w-full rounded-lg"
+                >
+                  <ArrowLeft className="mr-2 h-3.5 w-3.5" /> 
+                  Back to AI Generation
+                </Button>
+              </div>
             )}
-            {formMode === 'create' 
-              ? (initialData?.id ? 'Save Generated Plan' : 'Create Plan') 
-              : 'Save Changes'
-            }
-          </Button>
+          </div>
         </div>
       </form>
     </Form>

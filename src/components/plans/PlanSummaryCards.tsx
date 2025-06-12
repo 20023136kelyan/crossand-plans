@@ -56,7 +56,7 @@ export function PlanSummaryCards({ className }: PlanSummaryCardsProps) {
     setProcessingRsvp(planId);
     try {
       const idToken = await user.getIdToken();
-      const rsvpStatus: RSVPStatusType = response === 'accept' ? 'going' : 'declined';
+      const rsvpStatus: RSVPStatusType = response === 'accept' ? 'going' : 'not-going';
       
       const result = await updateMyRSVPAction(planId, idToken, rsvpStatus);
       

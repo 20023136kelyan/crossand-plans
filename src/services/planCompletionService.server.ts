@@ -227,4 +227,4 @@ export async function getUserAffinities(userId: string): Promise<UserAffinity[]>
     console.error('Error getting user affinities:', error);
     return [];
   }
-} 
+}

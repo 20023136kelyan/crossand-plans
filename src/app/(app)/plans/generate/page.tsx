@@ -610,7 +610,7 @@ export default function GeneratePlanPage() {
           
           {/* Area Selector Section */}
           <div className={cn(
-            "relative transition-all duration-500 ease-in-out overflow-hidden border border-border/20 shadow-sm rounded-xl",
+            "relative transition-all duration-500 ease-in-out overflow-hidden border border-border/20 shadow-sm rounded-xl mx-4 md:mx-0",
             isMapCollapsed ? "h-20" : "h-96 md:h-[500px]"
           )}>
             {isMapCollapsed ? (
@@ -890,8 +890,8 @@ export default function GeneratePlanPage() {
 
           {/* Step Explanation when Map is Expanded */}
           {!isMapCollapsed && (
-            <div className="flex-1 flex items-center justify-center p-4">
-              <div className="text-center max-w-md mx-auto space-y-4">
+            <div className="flex-1 flex items-center justify-center p-1 px-4 md:px-1">
+              <div className="bg-card/80 backdrop-blur-sm border border-border/40 rounded-2xl p-6 md:p-8 text-center max-w-sm md:max-w-lg mx-auto space-y-4 shadow-sm">
                 <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
                   <MapPin className="w-8 h-8 text-primary" />
                 </div>

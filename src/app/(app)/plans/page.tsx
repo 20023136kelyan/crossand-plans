@@ -10,7 +10,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -42,6 +42,7 @@ import { format, isSameDay, startOfMonth, parseISO, isFuture, isPast, isValid } 
 import { useAuth } from '@/context/AuthContext';
 import { getUserPlans, getPendingPlanSharesForUser, getPlanById } from '@/services/planService';
 import { getUserSavedPlans } from '@/services/userService';
+import { getGooglePlacePhotoUrl } from '@/utils/googleMapsHelpers';
 import { deletePlanAction, acceptPlanShareAction, declinePlanShareAction } from '@/app/actions/planActions';
 import { markPlanAsCompletedAction, confirmPlanCompletionAction } from '@/app/actions/planCompletionActions';
 import type { Plan as PlanType, PlanShare, RSVPStatusType, UserRoleType } from '@/types/user';
@@ -192,8 +193,14 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
   } else {
     const firstItineraryItemWithImage = plan.itinerary?.find(item => item.googlePhotoReference || item.googleMapsImageUrl);
     if (firstItineraryItemWithImage?.googlePhotoReference && typeof firstItineraryItemWithImage.googlePhotoReference === 'string' && firstItineraryItemWithImage.googlePhotoReference.trim() !== '') {
-        if (staticMapApiKeyConst) {
-          planImageSrc = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=160&photoreference=${firstItineraryItemWithImage.googlePhotoReference}&key=${staticMapApiKeyConst}`;
+      if (staticMapApiKeyConst) {
+          // Check if it's already a direct URL (from place-autocomplete)
+          if (firstItineraryItemWithImage.googlePhotoReference.startsWith('http://') || firstItineraryItemWithImage.googlePhotoReference.startsWith('https://')) {
+            planImageSrc = firstItineraryItemWithImage.googlePhotoReference;
+          } else {
+            // Use Google Place photo reference
+            planImageSrc = getGooglePlacePhotoUrl(firstItineraryItemWithImage.googlePhotoReference, 160, undefined, staticMapApiKeyConst);
+          }
           imageHint = firstItineraryItemWithImage.types?.[0] || imageHint;
         } else {
           if (isClient) console.warn(`[PlanCard] NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is missing for Google Place Photo. Plan: ${plan.name}`);
@@ -207,37 +214,94 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
   const placeholderImageUrl = `https://placehold.co/80x80.png?text=${encodeURIComponent(plan.name ? plan.name.substring(0,10) : 'Img')}&font=Montserrat`;
 
   return (
-    <div className="group relative bg-card rounded-lg border border-border p-4 transition-shadow hover:shadow-md">
-      <div className="flex p-3 items-start gap-3 flex-grow">
-        <div className="flex flex-col items-center shrink-0 w-20">
-          <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-border/20 group-hover:opacity-90 transition-opacity shadow-sm">
-            {imageError ? (
-              <img
-                src={placeholderImageUrl}
-                alt={plan.name || 'Placeholder image'}
-                className="h-full w-full object-cover"
-                data-ai-hint="placeholder fallback"
-              />
+    <Card className="group overflow-hidden bg-card border border-border/20 rounded-2xl transition-all duration-200 hover:shadow-lg hover:border-border/40">
+      <div className="flex h-32">
+        {/* Image Section */}
+        <div className="relative w-32 flex-shrink-0 overflow-hidden">
+          {imageError ? (
+            <img
+              src={placeholderImageUrl}
+              alt={plan.name || 'Placeholder image'}
+              className="h-full w-full object-cover"
+              data-ai-hint="placeholder fallback"
+            />
+          ) : (
+            <Image
+              src={planImageSrc}
+              alt={plan.name || 'Plan image'}
+              fill
+              className="object-cover transition-transform duration-200 group-hover:scale-105"
+              data-ai-hint={imageHint}
+              unoptimized={planImageSrc.includes('maps.googleapis.com')}
+              onError={() => setImageError(true)}
+            />
+          )}
+          {/* Event Type Badge */}
+          {plan.eventType && (
+            <div className="absolute top-2 left-2">
+              <Badge variant="secondary" className="text-xs px-2 py-1 bg-black/70 text-white border-0">
+                {plan.eventType}
+              </Badge>
+            </div>
+          )}
+        </div>
+
+        {/* Content Section */}
+        <div className="flex-1 p-4 min-w-0">
+          <Link href={`/plans/${plan.id}`} className="block group-hover:text-primary transition-colors">
+            <h3 className="font-semibold text-base leading-tight line-clamp-1 mb-1" title={plan.name}>
+              {plan.name}
+            </h3>
+          </Link>
+          
+          {/* Host Info */}
+          {plan.hostName && (
+            <div className="flex items-center text-sm text-muted-foreground mb-2">
+              <Avatar className="h-4 w-4 mr-2">
+                <AvatarImage src={plan.hostAvatarUrl || undefined} alt={plan.hostName}/>
+                <AvatarFallback className="text-xs">{hostInitial}</AvatarFallback>
+              </Avatar>
+              <span className="truncate">by {plan.hostName}</span>
+            </div>
+          )}
+
+          {/* Location */}
+          <div className="flex items-center text-sm text-muted-foreground mb-2">
+            <MapPin className="h-4 w-4 mr-2 flex-shrink-0" />
+            <span className="truncate" title={`${plan.location}, ${plan.city}`}>
+              {plan.location}, {plan.city}
+            </span>
+          </div>
+
+          {/* Rating or Brief */}
+          <div className="flex items-start text-sm text-muted-foreground">
+            {(plan.averageRating !== undefined && plan.averageRating !== null && typeof plan.averageRating === 'number') ? (
+              <div className="flex items-center">
+                <Star className="h-4 w-4 mr-1 text-amber-400 fill-amber-400 flex-shrink-0" />
+                <span>{plan.averageRating.toFixed(1)} ({plan.reviewCount || 0})</span>
+              </div>
+            ) : itineraryBrief ? (
+              <div className="flex items-start">
+                <ListChecks className="h-4 w-4 mr-2 flex-shrink-0 mt-0.5" />
+                <span className="line-clamp-1">{itineraryBrief}</span>
+              </div>
             ) : (
-              <Image
-                src={planImageSrc}
-                alt={plan.name || 'Plan image'}
-                fill
-                sizes="(max-width: 768px) 25vw, 80px"
-                style={{ objectFit: 'cover' }}
-                data-ai-hint={imageHint}
-                unoptimized={planImageSrc.includes('maps.googleapis.com')}
-                onError={() => {
-                  setImageError(true);
-                }}
-              />
+              plan.eventTime && isValid(parseISO(plan.eventTime)) && isPast(parseISO(plan.eventTime)) && 
+              <div className="flex items-center">
+                <Star className="h-4 w-4 mr-2 text-muted-foreground/50"/> 
+                <span>No reviews yet</span>
+              </div>
             )}
           </div>
-          {/* Show template indicator for saved plans instead of time */}
+        </div>
+
+        {/* Date & Status Section */}
+        <div className="w-20 p-4 flex flex-col items-center justify-between">
+          {/* Date Display - Prominent */}
           {plan.isTemplate ? (
-            <div className="bg-gradient-to-br from-primary/10 to-primary/20 border border-primary/30 shadow-sm rounded-md p-1 text-center w-full mt-2 min-h-[60px] flex flex-col justify-center items-center">
+            <div className="bg-gradient-to-br from-primary/10 to-primary/20 border border-primary/30 rounded-xl p-2 text-center w-full flex flex-col justify-center items-center min-h-[64px]">
               <div className="text-xs font-semibold text-primary leading-none">TEMPLATE</div>
-              <div className="text-[10px] text-muted-foreground mt-1">Activity Guide</div>
+              <div className="text-[10px] text-muted-foreground mt-1">Guide</div>
               {plan.averageRating && (
                 <div className="flex items-center text-[10px] text-amber-600 mt-1">
                   <Star className="h-2.5 w-2.5 mr-0.5 fill-current" />
@@ -246,84 +310,41 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
               )}
             </div>
           ) : (formattedDay && formattedMonth && formattedTime) && (
-             <div className="bg-card border border-border/50 shadow-sm rounded-md p-1 text-center w-full mt-2 min-h-[60px] flex flex-col justify-center items-center">
-              <div className="text-2xl font-bold text-gradient-primary leading-none">{formattedDay}</div>
-              <div className="text-[10px] font-medium uppercase text-muted-foreground tracking-tight leading-none mt-0.5">{formattedMonth}</div>
-              <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">{formattedTime}</div>
+            <div className="bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-xl p-2 text-center w-full min-h-[64px] flex flex-col justify-center">
+              <div className="text-2xl font-bold text-primary leading-none">{formattedDay}</div>
+              <div className="text-[10px] font-medium uppercase text-muted-foreground tracking-wide leading-none mt-1">{formattedMonth}</div>
+              <div className="text-[10px] text-muted-foreground leading-tight mt-1">{formattedTime}</div>
             </div>
           )}
-        </div>
 
-        <div className="flex-grow min-w-0 pt-0.5">
-          <Link href={`/plans/${plan.id}`} className="block">
-            <h3 className="text-base font-semibold text-gradient-primary group-hover:underline leading-tight truncate" title={plan.name}>
-              {plan.name}
-            </h3>
-          </Link>
-          {plan.hostName && (
-            <div className="flex items-center text-xs text-muted-foreground/80 mt-0.5">
-               <Avatar className="h-4 w-4 mr-1">
-                 <AvatarImage src={plan.hostAvatarUrl || undefined} alt={plan.hostName}/>
-                 <AvatarFallback className="text-[10px]">{hostInitial}</AvatarFallback>
-               </Avatar>
-               Hosted by {plan.hostName}
-            </div>
+          {/* Status Badge */}
+          {displayStatus && (
+            <Badge
+              variant={statusBadgeVariant as any}
+              className="text-xs px-2 py-1 mt-2 w-full justify-center"
+            >
+              <StatusIcon className="h-3 w-3 mr-1" />
+              <span className="truncate text-[10px]">{statusLabel}</span>
+            </Badge>
           )}
-          <div className="flex items-center text-xs text-muted-foreground mb-0.5 mt-0.5">
-            <MapPin className="h-3.5 w-3.5 mr-1.5 shrink-0" />
-            <span className="truncate" title={`${plan.location}, ${plan.city}`}>{plan.location}, {plan.city}</span>
-          </div>
-           {(plan.averageRating !== undefined && plan.averageRating !== null && typeof plan.averageRating === 'number') ? (
-            <div className="flex items-center text-xs text-muted-foreground">
-              <Star className="h-3.5 w-3.5 mr-1 text-amber-400 fill-amber-400 shrink-0" />
-              <span>{plan.averageRating.toFixed(1)} ({plan.reviewCount || 0} reviews)</span>
-            </div>
-          ) : (
-            plan.eventTime && isValid(parseISO(plan.eventTime)) && isPast(parseISO(plan.eventTime)) && 
-            <div className="flex items-center text-xs text-muted-foreground"><Star className="h-3.5 w-3.5 mr-1.5 text-muted-foreground/50"/> <span>No reviews yet</span></div>
-          )}
-          
-          {itineraryBrief && (
-            <div className="flex items-start text-xs text-muted-foreground mt-1 line-clamp-2">
-              <ListChecks className="h-3.5 w-3.5 mr-1.5 shrink-0 mt-0.5" />
-              <span>{itineraryBrief}</span>
-            </div>
-          )}
-          <div className="flex flex-row items-center flex-wrap gap-1 mt-2">
-            {plan.eventType && (
-              <Badge variant="secondary" className="text-xs px-1.5 py-0.5 font-normal">
-                {plan.eventType}
-              </Badge>
-            )}
-            {displayStatus && (
-              <Badge
-                variant={statusBadgeVariant as any}
-                className="text-xs px-1.5 py-0.5 font-normal flex items-center"
-              >
-                <StatusIcon className="h-3 w-3 mr-1" />
-                {statusLabel}
-              </Badge>
-            )}
-          </div>
-        </div>
 
-        <div className="ml-auto shrink-0 self-start">
+          {/* More Options */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button aria-label="More options" variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+              <Button variant="ghost" size="icon" className="h-6 w-6 mt-1 text-muted-foreground hover:text-foreground">
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40">
               <DropdownMenuItem asChild>
                 <Link href={`/p/${plan.id}`} className="flex items-center text-xs cursor-pointer">
-                  <Eye className="mr-1.5 h-3.5 w-3.5" /> View Details
+                  <Eye className="mr-2 h-3.5 w-3.5" /> View Details
                 </Link>
               </DropdownMenuItem>
               {isHost && (
                 <DropdownMenuItem asChild>
                   <Link href={`/plans/create?editId=${plan.id}`} className="flex items-center text-xs cursor-pointer">
-                    <Edit3 className="mr-1.5 h-3.5 w-3.5" /> Edit Plan
+                    <Edit3 className="mr-2 h-3.5 w-3.5" /> Edit Plan
                   </Link>
                 </DropdownMenuItem>
               )}
@@ -339,7 +360,7 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
                     }}
                     className="flex items-center text-xs cursor-pointer"
                   >
-                    <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Mark as Completed
+                    <CheckCircle className="mr-2 h-3.5 w-3.5" /> Mark as Completed
                   </DropdownMenuItem>
                 </>
               )}
@@ -356,7 +377,7 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
                     disabled={isConfirmingCompletion}
                     className="flex items-center text-xs cursor-pointer"
                   >
-                    <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Confirm Completion
+                    <CheckCircle className="mr-2 h-3.5 w-3.5" /> Confirm Completion
                   </DropdownMenuItem>
                 </>
               )}
@@ -371,7 +392,7 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
                     }}
                     className="flex items-center text-xs text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
                   >
-                    <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete Plan
+                    <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete Plan
                   </DropdownMenuItem>
                 </>
               )}
@@ -379,7 +400,7 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
           </DropdownMenu>
         </div>
       </div>
-    </div>
+    </Card>
   );
 });
 PlanCard.displayName = 'PlanCard';
@@ -391,10 +412,11 @@ interface PlanStackSectionProps {
   onToggleExpand: () => void;
   emptyMessage: string;
   currentUserUid: string | undefined;
-  isLoading?: boolean; 
+  isLoading?: boolean;
+  children?: React.ReactNode;
 }
 
-const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, plans, isExpanded, onToggleExpand, emptyMessage, currentUserUid, isLoading }) => {
+const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, plans, isExpanded, onToggleExpand, emptyMessage, currentUserUid, isLoading, children }) => {
   const { handleDeleteRequest } = usePlansPageContext();
   
   const plansToShowInStack = useMemo(() => {
@@ -470,7 +492,7 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
         plans.length === 0 ? (
              <p className="text-sm text-muted-foreground text-center py-3">{emptyMessage}</p>
         ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mt-3">
+            <div className="grid grid-cols-1 gap-4 mt-3">
               {plans.map(plan => <PlanCard key={plan.id} plan={plan} currentUserUid={currentUserUid} />)}
             </div>
         )
@@ -517,6 +539,7 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
           </div>
         )
       )}
+      {children}
     </div>
   );
 });
@@ -543,7 +566,7 @@ export default function PlansPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [sortConfig, setSortConfig] = useState<{ key: 'date' | 'name'; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
-  const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
+  const [activeTab, setActiveTab] = useState<'upcoming' | 'past' | 'saved'>('upcoming');
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [currentMonth, setCurrentMonth] = useState<Date>(startOfMonth(new Date()));
@@ -1011,7 +1034,7 @@ export default function PlansPage() {
   );
 
   interface DayWithDotProps { date: Date; displayMonth: Date; }
-  const DayWithDot: React.FC<DayWithDotProps> = ({ date, displayMonth }) => {
+  const DayWithDot = ({ date, displayMonth }: DayWithDotProps): React.ReactElement | null => {
     const isCurrentDisplayMonth = isValid(date) && isValid(displayMonth) && date.getMonth() === displayMonth.getMonth();
     const hasEvent = isValid(date) && eventDates.some(eventDateItem => isValid(eventDateItem) && isSameDay(eventDateItem, date));
     return (
@@ -1291,7 +1314,7 @@ export default function PlansPage() {
                         <EmptyState title="No Past Plans Found" message={`Your search for "${searchTerm}" did not match any past plans.`} showCreateButton={false} />
                     )}
                     {!loadingPlans && pastPlans.length > 0 && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 gap-4">
                         {pastPlans.map(plan => (
                         <PlanCard key={plan.id} plan={plan} currentUserUid={currentUserId} />
                         ))}
@@ -1312,7 +1335,7 @@ export default function PlansPage() {
                         <EmptyState title="No Templates Found" message={`Your search for "${searchTerm}" did not match any saved activity templates.`} showCreateButton={false} />
                     )}
                     {!loadingSavedPlans && filteredSavedPlans.length > 0 && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 gap-4">
                         {filteredSavedPlans.map(plan => (
                         <PlanCard key={plan.id} plan={plan} currentUserUid={currentUserId} />
                         ))}

@@ -150,8 +150,8 @@ function initializeWithRetry() {
 
 initializeWithRetry();
 
-// Export instances
-export const firestoreAdmin = firestoreAdminInstance;
-export const authAdmin = authAdminInstance;
-export const storageAdmin = storageAdminInstance;
+// Export instances with proper typing
+export const firestoreAdmin = firestoreAdminInstance as unknown as Firestore;
+export const authAdmin = authAdminInstance as unknown as admin.auth.Auth;
+export const storageAdmin = storageAdminInstance as unknown as admin.storage.Storage;
 export { adminAppInstance as firebaseAdminApp };

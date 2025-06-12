@@ -1,14 +1,16 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { MapPin, Star, Calendar, BadgeCheck } from "lucide-react";
 import type { Plan } from '@/types/user';
 import { format, parseISO, isValid } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
+import { getGooglePlacePhotoUrl } from '@/utils/googleMapsHelpers';
 
 interface ExploreCardProps {
   plan: Plan;
@@ -16,17 +18,34 @@ interface ExploreCardProps {
 
 export const ExploreCard = React.memo(({ plan }: ExploreCardProps) => {
   const { user } = useAuth();
+  const [imageError, setImageError] = useState(false);
+  
   const isParticipant = user?.uid && (
     plan.hostId === user.uid || 
-    plan.invitedParticipantUserIds?.includes(user.uid)
+    plan.participantUserIds?.includes(user.uid)
   );
-
-  // Determine the correct link based on user's relationship to the plan
+  
   const planLink = isParticipant ? `/plans/${plan.id}` : `/p/${plan.id}`;
-
-  const [imageError, setImageError] = React.useState(false);
-  const creatorInitial = plan.creatorUsername ? plan.creatorUsername.charAt(0).toUpperCase() : (plan.creatorName ? plan.creatorName.charAt(0).toUpperCase() : '?');
-  const placeholderImageUrl = `https://placehold.co/80x80.png?text=${encodeURIComponent(plan.name ? plan.name.substring(0,10) : 'Img')}&font=Montserrat`;
+  
+  const creatorInitial = (plan.creatorUsername || plan.creatorName || '').charAt(0).toUpperCase();
+  
+  // Image source logic
+  const placeholderImageUrl = '/images/placeholder-plan.jpg';
+  let planImageSrc = placeholderImageUrl;
+  let imageHint = 'placeholder';
+  
+  if (plan.photoHighlights && plan.photoHighlights.length > 0) {
+    planImageSrc = plan.photoHighlights[0];
+    imageHint = 'photo highlight';
+  } else if (plan.itinerary?.[0]?.googlePhotoReference) {
+    // Check if it's already a direct URL (from place-autocomplete)
+    if (plan.itinerary[0].googlePhotoReference.startsWith('http://') || plan.itinerary[0].googlePhotoReference.startsWith('https://')) {
+      planImageSrc = plan.itinerary[0].googlePhotoReference;
+    } else {
+      planImageSrc = getGooglePlacePhotoUrl(plan.itinerary[0].googlePhotoReference, 400);
+    }
+    imageHint = 'Google Place photo';
+  }
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return '';
@@ -39,75 +58,83 @@ export const ExploreCard = React.memo(({ plan }: ExploreCardProps) => {
     }
   };
 
-  // Get the plan image
-  let planImageSrc = placeholderImageUrl;
-  let imageHint = plan.eventType || 'event';
 
-  if (plan.photoHighlights && plan.photoHighlights.length > 0 && plan.photoHighlights[0]) {
-    planImageSrc = plan.photoHighlights[0];
-    imageHint = 'plan highlight';
-  }
 
   return (
-    <Link href={planLink} className="block group">
-      <div className="relative bg-card rounded-xl overflow-hidden border border-border/50 hover:border-border transition-colors">
-        {/* Main Image */}
-        <div className="relative aspect-[2/1] bg-muted">
-          {plan.photoHighlights?.[0] ? (
-            <Image
-              src={plan.photoHighlights[0]}
-              alt={plan.name}
-              fill
-              className="object-cover"
+    <Card className="group overflow-hidden bg-card border border-border/20 rounded-2xl transition-all duration-200 hover:shadow-lg hover:border-border/40">
+      <div className="flex h-28">
+        {/* Image Section */}
+        <div className="relative w-28 flex-shrink-0 overflow-hidden">
+          {imageError ? (
+            <img
+              src={placeholderImageUrl}
+              alt={plan.name || 'Placeholder image'}
+              className="h-full w-full object-cover"
+              data-ai-hint="placeholder fallback"
             />
           ) : (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Calendar className="h-8 w-8 text-muted-foreground/50" />
-            </div>
+            <Image
+              src={planImageSrc}
+              alt={plan.name || 'Plan image'}
+              fill
+              className="object-cover transition-transform duration-200 group-hover:scale-105"
+              data-ai-hint={imageHint}
+              unoptimized={planImageSrc.includes('maps.googleapis.com')}
+              onError={() => setImageError(true)}
+            />
           )}
         </div>
 
-        {/* Content */}
-        <div className="p-4">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <h3 className="font-semibold line-clamp-2">{plan.name}</h3>
-              {plan.location && (
-                <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                  <MapPin className="h-3 w-3" />
-                  {plan.location}
-                </p>
-              )}
-            </div>
-            
-            {/* Rating */}
-            {plan.averageRating && plan.averageRating > 0 && (
-              <div className="flex items-center gap-1 text-amber-500">
-                <Star className="h-4 w-4 fill-current" />
-                <span className="text-sm font-medium">{plan.averageRating.toFixed(1)}</span>
-              </div>
-            )}
-          </div>
-
+        {/* Content Section */}
+        <div className="flex-1 p-4 min-w-0">
+          <Link href={planLink} className="block group-hover:text-primary transition-colors">
+            <h3 className="font-semibold text-base leading-tight line-clamp-1 mb-2" title={plan.name}>
+              {plan.name}
+            </h3>
+          </Link>
+          
           {/* Creator Info */}
-          <div className="flex items-center gap-2 mt-3">
-            <Avatar className="h-6 w-6">
-              <AvatarImage src={plan.creatorAvatarUrl} />
-              <AvatarFallback>
-                {creatorInitial}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex items-center gap-1">
-              <span className="text-sm font-medium">{plan.creatorUsername || plan.creatorName}</span>
+          {(plan.creatorUsername || plan.creatorName) && (
+            <div className="flex items-center text-sm text-muted-foreground mb-2">
+              <Avatar className="h-4 w-4 mr-2">
+                <AvatarImage src={plan.creatorAvatarUrl} alt={plan.creatorUsername || plan.creatorName}/>
+                <AvatarFallback className="text-xs">{creatorInitial}</AvatarFallback>
+              </Avatar>
+              <span className="truncate">by {plan.creatorUsername || plan.creatorName}</span>
               {plan.creatorIsVerified && (
-                <BadgeCheck className="h-4 w-4 text-primary" />
+                <BadgeCheck className="h-3 w-3 text-primary ml-1" />
               )}
             </div>
+          )}
+
+          {/* Location */}
+          {plan.location && (
+            <div className="flex items-center text-sm text-muted-foreground mb-2">
+              <MapPin className="h-4 w-4 mr-2 flex-shrink-0" />
+              <span className="truncate" title={plan.location}>
+                {plan.location}
+              </span>
+            </div>
+          )}
+
+          {/* Rating */}
+          <div className="flex items-center text-sm text-muted-foreground">
+            {(plan.averageRating !== undefined && plan.averageRating !== null && typeof plan.averageRating === 'number' && plan.averageRating > 0) ? (
+              <>
+                <Star className="h-4 w-4 mr-1 text-amber-400 fill-amber-400 flex-shrink-0" />
+                <span>{plan.averageRating.toFixed(1)}</span>
+              </>
+            ) : (
+              <>
+                <Star className="h-4 w-4 mr-2 text-muted-foreground/50 flex-shrink-0" />
+                <span>No reviews yet</span>
+              </>
+            )}
           </div>
         </div>
       </div>
-    </Link>
+    </Card>
   );
 });
 
-ExploreCard.displayName = 'ExploreCard'; 
+ExploreCard.displayName = 'ExploreCard';

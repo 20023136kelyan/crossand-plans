@@ -13,7 +13,8 @@ import {
   updatePlanShareStatusAdmin,
   deleteRatingAdmin as deleteRatingAdminService,
   updateCommentAdmin as updateCommentAdminService,
-  deleteCommentAdmin as deleteCommentAdminService
+  deleteCommentAdmin as deleteCommentAdminService,
+  copyCommentsFromTemplate
 } from '@/services/planService.server';
 import {
   getUserProfileAdmin,
@@ -32,7 +33,8 @@ import type {
   TransitMode,
   PriceRangeType,
   PlanTypeType as PlanTypeHintTypeAlias,
-  UserRoleType
+  UserRoleType,
+  UserAffinity
 } from '@/types/user';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -60,7 +62,26 @@ async function validatePlaceId(placeId: string): Promise<boolean> {
       `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=place_id&key=${apiKey}`
     );
 
+    if (!response.ok) {
+      console.error(`[validatePlaceId] API error ${response.status}: ${response.statusText}`);
+      if (response.status === 403) {
+        console.error('[validatePlaceId] Google Maps API access denied (403). Check API key permissions, billing, and quota limits.');
+      }
+      return false;
+    }
+
     const data = await response.json();
+    
+    // Check for API-specific error statuses
+    if (data.status === 'REQUEST_DENIED') {
+      console.error(`[validatePlaceId] API request denied: ${data.error_message || 'Unknown reason'}`);
+      return false;
+    }
+    if (data.status === 'OVER_QUERY_LIMIT') {
+      console.error(`[validatePlaceId] API quota exceeded`);
+      return false;
+    }
+    
     return data.status === 'OK';
   } catch (error) {
     console.error('[validatePlaceId] Error validating Place ID:', error);
@@ -83,7 +104,25 @@ async function refreshPlaceId(placeName: string, city?: string): Promise<string 
       `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodedQuery}&key=${apiKey}`
     );
 
+    if (!response.ok) {
+      console.error(`[refreshPlaceId] API error ${response.status}: ${response.statusText}`);
+      if (response.status === 403) {
+        console.error('[refreshPlaceId] Google Maps API access denied (403). Check API key permissions, billing, and quota limits.');
+      }
+      return null;
+    }
+
     const data = await response.json();
+    
+    // Check for API-specific error statuses
+    if (data.status === 'REQUEST_DENIED') {
+      console.error(`[refreshPlaceId] API request denied: ${data.error_message || 'Unknown reason'}`);
+      return null;
+    }
+    if (data.status === 'OVER_QUERY_LIMIT') {
+      console.error(`[refreshPlaceId] API quota exceeded`);
+      return null;
+    }
     
     if (data.status === 'OK' && data.results && data.results[0]) {
       return data.results[0].place_id || null;
@@ -117,29 +156,29 @@ const GenerateFullPlanInputClientSchema = z.object({
 const serverItineraryItemSchema = z.object({
   id: z.string().uuid().default(() => crypto.randomUUID()),
   placeName: z.string().min(1, { message: "Place name is required." }),
-  address: z.string().optional().nullable(),
-  city: z.string().optional().nullable(),
+  address: z.string().nullable(),
+  city: z.string().nullable(),
   startTime: z.string().refine(val => isValid(parseISO(val)), { message: "Invalid start time format." }),
-  endTime: z.string().optional().nullable().refine(val => val === null || val === undefined || val === '' || isValid(parseISO(val)), { message: "Invalid end time format." }),
-  description: z.string().optional().nullable(),
-  googlePlaceId: z.string().optional().nullable(),
-  googleMapsImageUrl: z.string().url().optional().nullable(),
-  googlePhotoReference: z.string().optional().nullable(),
-  lat: z.number().optional().nullable(),
-  lng: z.number().optional().nullable(),
-  rating: z.number().min(0).max(5).optional().nullable(),
-  reviewCount: z.number().int().min(0).optional().nullable(),
-  activitySuggestions: z.array(z.string()).optional().nullable().default([]),
-  isOperational: z.boolean().optional().nullable(),
-  statusText: z.string().optional().nullable(),
-  openingHours: z.array(z.string()).optional().nullable().default([]),
-  phoneNumber: z.string().optional().nullable(),
-  website: z.string().url().optional().nullable(),
-  priceLevel: z.number().int().min(0).max(4).optional().nullable(),
-  types: z.array(z.string()).optional().nullable().default([]),
-  notes: z.string().optional().nullable(),
-  durationMinutes: z.number().int().min(0).optional().nullable().default(60),
-  transitMode: z.enum(['driving', 'walking', 'bicycling', 'transit'] as const).optional().nullable().default('driving'),
+  endTime: z.string().nullable().refine(val => val === null || val === '' || isValid(parseISO(val)), { message: "Invalid end time format." }),
+  description: z.string().nullable(),
+  googlePlaceId: z.string().nullable(),
+  googleMapsImageUrl: z.string().url().nullable(),
+  googlePhotoReference: z.string().nullable(),
+  lat: z.number().nullable(),
+  lng: z.number().nullable(),
+  rating: z.number().min(0).max(5).nullable(),
+  reviewCount: z.number().int().min(0).nullable(),
+  activitySuggestions: z.array(z.string()).nullable().default([]),
+  isOperational: z.boolean().nullable(),
+  statusText: z.string().nullable(),
+  openingHours: z.array(z.string()).nullable().default([]),
+  phoneNumber: z.string().nullable(),
+  website: z.string().url().nullable(),
+  priceLevel: z.number().int().min(0).max(4).nullable(),
+  types: z.array(z.string()).nullable().default([]),
+  notes: z.string().nullable(),
+  durationMinutes: z.number().int().min(0).nullable().default(60),
+  transitMode: z.enum(['driving', 'walking', 'bicycling', 'transit'] as const).nullable().default('driving'),
   transitTimeFromPreviousMinutes: z.number().int().min(0).optional().nullable(),
 });
 
@@ -161,7 +200,7 @@ export async function generatePlanWithAIAction(
 
   let decodedToken;
   try {
-    decodedToken = await authAdmin.verifyIdToken(idToken);
+    decodedToken = await authAdmin!.verifyIdToken(idToken);
     if (decodedToken.uid !== clientInput.hostUid) {
       console.error(`[generatePlanWithAIAction] ID Token UID (${decodedToken.uid}) does not match hostUid (${clientInput.hostUid}). Authorization denied.`);
       return { success: false, error: "User UID mismatch. Authorization denied." };
@@ -226,8 +265,8 @@ export async function generatePlanWithAIAction(
     if (generatedPlanOutput) {
       // Augment with host details if AI didn't include them (though it should)
       generatedPlanOutput.hostId = validatedClientData.hostUid; 
-      generatedPlanOutput.hostName = hostProfileData.name || null;
-      generatedPlanOutput.hostAvatarUrl = hostProfileData.avatarUrl || null;
+      generatedPlanOutput.hostName = hostProfileData.name || undefined;
+      generatedPlanOutput.hostAvatarUrl = hostProfileData.avatarUrl || undefined;
 
       // Validate and refresh invalid Place IDs for AI-generated plans
       if (generatedPlanOutput.itinerary && generatedPlanOutput.itinerary.length > 0) {
@@ -238,7 +277,7 @@ export async function generatePlanWithAIAction(
               const isValid = await validatePlaceId(item.googlePlaceId);
               if (!isValid) {
                 console.log(`[generatePlanWithAIAction] Invalid Place ID detected for ${item.placeName}, attempting refresh...`);
-                const newPlaceId = await refreshPlaceId(item.placeName, item.city);
+                const newPlaceId = await refreshPlaceId(item.placeName, item.city || undefined);
                 if (newPlaceId) {
                   item.googlePlaceId = newPlaceId;
                   console.log(`[generatePlanWithAIAction] Successfully refreshed Place ID for ${item.placeName}`);
@@ -282,7 +321,7 @@ export async function getPlanForEditingAction(
   let decodedToken;
   let userId: string;
   try {
-    decodedToken = await authAdmin.verifyIdToken(idToken);
+    decodedToken = await authAdmin!.verifyIdToken(idToken);
     userId = decodedToken.uid;
   } catch (authError: any) {
     console.error(`[getPlanForEditingAction] ID Token verification failed for plan ${planId}:`, authError);
@@ -328,7 +367,7 @@ export async function createPlanAction(
   let decodedToken;
   let hostId: string;
   try {
-    decodedToken = await authAdmin.verifyIdToken(idToken);
+    decodedToken = await authAdmin!.verifyIdToken(idToken);
     hostId = decodedToken.uid;
   } catch (error: any) {
     let e = 'Authentication failed. Invalid or expired token.'; if (error.code === 'auth/id-token-expired') e = 'Session expired.';
@@ -385,9 +424,15 @@ export async function createPlanAction(
           ...item,
           id: item.id || crypto.randomUUID(),
           startTime: item.startTime, 
-          endTime: item.endTime || (item.startTime && typeof item.durationMinutes === 'number' ? new Date(itemStartTimeDate.getTime() + item.durationMinutes * 60000).toISOString() : undefined),
+          endTime: item.endTime || (item.startTime && typeof item.durationMinutes === 'number' ? new Date(itemStartTimeDate.getTime() + item.durationMinutes * 60000).toISOString() : null),
           durationMinutes: item.durationMinutes ?? 60,
           transitMode: item.transitMode ?? 'driving',
+          description: item.description ?? null,
+          address: item.address ?? null,
+          city: item.city ?? null,
+          googlePlaceId: item.googlePlaceId ?? null,
+          googlePhotoReference: item.googlePhotoReference ?? null,
+          googleMapsImageUrl: item.googleMapsImageUrl ?? null,
         };
        });
     }
@@ -403,11 +448,13 @@ export async function createPlanAction(
       priceRange: planFormData.priceRange || 'Free',
       hostId: hostId, 
       invitedParticipantUserIds: planFormData.invitedParticipantUserIds || [],
+      participantUserIds: [],
       itinerary: finalItinerary,
       status: planFormData.status,
       planType: planFormData.planType,
       originalPlanId: null, 
       sharedByUid: null,    
+      // New plans start with no ratings
       averageRating: null,
       reviewCount: 0,
       photoHighlights: [],
@@ -446,6 +493,13 @@ export async function updatePlanAction(
         const currentPlanData = await getPlanByIdAdminService(planId); // Fetch with admin service
         if (!currentPlanData) return { success: false, error: 'Plan not found to update.' };
         if (currentPlanData.hostId !== currentUserId) return { success: false, error: 'User not authorized to update this plan.' };
+        
+        // Prevent editing of templates (only admins can modify templates)
+        if (currentPlanData.isTemplate) {
+          // Check if user is admin (you may need to implement admin role checking)
+          // For now, templates are read-only for all users
+          return { success: false, error: 'Templates cannot be modified. Please copy this template to create your own version.' };
+        }
         
         let finalItinerary: ItineraryItem[] = [];
         const eventStartTimeISO = planFormData.eventDateTime.toISOString();
@@ -495,8 +549,13 @@ export async function updatePlanAction(
               return {
                 ...item,
                 id: item.id || crypto.randomUUID(),
+                description: item.description ?? null,
+                address: item.address ?? null,
+                city: item.city ?? null,
+                googlePlaceId: item.googlePlaceId ?? null,
+                googlePhotoReference: item.googlePhotoReference ?? null,
                 startTime: item.startTime, 
-                endTime: item.endTime || (item.startTime && typeof item.durationMinutes === 'number' ? new Date(itemStartTimeDate.getTime() + item.durationMinutes * 60000).toISOString() : undefined),
+                endTime: item.endTime || (item.startTime && typeof item.durationMinutes === 'number' ? new Date(itemStartTimeDate.getTime() + item.durationMinutes * 60000).toISOString() : null),
                 durationMinutes: item.durationMinutes ?? 60,
                 transitMode: item.transitMode ?? 'driving',
               };
@@ -572,28 +631,55 @@ export async function copyPlanToMyAccountAction(
       location: originalPlan.location,
       city: originalPlan.city,
       eventType: originalPlan.eventType,
+      eventTypeLowercase: (originalPlan.eventType || '').toLowerCase(),
       priceRange: originalPlan.priceRange,
       hostId: newHostId,
       invitedParticipantUserIds: [],
+      participantUserIds: [],
       participantResponses: {},
+      waitlistUserIds: [],
+      privateNotes: '',
       itinerary: originalPlan.itinerary.map(item => ({ 
         ...item, 
         id: crypto.randomUUID(),
-        // Reset time-specific fields to be updated by user
-        startTime: new Date().toISOString(),
-        endTime: new Date(Date.now() + 60 * 60 * 1000).toISOString() // 1 hour later
+        // If copying from template, preserve time slots but add today's date
+        // If copying from regular plan, reset times
+        startTime: originalPlan.isTemplate && typeof item.startTime === 'string' && item.startTime.includes(':') 
+          ? new Date(`${new Date().toDateString()} ${item.startTime}`).toISOString()
+          : new Date().toISOString(),
+        endTime: originalPlan.isTemplate && typeof item.endTime === 'string' && item.endTime.includes(':')
+          ? new Date(`${new Date().toDateString()} ${item.endTime}`).toISOString()
+          : new Date(Date.now() + 60 * 60 * 1000).toISOString() // 1 hour later
       })),
       status: 'draft',
       planType: originalPlan.planType,
       originalPlanId: originalPlan.id,
       sharedByUid: originalPlan.hostId,
-      averageRating: null,
-      reviewCount: 0,
+      // Preserve ratings for templates, reset for regular plans
+      averageRating: originalPlan.isTemplate ? originalPlan.averageRating : null,
+      reviewCount: originalPlan.isTemplate ? (originalPlan.reviewCount || 0) : 0,
       photoHighlights: originalPlan.photoHighlights || [], // Preserve template photos
       isTemplate: false, // New plan is not a template until completed
+      isCompleted: false,
+      completionConfirmedBy: [],
+      highlightsEnabled: false,
+      // Don't copy template-specific fields - this is a new plan
+      templateOriginalHostId: undefined,
+      templateOriginalHostName: undefined,
     };
     
     const newPlanId = await createPlanAdmin(newPlanDataForService, newHostId);
+    
+    // Copy comments from template if this is a template
+    if (newPlanId && originalPlan.isTemplate) {
+      try {
+        await copyCommentsFromTemplate(originalPlanId, newPlanId);
+      } catch (error) {
+        console.warn('[copyPlanToMyAccountAction] Failed to copy comments from template:', error);
+        // Don't fail the entire operation if comment copying fails
+      }
+    }
+    
     revalidatePath('/plans');
     if (newPlanId) revalidatePath(`/plans/${newPlanId}`);
     return { success: true, newPlanId };
@@ -914,7 +1000,7 @@ export async function addPhotoHighlightAction(
   let determinedContentType = file.type;
   if (!determinedContentType || !determinedContentType.startsWith('image/')) {
     console.warn(`[addPhotoHighlightAction] Client-side type '${file.type}' for ${file.name} is invalid/missing. Inferring from extension.`);
-    determinedContentType = getMimeTypeFromServer(file.name);
+    determinedContentType = getMimeTypeFromServer(file.name) || '';
   }
 
   if (!determinedContentType || !determinedContentType.startsWith('image/')) {
@@ -1210,9 +1296,24 @@ export async function getDirectionsAction(
     if (!res.ok) {
       const errorBody = await res.text();
       console.error(`[getDirectionsAction] Directions API error ${res.status}: ${errorBody}`);
+      
+      // Handle specific error codes
+      if (res.status === 403) {
+        return { success: false, error: "Google Maps API access denied (403). Check API key permissions, billing, and quota limits." };
+      }
       return { success: false, error: `Directions API error: ${res.statusText} - ${errorBody}` };
     }
     const data = await res.json();
+    
+    // Check for API-specific error statuses
+    if (data.status === 'REQUEST_DENIED') {
+      console.error(`[getDirectionsAction] API request denied: ${data.error_message || 'Unknown reason'}`);
+      return { success: false, error: `Google Maps API request denied: ${data.error_message || 'Check API key and billing'}` };
+    }
+    if (data.status === 'OVER_QUERY_LIMIT') {
+      console.error(`[getDirectionsAction] API quota exceeded`);
+      return { success: false, error: `Google Maps API quota exceeded. Please try again later.` };
+    }
 
     if (data.routes && data.routes.length > 0) {
       const leg = data.routes[0].legs[0];
@@ -1367,7 +1468,7 @@ export async function getPublishedPlansByCategoryAction(categoryName: string): P
 
 export async function generatePlanQRAction(planId: string, idToken: string): Promise<{ success: boolean; qrData?: string; error?: string }> {
   try {
-    const decodedToken = await authAdmin.auth().verifyIdToken(idToken);
+    const decodedToken = await authAdmin.verifyIdToken(idToken);
     const userId = decodedToken.uid;
 
     // Get the plan to verify ownership/permissions
@@ -1401,10 +1502,10 @@ export async function completePlanAction(
   idToken: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const decodedToken = await authAdmin.auth().verifyIdToken(idToken);
+    const decodedToken = await authAdmin.verifyIdToken(idToken);
     const userId = decodedToken.uid;
 
-    const completion = await recordPlanCompletion(planId, userId, verificationMethod, qrCodeData);
+    const completion = await recordPlanCompletion(planId, userId, [userId], verificationMethod, qrCodeData);
     if (!completion) {
       return { success: false, error: 'Failed to record plan completion' };
     }
@@ -1425,7 +1526,7 @@ export async function getAffinityScoreAction(
   idToken: string
 ): Promise<{ success: boolean; score?: number; error?: string }> {
   try {
-    const decodedToken = await authAdmin.auth().verifyIdToken(idToken);
+    const decodedToken = await authAdmin.verifyIdToken(idToken);
     const userRole = decodedToken.role as UserRoleType | undefined;
     
     // Only allow users to get their own affinity scores or admins to get any
@@ -1446,7 +1547,7 @@ export async function getUserAffinitiesAction(
   idToken: string
 ): Promise<{ success: boolean; affinities?: UserAffinity[]; error?: string }> {
   try {
-    const decodedToken = await authAdmin.auth().verifyIdToken(idToken);
+    const decodedToken = await authAdmin.verifyIdToken(idToken);
     const userRole = decodedToken.role as UserRoleType | undefined;
     
     // Only allow users to get their own affinities or admins to get any

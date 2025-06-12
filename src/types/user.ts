@@ -176,7 +176,7 @@ export type TransitMode = 'driving' | 'walking' | 'bicycling' | 'transit';
 export type PlanStatusType = 'draft' | 'published' | 'cancelled';
 export type PlanTypeType = 'single-stop' | 'multi-stop';
 export type PriceRangeType = '$' | '$$' | '$$$' | '$$$$' | 'Free';
-export type RSVPStatusType = 'going' | 'maybe' | 'declined' | 'pending';
+export type RSVPStatusType = 'going' | 'maybe' | 'not-going' | 'pending';
 
 
 export interface ItineraryItem {
@@ -184,8 +184,12 @@ export interface ItineraryItem {
   placeName: string;
   description: string | null;
   address: string | null;
+  googlePlaceId: string | null;
+  city: string | null;
   googlePhotoReference: string | null;
   googleMapsImageUrl: string | null;
+  lat: number | null;
+  lng: number | null;
   types: string[] | null;
   rating: number | null;
   reviewCount: number | null;
@@ -193,11 +197,15 @@ export interface ItineraryItem {
   phoneNumber: string | null;
   isOperational: boolean | null;
   statusText: string | null;
+  openingHours: string[] | null;
+  website: string | null;
   activitySuggestions: string[] | null;
   startTime: string | null;
   endTime: string | null;
   durationMinutes: number | null;
   transitMode: 'driving' | 'walking' | 'bicycling' | 'transit' | null;
+  transitTimeFromPreviousMinutes?: number | null;
+  notes: string | null;
 }
 
 export interface FirestoreTimestamp {
@@ -219,9 +227,32 @@ export interface UserPreferences {
   preferredTimeOfDay?: string[];
 }
 
-export type PlanStatus = 'draft' | 'published' | 'archived';
+export type PlanStatus = 'draft' | 'published' | 'archived' | 'completed' | 'cancelled';
 export type PlanType = 'single-stop' | 'multi-stop';
 export type ParticipantResponse = 'going' | 'maybe' | 'not-going' | 'pending';
+
+// Enhanced RSVP types for advanced features
+export interface RSVPDetails {
+  response: ParticipantResponse;
+  guestCount?: number; // Number of additional guests (plus-ones)
+  dietaryRestrictions?: string[];
+  specialRequests?: string;
+  notes?: string;
+  respondedAt: string;
+  lastUpdated?: string;
+}
+
+export interface PlanRSVPSettings {
+  allowGuestPlusOnes: boolean;
+  maxGuestsPerParticipant: number;
+  rsvpDeadline?: string;
+  requireDietaryInfo: boolean;
+  requireSpecialRequests: boolean;
+  enableWaitlist: boolean;
+  maxParticipants?: number;
+  sendReminders: boolean;
+  reminderDays: number[]; // Days before event to send reminders
+}
 
 export interface Plan {
   id: string;
@@ -232,7 +263,7 @@ export interface Plan {
   city: string;
   eventType: string | null;
   eventTypeLowercase: string;
-  priceRange: string;
+  priceRange: PriceRangeType;
   hostId: string;
   hostName?: string;
   hostAvatarUrl?: string;
@@ -241,6 +272,7 @@ export interface Plan {
   creatorAvatarUrl?: string;
   creatorIsVerified?: boolean;
   invitedParticipantUserIds: string[];
+  participantUserIds: string[];
   itinerary: ItineraryItem[];
   status: PlanStatus;
   planType: PlanType;
@@ -250,6 +282,10 @@ export interface Plan {
   reviewCount: number;
   photoHighlights: string[];
   participantResponses: Record<string, ParticipantResponse>;
+  // Enhanced RSVP features
+  participantRSVPDetails?: Record<string, RSVPDetails>;
+  rsvpSettings?: PlanRSVPSettings;
+  waitlist?: string[]; // Array of user IDs on waitlist
   createdAt: string;
   updatedAt: string;
   coordinates?: GeoPoint;
@@ -278,6 +314,10 @@ export interface Plan {
   completionConfirmedBy?: string[];
   highlightsEnabled?: boolean;
   isTemplate?: boolean; // For admin-created template plans that don't require specific scheduling
+  templateOriginalHostId?: string; // Original host ID when plan becomes template
+  templateOriginalHostName?: string; // Original host name when plan becomes template
+  waitlistUserIds?: string[]; // Array of user IDs on waitlist
+  privateNotes?: string | null; // Private notes that get cleared when becoming template
 }
 
 export interface Rating {
@@ -439,4 +479,10 @@ export interface UserAffinity {
   lastUpdated: string;
   completedPlansCount: number;
   lastPlanCompletedAt: string;
+}
+
+// Simplified profile for AI processing
+export interface AISimpleProfile {
+  uid: string;
+  preferences: string[];
 }

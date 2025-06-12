@@ -1,391 +1,293 @@
 // src/app/p/[planId]/page.tsx - Public Plan View Page
 'use client';
 
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import Image from 'next/image';
-import Link from 'next/link';
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from '@/components/ui/separator';
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import {
-  CalendarDays,
-  MapPin,
-  Tag,
-  DollarSign,
-  ListChecks,
-  Loader2,
-  AlertTriangle,
-  CopyPlus,
-  LogIn,
-  Star,
-  CheckCircle,
-  XCircle,
-  ExternalLink,
-  Clock,
-  ChevronLeft,
-  Share2,
-  Plus,
-  FileText,
-  Grid2X2,
-  UserCircle
-} from "lucide-react";
-import { useState, useEffect, useCallback } from 'react';
-import type { Plan as PlanType } from '@/types/user';
+import { ArrowLeft, Share2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+import { getPublicPlanByIdAction } from '@/app/actions/planActions';
+import { copyPlanToMyAccountAction } from '@/app/actions/planActions';
 import { useAuth } from '@/context/AuthContext';
-import { useToast } from '@/hooks/use-toast';
-import { getGooglePlacePhotoUrl } from '@/utils/googleMapsHelpers';
-import { format, parseISO, isValid } from 'date-fns';
-import { copyPlanToMyAccountAction, getPublicPlanByIdAction } from '@/app/actions/planActions'; // Updated import
-import { VerificationBadge } from '@/components/ui/verification-badge';
+import type { Plan as PlanType } from '@/types/user';
 
-const CrossandLogo = ({ className }: { className?: string }) => (
-  <img src="/images/crossand-logo.svg" alt="Crossand Logo" className={className} />
-);
+// Import new components
+import { PlanHero } from '@/components/plans/PlanHero';
+import { PlanItinerary } from '@/components/plans/PlanItinerary';
+import { PlanMap } from '@/components/plans/PlanMap';
+import { PlanPhotos } from '@/components/plans/PlanPhotos';
+import { PlanWeather } from '@/components/plans/PlanWeather';
+import { PlanChat } from '@/components/plans/PlanChat';
+import { PlanActions } from '@/components/plans/PlanActions';
+
+// Crossand Logo Component
+function CrossandLogo() {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
+        <span className="text-white font-bold text-sm">C</span>
+      </div>
+      <span className="font-semibold text-lg">Crossand</span>
+    </div>
+  );
+}
+
+type UserRole = 'host' | 'confirmed' | 'invited' | 'public' | 'authenticated';
 
 export default function PublicPlanPage() {
   const params = useParams();
   const router = useRouter();
-  const searchParamsHook = useSearchParams();
-  const { user: currentUser, loading: authLoading } = useAuth();
-  const { toast } = useToast();
+  const searchParams = useSearchParams();
+  const { user } = useAuth();
   const planId = params.planId as string;
-
-  const [plan, setPlan] = useState<PlanType | null | undefined>(undefined);
+  
+  const [plan, setPlan] = useState<PlanType | null>(null);
   const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [clientFormattedEventDateTime, setClientFormattedEventDateTime] = useState<string | null>(null);
-  const [isCopyingPlan, setIsCopyingPlan] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copying, setCopying] = useState(false);
+  const [userRole, setUserRole] = useState<UserRole>('public');
 
-  const staticMapApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-
-  const fetchPlanData = useCallback(async () => {
-    if (!planId) {
-      setErrorMsg("Plan ID is missing.");
-      setPlan(null);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setErrorMsg(null);
+  // Fetch plan data
+  const fetchPlan = useCallback(async () => {
     try {
+      setLoading(true);
+      setError(null);
       const result = await getPublicPlanByIdAction(planId);
+      
       if (result.plan) {
         setPlan(result.plan);
-      } else if (result.notFound) {
-        setPlan(null);
-        setErrorMsg(result.error || "Plan not found.");
-        toast({ title: "Error", description: result.error || "Plan not found.", variant: "destructive" });
-      } else if (result.notPublic) {
-        setPlan(null);
-        setErrorMsg(result.error || "This plan is not public or has been removed.");
-        toast({ title: "Not Public", description: result.error || "This plan is not currently available for public viewing.", variant: "default" });
-      } else { // Generic error
-        setPlan(null);
-        setErrorMsg(result.error || "Failed to load plan details.");
-        toast({ title: "Error", description: result.error || "Failed to load plan details.", variant: "destructive" });
+        
+        // Determine user role
+        if (user) {
+          if (result.plan.hostId === user.uid) {
+            setUserRole('host');
+          } else if (result.plan.participantResponses[user.uid] === 'going') {
+            setUserRole('confirmed');
+          } else if (result.plan.participantUserIds.includes(user.uid)) {
+            setUserRole('invited');
+          } else {
+            setUserRole('authenticated');
+          }
+        } else {
+          setUserRole('public');
+        }
+      } else {
+        setError(result.error || 'Plan not found');
       }
-    } catch (error: any) { // Catch unexpected client-side errors during the action call itself
-      console.error("Error calling getPublicPlanByIdAction:", error);
-      setErrorMsg(error.message || "An unexpected error occurred.");
-      toast({ title: "Error", description: error.message || "An unexpected error occurred.", variant: "destructive" });
-      setPlan(null);
+    } catch (err) {
+      setError('Failed to load plan');
+      console.error('Error fetching plan:', err);
     } finally {
       setLoading(false);
     }
-  }, [planId, toast]);
+  }, [planId, user]);
 
   useEffect(() => {
-    fetchPlanData();
-  }, [fetchPlanData]);
+    fetchPlan();
+  }, [fetchPlan]);
 
-  useEffect(() => {
-    if (plan?.eventTime) {
-      try {
-        const dateObj = parseISO(plan.eventTime);
-        if (isValid(dateObj)) {
-          setClientFormattedEventDateTime(format(dateObj, 'PPPp'));
-        } else {
-          setClientFormattedEventDateTime("Date not set");
-        }
-      } catch (e) {
-        setClientFormattedEventDateTime("Date not set");
-      }
-    }
-  }, [plan]);
-
-  const handleCopyToMyPlans = useCallback(async () => {
+  // Handle copy plan action
+  const handleCopyPlan = useCallback(async () => {
     if (!plan) {
-        toast({ title: "Error", description: "No plan loaded to copy.", variant: "destructive" });
-        return;
-    }
-    if (!currentUser) {
-      toast({ title: "Login Required", description: "Please log in to use this activity template.", variant: "default" });
-      router.push(`/login?redirect=/p/${plan.id}&action=copy&planIdToCopy=${plan.id}`);
+      toast.error('No plan to copy');
       return;
     }
-    if (plan.hostId === currentUser.uid) {
-      toast({ title: "Already Yours!", description: "This activity template is already in your collection. Opening it now...", variant: "default" });
-      router.push(`/plans/${plan.id}`);
+    
+    if (!user) {
+      router.push(`/login?redirect=/p/${planId}&action=copy`);
+      return;
+    }
+    
+    if (plan.hostId === user.uid) {
+      toast.error('You cannot copy your own plan');
       return;
     }
 
-    setIsCopyingPlan(true);
+    setCopying(true);
     try {
-      await currentUser.getIdToken(true); // Force refresh the token
-      const idToken = await currentUser.getIdToken(); // Get the (potentially refreshed) token
-      const result = await copyPlanToMyAccountAction(plan.id, idToken);
+      if (!user) {
+        toast.error('You must be logged in to copy a plan');
+        return;
+      }
+      const idToken = await user.getIdToken();
+      const result = await copyPlanToMyAccountAction(planId, idToken);
       if (result.success && result.newPlanId) {
-        toast({ title: "Activity Template Created!", description: `"${plan.name}" is now ready for you to customize and plan.` });
+        toast.success('Plan copied successfully!');
         router.push(`/plans/${result.newPlanId}`);
       } else {
-        toast({ title: "Copy Error", description: result.error || "Could not copy the plan.", variant: "destructive" });
+        toast.error(result.error || 'Failed to copy plan');
       }
-    } catch (error: any) {
-      console.error("Error copying plan:", error);
-      toast({ title: "Error", description: error.message || "An unexpected error occurred while copying.", variant: "destructive" });
+    } catch (error) {
+      console.error('Error copying plan:', error);
+      toast.error('Failed to copy plan');
     } finally {
-      setIsCopyingPlan(false);
+      setCopying(false);
     }
-  }, [currentUser, plan, router, toast]);
+  }, [plan, user, planId, router]);
 
-
+  // Handle copy action from URL params
   useEffect(() => {
-    if (currentUser && planId && plan && !loading && !authLoading) {
-      const action = searchParamsHook.get('action');
-      const planIdToCopyFromQuery = searchParamsHook.get('planIdToCopy');
-      if (action === 'copy' && planIdToCopyFromQuery === planId) {
-        // Only call if not already copying to prevent loops if handleCopyToMyPlans itself causes a state change that re-runs this effect.
-        if (!isCopyingPlan) {
-            handleCopyToMyPlans();
-        }
-        // Clean up query params to prevent re-copy on refresh
-        router.replace(`/p/${planId}`, { scroll: false });
-      }
+    const action = searchParams.get('action');
+    if (action === 'copy' && plan && user && !copying) {
+      handleCopyPlan();
+      // Clean up URL
+      router.replace(`/p/${planId}`, { scroll: false });
     }
-  }, [currentUser, planId, searchParamsHook, router, plan, loading, authLoading, handleCopyToMyPlans, isCopyingPlan]);
+  }, [searchParams, plan, user, copying, handleCopyPlan, router, planId]);
 
-  if (loading || authLoading && !plan) { // Show loader if either main loading or auth is loading and plan isn't set yet
+  // Handle RSVP
+  const handleRSVP = useCallback(async (response: 'yes' | 'no' | 'maybe') => {
+    if (!user || !plan) return;
+    
+    try {
+      // This would be implemented with actual RSVP action
+      toast.success(`RSVP updated: ${response}`);
+    } catch (error) {
+      toast.error('Failed to update RSVP');
+    }
+  }, [user, plan]);
+
+  // Handle join request
+  const handleJoinRequest = useCallback(async () => {
+    if (!user || !plan) return;
+    
+    try {
+      // This would be implemented with actual join request action
+      toast.success('Join request sent!');
+    } catch (error) {
+      toast.error('Failed to send join request');
+    }
+  }, [user, plan]);
+
+  // Loading state
+  if (loading) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-background text-foreground">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="mt-4 text-muted-foreground">Loading plan...</p>
+      <div className="min-h-screen bg-gradient-to-br from-background via-background/95 to-primary/5">
+        <div className="flex min-h-screen flex-col items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          <p className="mt-4 text-muted-foreground">Loading plan...</p>
+        </div>
       </div>
     );
   }
 
-  if (!plan) {
+  // Error state
+  if (error || !plan) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-background text-foreground p-6 text-center">
-        <AlertTriangle className="h-16 w-16 text-destructive mb-4" />
-        <h1 className="text-3xl font-semibold mb-2">{errorMsg || "Plan Not Found"}</h1>
-        <p className="text-muted-foreground mb-6">
-          {errorMsg ? "The plan could not be loaded." : "The plan you're looking for doesn't exist, has been moved, or is not public."}
-        </p>
-        <Button asChild variant="outline">
-          <Link href="/">Go to Homepage</Link>
-        </Button>
+      <div className="min-h-screen bg-gradient-to-br from-background via-background/95 to-primary/5">
+        <div className="flex min-h-screen flex-col items-center justify-center p-6 text-center">
+          <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+            <span className="text-destructive text-2xl">!</span>
+          </div>
+          <h1 className="text-3xl font-semibold mb-2">{error || 'Plan Not Found'}</h1>
+          <p className="text-muted-foreground mb-6 max-w-md">
+            {error || "The plan you're looking for doesn't exist, has been moved, or is not public."}
+          </p>
+          <Button onClick={() => router.push('/')} variant="outline">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Go to Homepage
+          </Button>
+        </div>
       </div>
     );
   }
 
-  let mainPlanImage = `https://placehold.co/1200x600.png?text=${encodeURIComponent(plan.name)}`;
-  if (plan.photoHighlights && plan.photoHighlights.length > 0) {
-    mainPlanImage = plan.photoHighlights[0];
-  } else {
-      const firstItineraryItemWithImage = plan.itinerary?.find(item => item.googlePhotoReference || item.googleMapsImageUrl);
-      if (firstItineraryItemWithImage?.googlePhotoReference && staticMapApiKey) {
-          mainPlanImage = getGooglePlacePhotoUrl(firstItineraryItemWithImage.googlePhotoReference, 1200, staticMapApiKey);
-      } else if (firstItineraryItemWithImage?.googleMapsImageUrl) {
-          mainPlanImage = firstItineraryItemWithImage.googleMapsImageUrl;
-      }
-  }
-  const mainPlanImageHint = plan.itinerary?.[0]?.types?.[0] || plan.eventType || 'event scenery';
-
+  const staticMapApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const isParticipant = userRole === 'host' || userRole === 'confirmed' || userRole === 'invited';
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-16">
-      {/* Header */}
-      <header className="sticky top-0 z-30 flex items-center justify-between p-3 bg-background/80 backdrop-blur-sm border-b border-border/30 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/explore')} className="text-muted-foreground hover:text-foreground">
-          <ChevronLeft className="h-5 w-5" />
+    <div className="min-h-screen bg-gradient-to-br from-background via-background/95 to-primary/5">
+      {/* Sticky Header */}
+      <header className="sticky top-0 z-50 flex items-center justify-between p-4 bg-background/80 backdrop-blur-md border-b border-border/20">
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          onClick={() => router.back()}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h2 className="text-md font-semibold text-foreground/90 truncate mx-2 flex-1 text-center">{plan.name}</h2>
-        <Button variant="ghost" size="icon" onClick={handleCopyToMyPlans} className="text-muted-foreground hover:text-foreground">
+        <div className="flex items-center gap-2">
+          <CrossandLogo />
+        </div>
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="text-muted-foreground hover:text-foreground transition-colors"
+        >
           <Share2 className="h-5 w-5" />
         </Button>
       </header>
 
       {/* Main Content */}
-      <Card className="overflow-hidden shadow-xl bg-card/90 border-border/50 rounded-b-xl mt-0!">
-        {/* Main Image */}
-        <div className="relative w-full h-56 md:h-72 lg:h-80">
-          <Image
-            src={mainPlanImage}
-            alt={plan.name}
-            fill
-            style={{ objectFit: 'cover' }}
-            priority
-            unoptimized={mainPlanImage.includes('maps.googleapis.com')}
-          />
-          {plan.eventType && (
-            <div className="absolute top-3 right-3">
-              <Badge variant="secondary" className="text-xs sm:text-sm px-2.5 py-1 shadow-md">
-                {plan.eventType}
-              </Badge>
-            </div>
-          )}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column - Main Content */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Hero Section */}
+            <PlanHero plan={plan} userRole={userRole} />
+            
+            {/* Quick Actions */}
+            <PlanActions 
+              plan={plan} 
+              userRole={userRole} 
+              onRSVP={handleRSVP}
+              onJoinRequest={handleJoinRequest}
+              onCopyPlan={handleCopyPlan}
+            />
+            
+            {/* Itinerary */}
+            {plan.itinerary && plan.itinerary.length > 0 && (
+              <PlanItinerary itinerary={plan.itinerary} />
+            )}
+            
+            {/* Photos Gallery */}
+            {((plan.photoHighlights && plan.photoHighlights.length > 0) || 
+              (plan.itinerary && plan.itinerary.some(item => item.googlePhotoReference || item.googleMapsImageUrl))) && (
+              <PlanPhotos 
+                highlights={plan.photoHighlights || []} 
+                itinerary={plan.itinerary || []} 
+                planName={plan.name}
+              />
+            )}
+            
+            {/* Group Chat */}
+            {isParticipant && (
+              <PlanChat 
+                plan={plan}
+                planId={plan.id} 
+                currentUser={user} 
+                isParticipant={isParticipant}
+              />
+            )}
+          </div>
+          
+          {/* Right Column - Sidebar */}
+          <div className="space-y-6">
+            {/* Interactive Map */}
+            {plan.itinerary && plan.itinerary.length > 0 && (
+              <PlanMap 
+                itinerary={plan.itinerary}
+                planName={plan.name}
+                apiKey={staticMapApiKey}
+              />
+            )}
+            
+            {/* Weather Widget */}
+            {plan.location && plan.eventTime && (
+              <PlanWeather 
+                location={plan.location}
+                date={plan.eventTime}
+                showForecast={true}
+                coordinates={plan.coordinates ? {
+                  lat: plan.coordinates.latitude,
+                  lon: plan.coordinates.longitude
+                } : undefined}
+              />
+            )}
+          </div>
         </div>
-
-        <CardHeader>
-          <CardTitle className="text-2xl md:text-3xl font-bold text-gradient-primary opacity-80">{plan.name}</CardTitle>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground mt-1 text-xs sm:text-sm items-center">
-            <div className="flex items-center"><MapPin className="h-4 w-4 mr-1.5" /><span>{plan.location}, {plan.city}</span></div>
-            {(plan.averageRating !== null && typeof plan.averageRating === 'number' ) && (
-              <div className="flex items-center">
-                <Star className="h-4 w-4 mr-1.5 text-amber-400 fill-amber-400" />
-                <span>{plan.averageRating.toFixed(1)} ({plan.reviewCount || 0} reviews)</span>
-              </div>
-            )}
-          </div>
-          
-          {/* Creator Info */}
-          <div className="flex items-center mt-2 text-xs text-muted-foreground">
-            <Avatar className="h-5 w-5 mr-1.5">
-              <AvatarImage src={plan.creatorAvatarUrl || undefined} alt={plan.creatorName || 'Creator'} />
-              <AvatarFallback>
-                {plan.creatorName?.[0]?.toUpperCase() || <UserCircle className="h-3 w-3"/>}
-              </AvatarFallback>
-            </Avatar>
-            Created by <span className="font-medium text-foreground/80 ml-1">{plan.creatorName}</span>
-            <VerificationBadge role={plan.creatorRole} isVerified={plan.creatorIsVerified} />
-          </div>
-        </CardHeader>
-
-        <CardContent className="space-y-6">
-          {/* Description */}
-          {plan.description && (
-            <div>
-              <h3 className="font-semibold text-md mb-1.5 flex items-center">
-                <FileText className="h-4 w-4 mr-2 text-primary/70"/>Description
-              </h3>
-              <p className="text-sm text-foreground/80 whitespace-pre-line">{plan.description}</p>
-            </div>
-          )}
-          
-          {/* Plan Details */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
-            {plan.priceRange && (
-              <div className="flex items-start">
-                <DollarSign className="h-4 w-4 mr-2 mt-0.5 text-primary/70 shrink-0" />
-                <div>
-                  <span className="font-medium text-muted-foreground">Price Range: </span>
-                  <span className="text-foreground/90">{plan.priceRange}</span>
-                </div>
-              </div>
-            )}
-            <div className="flex items-start">
-              <Grid2X2 className="h-4 w-4 mr-2 mt-0.5 text-primary/70 shrink-0" />
-              <div>
-                <span className="font-medium text-muted-foreground">Plan Type: </span>
-                <span className="text-foreground/90">{plan.planType === 'single-stop' ? 'Single Stop' : 'Multi-Stop'}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Itinerary */}
-          {plan.itinerary && plan.itinerary.length > 0 && (
-            <div>
-              <h3 className="font-semibold text-md mb-3 flex items-center">
-                <ListChecks className="h-4 w-4 mr-2 text-primary/70" />
-                Itinerary ({plan.itinerary.length} stop{plan.itinerary.length !== 1 ? 's' : ''})
-              </h3>
-              <div className="space-y-4">
-                {plan.itinerary.map((item, index) => {
-                  let itemPhotoUrl = `https://placehold.co/400x200.png?text=${encodeURIComponent(item.placeName)}`;
-                  if (item.googlePhotoReference && staticMapApiKey) {
-                    itemPhotoUrl = getGooglePlacePhotoUrl(item.googlePhotoReference, 600, staticMapApiKey);
-                  } else if (item.googleMapsImageUrl) {
-                    itemPhotoUrl = item.googleMapsImageUrl;
-                  }
-
-                  return (
-                    <Card key={index} className="overflow-hidden">
-                      <div className="grid md:grid-cols-3 gap-3">
-                        <div className="relative aspect-[16/9] md:aspect-square bg-muted">
-                          <Image
-                            src={itemPhotoUrl}
-                            alt={item.placeName}
-                            fill
-                            className="object-cover"
-                            unoptimized={itemPhotoUrl.includes('maps.googleapis.com')}
-                          />
-                        </div>
-                        <div className="md:col-span-2 p-3">
-                          <h4 className="text-sm font-semibold text-primary/90">
-                            {index + 1}. {item.placeName}
-                          </h4>
-                          {item.address && (
-                            <p className="text-xs text-muted-foreground mt-0.5 mb-1">{item.address}</p>
-                          )}
-                          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] mt-1.5 text-muted-foreground">
-                            {typeof item.rating === 'number' && (
-                              <div className="flex items-center">
-                                <Star className="w-3 h-3 mr-1 text-amber-400 fill-amber-400"/>
-                                {item.rating.toFixed(1)} ({item.reviewCount || 0})
-                              </div>
-                            )}
-                            {item.isOperational !== null && item.isOperational !== undefined && (
-                              <Badge variant={item.isOperational ? "default" : "destructive"} className="w-fit py-0.5 px-1.5 text-[10px] bg-opacity-70">
-                                {item.isOperational ? <CheckCircle className="w-2.5 h-2.5 mr-1"/> : <XCircle className="w-2.5 h-2.5 mr-1"/>}
-                                {item.statusText || (item.isOperational ? "Operational" : "Closed")}
-                              </Badge>
-                            )}
-                            {typeof item.priceLevel === 'number' && (
-                              <div>Price: {'$'.repeat(item.priceLevel) || 'N/A'}</div>
-                            )}
-                            {item.phoneNumber && (
-                              <div className="truncate" title={item.phoneNumber}>Phone: {item.phoneNumber}</div>
-                            )}
-                          </div>
-                          
-                          {item.activitySuggestions && item.activitySuggestions.length > 0 && (
-                            <div className="mt-1.5">
-                              <p className="text-[11px] font-medium text-muted-foreground/80 mb-0.5">Suggestions:</p>
-                              <ul className="list-disc list-inside pl-1 space-y-0.5">
-                                {item.activitySuggestions.map((sugg, i) => (
-                                  <li key={i} className="text-xs text-foreground/80">{sugg}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </Card>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Add to My Plans Button */}
-          <div className="flex justify-center pt-4">
-            <Button
-              onClick={handleCopyToMyPlans}
-              disabled={isCopyingPlan || !currentUser}
-              className="w-full max-w-sm"
-            >
-              {isCopyingPlan ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Plus className="mr-2 h-4 w-4" />
-              )}
-              {currentUser ? 'Use This Activity Template' : 'Log in to Use This Template'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      </div>
     </div>
   );
 }

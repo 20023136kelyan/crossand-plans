@@ -1,0 +1,873 @@
+# PLAN DETAILS PAGE REFACTORING GUIDE
+# File: src/app/(app)/plans/[id]/page.tsx
+# Last Updated: 2024
+
+================================================================================
+                           COMPREHENSIVE REFACTORING RULES
+================================================================================
+
+## 1. CORE ARCHITECTURE REQUIREMENTS
+
+### Component Structure
+- Break down monolithic page into smaller, focused components
+- Create dedicated components for each major section:
+  * PlanHero (header with title, date, participants)
+  * PlanItinerary (timeline with photos and details)
+  * PlanMap (interactive map with markers)
+  * PlanPhotos (gallery of AI-generated images)
+  * PlanWeather (weather forecast widget)
+  * PlanChat (messaging interface)
+  * PlanActions (edit, share, export buttons)
+
+### State Management
+- Optimize React state management to prevent unnecessary re-renders
+- Use React.memo for expensive components
+- Implement proper loading states for all async operations
+- Add error boundaries for robust error handling
+
+### Performance Requirements
+- Lazy load images and heavy components
+- Implement virtual scrolling for long itineraries
+- Use React.Suspense for code splitting
+- Optimize bundle size and loading times
+- Target Core Web Vitals: LCP < 2.5s, FID < 100ms, CLS < 0.1
+
+## 2. MOBILE-FIRST DESIGN PRINCIPLES
+
+### Responsive Layout
+- Design for mobile screens first (320px+)
+- Use CSS Grid and Flexbox for responsive layouts
+- Implement touch-friendly interactions (44px minimum touch targets)
+- Ensure proper spacing and typography scaling
+
+### Navigation
+- Sticky header with essential actions
+- Bottom navigation for mobile users
+- Swipe gestures for photo galleries
+- Pull-to-refresh functionality
+
+### Visual Hierarchy
+- Clear information architecture with proper heading levels
+- Consistent spacing using design tokens
+- Proper contrast ratios (WCAG AA compliance)
+- Readable typography with appropriate line heights
+
+## 3. AI-GENERATED PHOTO INTEGRATION
+
+### Photo Display Requirements
+- Use getGooglePlacePhotoUrl utility from utils/googleMapsHelpers.ts
+- Display photos for each itinerary item with googlePhotoReference
+- Implement lazy loading with placeholder images
+- Add error handling for failed photo loads
+- Provide fallback images when photos are unavailable
+
+### Photo Gallery Features
+- Create dedicated photo gallery component
+- Implement lightbox/modal for full-size viewing
+- Add photo sharing capabilities
+- Enable photo download functionality
+- Support pinch-to-zoom on mobile devices
+
+### Integration Points
+- Itinerary timeline: Show thumbnail photos next to each stop
+- Map markers: Display photos in info windows
+- Hero section: Feature best photo as background
+- Social sharing: Include photos in shared content
+
+## 4. INTERACTIVE MAP INTEGRATION
+
+### Map Features
+- Display all itinerary locations as markers
+- Show route between locations
+- Enable marker clustering for dense areas
+- Add custom marker icons for different activity types
+- Implement map controls (zoom, pan, fullscreen)
+
+### Map Interactions
+- Click markers to show location details
+- Display photos in marker info windows
+- Show estimated travel times between stops
+- Enable directions to external map apps
+- Support map style switching (satellite, terrain)
+
+### Technical Implementation
+- Use Google Maps JavaScript API
+- Implement proper API key management
+- Add loading states and error handling
+- Optimize for mobile performance
+- Cache map data when possible
+
+## 5. ENHANCED FEATURES
+
+### USER CONTEXT & CONDITIONAL RENDERING REQUIREMENTS
+
+#### USER ROLES & PERMISSIONS:
+
+1.  **Plan Host** (`plan.hostId === currentUser.uid`):
+    -   Full edit permissions
+    -   Can manage participants and invitations
+    -   Can delete plan
+    -   Can view all participant responses
+    -   Access to plan analytics/insights
+
+2.  **Invited Participant** (`plan.invitedParticipantUserIds.includes(currentUser.uid)`):
+    -   Can RSVP (yes/no/maybe)
+    -   Can view other participants
+    -   Can add comments and photos
+    -   Can share plan with friends
+    -   Cannot edit plan details
+
+3.  **Confirmed Participant** (`plan.participantResponses[currentUser.uid] === 'going'`):
+    -   All invited participant permissions
+    -   Access to participant-only features (group chat, etc.)
+    -   Can upload photo highlights
+    -   Enhanced social features
+
+4.  **Public Viewer** (not authenticated or not invited):
+    -   Read-only access to public plan information
+    -   Can copy plan as template
+    -   Cannot RSVP or participate
+    -   Limited social features
+
+5.  **Authenticated Non-Participant** (logged in but not invited):
+    -   Can request to join (if plan allows)
+    -   Can copy plan as template
+    -   Can follow plan for updates
+    -   Cannot RSVP without invitation
+
+#### CONDITIONAL UI ELEMENTS:
+
+-   **RSVP Section**: Only visible to invited participants
+-   **Participant Management**: Only visible to host
+-   **Edit Controls**: Only visible to host
+-   **Group Chat Access**: Only for confirmed participants
+-   **Photo Upload**: Only for participants
+-   **Copy Template Button**: Visible to all authenticated users
+-   **Join Request**: For authenticated non-participants (if enabled)
+
+#### Possible Scenarios for Opening This Page
+
+1.  **Direct Link Sharing** (most common for public access)
+2.  **From Explore Page** (public discovery)
+3.  **From Feed** (social context)
+4.  **From Profile** (personal plans)
+5.  **From Plans List** (participant view)
+6.  **QR Code Scan** (event check-in)
+7.  **Deep Link** (from notifications or external apps)
+8.  **Search Results** (discovery)
+9.  **Invitation Link** (specific participant invitation)
+10. **Template Browse** (plan template discovery)
+
+### ESSENTIAL MISSING FEATURES TO IMPLEMENT
+
+#### Core Functionality
+- Interactive Google Maps (replace static image)
+- Weather integration for event date/location
+- Calendar integration (add to calendar)
+- Directions to event location
+- Contact host (direct messaging)
+- Attendee group chat
+- Event reminders and notifications
+- Accessibility information for venues
+
+#### Practical Features
+- Cost splitting and expense sharing
+- Parking information and costs
+- Transportation and rideshare coordination
+- Dietary restrictions collection
+- Emergency contacts and safety info
+- Plan templates (save for future use)
+
+#### User Scenarios Support
+- Direct link sharing optimization
+- QR code scanning support
+- Deep linking from notifications
+- Search result optimization
+- Feed integration enhancements
+- Profile page integration
+- Explore page compatibility
+
+### Weather Integration
+- Display weather forecast for plan date
+- Show weather for each itinerary location
+- Include temperature, precipitation, and conditions
+- Provide weather-based recommendations
+- Update styling based on weather conditions
+
+### Calendar Integration
+- Add to calendar functionality (Google, Outlook, Apple)
+- Generate .ics files for calendar import
+- Show time conflicts with existing events
+- Enable calendar sync for participants
+- Event reminders and push notifications
+- Timezone handling for different locations
+
+### Social Features
+- Real-time chat for plan participants
+- Comment system for itinerary items
+- Photo sharing within the plan
+- Activity feed for plan updates
+- Notification system for changes
+- Contact host functionality (direct messaging)
+- Attendee group chat for confirmed participants
+- Live updates for participant status changes
+- Live participant status updates
+- Photo stories (Instagram-style highlights)
+- Plan reactions (like/love beyond ratings)
+- Social proof (mutual friends attending)
+- Related plans suggestions
+- Waitlist functionality for full plans
+
+### Export and Sharing
+- PDF export with photos and details
+- Social media sharing with preview cards
+- Email sharing with formatted content
+- Print-friendly version
+- QR code generation for easy sharing
+- Direct link sharing optimization
+- Deep linking support for external apps
+
+## 6. UI/UX IMPROVEMENTS
+
+### CRITICAL DESIGN ISSUES TO FIX
+
+#### Visual Hierarchy Problems
+- MUST fix cramped layout with proper spacing (minimum 16px between sections)
+- MUST add clear visual separation between sections using borders/backgrounds
+- MUST redesign header to reduce clutter and improve scannability
+- MUST increase card visual weight with proper shadows and emphasis
+- MUST implement consistent typography scale (h1-h6 hierarchy)
+
+#### Critical Functional Issues
+- MUST add user context awareness (host/participant/explorer views)
+- MUST implement RSVP functionality for public plan view
+- MUST add participant management interface
+- MUST ensure design language consistency with app colors (#4285F4 blue, #FF5722 orange)
+- MUST implement bottom navigation pattern used throughout app
+
+#### Mobile Experience Fixes
+- MUST replace grid layout with mobile-first responsive design
+- MUST move RSVP to sticky header/bottom for mobile accessibility
+- MUST increase button touch targets to minimum 44px
+- MUST implement responsive map that scales properly
+- MUST use CSS Grid/Flexbox for adaptive layouts
+
+#### Information Architecture Restructuring
+- MUST consolidate critical info (date, location, RSVP) in hero section
+- MUST establish clear call-to-action hierarchy (primary: RSVP, secondary: share)
+- MUST eliminate duplicate information across sections
+- MUST reorganize content with logical flow and grouping
+
+#### Visual Design Overhaul
+- MUST implement consistent spacing system using design tokens
+- MUST improve color contrast for accessibility (WCAG AA compliance)
+- MUST add visual feedback for all interactive elements (hover, focus, active)
+- MUST replace static map with interactive Google Maps embed
+- MUST use modern card design with proper elevation
+
+### Design System Implementation
+- Use Shadcn UI components consistently
+- Implement proper color scheme (light/dark mode)
+- Use consistent spacing and typography scale
+- Add smooth animations and transitions (200-300ms)
+- Ensure accessibility compliance (ARIA labels, keyboard navigation)
+
+### User Experience Enhancements
+- Clear loading states with skeleton components
+- Informative error messages with recovery options
+- Progressive disclosure of information
+- Contextual help and tooltips
+- Keyboard navigation support
+- Touch-friendly interactions for mobile
+
+### Visual Enhancements
+- Modern card-based layout with proper spacing
+- Subtle shadows and borders for depth
+- Consistent iconography from Lucide React
+- Proper image aspect ratios and lazy loading
+- Smooth hover and focus states with transitions
+
+## 7. TECHNICAL REQUIREMENTS
+
+### Code Quality
+- Follow TypeScript best practices
+- Use proper type definitions for all props
+- Implement comprehensive error handling
+- Add JSDoc comments for complex functions
+- Follow consistent naming conventions
+
+### Testing
+- Unit tests for utility functions
+- Integration tests for key user flows
+- Accessibility testing with screen readers
+- Performance testing on various devices
+- Cross-browser compatibility testing
+
+### Security
+- Sanitize user inputs
+- Implement proper authentication checks
+- Secure API key management
+- Validate data from external APIs
+- Follow OWASP security guidelines
+
+## 8. IMPLEMENTATION PHASES
+
+### PHASE 1: CRITICAL FUNCTIONALITY FIXES
+
+1.  **User Context Implementation:**
+    ```typescript
+    // Add user context hooks and utilities
+    const useUserPlanContext = (plan: Plan, currentUser: User | null) => {
+      const isHost = currentUser?.uid === plan?.hostId;
+      const isInvited = plan?.invitedParticipantUserIds?.includes(currentUser?.uid || '') || false;
+      const isParticipant = plan?.participantResponses?.[currentUser?.uid || ''] === 'going';
+      const isAuthenticated = !!currentUser;
+      
+      return {
+        userRole: isHost ? 'host' : isParticipant ? 'participant' : isInvited ? 'invited' : isAuthenticated ? 'authenticated' : 'public',
+        permissions: {
+          canEdit: isHost,
+          canRSVP: isInvited,
+          canComment: isInvited || isParticipant,
+          canUploadPhotos: isParticipant,
+          canViewParticipants: isInvited || isParticipant,
+          canCopyTemplate: isAuthenticated
+        }
+      };
+    };
+    ```
+
+2.  **RSVP System Integration:**
+    -   Import and implement `updateMyRSVPAction` from existing codebase
+    -   Add RSVP UI components with proper loading states
+    -   Implement real-time RSVP status updates
+    -   Add participant count displays
+
+3.  **Design Language Compliance:**
+    -   Apply app color scheme: Primary #4285F4, Accent #FF5722, Background #E8F0FE
+    -   Implement transparency effects for layered UI
+    -   Use consistent Shadcn UI components
+    -   Add bottom navigation integration
+
+### PHASE 2: COMPONENT ARCHITECTURE RESTRUCTURING
+
+4.  **Component Decomposition:**
+    ```
+    /components/plan-details/
+    ├── PlanDetailsHeader.tsx          // Sticky header with navigation
+    ├── PlanHeroSection.tsx            // Main image, title, basic info
+    ├── PlanInfoCards.tsx              // Description, details, logistics
+    ├── PlanItinerary.tsx              // Interactive itinerary with photos
+    ├── PlanParticipants.tsx           // Participant management
+    ├── PlanRSVPSection.tsx            // RSVP interface (conditional)
+    ├── PlanActions.tsx                // Context-aware action buttons
+    ├── PlanComments.tsx               // Comments section
+    ├── PlanPhotoGallery.tsx           // Photo highlights
+    └── PlanSocialFeatures.tsx         // Social sharing, reactions
+    ```
+
+5.  **State Management Optimization:**
+    -   Implement proper loading states for all async operations
+    -   Add error boundaries and fallback UI
+    -   Optimize re-renders with proper memoization
+    -   Add real-time updates for participant changes
+
+### PHASE 3: ENHANCED FEATURES INTEGRATION
+
+6.  **Interactive Features:**
+    -   **Interactive Map:** Replace static map with Google Maps embed
+    -   **Real-time Updates:** WebSocket or polling for live participant status
+    -   **Photo Management:** Upload, gallery, and highlight features
+    -   **Social Integration:** Reactions, sharing, social proof
+
+7.  **Mobile-First UI Redesign:**
+    -   Implement sticky bottom action bar for mobile
+    -   Add swipe gestures for photo gallery
+    -   Optimize touch targets and spacing
+    -   Implement pull-to-refresh functionality
+
+### PHASE 4: ADVANCED FEATURES (FUTURE)
+
+8.  **Extended Functionality:**
+    -   Weather integration with location-based forecasts
+    -   Calendar integration and sync
+    -   Turn-by-turn directions to itinerary items
+    -   Group chat integration for participants
+    -   Push notification preferences
+    -   Accessibility information and features
+    -   Cost splitting and payment integration
+    -   Transportation coordination
+    -   Dietary restrictions management
+    -   Plan template system
+
+## 9. SUCCESS METRICS
+
+### Performance Metrics
+- Page load time < 2 seconds
+- Time to interactive < 3 seconds
+- Lighthouse score > 90
+- Bundle size reduction > 20%
+
+### User Experience Metrics
+- Mobile usability score > 95
+- Accessibility score > 95
+- User engagement increase > 30%
+- Feature adoption rate > 60%
+
+### Code Quality Metrics
+- Test coverage > 80%
+- TypeScript strict mode compliance
+- Zero console errors
+- ESLint/Prettier compliance
+
+## 10. MAINTENANCE GUIDELINES
+
+### Code Organization
+- Keep components under 200 lines
+- Use custom hooks for complex logic
+- Implement proper prop drilling prevention
+- Maintain consistent file structure
+
+### Documentation
+- Update component documentation
+- Maintain API documentation
+- Document breaking changes
+- Keep README files current
+
+### Monitoring
+- Implement error tracking
+- Monitor performance metrics
+- Track user behavior analytics
+- Set up automated testing
+
+================================================================================
+                              CRITICAL REMINDERS
+================================================================================
+
+1. ALWAYS use getGooglePlacePhotoUrl for photo URL generation
+2. NEVER hardcode API keys - use environment variables
+3. ALWAYS implement proper loading states
+4. NEVER skip accessibility considerations
+5. ALWAYS test on mobile devices first
+6. NEVER compromise on performance for features
+7. ALWAYS handle edge cases and errors gracefully
+8. NEVER forget to update TypeScript types
+9. ALWAYS follow the existing code patterns
+10. NEVER deploy without proper testing
+
+================================================================================
+                                 QUICK REFERENCE
+================================================================================
+
+Key Files to Reference:
+- src/utils/googleMapsHelpers.ts (photo URL utility)
+- src/ai/flows/generate-full-plan.ts (AI photo integration)
+- components.json (Shadcn UI configuration)
+- tailwind.config.ts (design tokens)
+
+Key Dependencies:
+- @shadcn/ui (UI components)
+- Google Maps JavaScript API
+- Firebase (backend services)
+- Next.js (framework)
+
+Testing Commands:
+- npm run test (unit tests)
+- npm run build (production build)
+- npm run lint (code quality)
+- npm run type-check (TypeScript validation)
+
+## Data Types & Structure Reference
+
+### PLAN TYPE DEFINITION:
+
+```typescript
+export interface Plan {
+  id: string;
+  name: string;
+  description: string | null;
+  eventTime: string; // ISO string format
+  location: string;
+  city: string;
+  eventType: string | null;
+  eventTypeLowercase: string;
+  priceRange: string;
+  hostId: string;
+  hostName?: string;
+  hostAvatarUrl?: string;
+  creatorName?: string;
+  creatorUsername?: string;
+  creatorAvatarUrl?: string;
+  creatorIsVerified?: boolean;
+  invitedParticipantUserIds: string[]; // UIDs of invited users
+  participantUserIds: string[]; // UIDs of confirmed participants
+  itinerary: ItineraryItem[];
+  status: PlanStatus; // 'draft' | 'published' | 'archived' | 'completed' | 'cancelled'
+  planType: PlanType; // 'single-stop' | 'multi-stop'
+  originalPlanId: string | null;
+  sharedByUid: string | null;
+  averageRating: number | null;
+  reviewCount: number;
+  photoHighlights: string[]; // Array of image URLs
+  participantResponses: Record<string, ParticipantResponse>; // UID -> 'going' | 'maybe' | 'not-going' | 'pending'
+  createdAt: string;
+  updatedAt: string;
+  coordinates?: GeoPoint;
+  // Additional optional fields for analytics and features
+  recentSaves?: string[];
+  recentViews?: string[];
+  recentCompletions?: string[];
+  ratings?: Array<{ value: number; isVerified: boolean; }>;
+  featured?: boolean;
+  isPremiumOnly?: boolean;
+  minimumActivityScore?: number;
+  venues?: Array<{ id: string; name: string; discount: number; }>;
+  participantsCount?: number;
+  likesCount?: number;
+  sharesCount?: number;
+  savesCount?: number;
+  type?: 'dayInLife' | 'regular';
+  isCompleted?: boolean;
+  completedAt?: string;
+  completionConfirmedBy?: string[];
+  highlightsEnabled?: boolean;
+  isTemplate?: boolean;
+}
+```
+
+### ITINERARY ITEM TYPE DEFINITION:
+
+```typescript
+export interface ItineraryItem {
+  id: string;
+  placeName: string;
+  description: string | null;
+  address: string | null;
+  googlePlaceId: string | null;
+  city: string | null;
+  googlePhotoReference: string | null; // For getGooglePlacePhotoUrl()
+  googleMapsImageUrl: string | null; // Fallback image URL
+  lat: number | null;
+  lng: number | null;
+  types: string[] | null; // Google Places types
+  rating: number | null; // Google Places rating
+  reviewCount: number | null;
+  priceLevel: number | null; // 1-4 scale
+  phoneNumber: string | null;
+  isOperational: boolean | null; // Real-time status
+  statusText: string | null; // "Open", "Closed", etc.
+  openingHours: string[] | null;
+  website: string | null;
+  activitySuggestions: string[] | null; // AI-generated suggestions
+  startTime: string | null; // Time format
+  endTime: string | null;
+  durationMinutes: number | null;
+  transitMode: 'driving' | 'walking' | 'bicycling' | 'transit' | null;
+  transitTimeFromPreviousMinutes?: number | null;
+  notes: string | null;
+}
+```
+
+### KEY TYPE RELATIONSHIPS:
+
+1. **User Context Types:**
+   ```typescript
+   type UserRoleType = 'user' | 'admin' | 'influencer' | 'corporate';
+   type ParticipantResponse = 'going' | 'maybe' | 'not-going' | 'pending';
+   type RSVPStatusType = 'going' | 'maybe' | 'not-going' | 'pending';
+   ```
+
+2. **Plan Status Types:**
+   ```typescript
+   type PlanStatus = 'draft' | 'published' | 'archived' | 'completed' | 'cancelled';
+   type PlanType = 'single-stop' | 'multi-stop';
+   ```
+
+3. **Geographic Types:**
+   ```typescript
+   type GeoPoint = { latitude: number; longitude: number; };
+   type TransitMode = 'driving' | 'walking' | 'bicycling' | 'transit';
+   ```
+
+### CRITICAL DATA PATTERNS:
+
+1. **Participant Management:**
+   - `invitedParticipantUserIds`: Users who can RSVP
+   - `participantResponses`: UID -> RSVP status mapping
+   - `hostId`: Plan creator with full permissions
+
+2. **Photo Integration:**
+   - `photoHighlights`: User-uploaded photos
+   - `googlePhotoReference`: For Google Places API photos
+   - `googleMapsImageUrl`: Fallback static images
+
+3. **Real-time Data:**
+   - `isOperational`: Live business status
+   - `statusText`: Human-readable status
+   - `transitTimeFromPreviousMinutes`: Dynamic routing
+
+4. **Social Features:**
+   - `averageRating` & `reviewCount`: Community feedback
+   - `likesCount`, `sharesCount`, `savesCount`: Engagement metrics
+   - `creatorIsVerified`: Trust indicators
+
+## Design Language & Visual System
+
+### COLOR PALETTE:
+
+**Primary Colors:**
+```css
+--background: 240 15% 2%;           /* Deep black with blue/purple hint */
+--foreground: 0 0% 98%;              /* Near white text */
+--card: 240 10% 6%;                  /* Dark card background */
+--primary: 43 100% 50%;              /* Orange gradient start #ffb900 */
+--accent: 30 100% 50%;               /* Darker orange #ff7e00 */
+--secondary: 220 20% 25%;            /* Dark desaturated blue */
+--muted: 240 10% 15%;                /* Muted backgrounds */
+--border: 240 10% 12%;               /* Subtle borders */
+```
+
+**Gradient System:**
+```css
+/* Primary Orange Gradient */
+--button-primary-gradient-start: 43 100% 50%;      /* #ffb900 */
+--button-primary-gradient-end: 30 100% 50%;        /* #ff7e00 */
+--button-primary-gradient-start-hover: 43 100% 45%; /* Darker on hover */
+--button-primary-gradient-end-hover: 30 100% 45%;   /* Darker on hover */
+
+/* Utility Classes */
+.bg-gradient-primary              /* Horizontal orange gradient */
+.bg-gradient-primary-hover        /* Hover state gradient */
+.bg-gradient-primary-vertical     /* Vertical orange gradient */
+.text-gradient-primary            /* Gradient text effect */
+```
+
+### BLUR & TRANSPARENCY EFFECTS:
+
+**Backdrop Blur Patterns:**
+```css
+/* Light blur for overlays */
+backdrop-blur-sm                  /* 4px blur */
+
+/* Medium blur for modals/dialogs */
+backdrop-blur-md                  /* 12px blur */
+
+/* Heavy blur for full-screen overlays */
+backdrop-blur-xl                  /* 24px blur */
+```
+
+**Transparency Combinations:**
+```css
+/* Cards & Components */
+bg-card/95 backdrop-blur-sm       /* Semi-transparent cards */
+bg-background/80 backdrop-blur-sm /* Transparent headers */
+bg-popover/98 backdrop-blur-md    /* Modal backgrounds */
+
+/* Overlays */
+bg-black/80 backdrop-blur-md      /* Dark overlays */
+bg-black/90 backdrop-blur-lg      /* Heavy dark overlays */
+bg-white/10 backdrop-blur-sm      /* Light glass effect */
+```
+
+### BUTTON DESIGN SYSTEM:
+
+**Primary Button (Default):**
+```css
+bg-gradient-primary text-primary-foreground 
+hover:bg-gradient-primary-hover 
+border border-gray-600/50 backdrop-blur-sm 
+shadow-lg ring-1 ring-gray-600/30
+```
+
+**Secondary Button:**
+```css
+bg-gray-900/80 text-secondary-foreground 
+hover:bg-gray-800/90 
+border border-gray-600/50 backdrop-blur-sm 
+shadow-lg ring-1 ring-gray-600/30
+```
+
+**Outline Button:**
+```css
+border border-gray-600/60 bg-gray-900/80 
+hover:bg-gray-800/90 hover:text-accent-foreground 
+backdrop-blur-md shadow-md ring-1 ring-gray-600/40
+```
+
+**Ghost Button:**
+```css
+hover:bg-accent hover:text-accent-foreground
+```
+
+### COMPONENT PATTERNS:
+
+**Cards:**
+```css
+/* Standard Card */
+rounded-lg border border-border/40 bg-card/95 
+text-card-foreground shadow-lg backdrop-blur-sm 
+ring-1 ring-border/20
+
+/* Interactive Card */
+group bg-card/80 backdrop-blur-sm border border-border/40 
+rounded-2xl hover:border-primary/30 hover:shadow-lg 
+hover:shadow-primary/5 transition-all duration-300
+```
+
+**Form Elements:**
+```css
+/* Input Fields */
+flex h-10 w-full rounded-md border border-gray-600/60 
+bg-gray-900/90 backdrop-blur-sm shadow-md 
+ring-1 ring-gray-600/30
+
+/* Select Dropdowns */
+border border-border/50 bg-background/90 backdrop-blur-sm 
+shadow-md ring-1 ring-border/20
+```
+
+**Navigation:**
+```css
+/* Header */
+sticky top-0 z-40 w-full border-b 
+bg-background/80 backdrop-blur-sm
+
+/* Bottom Navigation */
+fixed bottom-0 left-0 right-0 z-40 border-t border-border/30 
+bg-background/95 backdrop-blur-sm
+```
+
+**Modals & Overlays:**
+```css
+/* Dialog Overlay */
+fixed inset-0 z-50 bg-black/80 backdrop-blur-sm
+
+/* Dialog Content */
+fixed left-[50%] top-[50%] z-50 border border-border/50 
+bg-popover/98 shadow-xl backdrop-blur-md 
+ring-1 ring-border/30
+```
+
+### ANIMATION SYSTEM:
+
+**Keyframes:**
+```css
+@keyframes slideInFromRight {
+  from { transform: translateX(30px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+```
+
+**Utility Classes:**
+```css
+.animate-slide-in-from-right      /* 0.35s ease-out */
+.animate-slide-in-from-left       /* 0.35s ease-out */
+.animate-fade-in                  /* 0.3s ease-out */
+```
+
+### DESIGN PRINCIPLES:
+
+1. **Glass Morphism**: Heavy use of backdrop-blur with semi-transparent backgrounds
+2. **Orange Gradient Accent**: Primary actions use orange gradient (#ffb900 → #ff7e00)
+3. **Dark Theme**: Deep black backgrounds (240 15% 2%) with subtle blue undertones
+4. **Layered Transparency**: Multiple opacity levels (80%, 90%, 95%, 98%)
+5. **Subtle Borders**: Low-opacity borders (border/40, border/50) with ring effects
+6. **Smooth Transitions**: 300ms duration for most hover effects
+7. **Shadow System**: Layered shadows with ring-1 for depth
+
+### CRITICAL DESIGN REQUIREMENTS FOR PLAN DETAILS:
+
+1. **Sticky Elements**: Use `bg-background/80 backdrop-blur-sm` for headers
+2. **Interactive Cards**: Apply hover states with `hover:border-primary/30`
+3. **Primary Actions**: Use `bg-gradient-primary` for RSVP/main buttons
+4. **Form Elements**: Include `backdrop-blur-sm` and ring effects
+5. **Overlays**: Use `bg-black/80 backdrop-blur-md` for image overlays
+6. **Status Indicators**: Apply gradient badges for premium/featured content
+
+## Technical Implementation Notes
+
+### EXISTING CODEBASE INTEGRATION:
+
+1.  **Leverage Existing Services:**
+    ```typescript
+    // Already available in codebase:
+    import { updateMyRSVPAction } from '@/app/actions/planActions';
+    import { getUsersProfiles } from '@/services/userService';
+    import { getGooglePlacePhotoUrl } from '@/utils/googleMapsHelpers';
+    import { useAuth } from '@/context/AuthContext';
+    ```
+
+2.  **Reuse Existing Components:**
+    -   `FriendPickerDialog` for participant management
+    -   `VerificationBadge` for creator verification
+    -   `RatingInput` for plan ratings
+    -   Existing Shadcn UI components (Card, Button, Badge, etc.)
+
+3.  **Follow Existing Patterns:**
+    -   Use `useToast` for user feedback
+    -   Implement loading states with `Loader2` icon
+    -   Follow existing error handling patterns
+    -   Use existing type definitions from `@/types/user`
+
+### CRITICAL IMPLEMENTATION REQUIREMENTS:
+
+4.  **Authentication Integration:**
+    ```typescript
+    // Ensure proper auth state handling
+    const { user: currentUser, loading: authLoading } = useAuth();
+    
+    // Handle loading states properly
+    if (loading || authLoading && !plan) {
+      return <LoadingSpinner />;
+    }
+    ```
+
+5.  **RSVP Implementation:**
+    ```typescript
+    // Add RSVP functionality to public plan view
+    const handleRSVP = async (response: 'yes' | 'no' | 'maybe') => {
+      if (!plan || !currentUser?.uid) return;
+      
+      const rsvpStatus: RSVPStatusType = response === 'yes' ? 'going' : 
+                                        response === 'no' ? 'not-going' : 'maybe';
+      
+      const result = await updateMyRSVPAction(plan.id, await currentUser.getIdToken(), rsvpStatus);
+      // Handle result and update UI
+    };
+    ```
+
+6.  **Design System Compliance:**
+    -   Primary: `#4285F4` (Saturated blue)
+    -   Accent: `#FF5722` (Vibrant orange)
+    -   Background: `#E8F0FE` (Light blue)
+    -   Use `bg-background/80 backdrop-blur-sm` for transparency effects
+    -   Implement bottom navigation pattern
+
+7.  **Performance Optimizations:**
+    -   Use `getGooglePlacePhotoUrl` utility for photo URLs
+    -   Implement lazy loading for images and components
+    -   Add proper error boundaries and fallback UI
+    -   Optimize re-renders with `useMemo` and `useCallback`
+    -   Use `unoptimized={true}` for Google Maps images
+
+8.  **Error Handling:**
+    -   Provide fallback content for missing data or images
+    -   Implement robust error handling for API calls
+    -   Add proper loading states for all async operations
+    -   Use existing toast system for user feedback
+
+9.  **Accessibility & SEO:**
+    -   Ensure proper ARIA labels and roles
+    -   Implement keyboard navigation
+    -   Add semantic HTML structure
+    -   Optimize meta tags for social sharing
+    -   Ensure color contrast compliance
+
+================================================================================
+                                    END OF GUIDE
+================================================================================

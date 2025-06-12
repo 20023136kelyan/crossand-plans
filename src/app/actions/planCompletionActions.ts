@@ -73,14 +73,101 @@ export async function markPlanAsCompletedAction(
       completionConfirmedBy.push(userId);
     }
 
-    await firestoreAdmin.collection(PLANS_COLLECTION).doc(planId).update({
+    // Check if this plan was copied from a template and if it has been modified
+    let shouldCreateNewTemplate = true;
+    
+    if (planData.originalPlanId) {
+      // This plan was copied from another plan/template - check if it's been modified
+      try {
+        const originalPlanDoc = await firestoreAdmin.collection(PLANS_COLLECTION).doc(planData.originalPlanId).get();
+        if (originalPlanDoc.exists) {
+          const originalPlan = originalPlanDoc.data() as Plan;
+          
+          // Compare key template fields to see if this plan is essentially the same
+          const isUnmodified = (
+            planData.name === originalPlan.name &&
+            planData.description === originalPlan.description &&
+            planData.location === originalPlan.location &&
+            planData.city === originalPlan.city &&
+            planData.eventType === originalPlan.eventType &&
+            planData.priceRange === originalPlan.priceRange &&
+            JSON.stringify(planData.itinerary.map(item => ({
+              placeName: item.placeName,
+              description: item.description,
+              address: item.address,
+              googlePlaceId: item.googlePlaceId
+            }))) === JSON.stringify(originalPlan.itinerary.map(item => ({
+              placeName: item.placeName,
+              description: item.description,
+              address: item.address,
+              googlePlaceId: item.googlePlaceId
+            })))
+          );
+          
+          if (isUnmodified && originalPlan.isTemplate) {
+            // Plan is unmodified from original template - don't create a new template
+            shouldCreateNewTemplate = false;
+          }
+        }
+      } catch (error) {
+        console.warn('[markPlanAsCompletedAction] Could not check original plan for modifications:', error);
+        // If we can't check, err on the side of creating a template
+      }
+    }
+
+    // Prepare update data based on whether we should create a new template
+    const baseUpdateData = {
       isCompleted: true,
       completedAt,
       completionConfirmedBy,
       highlightsEnabled: true,
-      isTemplate: true, // Make completed plans available as templates
       updatedAt: completedAt
-    });
+    };
+
+    let sanitizedUpdateData;
+    
+    if (shouldCreateNewTemplate) {
+      // Create a new template from this completed plan
+      sanitizedUpdateData = {
+        ...baseUpdateData,
+        isTemplate: true, // Make completed plans available as templates
+        // Clear personal data for template use
+        participantUserIds: [],
+        invitedParticipantUserIds: [],
+        participantResponses: {},
+        // Keep original creator info for attribution (not host, as templates have no hosts)
+        templateOriginalHostId: planData.hostId,
+        templateOriginalHostName: planData.hostName,
+        // Clear waitlist and other personal data
+        waitlistUserIds: [],
+        privateNotes: null,
+        // Remove specific date but preserve time information in itinerary
+        eventTime: null, // Templates don't have specific dates
+        // Preserve essential template data
+        name: planData.name,
+        description: planData.description,
+        location: planData.location,
+        city: planData.city,
+        eventType: planData.eventType,
+        priceRange: planData.priceRange,
+        // Preserve itinerary with time slots but remove specific dates
+        itinerary: planData.itinerary.map(item => ({
+          ...item,
+          // Keep time information but remove date specificity
+          startTime: item.startTime ? new Date(item.startTime).toTimeString().split(' ')[0] : null,
+          endTime: item.endTime ? new Date(item.endTime).toTimeString().split(' ')[0] : null
+        })),
+        photoHighlights: planData.photoHighlights || [],
+        // Preserve ratings and comments for templates
+        averageRating: planData.averageRating,
+        reviewCount: planData.reviewCount
+      };
+    } else {
+      // Just mark as completed without converting to template
+      sanitizedUpdateData = baseUpdateData;
+    }
+
+    await firestoreAdmin.collection(PLANS_COLLECTION).doc(planId).update(sanitizedUpdateData);
 
     // Revalidate relevant paths
     revalidatePath('/plans');

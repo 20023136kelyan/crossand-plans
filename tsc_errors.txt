@@ -1,0 +1,4 @@
+src/app/(app)/plans/page.tsx(207,7): error TS1128: Declaration or statement expected.
+src/app/(app)/plans/page.tsx(212,3): error TS1005: ',' expected.
+src/app/(app)/plans/page.tsx(404,1): error TS1128: Declaration or statement expected.
+src/app/(app)/plans/page.tsx(404,2): error TS1128: Declaration or statement expected.

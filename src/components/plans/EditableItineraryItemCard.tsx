@@ -113,7 +113,12 @@ const EditableItineraryItemCardImpl = ({
   
   // Handle place selection from autocomplete
   const handlePlaceSelect = useCallback((place: any) => {
-    console.log('EditableItineraryItemCard handlePlaceSelect called with place:', place);
+    console.log('=== EDITABLE ITINERARY ITEM CARD - PLACE SELECT ===');
+    console.log('handlePlaceSelect called with place:', place);
+    console.log('Place object keys:', Object.keys(place));
+    console.log('Place photos field:', place.photos);
+    console.log('Place photos type:', typeof place.photos);
+    console.log('Place photos length:', place.photos?.length);
     
     // Extract city from address components
     let city = '';
@@ -130,9 +135,42 @@ const EditableItineraryItemCardImpl = ({
     
     // Extract photo reference from place photos
     let photoReference = null;
+    console.log('=== PHOTO REFERENCE EXTRACTION ===');
+    console.log('Checking place.photos:', place.photos);
+    console.log('place.photos exists:', !!place.photos);
+    console.log('place.photos is array:', Array.isArray(place.photos));
+    
     if (place.photos && place.photos.length > 0) {
-      photoReference = place.photos[0].photo_reference;
-      console.log('Found photo reference:', photoReference);
+      console.log('Photos array has', place.photos.length, 'items');
+      console.log('First photo object:', place.photos[0]);
+      console.log('First photo keys:', Object.keys(place.photos[0]));
+      
+      // Extract photo reference - copy the exact pipeline from place-autocomplete.tsx
+      const firstPhoto = place.photos[0];
+      
+      // First try to call getUrl if available (primary method, same as automatic version)
+      if (typeof firstPhoto.getUrl === 'function') {
+        try {
+          photoReference = firstPhoto.getUrl({ maxWidth: 400 });
+          console.log('Generated photo URL using getUrl() (primary method):', photoReference);
+        } catch (error) {
+          console.error('Error calling getUrl (primary method):', error);
+          // Fallback to photo_reference if getUrl fails
+          photoReference = firstPhoto.photo_reference || null;
+          console.log('Using photo_reference as fallback:', photoReference);
+        }
+      } else {
+        // If no getUrl function, use photo_reference (for REST API or other sources)
+        photoReference = firstPhoto.photo_reference || null;
+        console.log('No getUrl function, using photo_reference:', photoReference);
+      }
+      
+      console.log('Photo reference type:', typeof photoReference);
+      
+      console.log('Final extracted photo reference:', photoReference);
+      console.log('Photo reference type:', typeof photoReference);
+    } else {
+      console.log('No photos available - place.photos is:', place.photos);
     }
     
     // Update form fields with place details
@@ -162,10 +200,17 @@ const EditableItineraryItemCardImpl = ({
       shouldDirty: true 
     });
     // Set the photo reference if available
+    console.log('=== SETTING PHOTO REFERENCE IN FORM ===');
+    console.log('About to set googlePhotoReference to:', photoReference);
     setValue(getFieldPath('googlePhotoReference'), photoReference, { 
       shouldValidate: true, 
       shouldDirty: true 
     });
+    
+    // Verify the value was set correctly
+    const setPhotoRef = getValues(getFieldPath('googlePhotoReference'));
+    console.log('Photo reference set in form:', setPhotoRef);
+    console.log('Photo reference matches what we set:', setPhotoRef === photoReference);
     
     console.log('Updated form fields with place details, city:', city, 'googlePlaceId:', place.place_id, 'photoReference:', photoReference);
   }, [setValue, getFieldPath]);
@@ -190,9 +235,9 @@ const EditableItineraryItemCardImpl = ({
         const result = await getDirectionsAction({
           originLat: previousItemLat,
           originLng: previousItemLng,
-          destinationLat: lat,
-          destinationLng: lng,
-          mode: transitMode,
+          destinationLat: Number(lat),
+          destinationLng: Number(lng),
+          mode: (transitMode as 'driving' | 'walking' | 'bicycling' | 'transit') || 'driving',
         });
         
         if (result.success && result.durationMinutes) {
@@ -243,7 +288,7 @@ const EditableItineraryItemCardImpl = ({
         fields: ['rating', 'user_ratings_total', 'types', 'business_status', 'price_level']
       };
       
-      placesService.getDetails(request, (place, status) => {
+      placesService.getDetails(request, (place: google.maps.places.PlaceResult | null, status: google.maps.places.PlacesServiceStatus) => {
         setLoadingPlaceInfo(false);
         if (status === window.google.maps.places.PlacesServiceStatus.OK && place) {
           setPlaceInfo({
@@ -283,7 +328,7 @@ const EditableItineraryItemCardImpl = ({
         fields: ['place_id', 'name', 'formatted_address', 'geometry']
       };
 
-      service.textSearch(request, (results, status) => {
+      service.textSearch(request, (results: google.maps.places.PlaceResult[] | null, status: google.maps.places.PlacesServiceStatus) => {
         if (status === window.google.maps.places.PlacesServiceStatus.OK && results && results.length > 0) {
           const newPlace = results[0];
           console.log('Successfully refreshed Place ID:', newPlace.place_id);
@@ -297,7 +342,7 @@ const EditableItineraryItemCardImpl = ({
             fields: ['name', 'formatted_address', 'rating', 'user_ratings_total', 'types', 'business_status', 'price_level']
           };
           
-          service.getDetails(detailsRequest, (place, detailsStatus) => {
+          service.getDetails(detailsRequest, (place: google.maps.places.PlaceResult | null, detailsStatus: google.maps.places.PlacesServiceStatus) => {
             if (detailsStatus === window.google.maps.places.PlacesServiceStatus.OK && place) {
               setPlaceInfo({
                 rating: place.rating,
@@ -325,6 +370,58 @@ const EditableItineraryItemCardImpl = ({
       fetchPlaceInfo();
     }
   }, [currentItem?.googlePlaceId, isEditing, fetchPlaceInfo]);
+
+  // Auto-refresh missing images for items generated without photos
+  useEffect(() => {
+    // Only run for items that have place data but no image
+    if (
+      currentItem?.googlePlaceId && 
+      currentItem?.placeName && 
+      !currentItem?.googlePhotoReference && 
+      !currentItem?.googleMapsImageUrl &&
+      !isEditing &&
+      isGoogleMapsApiLoaded &&
+      window.google?.maps?.places
+    ) {
+      console.log('[EditableItineraryItemCard] Auto-refreshing missing image for:', currentItem.placeName);
+      
+      const service = new window.google.maps.places.PlacesService(document.createElement('div'));
+      const request = {
+        placeId: currentItem.googlePlaceId,
+        fields: ['photos']
+      };
+      
+      service.getDetails(request, (place: google.maps.places.PlaceResult | null, status: google.maps.places.PlacesServiceStatus) => {
+        if (status === window.google.maps.places.PlacesServiceStatus.OK && place?.photos && place.photos.length > 0) {
+          const firstPhoto = place.photos[0];
+          
+          // ONLY use getUrl() method to avoid 400 errors from expired photo references
+          if (typeof firstPhoto.getUrl === 'function') {
+            try {
+              const photoUrl = firstPhoto.getUrl({ maxWidth: 400 });
+              console.log('[EditableItineraryItemCard] Auto-generated photo URL using getUrl():', photoUrl);
+              
+              // Verify the URL is valid before setting it
+              if (photoUrl && (photoUrl.startsWith('http://') || photoUrl.startsWith('https://'))) {
+                setValue(getFieldPath('googlePhotoReference'), photoUrl, { shouldValidate: false });
+                console.log('[EditableItineraryItemCard] Successfully set direct photo URL');
+              } else {
+                console.warn('[EditableItineraryItemCard] getUrl() returned invalid URL:', photoUrl);
+              }
+            } catch (error) {
+              console.error('[EditableItineraryItemCard] Error calling getUrl() during auto-refresh:', error);
+              // Do NOT fallback to photo_reference to avoid 400 errors
+              console.log('[EditableItineraryItemCard] Skipping photo_reference fallback to prevent 400 errors');
+            }
+          } else {
+            console.log('[EditableItineraryItemCard] No getUrl function available, skipping photo refresh to avoid 400 errors');
+          }
+        } else {
+          console.log('[EditableItineraryItemCard] No photos available for auto-refresh:', currentItem.placeName);
+        }
+      });
+    }
+  }, [currentItem?.googlePlaceId, currentItem?.placeName, currentItem?.googlePhotoReference, currentItem?.googleMapsImageUrl, isEditing, isGoogleMapsApiLoaded, setValue, getFieldPath]);
   
   const handleSave = useCallback(async () => {
     // Clear any pending debounced timeouts to ensure immediate form update
@@ -371,13 +468,29 @@ const EditableItineraryItemCardImpl = ({
   const itemPhotoUrl = useMemo(() => {
   const placeNameStr = typeof placeName === 'string' ? placeName : '';
   
+  console.log('[EditableItineraryItemCard] Photo URL generation:', {
+    placeName: placeNameStr,
+    hasGooglePhotoReference: !!googlePhotoReference,
+    googlePhotoReference,
+    hasGoogleMapsImageUrl: !!currentItem?.googleMapsImageUrl,
+    hasCoordinates: !!(lat && lng),
+    hasStaticMapApiKey: !!staticMapApiKey
+  });
+  
   // Priority 1: Google photo reference
   if (googlePhotoReference && staticMapApiKey) {
-    return getGooglePlacePhotoUrl(googlePhotoReference, 600, 300, staticMapApiKey);
+          // Check if it's already a direct URL (from place-autocomplete)
+          const googlePhotoRefStr = String(googlePhotoReference);
+          const photoUrl = (googlePhotoRefStr.startsWith('http://') || googlePhotoRefStr.startsWith('https://')) 
+            ? googlePhotoRefStr 
+            : getGooglePlacePhotoUrl(googlePhotoRefStr, 600, 300, staticMapApiKey || '');
+    console.log('[EditableItineraryItemCard] Using Google photo reference:', photoUrl);
+    return photoUrl;
   }
   
   // Priority 2: Existing Google Maps image URL
   if (currentItem?.googleMapsImageUrl) {
+    console.log('[EditableItineraryItemCard] Using existing Google Maps image:', currentItem.googleMapsImageUrl);
     return currentItem.googleMapsImageUrl;
   }
   
@@ -417,8 +530,8 @@ const EditableItineraryItemCardImpl = ({
   };
 
   // Format times for display
-  const formattedStartTime = startTime && isValid(parseISO(startTime)) ? format(parseISO(startTime), 'p') : 'N/A';
-  const formattedEndTime = endTime && isValid(parseISO(endTime)) ? format(parseISO(endTime), 'p') : 'N/A';
+  const formattedStartTime = startTime && isValid(parseISO(String(startTime))) ? format(parseISO(String(startTime)), 'p') : 'N/A';
+  const formattedEndTime = endTime && isValid(parseISO(String(endTime))) ? format(parseISO(String(endTime)), 'p') : 'N/A';
 
   return (
     <Card className="mb-6 border border-border shadow-lg bg-card rounded-2xl overflow-hidden hover:shadow-xl transition-shadow duration-300">
@@ -427,7 +540,7 @@ const EditableItineraryItemCardImpl = ({
         <div className="relative h-32 sm:h-40 w-full rounded-t-lg overflow-hidden">
           {!imageError ? (
             <Image
-              src={itemPhotoUrl}
+              src={String(itemPhotoUrl || '')}
               alt={typeof placeName === 'string' ? placeName : 'Location'}
               fill
               className="object-cover"
@@ -626,7 +739,7 @@ const EditableItineraryItemCardImpl = ({
                 name={getFieldPath('transitMode')}
                 render={({ field }) => (
                   <FormItem>
-                    <Select onValueChange={field.onChange} defaultValue={field.value || 'driving'}>
+                    <Select onValueChange={field.onChange} defaultValue={String(field.value || 'driving')}>
                       <FormControl>
                         <SelectTrigger className="w-[120px] h-8 bg-background border-border">
                           <SelectValue placeholder="Travel mode" />
@@ -661,7 +774,7 @@ const EditableItineraryItemCardImpl = ({
                 <FormItem>
                   <FormControl>
                     <PlaceAutocomplete
-                      value={field.value || ''}
+                      value={String(field.value || '')}
                       onPlaceSelect={handlePlaceSelect}
                       onInputChange={(value) => {
                         // Immediately update the form field
@@ -700,7 +813,7 @@ const EditableItineraryItemCardImpl = ({
                     <FormControl>
                       <Input
                         {...field}
-                        value={field.value || ''}
+                        value={String(field.value || '')}
                         placeholder="Address"
                         className="h-11"
                       />
@@ -718,7 +831,7 @@ const EditableItineraryItemCardImpl = ({
                     <FormControl>
                       <Input
                         {...field}
-                        value={field.value || ''}
+                        value={String(field.value || '')}
                         placeholder="City"
                         className="h-11"
                       />
@@ -738,7 +851,7 @@ const EditableItineraryItemCardImpl = ({
                   <FormControl>
                     <Textarea
                       {...field}
-                      value={field.value || ''}
+                      value={String(field.value || '')}
                       placeholder="Describe what you'll do here, what to see, or any special notes..."
                       className="min-h-[100px] resize-none"
                     />
@@ -776,7 +889,7 @@ const EditableItineraryItemCardImpl = ({
                     <FormControl>
                       <Input
                         {...field}
-                        value={formatForDatetimeLocal(field.value)}
+                        value={formatForDatetimeLocal(String(field.value || ''))}
                         onChange={(e) => {
                           const datetimeLocalValue = e.target.value;
                           if (datetimeLocalValue) {
@@ -804,7 +917,7 @@ const EditableItineraryItemCardImpl = ({
                     <FormControl>
                       <Input
                         {...field}
-                        value={formatForDatetimeLocal(field.value)}
+                        value={formatForDatetimeLocal(String(field.value || ''))}
                         onChange={(e) => {
                           const datetimeLocalValue = e.target.value;
                           if (datetimeLocalValue) {

@@ -1,0 +1,66 @@
+'use client';
+
+import { useParams, useRouter } from 'next/navigation';
+import NextImage from 'next/image'; // Aliased to avoid conflict with native Image if ever used
+import Link from 'next/link';
+import { getGooglePlacePhotoUrl } from '@/utils/googleMapsHelpers';
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription as DialogDescriptionComponent, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { 
+  CalendarDays, MapPin, Users, Edit3, Trash2, Share2, QrCode,
+  MessageSquare, Send, CheckCircle, XCircle, ChevronLeft, Grid2X2, Star as StarIconLucide, 
+  Loader2, Clock, ExternalLink, ThumbsUp, UserCheck, UserX, ThumbsDown, HelpCircle, CopyPlus,
+  Camera, UploadCloud, Lock, Globe, Link as LinkIcon, MoreVertical, EyeOff, FileText, DollarSign, ListChecks, ShieldCheck as AdminShieldIcon, CheckCircle as VerifiedIcon, UserCircle as UserCircleIcon
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import type { Plan as PlanType, ItineraryItem, PlanStatusType as FirestorePlanStatus, RSVPStatusType, Comment, UserRoleType, FeedPostVisibility, PlanShareStatus, FriendEntry, UserProfile, Rating, AppTimestamp } from '@/types/user';
+import { getPlanById, getPlanComments, getUserRatingForPlan } from '@/services/planService'; 
+import { getUsersProfiles } from '@/services/userService'; 
+import { format, parseISO, isValid, isPast, isFuture, formatDistanceToNowStrict } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/context/AuthContext';
+import { 
+  updateMyRSVPAction, 
+  copyPlanToMyAccountAction, 
+  submitRatingAction, 
+  submitCommentAction, 
+  addPhotoHighlightAction, 
+  deletePlanAction, 
+  createPlanShareInviteAction,
+  deleteRatingAction,
+  updateCommentAction,
+  deleteCommentAction
+} from '@/app/actions/planActions'; 
+import { cn, commonImageExtensions } from '@/lib/utils';
+import { FriendPickerDialog } from '@/components/messages/FriendPickerDialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { QRCodeSVG } from 'qrcode.react';
+
+// This is a backup of the original file before rewriting
+// Created on: $(Get-Date)
+// Original file had parsing errors and needed to be restructured

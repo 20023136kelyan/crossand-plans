@@ -516,7 +516,7 @@ export default function AppLayout({
         
         {/* Main Content */}
         <main className={cn(
-          "flex-1 min-h-[calc(100vh-4rem)]",
+          "flex-1 min-h-[calc(100vh-4rem)] md:pt-16",
           !stableIsMobile && user && currentUserProfile 
             ? pathname.startsWith('/admin') 
               ? "ml-[220px] lg:ml-[240px] xl:ml-[260px] 2xl:ml-[280px]" 
@@ -537,7 +537,7 @@ export default function AppLayout({
         
         {/* Right Sidebar - Quick Actions and Plans */}
         {!stableIsMobile && user && currentUserProfile && !pathname.startsWith('/admin') && (
-          <div className="fixed right-4 top-20 w-64 z-30 space-y-4">
+          <div className="fixed right-4 top-16 w-64 z-30 space-y-4 mt-4">
             {/* Quick Actions Card */}
             <div className="p-3 shadow-xl rounded-xl border-border/50 bg-card/95 backdrop-blur-sm">
               <div className="px-1 py-1 mb-2">

@@ -293,7 +293,7 @@ export const setRatingAdmin = async (
   const ratingRef = planRef.collection(RATINGS_SUBCOLLECTION).doc(userId);
 
   try {
-    let newAverageRating = currentPlan.averageRating;
+    let newAverageRating = currentPlan.averageRating ?? undefined;
     let newReviewCount = currentPlan.reviewCount || 0;
 
     await firestoreAdmin.runTransaction(async (transaction) => {
@@ -333,7 +333,7 @@ export const setRatingAdmin = async (
         planId: planId, 
       });
       
-      newAverageRating = currentReviewCount > 0 ? totalRatingValue / currentReviewCount : null;
+      newAverageRating = currentReviewCount > 0 ? totalRatingValue / currentReviewCount : undefined;
       newReviewCount = currentReviewCount;
       
       transaction.update(planRef, {
@@ -373,6 +373,49 @@ export const addCommentAdmin = async (
     return { success: true, commentId: newCommentRef.id };
   } catch (error: any) {
     console.error("Error adding comment (Admin SDK):", error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const copyCommentsFromTemplate = async (
+  originalPlanId: string,
+  newPlanId: string
+): Promise<{success: boolean, error?: string}> => {
+  if (!firestoreAdmin) return { success: false, error: "Firestore Admin SDK not initialized." };
+  
+  try {
+    // Get all comments from the original plan
+    const originalCommentsRef = firestoreAdmin.collection(PLANS_COLLECTION).doc(originalPlanId).collection(COMMENTS_SUBCOLLECTION);
+    const commentsSnapshot = await originalCommentsRef.orderBy('createdAt', 'asc').get();
+    
+    if (commentsSnapshot.empty) {
+      return { success: true }; // No comments to copy
+    }
+    
+    // Copy each comment to the new plan
+    const newCommentsRef = firestoreAdmin.collection(PLANS_COLLECTION).doc(newPlanId).collection(COMMENTS_SUBCOLLECTION);
+    const batch = firestoreAdmin.batch();
+    
+    commentsSnapshot.docs.forEach(doc => {
+      const commentData = doc.data();
+      const newCommentRef = newCommentsRef.doc();
+      batch.set(newCommentRef, {
+        ...commentData,
+        planId: newPlanId, // Update to new plan ID
+        createdAt: commentData.createdAt // Preserve original timestamp
+      });
+    });
+    
+    await batch.commit();
+    
+    // Update the new plan's updatedAt timestamp
+    await firestoreAdmin.collection(PLANS_COLLECTION).doc(newPlanId).update({
+      updatedAt: FieldValue.serverTimestamp()
+    });
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error copying comments from template (Admin SDK):", error);
     return { success: false, error: error.message };
   }
 };

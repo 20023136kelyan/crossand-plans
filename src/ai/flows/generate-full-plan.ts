@@ -22,45 +22,56 @@ const PlanTypeHintSchema = z.enum(['ai-decide', 'single-stop', 'multi-stop']);
 const ItineraryItemSchema = z.object({
   id: z.string().uuid().describe("A unique UUID for this itinerary item. Generate one if not provided."),
   placeName: z.string().describe("The name of the place or activity for this stop."),
-  address: z.string().optional().nullable().describe("The full street address of the place."),
-  city: z.string().optional().nullable().describe("The city of the place."),
-  startTime: z.string().datetime().describe("The start date and time for this stop in ISO 8601 format."),
-  endTime: z.string().datetime().optional().nullable().describe("The end date and time for this stop in ISO 8601 format. If not specified, calculate based on startTime and durationMinutes (default 60 mins)."),
-  description: z.string().optional().nullable().describe("A brief description of this stop or activity."),
-  googlePlaceId: z.string().optional().nullable().describe("The Google Place ID, if available from the 'fetchPlaceDetails' tool."),
-  lat: z.number().optional().nullable().describe("Latitude of the place."),
-  lng: z.number().optional().nullable().describe("Longitude of the place."),
-  googlePhotoReference: z.string().optional().nullable().describe("A Google Places Photo Reference string, if available from the 'fetchPlaceDetails' tool. This can be used to fetch an image."),
-  rating: z.number().min(0).max(5).optional().nullable().describe("The place's rating (0-5), if available."),
-  reviewCount: z.number().int().min(0).optional().nullable().describe("The number of reviews, if available."),
-  activitySuggestions: z.array(z.string()).optional().nullable().describe("A list of 2-3 concise activity suggestions for this stop, tailored to participants."),
-  isOperational: z.boolean().optional().nullable().describe("Whether the place is currently operational, from 'fetchPlaceDetails' tool."),
-  statusText: z.string().optional().nullable().describe("Business status text like 'OPERATIONAL', 'CLOSED_TEMPORARILY', from 'fetchPlaceDetails' tool."),
-  openingHours: z.array(z.string()).optional().nullable().describe("Weekly opening hours as an array of strings, from 'fetchPlaceDetails' tool."),
-  phoneNumber: z.string().optional().nullable().describe("The place's phone number."),
-  website: z.string().url().optional().nullable().describe("The place's website URL."),
-  priceLevel: z.number().int().min(0).max(4).optional().nullable().describe("The price level (0-4) from Google Places, if available."),
-  types: z.array(z.string()).optional().nullable().describe("An array of Google Place types (e.g., 'restaurant', 'museum')."),
-  notes: z.string().optional().nullable().describe("User-specific notes for this item, if any were part of the initial prompt for this stop."),
-  durationMinutes: z.number().int().min(0).optional().nullable().default(60).describe("Estimated duration for this stop in minutes. Default to 60 minutes if not specified or derivable."),
-  transitMode: TransitModeSchema.optional().nullable().default('driving').describe("Preferred mode of transport to this stop. Defaults to 'driving'."),
+  address: z.string().nullable().describe("The full street address of the place."),
+  city: z.string().nullable().describe("The city of the place."),
+  startTime: z.string().datetime().nullable().describe("The start date and time for this stop in ISO 8601 format."),
+  endTime: z.string().datetime().nullable().describe("The end date and time for this stop in ISO 8601 format. If not specified, calculate based on startTime and durationMinutes (default 60 mins)."),
+  description: z.string().nullable().describe("A brief description of this stop or activity."),
+  googlePlaceId: z.string().nullable().describe("The Google Place ID, if available from the 'fetchPlaceDetails' tool."),
+  lat: z.number().nullable().describe("Latitude of the place."),
+  lng: z.number().nullable().describe("Longitude of the place."),
+  googlePhotoReference: z.string().nullable().describe("A direct Google Places Photo URL, if available from the 'fetchPlaceDetails' tool. This is a ready-to-use image URL."),
+  googleMapsImageUrl: z.string().nullable().describe("A Google Maps static image URL for this place, if available."),
+  rating: z.number().min(0).max(5).nullable().describe("The place's rating (0-5), if available."),
+  reviewCount: z.number().int().min(0).nullable().describe("The number of reviews, if available."),
+  activitySuggestions: z.array(z.string()).nullable().describe("A list of 2-3 concise activity suggestions for this stop, tailored to participants."),
+  isOperational: z.boolean().nullable().describe("Whether the place is currently operational, from 'fetchPlaceDetails' tool."),
+  statusText: z.string().nullable().describe("Business status text like 'OPERATIONAL', 'CLOSED_TEMPORARILY', from 'fetchPlaceDetails' tool."),
+  openingHours: z.array(z.string()).nullable().describe("Weekly opening hours as an array of strings, from 'fetchPlaceDetails' tool."),
+  phoneNumber: z.string().nullable().describe("The place's phone number."),
+  website: z.string().url().nullable().describe("The place's website URL."),
+  priceLevel: z.number().int().min(0).max(4).nullable().describe("The price level (0-4) from Google Places, if available."),
+  types: z.array(z.string()).nullable().describe("An array of Google Place types (e.g., 'restaurant', 'museum')."),
+  notes: z.string().nullable().describe("User-specific notes for this item, if any were part of the initial prompt for this stop."),
+  durationMinutes: z.number().int().min(0).nullable().default(60).describe("Estimated duration for this stop in minutes. Default to 60 minutes if not specified or derivable."),
+  transitMode: TransitModeSchema.nullable().default('driving').describe("Preferred mode of transport to this stop. Defaults to 'driving'."),
   transitTimeFromPreviousMinutes: z.number().int().min(0).optional().nullable().describe("Estimated travel time in minutes from the previous stop. Null for the first item."),
 });
 
 const PlanOutputSchema = z.object({ // Renamed to PlanOutputSchema to avoid conflict with Plan type
   id: z.string().uuid().describe("A unique UUID for the plan. Generate one if creating anew."),
   name: z.string().describe("A catchy and descriptive name for the plan."),
-  description: z.string().optional().nullable().describe("A detailed description of the overall plan."),
+  description: z.string().nullable().describe("A detailed description of the overall plan."),
   eventTime: z.string().datetime().describe("The overall start date and time of the plan in ISO format. Should match the first itinerary item's start time."),
   location: z.string().describe("The primary location or venue name for the plan, derived from the first itinerary item."),
   city: z.string().describe("The primary city for the plan, derived from the first itinerary item."),
-  eventType: z.string().optional().nullable().describe("The type of event (e.g., 'Road Trip', 'Dinner Party')."),
-  priceRange: PriceRangeSchema.optional().nullable().describe("The estimated price range."),
+  eventType: z.string().nullable().describe("The type of event (e.g., 'Road Trip', 'Dinner Party')."),
+  eventTypeLowercase: z.string().describe("Lowercase version of eventType for filtering."),
+  priceRange: PriceRangeSchema.describe("The estimated price range."),
   hostId: z.string().describe("The UID of the user creating the plan."),
-  invitedParticipantUserIds: z.array(z.string()).optional().nullable().default([]).describe("Array of UIDs of invited friends. This should match the UIDs from invitedFriendProfiles if provided."),
+  invitedParticipantUserIds: z.array(z.string()).default([]).describe("Array of UIDs of invited friends. This should match the UIDs from invitedFriendProfiles if provided."),
+  participantUserIds: z.array(z.string()).default([]).describe("Array of UIDs of users who have joined the plan."),
   itinerary: z.array(ItineraryItemSchema).min(1).describe("An array of itinerary items. Must have at least one item."),
-  status: z.enum(['draft', 'published', 'cancelled']).default('draft').describe("The status of the plan."),
+  status: z.enum(['draft', 'published', 'cancelled', 'archived', 'completed']).default('draft').describe("The status of the plan."),
   planType: PlanTypeSchema.describe("Whether the plan is a single stop or multi-stop."),
+  originalPlanId: z.string().nullable().describe("ID of the original plan if this is a copy."),
+  sharedByUid: z.string().nullable().describe("UID of the user who shared this plan."),
+  averageRating: z.number().nullable().describe("Average rating of the plan."),
+  reviewCount: z.number().default(0).describe("Number of reviews for the plan."),
+  photoHighlights: z.array(z.string()).default([]).describe("Array of photo URLs for plan highlights."),
+  participantResponses: z.record(z.enum(['going', 'maybe', 'not-going', 'pending'])).default({}).describe("Record of participant responses keyed by user ID."),
+  createdAt: z.string().describe("Creation timestamp in ISO format."),
+  updatedAt: z.string().describe("Last update timestamp in ISO format."),
 });
 
 // Simplified profile schema for AI input, focusing on preferences
@@ -100,7 +111,7 @@ const FetchPlaceDetailsOutputSchema = z.object({
   city: z.string().optional().nullable(),
   lat: z.number().optional().nullable(),
   lng: z.number().optional().nullable(),
-  photoReference: z.string().optional().nullable().describe("A Google Places Photo Reference string."),
+  photoReference: z.string().optional().nullable().describe("A direct Google Places Photo URL, if available from the 'fetchPlaceDetails' tool. This is a ready-to-use image URL."),
   rating: z.number().optional().nullable(),
   reviewCount: z.number().optional().nullable(),
   openingHours: z.array(z.string()).optional().nullable().describe("e.g., ['Monday: 9:00 AM – 5:00 PM', ...]"),
@@ -143,9 +154,25 @@ const fetchPlaceDetailsTool = ai.defineTool(
         if (!searchRes.ok) {
           const errorBody = await searchRes.text();
           console.error(`[fetchPlaceDetailsTool] Text search API error ${searchRes.status}: ${errorBody}`);
+          
+          // Handle specific error codes
+          if (searchRes.status === 403) {
+            return { success: false, error: `Google Maps API access denied (403). Check API key permissions, billing, and quota limits.` };
+          }
           return { success: false, error: `Text search API error: ${searchRes.statusText} - ${errorBody}` };
         }
         const searchData = await searchRes.json();
+        
+        // Check for API-specific error statuses
+        if (searchData.status === 'REQUEST_DENIED') {
+          console.error(`[fetchPlaceDetailsTool] API request denied: ${searchData.error_message || 'Unknown reason'}`);
+          return { success: false, error: `Google Maps API request denied: ${searchData.error_message || 'Check API key and billing'}` };
+        }
+        if (searchData.status === 'OVER_QUERY_LIMIT') {
+          console.error(`[fetchPlaceDetailsTool] API quota exceeded`);
+          return { success: false, error: `Google Maps API quota exceeded. Please try again later.` };
+        }
+        
         if (searchData.results && searchData.results.length > 0) {
           placeId = searchData.results[0].place_id;
           console.log(`[fetchPlaceDetailsTool] Text Search successful. Place ID for "${input.placeNameOrId}": ${placeId}`);
@@ -172,15 +199,40 @@ const fetchPlaceDetailsTool = ai.defineTool(
       if (!detailsRes.ok) {
         const errorBody = await detailsRes.text();
         console.error(`[fetchPlaceDetailsTool] Place details API error ${detailsRes.status}: ${errorBody}`);
+        
+        // Handle specific error codes
+        if (detailsRes.status === 403) {
+          return { success: false, error: `Google Maps API access denied (403). Check API key permissions, billing, and quota limits.` };
+        }
         return { success: false, error: `Place details API error: ${detailsRes.statusText} - ${errorBody}` };
       }
       const detailsData = await detailsRes.json();
+      
+      // Check for API-specific error statuses
+      if (detailsData.status === 'REQUEST_DENIED') {
+        console.error(`[fetchPlaceDetailsTool] Place details request denied: ${detailsData.error_message || 'Unknown reason'}`);
+        return { success: false, error: `Google Maps API request denied: ${detailsData.error_message || 'Check API key and billing'}` };
+      }
+      if (detailsData.status === 'OVER_QUERY_LIMIT') {
+        console.error(`[fetchPlaceDetailsTool] Place details quota exceeded`);
+        return { success: false, error: `Google Maps API quota exceeded. Please try again later.` };
+      }
 
       if (detailsData.result) {
         const place = detailsData.result;
         const cityComponent = place.address_components?.find((c: any) => c.types.includes('locality') || c.types.includes('postal_town'));
         const city = cityComponent ? cityComponent.long_name : place.address_components?.find((c: any) => c.types.includes('administrative_area_level_2'))?.long_name || null;
         
+        // Generate photo URL if photo reference is available
+        let photoUrl = null;
+        if (place.photos?.[0]?.photo_reference) {
+          const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+          if (apiKey) {
+            photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${encodeURIComponent(place.photos[0].photo_reference)}&key=${apiKey}`;
+            console.log('[fetchPlaceDetailsTool] Generated photo URL for:', place.name);
+          }
+        }
+
         const output: z.infer<typeof FetchPlaceDetailsOutputSchema> = {
           success: true,
           placeId: place.place_id,
@@ -189,7 +241,7 @@ const fetchPlaceDetailsTool = ai.defineTool(
           city,
           lat: place.geometry?.location?.lat,
           lng: place.geometry?.location?.lng,
-          photoReference: place.photos?.[0]?.photo_reference,
+          photoReference: photoUrl, // Now stores the direct URL
           rating: place.rating,
           reviewCount: place.user_ratings_total,
           openingHours: place.opening_hours?.weekday_text,
@@ -262,9 +314,24 @@ const fetchDirectionsTool = ai.defineTool(
       if (!res.ok) {
         const errorBody = await res.text();
         console.error(`[fetchDirectionsTool] Directions API error ${res.status}: ${errorBody}`);
+        
+        // Handle specific error codes
+        if (res.status === 403) {
+          return { success: false, error: `Google Maps API access denied (403). Check API key permissions, billing, and quota limits.` };
+        }
         return { success: false, error: `Directions API error: ${res.statusText} - ${errorBody}` };
       }
       const data = await res.json();
+      
+      // Check for API-specific error statuses
+      if (data.status === 'REQUEST_DENIED') {
+        console.error(`[fetchDirectionsTool] Directions request denied: ${data.error_message || 'Unknown reason'}`);
+        return { success: false, error: `Google Maps API request denied: ${data.error_message || 'Check API key and billing'}` };
+      }
+      if (data.status === 'OVER_QUERY_LIMIT') {
+        console.error(`[fetchDirectionsTool] Directions quota exceeded`);
+        return { success: false, error: `Google Maps API quota exceeded. Please try again later.` };
+      }
 
       if (data.routes && data.routes.length > 0) {
         const leg = data.routes[0].legs[0];
@@ -327,7 +394,7 @@ Itinerary Instructions:
     b.  Crucially, CHECK THE OPENING HOURS from the tool's output against the planned 'startTime' and 'endTime' for the stop. Ensure the place is open. If not, pick an alternative or adjust times. If a place is not operational ('isOperational': false), do not include it.
     c.  Set a default DURATION of 60 minutes ('durationMinutes': 60) for each stop unless the user's prompt or place type clearly suggests otherwise (e.g., a quick coffee vs. a museum visit).
     d.  Calculate 'endTime' based on 'startTime' and 'durationMinutes'. Ensure 'endTime' is always after 'startTime'. Times should be in ISO 8601 format.
-    e.  Populate all relevant fields in the ItineraryItem schema using data from the 'fetchPlaceDetails' tool: 'placeName', 'address', 'city', 'lat', 'lng', 'googlePlaceId', 'googlePhotoReference', 'rating', 'reviewCount', 'openingHours', 'isOperational', 'statusText', 'types', 'website', 'phoneNumber', 'priceLevel'. IMPORTANT: Always set 'googlePhotoReference' to the 'photoReference' value returned by the 'fetchPlaceDetails' tool if available. This is crucial for displaying actual place photos instead of satellite map images.
+    e.  Populate all relevant fields in the ItineraryItem schema using data from the 'fetchPlaceDetails' tool: 'placeName', 'address', 'city', 'lat', 'lng', 'googlePlaceId', 'rating', 'reviewCount', 'openingHours', 'isOperational', 'statusText', 'types', 'website', 'phoneNumber', 'priceLevel'. IMPORTANT: Do NOT set 'googlePhotoReference' - leave it null to allow the frontend auto-refresh logic to handle photos using the reliable getUrl() method and avoid 400 errors from expired photo references.
     f.  Generate 2-3 concise 'activitySuggestions' for that stop, tailored to the participants' combined preferences and the place type.
     g.  For multi-stop plans, after the first stop, use the 'fetchDirections' tool to estimate 'transitTimeFromPreviousMinutes' from the previous stop's location to the current stop's location. Pick a sensible default 'transitMode' (usually 'driving' or 'walking' if close by, e.g. under 2km). Adjust the 'startTime' of the current stop accordingly (it should be previous stop's endTime + transitTime). Also set the 'transitMode' field for the current itinerary item.
 2.  The itinerary must be CHRONOLOGICAL. Ensure 'startTime' and 'endTime' for each stop are in valid ISO 8601 format (YYYY-MM-DDTHH:mm:ss.sssZ or YYYY-MM-DDTHH:mm).
@@ -368,10 +435,12 @@ const generateFullPlanFlow = ai.defineFlow(
     console.log('[generateFullPlanFlow] Input received:', JSON.stringify(input, null, 2));
     
     try {
-      const { output, history } = await generateFullPlanPrompt(input);
+      const result = await generateFullPlanPrompt(input);
+      const { output } = result;
+      const history = (result as any).history;
 
       if (history) {
-        history.forEach((event, index) => {
+        history.forEach((event: any, index: number) => {
           console.log(`[generateFullPlanFlow] History Event ${index}:`, event.type);
           if(event.type === 'toolRequest') console.log(`Tool Request: ${event.data.toolRequest.name} with input ${JSON.stringify(event.data.toolRequest.input)}`);
           if(event.type === 'toolResponse') console.log(`Tool Response: ${event.data.toolResponse.name} with output ${JSON.stringify(event.data.toolResponse.output)}`);
@@ -385,7 +454,13 @@ const generateFullPlanFlow = ai.defineFlow(
       console.log('[generateFullPlanFlow] AI Output (raw):', JSON.stringify(output, null, 2));
       
       // Cast and perform minor cleanups/defaults
-      const finalPlan = output as Plan; 
+      const finalPlan = output as Plan;
+      
+      // Set timestamps and derived fields
+      finalPlan.createdAt = new Date().toISOString();
+      finalPlan.updatedAt = new Date().toISOString();
+      finalPlan.eventTypeLowercase = finalPlan.eventType?.toLowerCase() || 'general';
+      finalPlan.hostId = input.hostProfile.uid; 
 
       if (!finalPlan.id) {
         finalPlan.id = crypto.randomUUID();

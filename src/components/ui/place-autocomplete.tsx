@@ -179,7 +179,35 @@ export function PlaceAutocomplete({
     console.log('Making getDetails request:', request);
     
     placesService.current.getDetails(request, (place, status) => {
-      console.log('getDetails response:', { place, status });
+      console.log('=== DETAILED PLACE DETAILS RESPONSE ===');
+      console.log('Status:', status);
+      console.log('Raw place object:', place);
+      
+      if (place) {
+        console.log('Place ID:', place.place_id);
+        console.log('Place Name:', place.name);
+        console.log('Formatted Address:', place.formatted_address);
+        console.log('Photos field exists:', 'photos' in place);
+        console.log('Photos value:', place.photos);
+        console.log('Photos type:', typeof place.photos);
+        console.log('Photos length:', place.photos?.length);
+        
+        if (place.photos && place.photos.length > 0) {
+          console.log('First photo object:', place.photos[0]);
+          console.log('First photo height:', place.photos[0].height);
+          console.log('First photo width:', place.photos[0].width);
+          // Note: Google Maps API PlacePhoto doesn't have photo_reference property
+          // Photo reference is accessed through getUrl() method
+          if (typeof place.photos[0].getUrl === 'function') {
+            console.log('Photo has getUrl method available');
+          }
+        } else {
+          console.log('No photos found in place object');
+        }
+        
+        // Log all available fields on the place object
+        console.log('All place object keys:', Object.keys(place));
+      }
       
       if (status === google.maps.places.PlacesServiceStatus.OK && place) {
         const placeDetails: PlaceDetails = {
@@ -193,14 +221,45 @@ export function PlaceAutocomplete({
             }
           },
           address_components: place.address_components,
-          photos: place.photos?.map(photo => ({
-            photo_reference: photo.photo_reference,
-            height: photo.height,
-            width: photo.width
-          }))
+          photos: place.photos?.map(photo => {
+            console.log('Mapping photo:', photo);
+            // If the photo has a getUrl function, call it to get the URL
+            if (typeof photo.getUrl === 'function') {
+              try {
+                const photoUrl = photo.getUrl({ maxWidth: 400 });
+                console.log('Generated photo URL during mapping:', photoUrl);
+                return {
+                  photo_reference: photoUrl, // Store the URL as photo_reference
+                  height: photo.height,
+                  width: photo.width
+                };
+              } catch (error) {
+                console.error('Error calling getUrl during mapping:', error);
+                // For Google Maps API photos, there's no direct photo_reference property
+                // We'll store an empty string as fallback since we couldn't get the URL
+                return {
+                  photo_reference: '',
+                  height: photo.height,
+                  width: photo.width
+                };
+              }
+            } else {
+              // For REST API or other sources that might have photo_reference
+              // Cast to any to access photo_reference if it exists
+              const photoAny = photo as any;
+              return {
+                photo_reference: photoAny.photo_reference || '',
+                height: photo.height,
+                width: photo.width
+              };
+            }
+          }) || []
         }
         
+        console.log('=== FINAL PLACE DETAILS ===');
         console.log('Created placeDetails:', placeDetails);
+        console.log('Photos in placeDetails:', placeDetails.photos);
+        console.log('Photos count:', placeDetails.photos?.length || 0);
         
         const displayName = place.name || place.formatted_address || prediction.description
         console.log('Setting input value to:', displayName);
@@ -214,6 +273,12 @@ export function PlaceAutocomplete({
         setPredictions([])
       } else {
         console.log('getDetails failed with status:', status);
+        console.log('Status meanings:');
+        console.log('- OK:', google.maps.places.PlacesServiceStatus.OK);
+        console.log('- ZERO_RESULTS:', google.maps.places.PlacesServiceStatus.ZERO_RESULTS);
+        console.log('- OVER_QUERY_LIMIT:', google.maps.places.PlacesServiceStatus.OVER_QUERY_LIMIT);
+        console.log('- REQUEST_DENIED:', google.maps.places.PlacesServiceStatus.REQUEST_DENIED);
+        console.log('- INVALID_REQUEST:', google.maps.places.PlacesServiceStatus.INVALID_REQUEST);
       }
     })
   }

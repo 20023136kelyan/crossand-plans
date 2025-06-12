@@ -1,0 +1,303 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- Helper Functions ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isUser(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Adopted pattern from second snippet for cleaner data access
+    function isPlanHost(planId, userId) {
+      let planData = get(/databases/$(database)/documents/plans/$(planId)).data;
+      return planData != null && planData.hostId == userId;
+    }
+
+    // Adopted pattern from second snippet for cleaner data access
+    function isPlanInvitedParticipant(planId, userId) {
+      let planData = get(/databases/$(database)/documents/plans/$(planId)).data;
+      return planData != null && planData.invitedParticipantUserIds != null && userId in planData.invitedParticipantUserIds;
+    }
+
+    function isPlanParticipant(planId, userId) {
+      return isPlanHost(planId, userId) || isPlanInvitedParticipant(planId, userId);
+    }
+
+    // Adopted pattern from second snippet for cleaner data access
+    function isPlanPast(planId) {
+      let planData = get(/databases/$(database)/documents/plans/$(planId)).data;
+      return planData != null && planData.eventTime < request.time;
+    }
+
+    // Adopted pattern from second snippet for cleaner data access
+    function isFeedPostOwner(postId, userId) {
+      let postData = get(/databases/$(database)/documents/feedPosts/$(postId)).data;
+      return postData != null && postData.userId == userId;
+    }
+
+    // Adopted pattern from second snippet for cleaner data access and null check
+    function isFriendOf(userId1, userId2) {
+      let friendship1 = get(/databases/$(database)/documents/users/$(userId1)/friendships/$(userId2)).data;
+      let friendship2 = get(/databases/$(database)/documents/users/$(userId2)/friendships/$(userId1)).data;
+      return friendship1 != null && friendship1.status == 'friends' &&
+             friendship2 != null && friendship2.status == 'friends';
+    }
+
+    // --- Users Collection ---
+    match /users/{userId} {
+      allow read: if isUser(userId) || isSignedIn();
+      // Keeping the more restrictive create rule from the original snippet
+      allow create: if isUser(userId) &&
+                       request.resource.data.email == request.auth.email;
+      allow update: if isUser(userId);
+      allow delete: if false;
+
+      match /friendships/{friendUserId} {
+        allow read, write, delete: if isUser(userId);
+      }
+    }
+
+    // --- Chats Collection ---
+    match /chats/{chatId} {
+      allow read, list: if isSignedIn() && request.auth.uid in resource.data.participants;
+      allow create: if isSignedIn() &&
+                       request.auth.uid in request.resource.data.participants &&
+                       request.resource.data.participants.size() > 0 &&
+                       request.resource.data.type != null &&
+                       request.resource.data.participantInfo.size() == request.resource.data.participants.size() &&
+                       (
+                         (request.resource.data.type == 'direct' && request.resource.data.participants.size() == 2) ||
+                         request.resource.data.type == 'group'
+                       );
+      // Adopted the refined update rule from the second snippet for participantReadTimestamps
+      allow update: if isSignedIn() && request.auth.uid in resource.data.participants &&
+                  (
+                    // Case 1: Sending a message
+                    (
+                      request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['lastMessageText', 'lastMessageSenderId', 'lastMessageTimestamp', 'updatedAt', 'participantReadTimestamps']) &&
+                      request.resource.data.lastMessageSenderId == request.auth.uid &&
+                      request.resource.data.lastMessageTimestamp == request.time &&
+                      request.resource.data.updatedAt == request.time &&
+                      request.resource.data.participantReadTimestamps[request.auth.uid] == request.time &&
+                      (
+                        (!('participantReadTimestamps' in resource.data) &&
+                          request.resource.data.participantReadTimestamps.keys().toSet().hasOnly([request.auth.uid])
+                        ) ||
+                        (
+                          ('participantReadTimestamps' in resource.data) &&
+                          resource.data.participantReadTimestamps.keys().toSet()
+                            .subsetOf(request.resource.data.participantReadTimestamps.keys().toSet()) &&
+                          request.resource.data.participantReadTimestamps.keys().toSet()
+                            .difference(resource.data.participantReadTimestamps.keys().toSet())
+                            .hasOnly([request.auth.uid])
+                        )
+                      )
+                    ) ||
+                    // Case 2: Marking chat as read
+                    (
+                      request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['participantReadTimestamps', 'updatedAt']) &&
+                      request.resource.data.updatedAt == request.time &&
+                      request.resource.data.participantReadTimestamps[request.auth.uid] == request.time &&
+                      request.resource.data.participantReadTimestamps.diff(resource.data.participantReadTimestamps).affectedKeys()
+                        .hasOnly([request.auth.uid])
+                    )
+                  );
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        // Keeping 'list' permission as per original snippet
+        allow read, list: if isSignedIn() &&
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        allow create: if isSignedIn() &&
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants &&
+          request.resource.data.senderId == request.auth.uid &&
+          (
+            (request.resource.data.text != null && request.resource.data.text.size() > 0) ||
+            (request.resource.data.mediaUrl != null && request.resource.data.mediaUrl.size() > 0)
+          ) &&
+          request.resource.data.timestamp == request.time;
+        allow update: if isSignedIn() &&
+                       request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hiddenBy']) &&
+                       request.resource.data.hiddenBy.hasAll(resource.data.hiddenBy) &&
+                       request.resource.data.hiddenBy.removeAll(resource.data.hiddenBy).hasOnly([request.auth.uid]);
+        allow delete: if false;
+      }
+    }
+
+    // --- Plans Collection ---
+    match /plans/{planId} {
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.hostId;
+      
+      // 'allow read' is identical in both snippets, keeping as is
+      allow read: if (
+        // Case 1: Authenticated user accessing plans they are specifically involved in
+        isSignedIn() && (
+          request.auth.uid == resource.data.hostId || // They are the host
+          (resource.data.invitedParticipantUserIds != null && request.auth.uid in resource.data.invitedParticipantUserIds) // They are an invitee
+        )
+      ) ||
+      (
+        // Case 2: Any user (even unauthenticated) accessing a published plan
+        resource.data.status == 'published'
+      );
+
+      // IMPORTANT CHANGE: Adopting the stricter, more secure 'list' rule from the second snippet
+      // This ensures users can only list plans they are involved in, or public ones based on query filters.
+      allow list: if isSignedIn() && (
+        (request.query.filters.size() >= 1 && ('hostId' in request.query.filters && request.query.filters.hostId == request.auth.uid)) ||
+        (request.query.filters.size() >= 1 && ('invitedParticipantUserIds' in request.query.filters && request.auth.uid in request.query.filters.invitedParticipantUserIds)) ||
+        (request.query.filters.size() >= 1 && ('status' in request.query.filters && request.query.filters.status == 'published'))
+      );
+
+      // Adopted the more efficient update rule from the second snippet
+      allow update: if isSignedIn() && (
+        (request.auth.uid == resource.data.hostId) || // Host can update
+        ( // Invited user can update their own RSVP
+          resource.data.invitedParticipantUserIds != null &&
+          request.auth.uid in resource.data.invitedParticipantUserIds &&
+          request.resource.data.participantResponses[request.auth.uid] != resource.data.participantResponses[request.auth.uid] &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participantResponses', 'updatedAt']) &&
+          request.resource.data.participantResponses.diff(resource.data.participantResponses).affectedKeys().hasOnly([request.auth.uid]) &&
+          request.resource.data.participantResponses[request.auth.uid] in ['going', 'maybe', 'declined', 'pending'] &&
+          request.resource.data.updatedAt == request.time
+        ) ||
+        ( // Participant can add photo highlights to past plans
+          isPlanParticipant(planId, request.auth.uid) && // Use helper for consistency where direct resource.data isn't direct host/invitee
+          isPlanPast(planId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['photoHighlights', 'updatedAt']) &&
+          request.resource.data.photoHighlights.size() >= resource.data.photoHighlights.size() &&
+          request.resource.data.updatedAt == request.time
+        )
+      );
+      
+      allow delete: if isSignedIn() && isPlanHost(planId, request.auth.uid);
+
+      match /ratings/{ratingUserId} {
+        // Keeping 'list' permission as per original snippet
+        allow read, list: if isSignedIn();
+        allow write: if isSignedIn() && request.auth.uid == ratingUserId &&
+                       isPlanParticipant(planId, request.auth.uid) &&
+                       isPlanPast(planId) &&
+                       request.resource.data.value >= 1 && request.resource.data.value <= 5 &&
+                       request.resource.data.createdAt == request.time &&
+                       request.resource.data.userId == request.auth.uid &&
+                       request.resource.data.planId == planId;
+        allow delete: if isSignedIn() && request.auth.uid == ratingUserId &&
+                        isPlanParticipant(planId, request.auth.uid) &&
+                        isPlanPast(planId);
+      }
+
+      match /comments/{commentId} {
+        // Keeping 'list' permission as per original snippet
+        allow read, list: if true;
+        allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid &&
+                        isPlanParticipant(planId, request.auth.uid) &&
+                        isPlanPast(planId) &&
+                        request.resource.data.text.size() > 0 &&
+                        request.resource.data.createdAt == request.time;
+        allow update: if isSignedIn() &&
+                       request.auth.uid == resource.data.userId &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'updatedAt']) &&
+                       request.resource.data.text.size() > 0 &&
+                       request.resource.data.updatedAt == request.time;
+        allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+      }
+    }
+
+    // --- Plan Shares Collection ---
+    match /planShares/{shareId} {
+      // Keeping 'list' permission as per original snippet
+      allow read, list: if isSignedIn() &&
+                   (request.auth.uid == resource.data.sharedWithUid ||
+                    request.auth.uid == resource.data.sharedByUid);
+      allow create: if isSignedIn() &&
+                     request.auth.uid == request.resource.data.sharedByUid &&
+                     request.resource.data.status == 'pending';
+      allow update: if isSignedIn() &&
+                     request.auth.uid == resource.data.sharedWithUid &&
+                     resource.data.status == 'pending' &&
+                     (request.resource.data.status == 'accepted' || request.resource.data.status == 'declined') &&
+                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+                     request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    // --- PlanCollections (Curated Collections) ---
+    match /planCollections/{collectionId} {
+      // Keeping 'list' permission as per original snippet
+      allow read, list: if true;
+      allow write: if false;
+    }
+
+    // --- Feed Posts Collection ---
+    match /feedPosts/{postId} {
+      // Keeping 'list' permission as per original snippet
+      allow read, list: if
+        (resource.data.visibility == 'public' && isSignedIn()) ||
+        (resource.data.visibility == 'private' && request.auth.uid == resource.data.userId) ||
+        (resource.data.visibility == 'private' && isSignedIn() && isFriendOf(request.auth.uid, resource.data.userId));
+
+      allow create: if isSignedIn() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.planId != null &&
+        request.resource.data.planName != null &&
+        request.resource.data.mediaUrl != null &&
+        request.resource.data.text != null &&
+        request.resource.data.userName != null &&
+        (request.resource.data.visibility == 'public' || request.resource.data.visibility == 'private') &&
+        request.resource.data.likesCount == 0 &&
+        request.resource.data.commentsCount == 0 &&
+        request.resource.data.sharesCount == 0 &&
+        request.resource.data.createdAt == request.time;
+
+      // Adopted the more comprehensive update rule from the second snippet
+      allow update: if isSignedIn() && request.resource.data.updatedAt == request.time && (
+        // Case 1: Owner updates visibility
+        (
+          request.auth.uid == resource.data.userId &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['visibility', 'updatedAt']) &&
+          (request.resource.data.visibility == 'public' || request.resource.data.visibility == 'private')
+        ) ||
+        // Case 2: Like/Unlike operation
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likedBy', 'likesCount', 'updatedAt']) &&
+          request.resource.data.likedBy.hasAll(resource.data.likedBy.removeAll([request.auth.uid])) &&
+          request.resource.data.likedBy.hasOnly(resource.data.likedBy.removeAll([request.auth.uid]).concat([request.auth.uid])) &&
+          request.resource.data.likesCount == request.resource.data.likedBy.size()
+        ) ||
+        // Case 3: Incrementing comments count (associated with adding a comment)
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentsCount', 'updatedAt']) &&
+          request.resource.data.commentsCount == resource.data.commentsCount + 1
+          // This rule implies a comment was successfully added.
+          // Server logic in addCommentToPostAdmin handles the actual comment creation.
+        ) ||
+        // Case 4: Incrementing shares count
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sharesCount', 'updatedAt']) &&
+          request.resource.data.sharesCount == resource.data.sharesCount + 1
+        )
+      );
+
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+
+      match /comments/{commentId} {
+        // Keeping 'list' permission as per original snippet
+        allow read, list: if true;
+        allow create: if isSignedIn() &&
+                         request.resource.data.userId == request.auth.uid &&
+                         request.resource.data.text.size() > 0 &&
+                         request.resource.data.createdAt == request.time;
+        // update, delete remains false as per both snippets
+        allow update, delete: if false;
+      }
+    }
+  }
+}
