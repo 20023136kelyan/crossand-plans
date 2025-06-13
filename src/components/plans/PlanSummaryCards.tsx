@@ -103,9 +103,9 @@ export function PlanSummaryCards({ className }: PlanSummaryCardsProps) {
 
   if (loading) {
     return (
-      <Card className={cn("w-full", className)}>
+      <Card className={cn("w-full bg-transparent border-none shadow-none", className)}>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium flex items-center">
+          <CardTitle className="text-sm font-medium flex items-center text-muted-foreground">
           <Clock className="mr-2 h-4 w-4" />
           Next Adventures
         </CardTitle>
@@ -121,9 +121,9 @@ export function PlanSummaryCards({ className }: PlanSummaryCardsProps) {
 
   if (plans.length === 0) {
     return (
-      <Card className={cn("w-full", className)}>
+      <Card className={cn("w-full bg-transparent border-none shadow-none", className)}>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium flex items-center">
+          <CardTitle className="text-sm font-medium flex items-center text-muted-foreground">
           <Clock className="mr-2 h-4 w-4" />
           Next Adventures
         </CardTitle>
@@ -139,9 +139,9 @@ export function PlanSummaryCards({ className }: PlanSummaryCardsProps) {
   }
 
   return (
-    <Card className={cn("w-full", className)}>
+    <Card className={cn("w-full bg-transparent border-none shadow-none", className)}>
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-medium flex items-center">
+        <CardTitle className="text-sm font-medium flex items-center text-muted-foreground">
           <Clock className="mr-2 h-4 w-4" />
           Next Adventures
         </CardTitle>

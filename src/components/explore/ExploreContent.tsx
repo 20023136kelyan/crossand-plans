@@ -204,9 +204,53 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
   useEffect(() => { /* ... (kept same for fetching user's saved location) ... */ }, [user?.uid, toast, locationRequested, requestLocation]);
 
   const processExploreData = useCallback((allPlansData: Plan[], featuredCitiesData: City[], currentLocation?: { city: string; country: string; coordinates?: GeoPoint }) => {
-    const scoredPlans = allPlansData.map(plan => ({...plan, score: calculateEnhancedPlanScore(plan, currentLocation?.coordinates || null, userPreferences || undefined)})).sort((a, b) => b.score - a.score);
-    setFeaturedPlans(scoredPlans.filter(plan => plan.featured)); setPlans(scoredPlans.filter(plan => !plan.featured));
-    const citiesWithScore = featuredCitiesData.map(city => ({...city, score: scoredPlans.filter(p => p.city?.toLowerCase() === city.name?.toLowerCase()).reduce((acc, p) => acc + (p as any).score, 0)})).sort((a, b) => b.score - a.score);
+    // Single pass to score plans and separate featured/non-featured
+    const featuredPlans: Plan[] = [];
+    const regularPlans: Plan[] = [];
+    const cityScores = new Map<string, number>();
+    
+    // Initialize city scores
+    featuredCitiesData.forEach(city => {
+      if (city.name) {
+        cityScores.set(city.name.toLowerCase(), 0);
+      }
+    });
+    
+    // Single pass through plans
+    allPlansData.forEach(plan => {
+      const score = calculateEnhancedPlanScore(plan, currentLocation?.coordinates || null, userPreferences || undefined);
+      const scoredPlan = { ...plan, score };
+      
+      // Separate featured and regular plans
+      if (plan.featured) {
+        featuredPlans.push(scoredPlan);
+      } else {
+        regularPlans.push(scoredPlan);
+      }
+      
+      // Update city scores
+      if (plan.city) {
+        const cityKey = plan.city.toLowerCase();
+        if (cityScores.has(cityKey)) {
+          cityScores.set(cityKey, cityScores.get(cityKey)! + score);
+        }
+      }
+    });
+    
+    // Sort plans by score
+    featuredPlans.sort((a, b) => (b as any).score - (a as any).score);
+    regularPlans.sort((a, b) => (b as any).score - (a as any).score);
+    
+    // Create cities with scores
+    const citiesWithScore = featuredCitiesData
+      .map(city => ({
+        ...city,
+        score: city.name ? cityScores.get(city.name.toLowerCase()) || 0 : 0
+      }))
+      .sort((a, b) => b.score - a.score);
+    
+    setFeaturedPlans(featuredPlans);
+    setPlans(regularPlans);
     setCities(citiesWithScore);
   }, [userPreferences]);
 
@@ -318,23 +362,49 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
     setSearchLoading(false);
   }, [user, toast, plans, featuredPlans]);
 
-  useEffect(() => {
-    if (!plans) return;
+  // Memoize expensive calculations
+  const memoizedFilteredPlans = useMemo(() => {
+    if (!plans) return [];
     let newFilteredPlans = [...plans, ...featuredPlans];
-    if (selectedCategory && selectedCategory !== 'ALL' && !searchTerm) { newFilteredPlans = newFilteredPlans.filter(plan => plan.eventType?.toLowerCase() === selectedCategory.toLowerCase()); }
-    if (selectedCity && !searchTerm) { newFilteredPlans = newFilteredPlans.filter(plan => plan.city?.toLowerCase() === selectedCity.toLowerCase()); }
+    
+    if (selectedCategory && selectedCategory !== 'ALL' && !searchTerm) {
+      newFilteredPlans = newFilteredPlans.filter(plan => 
+        plan.eventType?.toLowerCase() === selectedCategory.toLowerCase()
+      );
+    }
+    
+    if (selectedCity && !searchTerm) {
+      newFilteredPlans = newFilteredPlans.filter(plan => 
+        plan.city?.toLowerCase() === selectedCity.toLowerCase()
+      );
+    }
+    
     if (searchTerm) {
       const term = searchTerm.toLowerCase().trim();
       if (term.length > 0) {
         newFilteredPlans = newFilteredPlans.filter(plan =>
-          plan.name.toLowerCase().includes(term) || (plan.location?.toLowerCase().includes(term)) || (plan.city?.toLowerCase().includes(term)) ||
-          (plan.eventType?.toLowerCase().includes(term)) || (plan.description?.toLowerCase().includes(term)) || (plan.creatorName?.toLowerCase().includes(term)) ||
-          (plan.creatorUsername?.toLowerCase().includes(term)) || (plan.itinerary?.some(item => item.placeName?.toLowerCase().includes(term)))
+          plan.name.toLowerCase().includes(term) || 
+          (plan.location?.toLowerCase().includes(term)) || 
+          (plan.city?.toLowerCase().includes(term)) ||
+          (plan.eventType?.toLowerCase().includes(term)) || 
+          (plan.description?.toLowerCase().includes(term)) || 
+          (plan.creatorName?.toLowerCase().includes(term)) ||
+          (plan.creatorUsername?.toLowerCase().includes(term)) || 
+          (plan.itinerary?.some(item => item.placeName?.toLowerCase().includes(term)))
         );
       }
     }
-    setFilteredPlans(newFilteredPlans.sort((a,b) => calculateEnhancedPlanScore(b, userLocation?.coordinates || null, userPreferences) - calculateEnhancedPlanScore(a, userLocation?.coordinates || null, userPreferences)));
+    
+    return newFilteredPlans.sort((a, b) => 
+      calculateEnhancedPlanScore(b, userLocation?.coordinates || null, userPreferences || undefined) - 
+      calculateEnhancedPlanScore(a, userLocation?.coordinates || null, userPreferences || undefined)
+    );
   }, [plans, featuredPlans, selectedCategory, selectedCity, searchTerm, userLocation, userPreferences]);
+
+  // Update filtered plans only when memoized value changes
+  useEffect(() => {
+    setFilteredPlans(memoizedFilteredPlans);
+  }, [memoizedFilteredPlans]);
 
   useEffect(() => { /* ... (kept same for admin check) ... */ }, [user]);
   const toggleFeatured = async (planId: string, newFeaturedStatus: boolean) => { /* ... (kept same) ... */ };
@@ -819,7 +889,7 @@ export function ExploreContent({ initialData, userPreferences }: ExploreContentP
 
             {featuredPlans.length > 0 && (<Section title="Featured Plans" viewAllHref="/plans/featured" className="mb-12"><div className="flex overflow-x-auto gap-4 pb-4 snap-x snap-mandatory hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">{featuredPlans.map((plan: Plan) => (<div key={plan.id} className="flex-none w-[calc(100vw-2rem)] sm:w-[500px] md:w-[600px] lg:w-[800px] max-w-[1000px] snap-center"><FeaturedPlanPanel plan={plan} isAdmin={isAdmin} onRemoveFeature={() => toggleFeatured(plan.id, false)} /></div>))}</div></Section>)}
             {isAdmin && (<Section title="Admin: Add to Featured" className="mb-12"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">{plans.slice(0, 8).map(plan => (<div key={plan.id} className="relative group"><PlanCard plan={plan} /><div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><Button variant="default" onClick={() => toggleFeatured(plan.id, true)}><Crown className="h-4 w-4 mr-2" />Make Featured</Button></div></div>))}</div></Section>)}
-            <Section title="Browse Plans" className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">{navigationCollections.map(collection => (<NavigationCard key={collection.id} title={collection.name} description={collection.description || ''} href={collection.href || `/collections/${collection.id}`} icon={collection.icon === 'MapPin' ? MapPin : collection.icon === 'Layers' ? Layers : collection.icon === 'Users' ? Users : collection.icon === 'Star' ? Star : MapPin} />))}</Section>
+            <Section title="Browse Plans" className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">{navigationCollections.map(collection => (<NavigationCard key={collection.id} title={collection.title} description={collection.description || ''} href={collection.href || `/collections/${collection.id}`} icon={collection.icon === 'MapPin' ? MapPin : collection.icon === 'Layers' ? Layers : collection.icon === 'Users' ? Users : collection.icon === 'Star' ? Star : MapPin} />))}</Section>
             {cities.length > 0 && (<Section title="Popular Cities" viewAllHref="/explore/cities"><div className="flex gap-4 pb-4 overflow-x-auto snap-x snap-mandatory hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">{cities.slice(0, 8).map(city => (<Link key={city.name} href={`/plans/city/${city.name}`} className="w-[160px] flex-none sm:w-full"><CityCard city={city} onSelect={() => {}} isSelected={false} /></Link>))}</div></Section>)}
             {categories.length > 0 && (<Section title="Popular Categories" viewAllHref="/explore/categories"><div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">{categories.slice(0, 6).map(category => (<Link key={category.name} href={`/plans/category/${encodeURIComponent(category.name)}`}><CategoryCard name={category.name} iconUrl={category.iconUrl} isSelected={false} /></Link>))}</div></Section>)}
             {profiles.length > 0 && (<Section title="A Day in the Life Of" viewAllHref="/explore/creators"><div className="flex gap-4 pb-4 overflow-x-auto snap-x snap-mandatory hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-8 xl:grid-cols-10">{profiles.map(profile => (<Link key={profile.id} href={`/users/${profile.id}`} className="w-[140px] flex-none sm:w-full"><ProfileCard profile={profile} /></Link>))}</div></Section>)}

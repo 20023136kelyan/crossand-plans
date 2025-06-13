@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -148,7 +148,7 @@ export function PlanWeather({
     });
   };
 
-  const geocodeLocation = async (locationName: string) => {
+  const geocodeLocation = useCallback(async (locationName: string) => {
     if (!weatherApiKey) return undefined;
     
     // Create fallback location queries from most specific to least specific
@@ -199,9 +199,9 @@ export function PlanWeather({
     
     console.error('All geocoding attempts failed for location:', locationName);
     return undefined;
-  };
+  }, [weatherApiKey]);
 
-  const fetchWeather = async () => {
+  const fetchWeather = useCallback(async () => {
     if (!location || !date) {
       setError('Location and date are required');
       return;
@@ -231,62 +231,80 @@ export function PlanWeather({
 
       let weatherForPlan: WeatherData | null = null;
 
+      // Prepare API calls for concurrent execution
+      const weatherPromises: Promise<any>[] = [];
+      const uvPromise = fetch(
+        `https://api.openweathermap.org/data/2.5/uvi?lat=${coords.lat}&lon=${coords.lon}&appid=${weatherApiKey}`
+      ).then(response => response.ok ? response.json() : null).catch(() => null);
+
       // If plan is within 5 days, use forecast data to get weather for specific time
       if (timeDiffHours > 0 && timeDiffHours <= 120) { // 5 days = 120 hours
-        const forecastResponse = await fetch(
+        const forecastPromise = fetch(
           `https://api.openweathermap.org/data/2.5/forecast?lat=${coords.lat}&lon=${coords.lon}&appid=${weatherApiKey}&units=metric`
-        );
-
-        if (forecastResponse.ok) {
-          const forecastData = await forecastResponse.json();
-          
-          // Find the forecast entry closest to the plan time
-          const planTimestamp = Math.floor(planDate.getTime() / 1000);
-          let closestForecast: any = null;
-          let minTimeDiff = Infinity;
-
-          forecastData.list.forEach((item: any) => {
-            const timeDiff = Math.abs(item.dt - planTimestamp);
-            if (timeDiff < minTimeDiff) {
-              minTimeDiff = timeDiff;
-              closestForecast = item;
-            }
-          });
-
-          if (closestForecast) {
-            weatherForPlan = {
-              temperature: Math.round(closestForecast.main.temp),
-              description: closestForecast.weather[0].description,
-              humidity: closestForecast.main.humidity,
-              windSpeed: Math.round(closestForecast.wind.speed * 3.6),
-              windDirection: closestForecast.wind.deg,
-              visibility: closestForecast.visibility ? Math.round(closestForecast.visibility / 1000) : 10,
-              icon: closestForecast.weather[0].icon,
-              feelsLike: Math.round(closestForecast.main.feels_like),
-              pressure: closestForecast.main.pressure,
-              cloudCover: closestForecast.clouds.all,
-              precipitation: closestForecast.rain ? closestForecast.rain['3h'] || 0 : 0,
-              uvIndex: undefined, // Will be set later if UV data is available
-              location: {
-                name: forecastData.city.name,
-                country: forecastData.city.country
-              }
-            };
+        ).then(response => response.ok ? response.json() : null);
+        
+        weatherPromises.push(forecastPromise);
+      } else {
+        const currentWeatherPromise = fetch(
+          `https://api.openweathermap.org/data/2.5/weather?lat=${coords.lat}&lon=${coords.lon}&appid=${weatherApiKey}&units=metric`
+        ).then(response => {
+          if (!response.ok) {
+            throw new Error(`Weather API error: ${response.status}`);
           }
-        }
+          return response.json();
+        });
+        
+        weatherPromises.push(currentWeatherPromise);
       }
 
-      // If no forecast data available or plan is too far in future, use current weather
-      if (!weatherForPlan) {
-        const currentWeatherResponse = await fetch(
-          `https://api.openweathermap.org/data/2.5/weather?lat=${coords.lat}&lon=${coords.lon}&appid=${weatherApiKey}&units=metric`
-        );
+      // Execute all API calls concurrently
+      const [weatherResult, uvData] = await Promise.all([
+        weatherPromises[0],
+        uvPromise
+      ]);
 
-        if (!currentWeatherResponse.ok) {
-          throw new Error(`Weather API error: ${currentWeatherResponse.status}`);
+      // Process forecast data if available
+      if (timeDiffHours > 0 && timeDiffHours <= 120 && weatherResult) {
+        const forecastData = weatherResult;
+        
+        // Find the forecast entry closest to the plan time
+        const planTimestamp = Math.floor(planDate.getTime() / 1000);
+        let closestForecast: any = null;
+        let minTimeDiff = Infinity;
+
+        forecastData.list.forEach((item: any) => {
+          const timeDiff = Math.abs(item.dt - planTimestamp);
+          if (timeDiff < minTimeDiff) {
+            minTimeDiff = timeDiff;
+            closestForecast = item;
+          }
+        });
+
+        if (closestForecast) {
+          weatherForPlan = {
+            temperature: Math.round(closestForecast.main.temp),
+            description: closestForecast.weather[0].description,
+            humidity: closestForecast.main.humidity,
+            windSpeed: Math.round(closestForecast.wind.speed * 3.6),
+            windDirection: closestForecast.wind.deg,
+            visibility: closestForecast.visibility ? Math.round(closestForecast.visibility / 1000) : 10,
+            icon: closestForecast.weather[0].icon,
+            feelsLike: Math.round(closestForecast.main.feels_like),
+            pressure: closestForecast.main.pressure,
+            cloudCover: closestForecast.clouds.all,
+            precipitation: closestForecast.rain ? closestForecast.rain['3h'] || 0 : 0,
+            uvIndex: uvData ? Math.round(uvData.value) : undefined,
+            location: {
+              name: forecastData.city.name,
+              country: forecastData.city.country
+            }
+          };
         }
-
-        const currentWeatherData: any = await currentWeatherResponse.json();
+      }
+      
+      // Process current weather data if no forecast data or forecast failed
+      if (!weatherForPlan && weatherResult) {
+        const currentWeatherData = weatherResult;
         
         weatherForPlan = {
           temperature: Math.round(currentWeatherData.main.temp),
@@ -301,7 +319,7 @@ export function PlanWeather({
           cloudCover: currentWeatherData.clouds.all,
           sunrise: currentWeatherData.sys.sunrise,
           sunset: currentWeatherData.sys.sunset,
-          uvIndex: undefined, // Will be set later if UV data is available
+          uvIndex: uvData ? Math.round(uvData.value) : undefined,
           location: {
             name: currentWeatherData.name,
             country: currentWeatherData.sys.country
@@ -310,27 +328,16 @@ export function PlanWeather({
         };
       }
 
-      // Try to fetch UV Index data
-      try {
-        const uvResponse = await fetch(
-          `https://api.openweathermap.org/data/2.5/uvi?lat=${coords.lat}&lon=${coords.lon}&appid=${weatherApiKey}`
-        );
-        if (uvResponse.ok) {
-          const uvData: any = await uvResponse.json();
-          if (weatherForPlan) {
-            weatherForPlan.uvIndex = Math.round(uvData.value);
-          }
-        }
-      } catch (uvError) {
-        console.log('UV Index data not available:', uvError);
+      if (weatherForPlan) {
+        const transformedWeatherData: WeatherResponse = {
+          current: weatherForPlan,
+          forecast: [] // We don't need forecast for plan-specific weather
+        };
+
+        setWeatherData(transformedWeatherData);
+      } else {
+        throw new Error('Unable to fetch weather data for the specified location and time');
       }
-
-      const transformedWeatherData: WeatherResponse = {
-        current: weatherForPlan,
-        forecast: [] // We don't need forecast for plan-specific weather
-      };
-
-      setWeatherData(transformedWeatherData);
       setRetryCount(0);
     } catch (err) {
       console.error('Weather fetch error:', err);
@@ -345,9 +352,9 @@ export function PlanWeather({
     } finally {
       setLoading(false);
     }
-  };
+  }, [location, date, weatherApiKey, coordinates, geocodeLocation, retryCount]);
 
-  const transformForecastData = (forecastData: any): ForecastDay[] => {
+  const transformForecastData = useCallback((forecastData: any): ForecastDay[] => {
     // Group forecast data by day and take one entry per day
     const dailyForecasts: { [key: string]: any } = {};
     
@@ -391,12 +398,11 @@ export function PlanWeather({
           min: Math.round(day.temperature.min),
           max: Math.round(day.temperature.max)
         }
-      }));
-  };
+      }));  }, []);
 
   useEffect(() => {
     fetchWeather();
-  }, [location, date, weatherApiKey, coordinates, userPreferences, participantProfiles, planType]);
+  }, [fetchWeather]);
 
   // Memoized loading skeleton component
   const LoadingSkeleton = () => (

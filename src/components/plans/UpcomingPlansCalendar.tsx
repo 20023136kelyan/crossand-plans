@@ -58,9 +58,9 @@ export function UpcomingPlansCalendar({ className }: UpcomingPlansCalendarProps)
 
   if (loading) {
     return (
-      <Card className={cn("w-full", className)}>
+      <Card className={cn("w-full bg-transparent border-none shadow-none", className)}>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium flex items-center">
+          <CardTitle className="text-sm font-medium flex items-center text-muted-foreground">
             <Calendar className="mr-2 h-4 w-4" />
             Adventure Calendar
           </CardTitle>
@@ -75,9 +75,9 @@ export function UpcomingPlansCalendar({ className }: UpcomingPlansCalendarProps)
   }
 
   return (
-    <Card className={cn("w-full", className)}>
+    <Card className={cn("w-full bg-transparent border-none shadow-none", className)}>
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-medium flex items-center">
+        <CardTitle className="text-sm font-medium flex items-center text-muted-foreground">
           <Calendar className="mr-2 h-4 w-4" />
           Adventure Calendar
         </CardTitle>

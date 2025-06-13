@@ -2,7 +2,7 @@
 
 import { useSettings } from '@/context/SettingsContext';
 import { useAuth } from '@/context/AuthContext';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -25,6 +25,31 @@ export function useLimits(): UserLimits {
   const maxPlansPerUser = settings?.maxPlansPerUser || 50;
   const maxParticipantsPerPlan = settings?.maxParticipantsPerPlan || 20;
 
+  // Memoize the fetch function to prevent unnecessary re-creation
+  const fetchUserPlanCount = useCallback(async (userId: string) => {
+    try {
+      setLoading(true);
+      
+      if (!db) {
+        console.error('Firestore database not available');
+        setCurrentPlanCount(0);
+        return;
+      }
+      
+      const plansQuery = query(
+        collection(db, 'plans'),
+        where('createdBy', '==', userId)
+      );
+      const plansSnapshot = await getDocs(plansQuery);
+      setCurrentPlanCount(plansSnapshot.size);
+    } catch (error) {
+      console.error('Error fetching user plan count:', error);
+      setCurrentPlanCount(0);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!user?.uid) {
       setCurrentPlanCount(0);
@@ -32,48 +57,38 @@ export function useLimits(): UserLimits {
       return;
     }
 
-    const fetchUserPlanCount = async () => {
-      try {
-        setLoading(true);
-        const plansQuery = query(
-          collection(db, 'plans'),
-          where('createdBy', '==', user.uid)
-        );
-        const plansSnapshot = await getDocs(plansQuery);
-        setCurrentPlanCount(plansSnapshot.size);
-      } catch (error) {
-        console.error('Error fetching user plan count:', error);
-        setCurrentPlanCount(0);
-      } finally {
-        setLoading(false);
-      }
+    fetchUserPlanCount(user.uid);
+  }, [user?.uid, fetchUserPlanCount]);
+
+  // Memoize computed values to prevent unnecessary recalculations
+  const computedValues = useMemo(() => {
+    const canCreatePlan = currentPlanCount < maxPlansPerUser;
+    
+    const canAddParticipant = (currentParticipants: number): boolean => {
+      return currentParticipants < maxParticipantsPerPlan;
     };
 
-    fetchUserPlanCount();
-  }, [user?.uid]);
+    const getRemainingPlans = (): number => {
+      return Math.max(0, maxPlansPerUser - currentPlanCount);
+    };
 
-  const canCreatePlan = currentPlanCount < maxPlansPerUser;
-  
-  const canAddParticipant = (currentParticipants: number): boolean => {
-    return currentParticipants < maxParticipantsPerPlan;
-  };
+    const getRemainingParticipants = (currentParticipants: number): number => {
+      return Math.max(0, maxParticipantsPerPlan - currentParticipants);
+    };
 
-  const getRemainingPlans = (): number => {
-    return Math.max(0, maxPlansPerUser - currentPlanCount);
-  };
-
-  const getRemainingParticipants = (currentParticipants: number): number => {
-    return Math.max(0, maxParticipantsPerPlan - currentParticipants);
-  };
+    return {
+      canCreatePlan,
+      canAddParticipant,
+      getRemainingPlans,
+      getRemainingParticipants,
+    };
+  }, [currentPlanCount, maxPlansPerUser, maxParticipantsPerPlan]);
 
   return {
     maxPlansPerUser,
     maxParticipantsPerPlan,
     currentPlanCount,
-    canCreatePlan,
-    canAddParticipant,
-    getRemainingPlans,
-    getRemainingParticipants,
+    ...computedValues,
   };
 }
 
@@ -81,34 +96,36 @@ export function useLimits(): UserLimits {
 export function useFileUploadLimits() {
   const { settings } = useSettings();
   
-  const maxFileSize = (settings?.maxFileSize || 10) * 1024 * 1024; // Convert MB to bytes
-  const allowedFileTypes = settings?.allowedFileTypes || ['jpg', 'jpeg', 'png', 'gif', 'pdf'];
-  
-  const validateFile = (file: File): { valid: boolean; error?: string } => {
-    // Check file size
-    if (file.size > maxFileSize) {
-      return {
-        valid: false,
-        error: `File size must be less than ${settings?.maxFileSize || 10}MB`
-      };
-    }
+  // Memoize the validation function
+  const validateFile = useCallback(async (file: File): Promise<{ valid: boolean; error?: string }> => {
+    const { validateFile: centralizedValidate } = await import('@/lib/fileValidation');
     
-    // Check file type
-    const fileExtension = file.name.split('.').pop()?.toLowerCase();
-    if (!fileExtension || !allowedFileTypes.includes(fileExtension)) {
-      return {
-        valid: false,
-        error: `File type not allowed. Allowed types: ${allowedFileTypes.join(', ')}`
-      };
-    }
+    // Use settings-based limits if available, otherwise use centralized defaults
+    const customSizeLimit = settings?.maxFileSize ? settings.maxFileSize * 1024 * 1024 : undefined;
+    const customFormats = settings?.allowedFileTypes;
     
-    return { valid: true };
-  };
-  
-  return {
-    maxFileSize,
-    allowedFileTypes,
-    validateFile,
-    maxFileSizeMB: settings?.maxFileSize || 10,
-  };
+    const result = centralizedValidate(file, {
+      type: 'general_upload',
+      allowedFormats: 'all',
+      customSizeLimit,
+      customFormats
+    });
+    
+    return {
+       valid: result.valid,
+       error: result.error
+     };
+   }, [settings?.maxFileSize, settings?.allowedFileTypes]);
+   
+   // Memoize computed values
+   const limits = useMemo(() => ({
+     maxFileSize: settings?.maxFileSize ? settings.maxFileSize * 1024 * 1024 : 10 * 1024 * 1024,
+     allowedFileTypes: settings?.allowedFileTypes || ['jpg', 'jpeg', 'png', 'gif', 'pdf'],
+     maxFileSizeMB: settings?.maxFileSize || 10,
+   }), [settings?.maxFileSize, settings?.allowedFileTypes]);
+   
+   return {
+     ...limits,
+     validateFile,
+   };
 }

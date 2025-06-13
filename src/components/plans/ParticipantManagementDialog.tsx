@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, memo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -62,7 +62,7 @@ interface ParticipantWithDetails {
   isHost: boolean;
 }
 
-export function ParticipantManagementDialog({
+const ParticipantManagementDialog = memo(function ParticipantManagementDialog({
   open,
   onOpenChange,
   plan,
@@ -511,4 +511,6 @@ export function ParticipantManagementDialog({
       </DialogContent>
     </Dialog>
   );
-}
+});
+
+export default ParticipantManagementDialog;

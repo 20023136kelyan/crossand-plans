@@ -13,8 +13,9 @@ import {
 import { getUserProfileAdmin } from '@/services/userService.server';
 import type { ChatParticipantInfo, UserProfile, UserRoleType } from '@/types/user';
 import { revalidatePath } from 'next/cache';
-import { authAdmin, storageAdmin } from '@/lib/firebaseAdmin'; 
+import { authAdmin, firestoreAdmin } from '@/lib/firebaseAdmin'; 
 import { FieldValue } from 'firebase-admin/firestore';
+import { uploadChatMessage } from '@/lib/postingSystem';
 
 interface RawBasicUserInfo {
   uid: string;
@@ -122,10 +123,7 @@ export async function sendMessageAction(
     console.error("[sendMessageAction] Firebase Admin Auth service not available.");
     return { success: false, error: "Server error: Authentication service not available." };
   }
-  if (!storageAdmin) {
-    console.error("[sendMessageAction] Firebase Admin Storage service not available.");
-    return { success: false, error: "Server error: Storage service not available." };
-  }
+
 
   if (!idToken) return { success: false, error: 'Authentication token missing.' };
   if (!chatId) return { success: false, error: 'Chat ID is missing.' };
@@ -157,64 +155,19 @@ export async function sendMessageAction(
   if (imageFile) {
     console.log(`[sendMessageAction] Received image. Name: ${imageFile.name}, Client-side Type: ${imageFile.type}, Size: ${imageFile.size}`);
     
-    if (imageFile.size > 5 * 1024 * 1024) { // 5MB limit
-      console.error(`[sendMessageAction] Image too large: ${imageFile.size} bytes.`);
-      return { success: false, error: "Image size should not exceed 5MB." };
-    }
-    
-    determinedContentType = imageFile.type; 
-    if (!determinedContentType || !determinedContentType.startsWith('image/')) {
-      console.warn(`[sendMessageAction] Client-side type '${imageFile.type}' for ${imageFile.name} is invalid/missing. Inferring from extension.`);
-      determinedContentType = getMimeTypeFromServer(imageFile.name);
-    }
-
-    if (!determinedContentType || !determinedContentType.startsWith('image/')) {
-      console.error(`[sendMessageAction] Could not determine a valid image Content-Type for ${imageFile.name}. Client-provided: '${imageFile.type}', Inferred: '${determinedContentType}'.`);
-      return { success: false, error: `Invalid file type for ${imageFile.name}. Please select standard image (JPG, PNG, GIF, WEBP, etc).` };
-    }
-    console.log(`[sendMessageAction] Using Content-Type: '${determinedContentType}' for ${imageFile.name} for upload.`);
-
+    // Upload image using centralized posting system
     try {
-      const bucketNameForAction = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-      let bucket;
-      if (typeof storageAdmin.bucket !== 'function') {
-        console.error("[sendMessageAction] storageAdmin.bucket is not a function!");
-        return { success: false, error: "Server error: Storage service misconfiguration."};
-      }
-      if (bucketNameForAction) {
-        bucket = storageAdmin.bucket(bucketNameForAction);
+      const uploadResult = await uploadChatMessage(imageFile, senderId, idToken, chatId);
+      if (uploadResult.success) {
+        mediaUrlForService = uploadResult.data?.url || null;
+        console.log(`[sendMessageAction] Image uploaded. URL: ${mediaUrlForService}`);
       } else {
-        bucket = storageAdmin.bucket(); 
+        console.error(`[sendMessageAction] Image upload failed for chat ${chatId}:`, uploadResult.error);
+        return { success: false, error: `Failed to upload image: ${uploadResult.error}` };
       }
-      if (!bucket) {
-        console.error("[sendMessageAction] Could not access Firebase Storage bucket.");
-        return { success: false, error: 'Server error: Storage bucket not accessible.' };
-      }
-      const bucketName = bucket.name;
-      console.log(`[sendMessageAction] Using bucket: ${bucketName}`);
-      
-      const originalName = imageFile.name;
-      const extension = originalName.split('.').pop()?.toLowerCase() || '';
-      const baseName = extension ? originalName.substring(0, originalName.lastIndexOf(`.${extension}`)) : originalName;
-      const sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9._-]/g, '_'); // Sanitize
-      const sanitizedFileName = extension ? `${sanitizedBaseName}.${extension}` : sanitizedBaseName;
-
-      const fileName = `chat_media/${chatId}/${senderId}/${Date.now()}-${sanitizedFileName}`;
-      const blob = bucket.file(fileName);
-      
-      const buffer = Buffer.from(await imageFile.arrayBuffer());
-      console.log(`[sendMessageAction] Uploading ${fileName} with Content-Type: ${determinedContentType}`);
-      await blob.save(buffer, {
-        metadata: { contentType: determinedContentType, cacheControl: 'public, max-age=31536000', customMetadata: { uploaderUid: senderId }},
-        public: true, 
-      });
-      
-      mediaUrlForService = `https://storage.googleapis.com/${bucketName}/${fileName}`;
-      console.log(`[sendMessageAction] Image uploaded. URL: ${mediaUrlForService}`);
-
-    } catch (storageError: any) {
-      console.error(`[sendMessageAction] Firebase Storage upload error for chat ${chatId}:`, storageError);
-      return { success: false, error: `Storage upload error: ${storageError.message || 'Unknown storage error'}` };
+    } catch (uploadError: any) {
+      console.error(`[sendMessageAction] Image upload error for chat ${chatId}:`, uploadError);
+      return { success: false, error: `Failed to upload image: ${uploadError.message || 'Unknown upload error'}` };
     }
   }
   

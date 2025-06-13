@@ -10,6 +10,9 @@ import type { FeedPost, Plan } from '@/types/user';
 import { useAuth } from '@/context/AuthContext';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { useState, useEffect } from 'react';
+import { extractImageGradientCached } from '@/lib/colorExtraction';
+import { VerificationBadge } from '@/components/ui/verification-badge';
 
 interface FeedPostCardProps {
   post: FeedPost;
@@ -18,6 +21,8 @@ interface FeedPostCardProps {
 
 export function FeedPostCard({ post, plan }: FeedPostCardProps) {
   const { user } = useAuth();
+  const [gradientClass, setGradientClass] = useState('bg-gradient-to-br from-gray-400/30 via-gray-500/15 to-transparent');
+  
   const isParticipant = user?.uid && (
     plan.hostId === user.uid || 
     plan.invitedParticipantUserIds?.includes(user.uid)
@@ -31,6 +36,25 @@ export function FeedPostCard({ post, plan }: FeedPostCardProps) {
     ? formatDistanceToNow(parseISO(post.createdAt), { addSuffix: true }) 
     : '';
 
+  // Extract gradient from image
+  useEffect(() => {
+    if (post.mediaUrl) {
+      const loadGradient = async () => {
+        try {
+          const gradient = await extractImageGradientCached(
+            post.mediaUrl,
+            'bg-gradient-to-br from-gray-400/30 via-gray-500/15 to-transparent'
+          );
+          setGradientClass(gradient);
+        } catch (error) {
+          console.warn('Failed to extract gradient from image:', error);
+        }
+      };
+      
+      loadGradient();
+    }
+  }, [post.mediaUrl]);
+
   return (
     <Card className="overflow-hidden border-0 shadow-sm rounded-xl">
       <CardHeader className="pb-2 pt-3 px-4">
@@ -40,9 +64,12 @@ export function FeedPostCard({ post, plan }: FeedPostCardProps) {
             <AvatarFallback>{(post.username?.[0] || post.userName?.[0])?.toUpperCase() || 'U'}</AvatarFallback>
           </Avatar>
           <div className="flex-1">
-            <div className="font-medium text-sm">{post.username || post.userName}</div>
+            <div className="font-medium text-sm flex items-center gap-1">
+              {post.username || post.userName}
+              <VerificationBadge role={post.userRole} isVerified={post.userIsVerified} />
+            </div>
             <CardDescription className="text-xs text-muted-foreground/70 mt-0">
-              {postedAtRelative} • {post.location || 'Bekasi'}
+              {postedAtRelative} • {plan.location || 'Bekasi'}
             </CardDescription>
           </div>
           <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
@@ -63,13 +90,26 @@ export function FeedPostCard({ post, plan }: FeedPostCardProps) {
       )}
 
       {post.mediaUrl && (
-        <div className="relative aspect-square w-full overflow-hidden">
+        <div className="relative w-full overflow-hidden">
           <Image
             src={post.mediaUrl}
             alt="Post image"
-            fill
-            className="object-cover"
+            width={400}
+            height={400}
+            style={{
+              width: '100%',
+              height: 'auto',
+              maxHeight: '600px',
+              objectFit: 'contain'
+            }}
+            className="w-full h-auto"
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
           />
+          {/* Dynamic gradient overlay based on image colors */}
+          <div className={cn(
+            "absolute inset-0 pointer-events-none",
+            gradientClass
+          )} />
         </div>
       )}
 
@@ -98,7 +138,10 @@ export function FeedPostCard({ post, plan }: FeedPostCardProps) {
         
         {post.text && (
           <div className="mt-1">
-            <span className="text-sm font-medium">{post.username || post.userName}</span>
+            <span className="text-sm font-medium flex items-center gap-1">
+              {post.username || post.userName}
+              <VerificationBadge role={post.userRole} isVerified={post.userIsVerified} />
+            </span>
             <span className="text-sm ml-2">{post.text}</span>
             {post.text.length > 50 && (
               <button className="text-muted-foreground text-xs ml-1">... more</button>
@@ -108,4 +151,4 @@ export function FeedPostCard({ post, plan }: FeedPostCardProps) {
       </CardContent>
     </Card>
   );
-} 
+}

@@ -649,41 +649,41 @@ export default function PlansPage() {
     }
   }, [authLoading, currentUserId]);
 
-  // Effect to fetch saved plans
-  useEffect(() => {
-    const fetchSavedPlans = async () => {
-      if (!currentUserId) {
+  // Memoize the saved plans fetch function to prevent unnecessary re-creation
+  const fetchSavedPlans = useCallback(async (userId: string) => {
+    setLoadingSavedPlans(true);
+    try {
+      const savedPlanIds = await getUserSavedPlans(userId);
+      if (savedPlanIds.length === 0) {
         setSavedPlans([]);
-        setLoadingSavedPlans(false);
         return;
       }
 
-      setLoadingSavedPlans(true);
-      try {
-        const savedPlanIds = await getUserSavedPlans(currentUserId);
-        if (savedPlanIds.length === 0) {
-          setSavedPlans([]);
-          setLoadingSavedPlans(false);
-          return;
-        }
+      // Fetch each saved plan
+      const planPromises = savedPlanIds.map(planId => getPlanById(planId));
+      const plans = await Promise.all(planPromises);
+      
+      // Filter out null results and ensure we have valid plans
+      const validPlans = plans.filter((plan): plan is PlanType => plan !== null);
+      setSavedPlans(validPlans);
+    } catch (error) {
+      console.error('Error fetching saved plans:', error);
+      setSavedPlans([]);
+    } finally {
+      setLoadingSavedPlans(false);
+    }
+  }, []);
 
-        // Fetch each saved plan
-        const planPromises = savedPlanIds.map(planId => getPlanById(planId));
-        const plans = await Promise.all(planPromises);
-        
-        // Filter out null results and ensure we have valid plans
-        const validPlans = plans.filter((plan): plan is PlanType => plan !== null);
-        setSavedPlans(validPlans);
-      } catch (error) {
-        console.error('Error fetching saved plans:', error);
-        setSavedPlans([]);
-      } finally {
-        setLoadingSavedPlans(false);
-      }
-    };
+  // Effect to fetch saved plans - optimized to prevent unnecessary calls
+  useEffect(() => {
+    if (!currentUserId) {
+      setSavedPlans([]);
+      setLoadingSavedPlans(false);
+      return;
+    }
 
-    fetchSavedPlans();
-  }, [currentUserId]);
+    fetchSavedPlans(currentUserId);
+  }, [currentUserId, fetchSavedPlans]);
 
 
   const handleSortCycle = () => {
@@ -695,32 +695,37 @@ export default function PlansPage() {
     });
   };
 
+  // Memoize expensive filtering and sorting operations
   const baseFilteredPlans = useMemo(() => {
-    let plans = [...allUserPlans];
     if (searchTerm && viewMode === 'list') {
-      plans = plans.filter(plan =>
-        plan.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (plan.description && plan.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        plan.location.toLowerCase().includes(searchTerm.toLowerCase())
+      const searchTermLower = searchTerm.toLowerCase();
+      return allUserPlans.filter(plan =>
+        plan.name.toLowerCase().includes(searchTermLower) ||
+        (plan.description && plan.description.toLowerCase().includes(searchTermLower)) ||
+        plan.location.toLowerCase().includes(searchTermLower)
       );
     }
-    return plans;
+    return allUserPlans;
   }, [allUserPlans, searchTerm, viewMode]);
 
   const sortedPlans = useMemo(() => {
-    let plans = [...baseFilteredPlans];
-    if (viewMode === 'list') { 
-      plans.sort((a, b) => {
-        if (sortConfig.key === 'name') {
-          const comparison = (a.name || '').localeCompare(b.name || '');
-          return sortConfig.direction === 'asc' ? comparison : -comparison;
-        }
-        const timeA = a.eventTime && isValid(parseISO(a.eventTime)) ? parseISO(a.eventTime).getTime() : (sortConfig.direction === 'asc' ? Infinity : -Infinity);
-        const timeB = b.eventTime && isValid(parseISO(b.eventTime)) ? parseISO(b.eventTime).getTime() : (sortConfig.direction === 'asc' ? Infinity : -Infinity);
-        return sortConfig.direction === 'asc' ? timeA - timeB : timeB - timeA;
-      });
-    }
-    return plans;
+    if (viewMode !== 'list') return baseFilteredPlans;
+    
+    return [...baseFilteredPlans].sort((a, b) => {
+      if (sortConfig.key === 'name') {
+        const comparison = (a.name || '').localeCompare(b.name || '');
+        return sortConfig.direction === 'asc' ? comparison : -comparison;
+      }
+      
+      const timeA = a.eventTime && isValid(parseISO(a.eventTime)) 
+        ? parseISO(a.eventTime).getTime() 
+        : (sortConfig.direction === 'asc' ? Infinity : -Infinity);
+      const timeB = b.eventTime && isValid(parseISO(b.eventTime)) 
+        ? parseISO(b.eventTime).getTime() 
+        : (sortConfig.direction === 'asc' ? Infinity : -Infinity);
+      
+      return sortConfig.direction === 'asc' ? timeA - timeB : timeB - timeA;
+    });
   }, [baseFilteredPlans, sortConfig, viewMode]);
 
  const upcomingPlansBase = useMemo(() => {
@@ -833,7 +838,13 @@ export default function PlansPage() {
   }, [activeTab, invitedToPlans, myDrafts, myAwaitingResponsesPlans, myConfirmedReadyPlans, pastPlans]);
 
   const eventDates = useMemo(() => {
-    return plansForCalendar.filter(plan => plan.eventTime && isValid(parseISO(plan.eventTime))).map(plan => parseISO(plan.eventTime!));
+    const dates: Date[] = [];
+    plansForCalendar.forEach(plan => {
+      if (plan.eventTime && isValid(parseISO(plan.eventTime))) {
+        dates.push(parseISO(plan.eventTime));
+      }
+    });
+    return dates;
   }, [plansForCalendar]);
 
   const plansForSelectedDate = useMemo(() => {

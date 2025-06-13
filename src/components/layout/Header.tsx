@@ -7,11 +7,11 @@ import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { cn } from '@/lib/utils';
 import { Bell, X } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useSettings } from '@/context/SettingsContext';
 import { getFriendships } from '@/services/userService';
-import { getPendingPlanSharesForUser, getPendingPlanInvitationsCount } from '@/services/planService';
+import { getPendingPlanSharesForUser, getPendingPlanInvitationsCount, getCompletedPlansForParticipant } from '@/services/planService';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -66,7 +66,7 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
       (allFriendships) => {
         const pendingRequests = allFriendships.filter(f => f.status === 'pending_received');
         const friendRequestNotifications: NotificationItem[] = pendingRequests.map(request => ({
-          id: `friend_request_${request.uid}`,
+          id: `friend_request_${request.friendUid}`,
           type: 'friend_request',
           title: 'New Friend Request',
           description: `${request.name} wants to be your friend`,
@@ -125,10 +125,10 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
     
     // Listen for plan completions where user is a participant
     if (typeof getCompletedPlansForParticipant === 'function') {
-      const unsubPlanCompletions = getCompletedPlansForParticipant(user.uid, (completedPlans) => {
+      const unsubPlanCompletions = getCompletedPlansForParticipant(user.uid, (completedPlans: any[]) => {
         const planCompletionNotifications: NotificationItem[] = completedPlans
-          .filter(plan => !plan.completionConfirmedBy?.includes(user.uid))
-          .map(plan => ({
+          .filter((plan: any) => !plan.completionConfirmedBy?.includes(user.uid))
+          .map((plan: any) => ({
             id: `plan_completion_${plan.id}`,
             type: 'plan_completion',
             title: 'Plan Completed!',

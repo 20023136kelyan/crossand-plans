@@ -48,6 +48,7 @@ import type { Chat, Plan, UserProfile, AppTimestamp, FeedPostVisibility, FeedPos
 import { isValid, parseISO } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { addPhotoHighlightAction } from '@/app/actions/planActions';
+import { FileValidators } from '@/lib/fileValidation';
 import { UpcomingPlansCalendar } from '@/components/plans/UpcomingPlansCalendar';
 import { PlanSummaryCards } from '@/components/plans/PlanSummaryCards';
 import { createFeedPostAction } from '@/app/actions/feedActions';
@@ -57,7 +58,7 @@ import 'react-image-crop/dist/ReactCrop.css';
 import Link from 'next/link';
 import {
   Loader2, PlusCircle, Share2, Globe, Lock as LockIcon, Edit3, Camera, Sparkles, X as XIcon, UploadCloud,
-  MessageSquare, User as UserIcon, Search, LayoutGrid, LayoutList, Wallet as WalletIcon, ChevronLeft, ImageIcon, ImagePlus, ArrowRight, ArrowLeft as BackArrowIcon, Check, ChevronsUpDown, Settings, LogOut
+  MessageSquare, User as UserIcon, Search, LayoutGrid, LayoutList, Wallet as WalletIcon, ChevronLeft, ImageIcon, ImagePlus, ArrowRight, ArrowLeft as BackArrowIcon, Check, ChevronsUpDown, Settings, LogOut, Crop as CropIcon, Square, RectangleVertical, Smartphone
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useIsMobile } from '@/hooks/use-is-mobile';
@@ -82,13 +83,15 @@ async function canvasPreview(
 
   const scaleX = image.naturalWidth / image.width;
   const scaleY = image.naturalHeight / image.height;
-  const pixelRatio = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
+  // Limit pixel ratio to improve performance - use 1 for faster processing
+  const pixelRatio = 1;
 
   canvas.width = Math.floor(crop.width * scaleX * pixelRatio);
   canvas.height = Math.floor(crop.height * scaleY * pixelRatio);
 
   ctx.scale(pixelRatio, pixelRatio);
-  ctx.imageSmoothingQuality = 'high';
+  // Use 'medium' quality for better performance
+  ctx.imageSmoothingQuality = 'medium';
 
   const cropX = crop.x * scaleX;
   const cropY = crop.y * scaleY;
@@ -115,7 +118,7 @@ async function canvasPreview(
         return;
       }
       resolve(new File([blob], fileName, { type: blob.type || 'image/png' }));
-    }, 'image/png', 0.9);
+    }, 'image/jpeg', 0.8); // Use JPEG with 0.8 quality for faster processing
   });
 }
 
@@ -183,13 +186,13 @@ export default function AppLayout({
         unsubPlanShares = getPendingPlanSharesForUser(currentUserId, (shares) => {
           currentPlanSharesCount = shares.length;
           updatePlansTotal();
-        }, (error) => console.error(`${logPrefix} Error fetching plan shares:`, error));
+        });
     }
     if (typeof getPendingPlanInvitationsCount === 'function') {
         unsubPlanInvitations = getPendingPlanInvitationsCount(currentUserId, (invitesCount) => {
           currentPlanInvitesCount = invitesCount;
           updatePlansTotal();
-        }, (error) => console.error(`${logPrefix} Error fetching plan invites:`, error));
+        });
     }
     if (typeof getUserChats === 'function') {
         unsubChats = getUserChats(currentUserId, (fetchedChats: Chat[]) => {
@@ -212,7 +215,7 @@ export default function AppLayout({
             }
           });
           setMessagesNotificationCount(unreadCount);
-        }, (error: any) => console.error(`${logPrefix} Error fetching chats for notifications:`, error));
+        });
     } else {
         console.warn(`${logPrefix} getUserChats function not found. Messages notifications will not be available.`);
         setMessagesNotificationCount(0);
@@ -261,6 +264,8 @@ export default function AppLayout({
   const [postCrop, setPostCrop] = useState<Crop>();
   const imgRefPostCropperDialog = useRef<HTMLImageElement>(null);
   const [completedPostCrop, setCompletedPostCrop] = useState<PixelCrop | null>(null);
+  const [postAspectRatio, setPostAspectRatio] = useState<number>(3/4); // Default 3:4 portrait aspect ratio
+  const [postAspectRatioLabel, setPostAspectRatioLabel] = useState<string>('3:4');
   const [croppedHighlightFileForPost, setCroppedHighlightFileForPost] = useState<File | null>(null);
   const [finalHighlightPreviewUrl, setFinalHighlightPreviewUrl] = useState<string | null>(null);
   const finalHighlightPreviewUrlRef = useRef<string | null>(null);
@@ -293,10 +298,13 @@ export default function AppLayout({
     setIsDraggingOver(false);
     setPlanSearchTerm('');
     setIsPlanPickerOpen(false);
+    // Reset aspect ratio to default when closing entire dialog
+    setPostAspectRatio(3/4);
+    setPostAspectRatioLabel('3:4');
   }, [formForPostCreation]);
 
   const handleOpenCreatePostDialog = useCallback(async () => {
-    const currentAuthUser = auth.currentUser; 
+    const currentAuthUser = auth?.currentUser; 
     if (!currentAuthUser || !currentUserProfile) { 
       toast({ title: "Login Required", description: "Please log in to create a post.", variant: "destructive" }); return;
     }
@@ -310,14 +318,17 @@ export default function AppLayout({
 
   const handleFileSelected = (file: File | null) => {
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      toast({ title: "File too large", description: "Image size should not exceed 5MB.", variant: "destructive" }); return;
+    
+    // Use centralized validation
+    const validation = FileValidators.postHighlight(file);
+    if (!validation.valid) {
+      toast({ title: "File Validation Error", description: validation.error, variant: "destructive" });
+      return;
     }
-    let isValidClientSide = false; const clientMimeType = file.type; const fileName = file.name; const fileExtension = fileName.split('.').pop()?.toLowerCase();
-    if (clientMimeType && clientMimeType.startsWith('image/')) isValidClientSide = true;
-    else if (fileExtension && commonImageExtensions.includes(fileExtension)) isValidClientSide = true;
-    if (!isValidClientSide) {
-       toast({ title: "Invalid file type", description: `Please select an image. Detected: ${clientMimeType || 'unknown'}. File: ${fileName}`, variant: "destructive" }); return;
+    
+    // Show warnings if any
+    if (validation.warnings && validation.warnings.length > 0) {
+      console.warn('File validation warnings:', validation.warnings);
     }
     if (currentPostCreationStep === 2 && !formForPostCreation.getValues('planId')) {
       toast({ title: "Plan Required", description: "A plan must be selected. Please go back to step 1.", variant: "default" });
@@ -351,10 +362,36 @@ export default function AppLayout({
   };
 
   const onPostImageLoadInCropperDialog = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
-    imgRefPostCropperDialog.current = e.currentTarget;
     const { width, height } = e.currentTarget;
-    const initialCrop = centerCrop(makeAspectCrop({ unit: '%', width: 90 }, 4 / 3, width, height), width, height);
+    const initialCrop = centerCrop(makeAspectCrop({ unit: '%', width: 90 }, postAspectRatio, width, height), width, height);
     setPostCrop(initialCrop);
+  }, [postAspectRatio]);
+
+  const handlePostAspectRatioChange = useCallback((newAspectRatio: number, label: string) => {
+    // Validate aspect ratio is a portrait or square ratio
+    if (newAspectRatio > 1) {
+      console.warn('Landscape aspect ratios are not allowed');
+      return;
+    }
+    
+    setPostAspectRatio(newAspectRatio);
+    setPostAspectRatioLabel(label);
+    
+    // Update the crop when aspect ratio changes
+    if (imgRefPostCropperDialog.current) {
+      const { width, height } = imgRefPostCropperDialog.current;
+      const newCrop = centerCrop(makeAspectCrop({ unit: '%', width: 90 }, newAspectRatio, width, height), width, height);
+      setPostCrop(newCrop);
+      // Convert PercentCrop to PixelCrop for completedPostCrop
+      const pixelCrop: PixelCrop = {
+        unit: 'px',
+        x: (newCrop.x / 100) * width,
+        y: (newCrop.y / 100) * height,
+        width: (newCrop.width / 100) * width,
+        height: (newCrop.height / 100) * height
+      };
+      setCompletedPostCrop(pixelCrop);
+    }
   }, []);
 
   const handlePostImageCropAndSaveDialog = async () => {
@@ -369,6 +406,8 @@ export default function AppLayout({
         if (finalHighlightPreviewUrlRef.current) URL.revokeObjectURL(finalHighlightPreviewUrlRef.current);
         const newPreviewUrl = URL.createObjectURL(croppedFileResult);
         setFinalHighlightPreviewUrl(newPreviewUrl); finalHighlightPreviewUrlRef.current = newPreviewUrl;
+        // Automatically advance to step 2 after successful cropping
+        setCurrentPostCreationStep(2);
       } else toast({ title: "Crop Failed", description: "Could not process the cropped image.", variant: "destructive" });
     } catch (e: any) { toast({ title: "Crop Error", description: e.message || "An unexpected error occurred during cropping.", variant: "destructive" }); }
     setIsPostCropperModalOpen(false);
@@ -376,12 +415,20 @@ export default function AppLayout({
 
   const handleCancelPostImageCropDialog = () => {
     setIsPostCropperModalOpen(false); setImageSrcForPostCropper(null); setPostCrop(undefined); setCompletedPostCrop(null);
+    // Don't reset aspect ratio - preserve user's selection for next image
   };
 
   const handleCreatePostSubmit = async (dataFromForm: CreatePostFormValues) => {
-    const currentAuthUser = auth.currentUser; 
+    const currentAuthUser = auth?.currentUser; 
     if (!currentAuthUser || !currentUserProfile) { toast({ title: "Auth Error", description: "User not authenticated.", variant: "destructive" }); return; }
     if (!croppedHighlightFileForPost) { toast({ title: "Validation Error", description: "Please select and crop an image highlight.", variant: "destructive" }); return; }
+    
+    // Additional client-side file size check before submission
+    const processedFileValidation = FileValidators.postHighlight(croppedHighlightFileForPost);
+    if (!processedFileValidation.valid) {
+      toast({ title: "Processed File Error", description: processedFileValidation.error, variant: "destructive" }); 
+      return;
+    }
     
     setIsSubmittingPostFromDialog(true); 
     setIsUploadingHighlight(true); 
@@ -539,10 +586,8 @@ export default function AppLayout({
         {!stableIsMobile && user && currentUserProfile && !pathname.startsWith('/admin') && (
           <div className="fixed right-4 top-16 w-64 z-30 space-y-4 mt-4">
             {/* Quick Actions Card */}
-            <div className="p-3 shadow-xl rounded-xl border-border/50 bg-card/95 backdrop-blur-sm">
-              <div className="px-1 py-1 mb-2">
-                <h3 className="text-sm font-medium text-muted-foreground">Quick Actions</h3>
-              </div>
+            <div className="bg-card/50 backdrop-blur-sm rounded-xl border border-border/50 p-3">
+              <h3 className="text-xs font-medium mb-2 text-muted-foreground">Quick Actions</h3>
               <div className="grid gap-1.5">
                 <Button variant="ghost" className="w-full justify-start text-sm h-10" asChild>
                   <Link href="/plans/generate"><Sparkles className="mr-2 h-4 w-4" /> New Plan (AI)</Link>
@@ -554,12 +599,12 @@ export default function AppLayout({
             </div>
             
             {/* Calendar Card */}
-            <div className="shadow-xl rounded-xl border-border/50 bg-card/95 backdrop-blur-sm">
+            <div className="bg-card/50 backdrop-blur-sm rounded-xl border border-border/50">
               <UpcomingPlansCalendar />
             </div>
             
             {/* Plan Summary Cards */}
-            <div className="shadow-xl rounded-xl border-border/50 bg-card/95 backdrop-blur-sm">
+            <div className="bg-card/50 backdrop-blur-sm rounded-xl border border-border/50">
               <PlanSummaryCards />
             </div>
           </div>
@@ -570,7 +615,7 @@ export default function AppLayout({
       )}
       <Popover open={isQuickAddOpen} onOpenChange={setIsQuickAddOpen}>
         <PopoverTrigger asChild><div /></PopoverTrigger>
-        <PopoverContent side={stableIsMobile ? "top" : "right"} align={stableIsMobile ? "center" : "start"} className={cn("w-56 p-2 shadow-xl rounded-xl border-border/50 bg-card/95 backdrop-blur-sm", stableIsMobile ? "mb-2 fixed bottom-16 left-1/2 -translate-x-1/2" : "ml-2")} onOpenAutoFocus={(e) => e.preventDefault()}>
+        <PopoverContent side={stableIsMobile ? "top" : "right"} align={stableIsMobile ? "center" : "start"} className={cn("w-56 p-2 bg-card/50 backdrop-blur-sm rounded-xl border border-border/50", stableIsMobile ? "mb-2 fixed bottom-16 left-1/2 -translate-x-1/2" : "ml-2")} onOpenAutoFocus={(e) => e.preventDefault()}>
           <div className="grid gap-1">
             <Button variant="ghost" className="w-full justify-start text-sm h-9" asChild onClick={() => setIsQuickAddOpen(false)}><Link href="/plans/generate"><Sparkles className="mr-2 h-4 w-4" /> New Plan (AI)</Link></Button>
             <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() =>{handleOpenCreatePostDialog(); setIsQuickAddOpen(false); }}><Camera className="mr-2 h-4 w-4" /> New Post</Button>
@@ -579,35 +624,53 @@ export default function AppLayout({
       </Popover>
 
       <Dialog open={isCreatePostDialogOpen} onOpenChange={(open) => { if(!open) handleCancelDialog(); else setIsCreatePostDialogOpen(true); }}>
-        <DialogContent className="sm:max-w-md rounded-xl bg-card/90 backdrop-blur-sm shadow-2xl p-0 border-transparent flex flex-col max-h-[90vh] sm:max-h-[85vh]">
-          <DialogHeader className="text-left p-4 border-b border-border/30 space-y-1.5">
-            <DialogTitle className="text-lg font-semibold text-foreground">{dialogTitle}</DialogTitle>
-            <DialogDescriptionComponent className="text-sm text-muted-foreground">
-              {currentPostCreationStep === 1 ? "Choose a plan to create a highlight post from your completed activities." : "Add details and customize your highlight post before sharing."}
-            </DialogDescriptionComponent>
-            <div className="flex items-center space-x-1 h-1.5">
-              <div className={cn("h-full rounded-full flex-1 transition-colors", currentPostCreationStep >= 1 ? "bg-primary" : "bg-muted")}></div>
-              <div className={cn("h-full rounded-full flex-1 transition-colors", currentPostCreationStep >= 2 ? "bg-primary" : "bg-muted")}></div>
+        <DialogContent className="sm:max-w-lg w-screen h-screen sm:w-full sm:mx-4 sm:rounded-3xl rounded-none bg-gradient-to-br from-background/98 via-background/95 to-background/90 backdrop-blur-xl shadow-2xl border border-border/20 p-0 flex flex-col max-h-screen sm:max-h-[88vh] overflow-hidden">
+          <DialogHeader className="relative p-6 pb-4 border-b border-gradient-to-r from-border/10 via-border/30 to-border/10">
+            <div className="flex items-center justify-between mb-3">
+              <DialogTitle className="text-xl font-bold bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent">
+                {currentPostCreationStep === 1 ? "Create Post" : "Share Your Story"}
+              </DialogTitle>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <div className={cn("w-2 h-2 rounded-full transition-all duration-300", currentPostCreationStep >= 1 ? "bg-gradient-to-r from-primary to-primary/80 scale-110" : "bg-muted/50")}></div>
+                  <div className={cn("w-2 h-2 rounded-full transition-all duration-300", currentPostCreationStep >= 2 ? "bg-gradient-to-r from-primary to-primary/80 scale-110" : "bg-muted/50")}></div>
+                </div>
+              </div>
             </div>
+            <DialogDescriptionComponent className="text-sm text-muted-foreground/80 leading-relaxed">
+              {currentPostCreationStep === 1 ? "✨ Turn your completed adventures into amazing highlights" : "🎨 Add your personal touch and share with the world"}
+            </DialogDescriptionComponent>
           </DialogHeader>
           
           <ScrollArea className="flex-1 min-h-0">
-            <div className="p-4 space-y-3">
+            <div className="p-6 space-y-6">
               <Form {...formForPostCreation}>
                 <form>
                   {currentPostCreationStep === 1 && (
-                    <div className="space-y-3">
+                    <div className="space-y-6">
                       <FormField
                         control={formForPostCreation.control}
                         name="planId"
                         render={({ field }) => (
-                          <FormItem className="space-y-1">
-                            <FormLabel className="text-xs font-medium">Completed Plan</FormLabel>
-                            {loadingCompletedPlans ? ( <div className="flex items-center text-sm text-muted-foreground h-9"><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Loading plans...</div>
+                          <FormItem className="space-y-3">
+                            <FormLabel className="text-sm font-semibold text-foreground flex items-center gap-2">
+                              <Sparkles className="w-4 h-4 text-primary" />
+                              Choose Your Adventure
+                            </FormLabel>
+                            {loadingCompletedPlans ? ( 
+                              <div className="flex items-center justify-center text-sm text-muted-foreground h-16 bg-muted/30 rounded-2xl border border-border/20">
+                                <Loader2 className="mr-3 h-5 w-5 animate-spin text-primary"/> 
+                                <span>Finding your adventures...</span>
+                              </div>
                             ) : userCompletedPlans.length === 0 ? (
-                              <div className="text-sm text-muted-foreground h-auto flex flex-col items-start py-1">
-                                <span>No completed plans found.</span>
-                                <Link href="/plans" className="text-xs text-primary hover:underline mt-0.5" onClick={() => setIsCreatePostDialogOpen(false)}>View your plans.</Link>
+                              <div className="text-center p-8 bg-gradient-to-br from-muted/20 to-muted/10 rounded-2xl border border-border/20">
+                                <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-primary/20 to-primary/10 rounded-full flex items-center justify-center">
+                                  <Camera className="w-8 h-8 text-primary" />
+                                </div>
+                                <p className="text-sm text-muted-foreground mb-3">No completed adventures yet</p>
+                                <Link href="/plans" className="text-sm text-primary hover:text-primary/80 font-medium transition-colors" onClick={() => setIsCreatePostDialogOpen(false)}>
+                                  Explore Plans →
+                                </Link>
                               </div>
                             ) : (
                               <Popover open={isPlanPickerOpen} onOpenChange={setIsPlanPickerOpen}>
@@ -617,27 +680,33 @@ export default function AppLayout({
                                       variant="outline"
                                       role="combobox"
                                       className={cn(
-                                        "w-full justify-between text-xs h-9 px-3 py-2 border border-input bg-background",
-                                        !field.value && "text-muted-foreground"
+                                        "w-full justify-between text-sm h-14 px-4 py-3 border-2 border-border/30 bg-background/50 backdrop-blur-sm rounded-2xl hover:border-primary/40 hover:bg-background/80 transition-all duration-200",
+                                        !field.value && "text-muted-foreground",
+                                        field.value && "border-primary/30 bg-primary/5"
                                       )}
                                     >
-                                      {field.value ? (userCompletedPlans.find(plan => plan.id === field.value)?.name || "Select plan") : "Select completed plan..."}
-                                      <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                                      <div className="flex items-center gap-3">
+                                        <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                                        <span className="font-medium">
+                                          {field.value ? (userCompletedPlans.find(plan => plan.id === field.value)?.name || "Select plan") : "Select your completed adventure..."}
+                                        </span>
+                                      </div>
+                                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                     </Button>
                                   </FormControl>
                                 </PopoverTrigger>
-                                <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                                <PopoverContent className="w-[--radix-popover-trigger-width] p-0 border-border/30 bg-background/95 backdrop-blur-xl rounded-2xl">
                                   <Command>
                                     <CommandInput
-                                      placeholder="Search plans..."
+                                      placeholder="Search your adventures..."
                                       value={planSearchTerm}
                                       onValueChange={setPlanSearchTerm}
-                                      className="h-9 text-xs"
+                                      className="h-12 text-sm border-0 bg-transparent"
                                     />
                                     <CommandList>
-                                      <CommandEmpty>No plans found.</CommandEmpty>
-                                      <ScrollArea className="h-[150px] custom-scrollbar-vertical">
-                                        <CommandGroup>
+                                      <CommandEmpty className="py-6 text-center text-muted-foreground">No adventures found.</CommandEmpty>
+                                      <ScrollArea className="h-[200px] custom-scrollbar-vertical">
+                                        <CommandGroup className="p-2">
                                           {filteredCompletedPlans.map((plan) => (
                                             <CommandItem
                                               key={plan.id}
@@ -646,10 +715,10 @@ export default function AppLayout({
                                                 formForPostCreation.setValue("planId", plan.id, { shouldValidate: true });
                                                 setIsPlanPickerOpen(false);
                                               }}
-                                              className="text-xs"
+                                              className="text-sm p-3 rounded-xl hover:bg-primary/10 transition-colors cursor-pointer"
                                             >
-                                              <Check className={cn("mr-2 h-3 w-3", field.value === plan.id ? "opacity-100" : "opacity-0")}/>
-                                              {plan.name}
+                                              <Check className={cn("mr-3 h-4 w-4 text-primary", field.value === plan.id ? "opacity-100" : "opacity-0")}/>
+                                              <span className="font-medium">{plan.name}</span>
                                             </CommandItem>
                                           ))}
                                         </CommandGroup>
@@ -659,7 +728,7 @@ export default function AppLayout({
                                 </PopoverContent>
                               </Popover>
                             )}
-                            <FormMessage className="text-xs" />
+                            <FormMessage className="text-xs text-destructive" />
                           </FormItem>
                         )}
                       />
@@ -667,98 +736,184 @@ export default function AppLayout({
                   )}
 
                   {currentPostCreationStep === 2 && (
-                    <div className="space-y-3">
+                    <div className="space-y-6">
                        {formForPostCreation.getValues('planId') && (
-                        <div className="mb-1 p-2 border border-border/30 rounded-md bg-muted/30">
-                          <p className="text-xs text-muted-foreground">Selected Plan:</p>
-                          <p className="text-sm font-medium text-foreground/90 truncate">
+                        <div className="p-4 bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 rounded-2xl border border-primary/20">
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                            <p className="text-xs font-medium text-primary/80">Selected Adventure</p>
+                          </div>
+                          <p className="text-sm font-semibold text-foreground truncate">
                             {userCompletedPlans.find(p => p.id === formForPostCreation.getValues('planId'))?.name || 'Plan not found'}
                           </p>
                         </div>
                       )}
-                      <FormItem>
-                        <FormLabel className="text-xs font-medium">Highlight Image</FormLabel>
-                        <div 
-                          onDragOver={handleDragOver} 
-                          onDragLeave={handleDragLeave} 
-                          onDrop={handleDrop}
-                          className={cn(
-                            "w-full rounded-lg border-2 border-dashed border-border/50 flex flex-col items-center justify-center text-muted-foreground transition-colors duration-150 ease-in-out cursor-pointer relative overflow-hidden group",
-                            isDraggingOver && "border-primary bg-primary/10",
-                            finalHighlightPreviewUrl ? "aspect-[4/3] p-0" : "h-28 p-3 hover:bg-muted/70 hover:border-primary/50"
-                          )}
-                          onClick={() => {
-                            if (finalHighlightPreviewUrl && !isUploadingHighlight && !isSubmittingPostFromDialog) return;
-                            if (isUploadingHighlight || isSubmittingPostFromDialog) return;
-                            highlightFileInputRefDialog.current?.click();
-                          }}
-                        >
-                          {finalHighlightPreviewUrl ? (
-                            <>
-                              <NextImage src={finalHighlightPreviewUrl} alt="Highlight preview" fill style={{ objectFit: 'cover' }} data-ai-hint="upload preview" unoptimized />
-                              {isUploadingHighlight && (
-                                <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center text-white backdrop-blur-sm">
-                                  <Loader2 className="h-6 w-6 animate-spin mb-1" />
-                                  <span className="text-xs">Uploading...</span>
+                      {/* Combined Media and Caption Container */}
+                      <div className="space-y-4">
+                        <FormLabel className="text-sm font-semibold text-foreground flex items-center gap-2">
+                          <Camera className="w-4 h-4 text-primary" />
+                          Add Your Photo
+                        </FormLabel>
+                        
+                        {/* Media Container with Overlay Caption for Tall Images */}
+                        <div className="relative">
+                          <div 
+                            onDragOver={handleDragOver} 
+                            onDragLeave={handleDragLeave} 
+                            onDrop={handleDrop}
+                            className={cn(
+                              "w-full rounded-3xl border-2 border-dashed transition-all duration-300 ease-in-out cursor-pointer relative overflow-hidden group",
+                              isDraggingOver && "border-primary bg-gradient-to-br from-primary/20 to-primary/10 scale-[1.02]",
+                              finalHighlightPreviewUrl ? "aspect-[4/5] p-0 border-solid border-primary/30" : "h-40 p-6 border-border/30 hover:border-primary/50 hover:bg-gradient-to-br hover:from-primary/5 hover:to-primary/10",
+                              !finalHighlightPreviewUrl && "flex flex-col items-center justify-center text-muted-foreground"
+                            )}
+                            onClick={() => {
+                              if (finalHighlightPreviewUrl && !isUploadingHighlight && !isSubmittingPostFromDialog) return;
+                              if (isUploadingHighlight || isSubmittingPostFromDialog) return;
+                              highlightFileInputRefDialog.current?.click();
+                            }}
+                          >
+                            {finalHighlightPreviewUrl ? (
+                              <>
+                                <NextImage src={finalHighlightPreviewUrl} alt="Highlight preview" fill style={{ objectFit: 'cover' }} data-ai-hint="upload preview" unoptimized className="rounded-3xl" />
+                                {isUploadingHighlight && (
+                                  <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-white backdrop-blur-md rounded-3xl">
+                                    <div className="w-16 h-16 mb-4 bg-white/20 rounded-full flex items-center justify-center">
+                                      <Loader2 className="h-8 w-8 animate-spin" />
+                                    </div>
+                                    <span className="text-sm font-medium">Uploading your photo...</span>
+                                    <span className="text-xs text-white/70 mt-1">This might take a moment</span>
+                                  </div>
+                                )}
+                                 {!isUploadingHighlight && (
+                                  <Button
+                                    type="button" variant="secondary" size="sm"
+                                    className="absolute top-4 right-4 text-xs h-8 px-3 bg-black/60 hover:bg-black/80 text-white backdrop-blur-md border-white/20 opacity-0 group-hover:opacity-100 transition-all duration-200 rounded-full"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (isUploadingHighlight || isSubmittingPostFromDialog) return;
+                                      setCroppedHighlightFileForPost(null); if (finalHighlightPreviewUrlRef.current) URL.revokeObjectURL(finalHighlightPreviewUrlRef.current);
+                                      setFinalHighlightPreviewUrl(null); finalHighlightPreviewUrlRef.current = null; setImageSrcForPostCropper(null);
+                                      if (highlightFileInputRefDialog.current) highlightFileInputRefDialog.current.value = "";
+                                      highlightFileInputRefDialog.current?.click();
+                                    }}
+                                    disabled={isUploadingHighlight || isSubmittingPostFromDialog}
+                                  >
+                                    <ImageIcon className="mr-2 h-3.5 w-3.5" /> Change
+                                  </Button>
+                                )}
+                                
+                                {/* Overlay Caption for Tall Images */}
+                                <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/95 via-black/70 to-transparent rounded-b-3xl">
+                                  <FormField
+                                    control={formForPostCreation.control} name="caption"
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormControl>
+                                          <Textarea 
+                                            placeholder="Share what made this adventure special... ✨" 
+                                            {...field} 
+                                            className="text-sm min-h-[60px] bg-black/60 backdrop-blur-md border-0 text-white placeholder:text-white/70 resize-none focus:ring-0 focus:outline-none p-3 rounded-2xl shadow-2xl border border-white/10" 
+                                            disabled={isSubmittingPostFromDialog || isUploadingHighlight} 
+                                            rows={2}
+                                            maxLength={300}
+                                          />
+                                        </FormControl>
+                                        <div className="flex justify-between items-center mt-3">
+                                          <FormMessage className="text-xs text-red-300" />
+                                          <div className="bg-white/20 backdrop-blur-sm rounded-full px-3 py-1 border border-white/20 shadow-lg">
+                                            <span className="text-xs text-white/90 font-medium">
+                                              {field.value?.length || 0}/300
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </FormItem>
+                                    )}
+                                  />
                                 </div>
-                              )}
-                               {!isUploadingHighlight && (
-                                <Button
-                                  type="button" variant="secondary" size="sm"
-                                  className="absolute top-1.5 right-1.5 text-xs h-7 bg-black/50 hover:bg-black/70 text-white backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (isUploadingHighlight || isSubmittingPostFromDialog) return;
-                                    setCroppedHighlightFileForPost(null); if (finalHighlightPreviewUrlRef.current) URL.revokeObjectURL(finalHighlightPreviewUrlRef.current);
-                                    setFinalHighlightPreviewUrl(null); finalHighlightPreviewUrlRef.current = null; setImageSrcForPostCropper(null);
-                                    if (highlightFileInputRefDialog.current) highlightFileInputRefDialog.current.value = "";
-                                    highlightFileInputRefDialog.current?.click();
-                                  }}
-                                  disabled={isUploadingHighlight || isSubmittingPostFromDialog}
-                                >
-                                  <ImageIcon className="mr-1.5 h-3.5 w-3.5" /> Change
-                                </Button>
-                              )}
-                            </>
-                          ) : (
+                              </>
+                            ) : (
+                              <>
+                                <div className="w-16 h-16 mb-4 bg-gradient-to-br from-primary/20 to-primary/10 rounded-full flex items-center justify-center">
+                                  <UploadCloud className={cn("h-8 w-8", isDraggingOver ? "text-primary animate-bounce" : "text-primary/70")} />
+                                </div>
+                                <span className="text-sm font-semibold mb-2">{isDraggingOver ? "Drop your photo here!" : "Upload your best shot"}</span>
+                                <span className="text-xs text-muted-foreground/80 text-center leading-relaxed">Drag & drop or click to browse<br />Max 50MB • Portrait ratios work best</span>
+                              </>
+                            )}
+                          </div>
+                          
+                          <Input 
+                            id="highlight-image-upload-dialog-applayout-rhf" type="file" 
+                            accept="image/png, image/jpeg, image/gif, image/webp, image/*" 
+                            onChange={(e) => handleFileSelected(e.target.files ? e.target.files[0] : null)}
+                            ref={highlightFileInputRefDialog} className="sr-only"
+                            disabled={isSubmittingPostFromDialog || isPostCropperModalOpen || isUploadingHighlight} 
+                          />
+                          
+                          {!finalHighlightPreviewUrl && (
                             <>
-                              <UploadCloud className={cn("h-6 w-6 mb-1", isDraggingOver ? "text-primary" : "text-muted-foreground/70")} />
-                              <span className="text-xs font-medium">{isDraggingOver ? "Drop image here" : "Drag & drop or click to upload"}</span>
-                              <span className="text-[10px] text-muted-foreground/80 mt-0.5">(Max 5MB, 4:3 recommended)</span>
+                              <p className="text-xs text-muted-foreground/70 text-center mt-3">✨ You'll be able to crop and adjust after selecting</p>
+                              
+                              {/* Caption Field for No Image State */}
+                              <div className="mt-6">
+                                <FormField
+                                  control={formForPostCreation.control} name="caption"
+                                  render={({ field }) => (
+                                    <FormItem className="space-y-3">
+                                      <FormLabel className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                        <Edit3 className="w-4 h-4 text-primary" />
+                                        Tell Your Story
+                                      </FormLabel>
+                                      <FormControl>
+                                        <Textarea 
+                                          placeholder="Share what made this adventure special... ✨" 
+                                          {...field} 
+                                          className="text-sm min-h-[80px] bg-background/50 backdrop-blur-sm border-2 border-border/30 focus:border-primary/50 focus:bg-background/80 placeholder:text-muted-foreground/60 rounded-2xl resize-none transition-all duration-200" 
+                                          disabled={isSubmittingPostFromDialog || isUploadingHighlight} 
+                                          rows={4}
+                                          maxLength={2000}
+                                        />
+                                      </FormControl>
+                                      <div className="flex justify-between items-center">
+                                        <FormMessage className="text-xs text-destructive" />
+                                        <span className="text-xs text-muted-foreground/60">
+                                          {field.value?.length || 0}/2000
+                                        </span>
+                                      </div>
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
                             </>
                           )}
                         </div>
-                        <Input 
-                          id="highlight-image-upload-dialog-applayout-rhf" type="file" 
-                          accept="image/png, image/jpeg, image/gif, image/webp, image/*" 
-                          onChange={(e) => handleFileSelected(e.target.files ? e.target.files[0] : null)}
-                          ref={highlightFileInputRefDialog} className="sr-only"
-                          disabled={isSubmittingPostFromDialog || isPostCropperModalOpen || isUploadingHighlight} 
-                        />
-                        <p className="text-xs text-muted-foreground pt-0.5">You'll be able to crop after selecting.</p>
-                      </FormItem>
-                      
-                      <FormField
-                        control={formForPostCreation.control} name="caption"
-                        render={({ field }) => (
-                          <FormItem className="space-y-1">
-                            <FormLabel className="text-xs font-medium">Caption</FormLabel>
-                            <FormControl><Textarea placeholder="Write something about this highlight..." {...field} 
-                              className="text-sm min-h-[60px] bg-background border-border/30 focus:border-primary placeholder:text-muted-foreground/70" 
-                              disabled={isSubmittingPostFromDialog || isUploadingHighlight} rows={3} /></FormControl>
-                            <FormMessage className="text-xs" />
-                          </FormItem>
-                        )}
-                      />
+                      </div>
                       <FormField
                         control={formForPostCreation.control} name="isPublic"
                         render={({ field }) => (
-                          <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border/30 p-2.5 bg-background">
-                            <div className="space-y-0.5">
-                              <FormLabel className="text-xs font-medium">Make Post Public</FormLabel>
-                              <FormDescription className="text-xs text-muted-foreground">Anyone can see this post.</FormDescription>
+                          <FormItem className="flex flex-row items-center justify-between rounded-2xl p-4 bg-gradient-to-r from-background/80 to-background/60 backdrop-blur-sm transition-all duration-200">
+                            <div className="space-y-1">
+                              <FormLabel className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                {field.value ? (
+                                  <Globe className="w-4 h-4 text-green-500" />
+                                ) : (
+                                  <LockIcon className="w-4 h-4 text-orange-500" />
+                                )}
+                                {field.value ? "Public Post" : "Private Post"}
+                              </FormLabel>
+                              <FormDescription className="text-xs text-muted-foreground/80">
+                                {field.value ? "Everyone can discover and see this post" : "Only your friends can see this post"}
+                              </FormDescription>
                             </div>
-                            <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={isSubmittingPostFromDialog || isUploadingHighlight} /></FormControl>
+                            <FormControl>
+                              <Switch 
+                                checked={field.value} 
+                                onCheckedChange={field.onChange} 
+                                disabled={isSubmittingPostFromDialog || isUploadingHighlight}
+                                className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-orange-500/20"
+                              />
+                            </FormControl>
                           </FormItem>
                         )}
                       />
@@ -788,19 +943,131 @@ export default function AppLayout({
       </Dialog>
 
       <Dialog open={isPostCropperModalOpen} onOpenChange={(open) => {if(!open) handleCancelPostImageCropDialog(); }}>
-        <DialogContent className="sm:max-w-md p-4 bg-card/95 backdrop-blur-sm border-border/50">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-semibold">Crop Your Highlight Image</DialogTitle>
-            <DialogDescriptionComponent className="text-xs">Adjust the selection for your post image. Recommended aspect ratio: 4:3.</DialogDescriptionComponent>
+        <DialogContent className="sm:max-w-2xl w-[95vw] max-h-[90vh] p-0 bg-gradient-to-br from-background/95 to-background/90 backdrop-blur-xl border-2 border-border/30 shadow-2xl rounded-3xl overflow-hidden">
+          <DialogHeader className="p-6 pb-4 border-b border-border/20">
+            <DialogTitle className="text-xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent flex items-center gap-3">
+              <CropIcon className="w-5 h-5 text-primary" />
+              Perfect Your Shot
+            </DialogTitle>
+            <DialogDescriptionComponent className="text-sm text-muted-foreground/80 mt-2">
+              Crop and frame your highlight image • Current: {postAspectRatioLabel}
+            </DialogDescriptionComponent>
           </DialogHeader>
+          
+          {/* Aspect Ratio Selection Buttons */}
+          <div className="px-6 py-4">
+            <div className="flex gap-3 p-1 bg-background/50 backdrop-blur-sm border border-border/30 rounded-2xl">
+              <Button
+                type="button"
+                variant={postAspectRatio === 1 ? "default" : "ghost"}
+                size="sm"
+                onClick={() => handlePostAspectRatioChange(1, '1:1')}
+                className={`flex-1 h-10 text-sm font-medium rounded-xl transition-all duration-200 ${
+                  postAspectRatio === 1 
+                    ? 'bg-primary text-primary-foreground shadow-lg scale-105' 
+                    : 'hover:bg-background/80 text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Square className="w-4 h-4 mr-2" />
+                Square
+              </Button>
+
+              <Button
+                type="button"
+                variant={postAspectRatio === 3/4 ? "default" : "ghost"}
+                size="sm"
+                onClick={() => handlePostAspectRatioChange(3/4, '3:4')}
+                className={`flex-1 h-10 text-sm font-medium rounded-xl transition-all duration-200 ${
+                  postAspectRatio === 3/4 
+                    ? 'bg-primary text-primary-foreground shadow-lg scale-105' 
+                    : 'hover:bg-background/80 text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <RectangleVertical className="w-4 h-4 mr-2" />
+                Portrait
+              </Button>
+              <Button
+                type="button"
+                variant={postAspectRatio === 9/16 ? "default" : "ghost"}
+                size="sm"
+                onClick={() => handlePostAspectRatioChange(9/16, '9:16')}
+                className={`flex-1 h-10 text-sm font-medium rounded-xl transition-all duration-200 ${
+                  postAspectRatio === 9/16 
+                    ? 'bg-primary text-primary-foreground shadow-lg scale-105' 
+                    : 'hover:bg-background/80 text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Smartphone className="w-4 h-4 mr-2" />
+                Story
+              </Button>
+            </div>
+          </div>
+          
           {imageSrcForPostCropper && (
-            <div className="my-4 max-h-[60vh] overflow-hidden flex justify-center items-center">
-              <ReactCrop crop={postCrop} onChange={(_, percentCrop) => setPostCrop(percentCrop)} onComplete={(c) => setCompletedPostCrop(c)} aspect={4/3} minWidth={100} minHeight={75}>
-                <NextImage ref={imgRefPostCropperDialog} alt="Crop me" src={imageSrcForPostCropper} width={0} height={0} sizes="100vw" style={{ display: 'block', maxHeight: '50vh', width: 'auto', height: 'auto', objectFit: 'contain', userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' }} onLoad={onPostImageLoadInCropperDialog} unoptimized={true} />
-              </ReactCrop>
+            <div className="px-6 pb-4">
+              <div className="relative bg-background/30 backdrop-blur-sm rounded-2xl border-2 border-border/30 overflow-hidden shadow-inner">
+                <div className="max-h-[50vh] overflow-hidden flex justify-center items-center p-4">
+                  <ReactCrop 
+                    crop={postCrop} 
+                    onChange={(_, percentCrop) => setPostCrop(percentCrop)} 
+                    onComplete={(c) => setCompletedPostCrop(c)} 
+                    aspect={postAspectRatio} 
+                    minWidth={100} 
+                    minHeight={75}
+                    ruleOfThirds={true}
+                    circularCrop={false}
+                    keepSelection={true}
+                    className="max-w-full"
+                  >
+                    <NextImage 
+                      ref={imgRefPostCropperDialog} 
+                      alt="Crop me" 
+                      src={imageSrcForPostCropper} 
+                      width={0} 
+                      height={0} 
+                      sizes="100vw" 
+                      style={{ 
+                        display: 'block', 
+                        maxHeight: '45vh', 
+                        width: 'auto', 
+                        height: 'auto', 
+                        objectFit: 'contain', 
+                        userSelect: 'none', 
+                        WebkitUserSelect: 'none', 
+                        touchAction: 'none' 
+                      }} 
+                      onLoad={onPostImageLoadInCropperDialog} 
+                      unoptimized={true} 
+                      priority={false}
+                      className="rounded-lg"
+                    />
+                  </ReactCrop>
+                </div>
+              </div>
             </div>
           )}
-          <DialogFooter className="gap-2 sm:justify-end"><Button variant="outline" onClick={handleCancelPostImageCropDialog} size="sm" disabled={isUploadingHighlight || isSubmittingPostFromDialog}>Cancel</Button><Button onClick={handlePostImageCropAndSaveDialog} disabled={!completedPostCrop || isUploadingHighlight || isSubmittingPostFromDialog} size="sm">Crop &amp; Use Image</Button></DialogFooter>
+          <DialogFooter className="p-6 pt-4 border-t border-border/20 bg-background/50 backdrop-blur-sm">
+            <div className="flex gap-3 w-full">
+              <Button 
+                variant="outline" 
+                onClick={handleCancelPostImageCropDialog} 
+                size="lg"
+                disabled={isUploadingHighlight || isSubmittingPostFromDialog}
+                className="flex-1 h-11 text-sm font-medium border-2 border-border/40 hover:border-destructive/50 hover:text-destructive hover:bg-destructive/5 rounded-xl transition-all duration-200"
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handlePostImageCropAndSaveDialog} 
+                disabled={!completedPostCrop || isUploadingHighlight || isSubmittingPostFromDialog} 
+                size="lg"
+                className="flex-1 h-11 text-sm font-semibold bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95"
+              >
+                <Check className="w-4 h-4 mr-2" />
+                Crop & Use Image
+              </Button>
+            </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

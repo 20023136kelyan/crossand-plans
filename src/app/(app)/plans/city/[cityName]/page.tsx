@@ -171,7 +171,13 @@ export default function CityPlansPage() {
   }, [activeTab, upcomingPlans, pastPlans]);
 
   const eventDates = useMemo(() => {
-    return plansForCalendar.filter(plan => plan.eventTime && isValid(parseISO(plan.eventTime))).map(plan => parseISO(plan.eventTime!));
+    const dates: Date[] = [];
+    plansForCalendar.forEach(plan => {
+      if (plan.eventTime && isValid(parseISO(plan.eventTime))) {
+        dates.push(parseISO(plan.eventTime));
+      }
+    });
+    return dates;
   }, [plansForCalendar]);
 
   const plansForSelectedDate = useMemo(() => {

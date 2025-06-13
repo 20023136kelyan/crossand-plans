@@ -78,6 +78,7 @@ import { getUserProfile } from "@/services/userService";
 import { FriendPickerDialog } from '@/components/messages/FriendPickerDialog';
 import { PostDetailModal } from '@/components/feed/PostDetailModal';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { extractImageGradientCached } from '@/lib/colorExtraction';
 
 const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, isVerified: boolean }) => {
   if (role === 'admin') {
@@ -137,6 +138,7 @@ const FeedPostCard = React.memo(({
   const [isSubmittingCardComment, setIsSubmittingCardComment] = useState(false);
   const [isFriendPickerOpen, setIsFriendPickerOpen] = useState(false);
   const [isReporting, setIsReporting] = useState(false);
+  const [gradientClass, setGradientClass] = useState('bg-gradient-to-br from-gray-400/30 via-gray-500/15 to-transparent');
 
   useEffect(() => {
     setOptimisticLikedByCurrentUser(item.likedBy?.includes(currentUserId || "") || false);
@@ -380,70 +382,72 @@ const FeedPostCard = React.memo(({
     }
   };
 
-  // Generate a gradient background that complements the media content
-  const getMediaInspiredGradient = (planName: string, mediaUrl?: string) => {
-    // Enhanced color mapping based on media characteristics and content analysis
-    const getColorFromMediaUrl = (url: string) => {
-      const urlLower = url.toLowerCase();
-      
-      // Analyze URL for content hints
-      if (urlLower.includes('sunset') || urlLower.includes('orange') || urlLower.includes('warm')) {
-        return 'bg-gradient-to-br from-orange-400/30 via-amber-400/15 to-transparent';
-      }
-      if (urlLower.includes('ocean') || urlLower.includes('blue') || urlLower.includes('water') || urlLower.includes('sky')) {
-        return 'bg-gradient-to-br from-blue-400/30 via-cyan-400/15 to-transparent';
-      }
-      if (urlLower.includes('forest') || urlLower.includes('green') || urlLower.includes('nature') || urlLower.includes('plant')) {
-        return 'bg-gradient-to-br from-green-400/30 via-emerald-400/15 to-transparent';
-      }
-      if (urlLower.includes('purple') || urlLower.includes('violet') || urlLower.includes('night')) {
-        return 'bg-gradient-to-br from-purple-400/30 via-violet-400/15 to-transparent';
-      }
-      if (urlLower.includes('pink') || urlLower.includes('rose') || urlLower.includes('flower')) {
-        return 'bg-gradient-to-br from-pink-400/30 via-rose-400/15 to-transparent';
-      }
-      if (urlLower.includes('gold') || urlLower.includes('yellow') || urlLower.includes('sun')) {
-        return 'bg-gradient-to-br from-yellow-400/30 via-amber-400/15 to-transparent';
-      }
-      
-      return null;
-    };
-    
-    // If media URL exists, try to extract color from it
-    if (mediaUrl) {
-      const mediaColor = getColorFromMediaUrl(mediaUrl);
-      if (mediaColor) return mediaColor;
+  // Load gradient from image asynchronously
+  useEffect(() => {
+    if (item.mediaUrl) {
+      const loadGradient = async () => {
+        try {
+          const gradient = await extractImageGradientCached(
+            item.mediaUrl,
+            'bg-gradient-to-br from-gray-400/30 via-gray-500/15 to-transparent'
+          );
+          setGradientClass(gradient);
+        } catch (error) {
+          console.warn('Failed to extract gradient from image:', error);
+          // Fallback to plan-based gradient
+          const planBasedGradients = [
+            'bg-gradient-to-br from-orange-400/30 via-red-400/15 to-transparent',
+            'bg-gradient-to-br from-cyan-400/30 via-blue-400/15 to-transparent', 
+            'bg-gradient-to-br from-green-400/30 via-teal-400/15 to-transparent',
+            'bg-gradient-to-br from-purple-400/30 via-indigo-400/15 to-transparent',
+            'bg-gradient-to-br from-pink-400/30 via-purple-400/15 to-transparent',
+            'bg-gradient-to-br from-yellow-400/30 via-orange-400/15 to-transparent',
+            'bg-gradient-to-br from-indigo-400/30 via-purple-400/15 to-transparent',
+            'bg-gradient-to-br from-emerald-400/30 via-green-400/15 to-transparent',
+            'bg-gradient-to-br from-amber-400/30 via-yellow-400/15 to-transparent',
+            'bg-gradient-to-br from-rose-400/30 via-pink-400/15 to-transparent',
+            'bg-gradient-to-br from-teal-400/30 via-cyan-400/15 to-transparent',
+            'bg-gradient-to-br from-violet-400/30 via-purple-400/15 to-transparent'
+          ];
+          const baseString = item.planName + 'media';
+          const hash = baseString.split('').reduce((a, b) => {
+            a = ((a << 5) - a) + b.charCodeAt(0);
+            return a & a;
+          }, 0);
+          const fallback = planBasedGradients[Math.abs(hash) % planBasedGradients.length];
+          setGradientClass(fallback);
+        }
+      };
+      loadGradient();
+    } else {
+      // No media, use plan-based gradient
+      const planBasedGradients = [
+        'bg-gradient-to-br from-orange-400/30 via-red-400/15 to-transparent',
+        'bg-gradient-to-br from-cyan-400/30 via-blue-400/15 to-transparent', 
+        'bg-gradient-to-br from-green-400/30 via-teal-400/15 to-transparent',
+        'bg-gradient-to-br from-purple-400/30 via-indigo-400/15 to-transparent',
+        'bg-gradient-to-br from-pink-400/30 via-purple-400/15 to-transparent',
+        'bg-gradient-to-br from-yellow-400/30 via-orange-400/15 to-transparent',
+        'bg-gradient-to-br from-indigo-400/30 via-purple-400/15 to-transparent',
+        'bg-gradient-to-br from-emerald-400/30 via-green-400/15 to-transparent',
+        'bg-gradient-to-br from-amber-400/30 via-yellow-400/15 to-transparent',
+        'bg-gradient-to-br from-rose-400/30 via-pink-400/15 to-transparent',
+        'bg-gradient-to-br from-teal-400/30 via-cyan-400/15 to-transparent',
+        'bg-gradient-to-br from-violet-400/30 via-purple-400/15 to-transparent'
+      ];
+      const baseString = item.planName + 'text';
+      const hash = baseString.split('').reduce((a, b) => {
+        a = ((a << 5) - a) + b.charCodeAt(0);
+        return a & a;
+      }, 0);
+      const fallback = planBasedGradients[Math.abs(hash) % planBasedGradients.length];
+      setGradientClass(fallback);
     }
-    
-    // Enhanced plan-based color mapping with more nuanced colors
-    const planBasedGradients = [
-      'bg-gradient-to-br from-orange-400/30 via-red-400/15 to-transparent',
-      'bg-gradient-to-br from-cyan-400/30 via-blue-400/15 to-transparent', 
-      'bg-gradient-to-br from-green-400/30 via-teal-400/15 to-transparent',
-      'bg-gradient-to-br from-purple-400/30 via-indigo-400/15 to-transparent',
-      'bg-gradient-to-br from-pink-400/30 via-purple-400/15 to-transparent',
-      'bg-gradient-to-br from-yellow-400/30 via-orange-400/15 to-transparent',
-      'bg-gradient-to-br from-indigo-400/30 via-purple-400/15 to-transparent',
-      'bg-gradient-to-br from-emerald-400/30 via-green-400/15 to-transparent',
-      'bg-gradient-to-br from-amber-400/30 via-yellow-400/15 to-transparent',
-      'bg-gradient-to-br from-rose-400/30 via-pink-400/15 to-transparent',
-      'bg-gradient-to-br from-teal-400/30 via-cyan-400/15 to-transparent',
-      'bg-gradient-to-br from-violet-400/30 via-purple-400/15 to-transparent'
-    ];
-    
-    // Create hash from plan name with media presence consideration
-    const baseString = planName + (mediaUrl ? 'media' : 'text');
-    const hash = baseString.split('').reduce((a, b) => {
-      a = ((a << 5) - a) + b.charCodeAt(0);
-      return a & a;
-    }, 0);
-    
-    return planBasedGradients[Math.abs(hash) % planBasedGradients.length];
-  };
+  }, [item.mediaUrl, item.planName]);
 
   return (
     <>
-    <Card className={cn("overflow-hidden border border-white/20 shadow-2xl rounded-3xl w-full max-w-md transition-all duration-500 hover:shadow-3xl hover:scale-[1.03] cursor-pointer relative transform-gpu backdrop-blur-xl bg-transparent", getMediaInspiredGradient(item.planName, item.mediaUrl))} onClick={() => onOpenDetailModal(item)}>
+    <Card className={cn("overflow-hidden border border-white/20 shadow-2xl rounded-3xl w-full max-w-md transition-all duration-500 hover:shadow-3xl hover:scale-[1.03] cursor-pointer relative transform-gpu backdrop-blur-xl bg-transparent", gradientClass)} onClick={() => onOpenDetailModal(item)}>
       {/* Light-infused glass gradient radiating from media center */}
       <div className="absolute inset-0 bg-gradient-to-t from-transparent via-transparent to-transparent rounded-3xl transition-opacity duration-500 group-hover:opacity-70" style={{background: 'radial-gradient(ellipse at center, transparent 0%, rgba(255,255,255,0.05) 40%, transparent 100%)'}} />
       <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-transparent rounded-3xl transition-opacity duration-500 group-hover:opacity-60" style={{background: 'radial-gradient(ellipse at 50% 60%, transparent 20%, rgba(255,255,255,0.08) 50%, transparent 80%)'}} />
@@ -498,19 +502,34 @@ const FeedPostCard = React.memo(({
       </div>
 
       {/* Main content area with image */}
-      <div className="relative h-72 mx-3 rounded-xl overflow-hidden z-10 shadow-2xl ring-1 ring-white/20">
+      <div className={cn("relative mx-3 rounded-xl overflow-hidden z-10 shadow-2xl ring-1 ring-white/20", item.mediaUrl ? "aspect-auto" : "h-72")}>
         {/* Subtle light glow radiating from media */}
-        <div className="absolute -inset-3 opacity-25 blur-xl -z-10" style={{background: `radial-gradient(ellipse at center, ${getMediaInspiredGradient(item.planName, item.mediaUrl).includes('orange') ? 'rgba(251, 146, 60, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('blue') ? 'rgba(59, 130, 246, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('cyan') ? 'rgba(34, 211, 238, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('green') ? 'rgba(34, 197, 94, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('purple') ? 'rgba(147, 51, 234, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('pink') ? 'rgba(236, 72, 153, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('yellow') ? 'rgba(234, 179, 8, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('indigo') ? 'rgba(99, 102, 241, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('emerald') ? 'rgba(16, 185, 129, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('amber') ? 'rgba(245, 158, 11, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('rose') ? 'rgba(244, 63, 94, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('teal') ? 'rgba(20, 184, 166, 0.12)' : getMediaInspiredGradient(item.planName, item.mediaUrl).includes('violet') ? 'rgba(139, 92, 246, 0.12)' : 'rgba(99, 102, 241, 0.12)'} 40%, transparent 80%)`}} />
+        <div className="absolute -inset-3 opacity-25 blur-xl -z-10" style={{background: `radial-gradient(ellipse at center, ${gradientClass.includes('orange') ? 'rgba(251, 146, 60, 0.12)' : gradientClass.includes('blue') ? 'rgba(59, 130, 246, 0.12)' : gradientClass.includes('cyan') ? 'rgba(34, 211, 238, 0.12)' : gradientClass.includes('green') ? 'rgba(34, 197, 94, 0.12)' : gradientClass.includes('purple') ? 'rgba(147, 51, 234, 0.12)' : gradientClass.includes('pink') ? 'rgba(236, 72, 153, 0.12)' : gradientClass.includes('yellow') ? 'rgba(234, 179, 8, 0.12)' : gradientClass.includes('indigo') ? 'rgba(99, 102, 241, 0.12)' : gradientClass.includes('emerald') ? 'rgba(16, 185, 129, 0.12)' : gradientClass.includes('amber') ? 'rgba(245, 158, 11, 0.12)' : gradientClass.includes('rose') ? 'rgba(244, 63, 94, 0.12)' : gradientClass.includes('teal') ? 'rgba(20, 184, 166, 0.12)' : gradientClass.includes('violet') ? 'rgba(139, 92, 246, 0.12)' : 'rgba(99, 102, 241, 0.12)'} 40%, transparent 80%)`}} />
         {item.mediaUrl ? (
           <>
-            <Image src={item.mediaUrl} alt={item.text || `Highlight from ${item.planName}`} fill style={{ objectFit: 'cover' }} data-ai-hint="feed post image" priority={true} className="w-full h-full drop-shadow-2xl" sizes="(max-width: 639px) 100vw, (max-width: 1023px) 336px, 384px" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" />
+            <Image 
+              src={item.mediaUrl} 
+              alt={item.text || `Highlight from ${item.planName}`} 
+              width={400} 
+              height={400} 
+              style={{ 
+                width: '100%', 
+                height: 'auto',
+                maxHeight: '600px',
+                objectFit: 'contain'
+              }} 
+              data-ai-hint="feed post image" 
+              priority={true} 
+              className="w-full h-auto drop-shadow-2xl" 
+              sizes="(max-width: 639px) 100vw, (max-width: 1023px) 336px, 384px" 
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent pointer-events-none" />
             <div className="absolute -inset-1 bg-black/20 blur-xl -z-10" />
           </>
         ) : (
           <>
             {/* Enhanced placeholder for posts without media */}
-            <div className={cn("absolute inset-0", getMediaInspiredGradient(item.planName, item.mediaUrl).replace('/60', '/30').replace('/20', '/15'))} />
+            <div className={cn("absolute inset-0", gradientClass.replace('/60', '/30').replace('/20', '/15'))} />
             <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent" />
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="text-center space-y-4">
@@ -645,7 +664,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ post, commentsData: initi
       <DialogContent className="sm:max-w-md p-0 flex flex-col h-[85vh] sm:h-[75vh] bg-card border-border/30 rounded-t-xl sm:rounded-xl shadow-2xl overflow-hidden" hideCloseButton>
         <DialogHeader className="p-4 border-b border-border/30">
           <DialogClose asChild><Button variant="ghost" size="icon" className="absolute top-3 right-3 h-10 w-10 rounded-full text-muted-foreground hover:bg-muted/80"><XIcon className="h-5 w-5" aria-hidden="true" /><span className="sr-only">Close comments</span></Button></DialogClose>
-          <div className="flex flex-col items-center w-full pt-8"><DialogTitle className="text-lg font-semibold text-center">Comments on {post.userName}'s post</DialogTitle><DialogDescriptionComponent className="text-sm text-muted-foreground text-center mt-1">Read and add comments below. The original post text is shown for context.</DialogDescriptionComponent></div>
+          <div className="flex flex-col items-center w-full pt-8"><DialogTitle className="text-lg font-semibold text-center">Comments on {post.username || post.userName}'s post</DialogTitle><DialogDescriptionComponent className="text-sm text-muted-foreground text-center mt-1">Read and add comments below. The original post text is shown for context.</DialogDescriptionComponent></div>
         </DialogHeader>
         <div className="px-4 pt-3 pb-2 border-b border-border/30 shrink-0">
           <div className="flex items-start gap-2"><Avatar className="h-8 w-8"><AvatarImage src={post.userAvatarUrl || undefined} alt={post.username || post.userName} data-ai-hint="person avatar"/><AvatarFallback>{authorInitial}</AvatarFallback></Avatar><div className="text-sm"><span className="font-semibold text-foreground/90">{post.username || post.userName}</span><span className="text-foreground/80 ml-1 whitespace-pre-line line-clamp-2">{post.text}</span></div></div>

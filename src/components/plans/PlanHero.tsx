@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, memo } from 'react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -56,7 +56,7 @@ interface PlanHeroProps {
   onDeletePlanRequest: () => void;
 }
 
-export function PlanHero({
+const PlanHero = memo(function PlanHero({
   plan,
   userRole,
   currentUser,
@@ -309,4 +309,6 @@ export function PlanHero({
       </div>
     </div>
   );
-}
+});
+
+export default PlanHero;

@@ -24,6 +24,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn, commonImageExtensions } from "@/lib/utils";
 import Link from 'next/link';
+import { FileValidators } from '@/lib/fileValidation';
 
 const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, isVerified: boolean }) => {
   if (role === 'admin') {
@@ -82,7 +83,7 @@ export default function ChatPage() {
 
     const observer = new ResizeObserver(entries => {
       for (let entry of entries) {
-        setFooterHeight(entry.target.offsetHeight);
+        setFooterHeight((entry.target as HTMLElement).offsetHeight);
       }
     });
     observer.observe(currentFooterRef);
@@ -203,8 +204,10 @@ export default function ChatPage() {
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) { 
-        toast({ title: "File too large", description: "Image size should not exceed 5MB.", variant: "destructive" });
+      // Use centralized validation
+      const validation = FileValidators.chatMessage(file);
+      if (!validation.valid) {
+        toast({ title: "File Validation Error", description: validation.error, variant: "destructive" });
         if(fileInputRef.current) fileInputRef.current.value = "";
         setSelectedFile(null);
         if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl);
@@ -415,7 +418,7 @@ export default function ChatPage() {
             if (prev.senderId !== current.senderId) return false;
             const prevTs = typeof prev.timestamp === 'string' && isValid(parseISO(prev.timestamp)) ? parseISO(prev.timestamp) : null;
             const currentTs = typeof current.timestamp === 'string' && isValid(parseISO(current.timestamp)) ? parseISO(current.timestamp) : null;
-            return prevTs && currentTs && prevTs.getMinutes() === currentTs.getMinutes() && prevTs.getHours() === currentTs.getHours() && prevTs.getDate() === currentTs.getDate();
+            return !!(prevTs && currentTs && prevTs.getMinutes() === currentTs.getMinutes() && prevTs.getHours() === currentTs.getHours() && prevTs.getDate() === currentTs.getDate());
           };
           
           const showAvatar = !isSender && (!prevMessage || prevMessage.senderId !== msg.senderId || !isSameSenderAndMinute(prevMessage, msg));

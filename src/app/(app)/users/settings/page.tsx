@@ -144,6 +144,144 @@ export default function SettingsPage() {
   const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
   const [isTogglingAutoRenew, setIsTogglingAutoRenew] = useState(false);
 
+  // Function to calculate activity score
+  const calculateActivityScore = useCallback((stats: any, profile: any) => {
+    if (!stats || !profile) return 0;
+    
+    // Simple calculation based on user activity
+    const baseScore = (
+      (stats.plansCreatedCount || 0) * 5 +
+      (stats.plansSharedOrExperiencedCount || 0) * 3 +
+      (stats.postCount || 0) * 2 +
+      (stats.followersCount || 0) +
+      (profile.eventAttendanceScore || 0) * 2
+    );
+    
+    return Math.min(100, Math.round(baseScore));
+  }, []);
+
+  // Memoize profile form update function to prevent unnecessary re-renders
+  const updateProfileForm = useCallback((profileData: UserProfile) => {
+    setProfileForm({
+      name: profileData.name || '',
+      phone: profileData.countryDialCode && profileData.phoneNumber
+        ? `${profileData.countryDialCode} ${profileData.phoneNumber}`
+        : profileData.phoneNumber || '',
+      birthdate: profileData.birthDate && isValid(profileData.birthDate as Date) 
+        ? format(profileData.birthDate as Date, 'yyyy-MM-dd') 
+        : '',
+      address: profileData.physicalAddress 
+        ? [
+            profileData.physicalAddress.street,
+            profileData.physicalAddress.city,
+            profileData.physicalAddress.state,
+            profileData.physicalAddress.zipCode,
+            profileData.physicalAddress.country,
+          ].filter(Boolean).join(', ').trim() || ''
+        : '',
+      bio: profileData.bio || ''
+    });
+  }, []);
+
+  // Set up optimized Firestore listeners for real-time updates
+  const setupFirestoreListeners = useCallback(() => {
+    if (!db || !user) return () => {};
+    
+    const unsubscribers: Array<() => void> = [];
+    
+    // Listen for user profile changes
+    const userProfileRef = doc(db, 'userProfiles', user.uid);
+    const profileUnsubscribe = onSnapshot(userProfileRef, (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        const profileData = docSnapshot.data() as UserProfile;
+        
+        // Update the local state with the new profile data
+        setUserData(prevData => {
+          if (!prevData) return prevData;
+          return {
+            ...prevData,
+            userProfile: profileData
+          };
+        });
+        
+        // Update form data using memoized function
+        updateProfileForm(profileData);
+      }
+    }, (error) => {
+      console.error('Error listening to profile changes:', error);
+    });
+    unsubscribers.push(profileUnsubscribe);
+    
+    // Listen for subscription changes
+    const subscriptionsQuery = query(
+      collection(db, 'subscriptions'),
+      where('userId', '==', user.uid),
+      where('status', '==', 'active'),
+      limit(1)
+    );
+    
+    const subscriptionUnsubscribe = onSnapshot(subscriptionsQuery, (querySnapshot) => {
+      const subscriptionData = !querySnapshot.empty 
+        ? querySnapshot.docs[0].data() as Subscription 
+        : null;
+      
+      setUserData(prevData => {
+        if (!prevData) return prevData;
+        return {
+          ...prevData,
+          subscription: subscriptionData
+        };
+      });
+    }, (error) => {
+      console.error('Error listening to subscription changes:', error);
+    });
+    unsubscribers.push(subscriptionUnsubscribe);
+    
+    // Listen for user stats changes
+    const userStatsRef = doc(db, 'userStats', user.uid);
+    const userStatsUnsubscribe = onSnapshot(userStatsRef, (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        const statsData = docSnapshot.data();
+        
+        setUserData(prevData => {
+          if (!prevData) return prevData;
+          const newActivityScore = calculateActivityScore(statsData, prevData.userProfile);
+          return {
+            ...prevData,
+            userStats: statsData,
+            activityScore: newActivityScore
+          };
+        });
+      }
+    }, (error) => {
+      console.error('Error listening to user stats changes:', error);
+    });
+    unsubscribers.push(userStatsUnsubscribe);
+    
+    // Listen for notification preferences
+    const notificationPrefsRef = doc(db, 'userNotificationPreferences', user.uid);
+    const notificationPrefsUnsubscribe = onSnapshot(notificationPrefsRef, (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        const prefsData = docSnapshot.data();
+        
+        setNotifications({
+          email: prefsData.emailNotifications ?? true,
+          push: prefsData.pushNotifications ?? true,
+          planReminders: prefsData.planReminders ?? true,
+          marketing: prefsData.marketingEmails ?? false
+        });
+      }
+    }, (error) => {
+      console.error('Error listening to notification preferences changes:', error);
+    });
+    unsubscribers.push(notificationPrefsUnsubscribe);
+    
+    // Return cleanup function that unsubscribes from all listeners
+    return () => {
+      unsubscribers.forEach(unsubscribe => unsubscribe());
+    };
+  }, [db, user, updateProfileForm, calculateActivityScore]);
+
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login');
@@ -184,157 +322,6 @@ export default function SettingsPage() {
         setIsLoading(false);
       }
     };
-    
-    // Function to calculate activity score
-    const calculateActivityScore = (stats: any, profile: any) => {
-      if (!stats || !profile) return 0;
-      
-      // Simple calculation based on user activity
-      const baseScore = (
-        (stats.plansCreatedCount || 0) * 5 +
-        (stats.plansSharedOrExperiencedCount || 0) * 3 +
-        (stats.postCount || 0) * 2 +
-        (stats.followersCount || 0) +
-        (profile.eventAttendanceScore || 0) * 2
-      );
-      
-      return Math.min(100, Math.round(baseScore));
-    };
-    
-    // Set up Firestore listeners for real-time updates
-    const setupFirestoreListeners = () => {
-      const unsubscribers: Array<() => void> = [];
-      
-      // Listen for user profile changes
-      if (db && user) {
-        const userProfileRef = doc(db, 'userProfiles', user.uid);
-        const profileUnsubscribe = onSnapshot(userProfileRef, (docSnapshot) => {
-          if (docSnapshot.exists()) {
-            const profileData = docSnapshot.data() as UserProfile;
-            
-            // Update the local state with the new profile data
-            setUserData(prevData => {
-              if (!prevData) return prevData;
-              return {
-                ...prevData,
-                userProfile: profileData
-              };
-            });
-            
-            // Also update the form data
-            setProfileForm({
-              name: profileData.name || '',
-              phone: profileData.countryDialCode && profileData.phoneNumber
-                ? `${profileData.countryDialCode} ${profileData.phoneNumber}`
-                : profileData.phoneNumber || '',
-              birthdate: profileData.birthDate && isValid(profileData.birthDate as Date) 
-                ? format(profileData.birthDate as Date, 'yyyy-MM-dd') 
-                : '',
-              address: profileData.physicalAddress 
-                ? [
-                    profileData.physicalAddress.street,
-                    profileData.physicalAddress.city,
-                    profileData.physicalAddress.state,
-                    profileData.physicalAddress.zipCode,
-                    profileData.physicalAddress.country,
-                  ].filter(Boolean).join(', ').trim() || null
-                : null,
-              bio: profileData.bio || ''
-            });
-          }
-        }, (error) => {
-          console.error('Error listening to profile changes:', error);
-        });
-        unsubscribers.push(profileUnsubscribe);
-      }
-      
-      // Listen for subscription changes
-      if (db && user) {
-        const subscriptionsQuery = query(
-          collection(db, 'subscriptions'),
-          where('userId', '==', user.uid),
-          where('status', '==', 'active'),
-          limit(1)
-        );
-        
-        const subscriptionUnsubscribe = onSnapshot(subscriptionsQuery, (querySnapshot) => {
-          if (!querySnapshot.empty) {
-            const subscriptionData = querySnapshot.docs[0].data() as Subscription;
-            
-            // Update the local state with the new subscription data
-            setUserData(prevData => {
-              if (!prevData) return prevData;
-              return {
-                ...prevData,
-                subscription: subscriptionData
-              };
-            });
-          } else {
-            // No active subscription
-            setUserData(prevData => {
-              if (!prevData) return prevData;
-              return {
-                ...prevData,
-                subscription: null
-              };
-            });
-          }
-        }, (error) => {
-          console.error('Error listening to subscription changes:', error);
-        });
-        unsubscribers.push(subscriptionUnsubscribe);
-      }
-      
-      // Listen for user stats changes
-      if (db && user) {
-        const userStatsRef = doc(db, 'userStats', user.uid);
-        const userStatsUnsubscribe = onSnapshot(userStatsRef, (docSnapshot) => {
-          if (docSnapshot.exists()) {
-            const statsData = docSnapshot.data();
-            
-            // Update the local state with the new stats data
-            setUserData(prevData => {
-              if (!prevData) return prevData;
-              const newActivityScore = calculateActivityScore(statsData, prevData.userProfile);
-              return {
-                ...prevData,
-                userStats: statsData,
-                activityScore: newActivityScore
-              };
-            });
-          }
-        }, (error) => {
-          console.error('Error listening to user stats changes:', error);
-        });
-        unsubscribers.push(userStatsUnsubscribe);
-      }
-      
-      // Listen for notification preferences
-      if (db && user) {
-        const notificationPrefsRef = doc(db, 'userNotificationPreferences', user.uid);
-        const notificationPrefsUnsubscribe = onSnapshot(notificationPrefsRef, (docSnapshot) => {
-          if (docSnapshot.exists()) {
-            const prefsData = docSnapshot.data();
-            
-            // Update the notifications state
-            setNotifications({
-              email: prefsData.emailNotifications ?? true,
-              push: prefsData.pushNotifications ?? true,
-              planReminders: prefsData.planReminders ?? true,
-              marketing: prefsData.marketingEmails ?? false
-            });
-          }
-        }, (error) => {
-          console.error('Error listening to notification preferences changes:', error);
-        });
-        unsubscribers.push(notificationPrefsUnsubscribe);
-      }
-      
-      // Return cleanup function that unsubscribes from all listeners
-      return () => {
-        unsubscribers.forEach(unsubscribe => unsubscribe());
-      };
-    };
 
     let unsubscribeListeners: (() => void) | undefined;
     
@@ -356,7 +343,7 @@ export default function SettingsPage() {
     if (!user) {
       setIsLoading(false);
     }
-  }, [user, toast, currentUserProfile]);
+  }, [user, toast, currentUserProfile, setupFirestoreListeners]);
   
   // Handle profile form changes
   const handleProfileChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -385,6 +372,7 @@ export default function SettingsPage() {
     setIsSavingProfile(true);
     try {
       // Get a reference to the user's profile document in Firestore
+      if (!db) throw new Error('Database not initialized');
       const userProfileRef = doc(db, 'userProfiles', user.uid);
       
       // Parse the form data
@@ -404,6 +392,20 @@ export default function SettingsPage() {
       }
     }
     
+    // Parse phone number components
+    let phoneNumber = '';
+    let countryDialCode = '';
+    if (profileForm.phone) {
+      // Simple parsing - in production, use a proper phone number library
+      const phoneMatch = profileForm.phone.match(/^(\+\d{1,3})\s*(.+)$/);
+      if (phoneMatch) {
+        countryDialCode = phoneMatch[1];
+        phoneNumber = phoneMatch[2];
+      } else {
+        phoneNumber = profileForm.phone;
+      }
+    }
+
     // Parse address
     let physicalAddress = null;
     if (profileForm.address) {
@@ -816,6 +818,7 @@ const handleSaveNotifications = async () => {
     setIsTogglingAutoRenew(true);
     try {
       // Update the subscription in Firestore
+      if (!db) throw new Error('Database not initialized');
       const subscriptionRef = doc(db, 'subscriptions', userData.subscription.id);
       
       await updateDoc(subscriptionRef, {

@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import Image from 'next/image'; // Use NextImage alias or ensure no conflict if Lucide also exports Image
 import { useToast } from '@/hooks/use-toast';
-import type { OnboardingProfileData, UserProfile, AuthUserData } from '@/types/user';
+import type { OnboardingProfileData, UserProfile } from '@/types/user';
 import { completeOnboardingAction } from '@/app/actions/userActions';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from "@/components/ui/progress";
@@ -310,6 +310,8 @@ const getCountryFlagEmoji = (countryCode: string | null | undefined): string => 
 };
 
 const onboardingFormSchema = z.object({
+  name: z.string().min(1, "Name is required.").max(100).optional().nullable(),
+  username: z.string().optional().nullable(),
   bio: z.string().max(160, { message: "Bio cannot exceed 160 characters."}).optional().nullable(),
   selectedCountryCode: z.string().optional().nullable(),
   phoneNumber: z.string().optional().nullable(),
@@ -725,7 +727,7 @@ export default function OnboardingPage() {
     }
     setIsSubmitting(true);
     try {
-      const authUserDataPayload: AuthUserData = {
+      const authUserDataPayload = {
         uid: user.uid,
         displayName: user.displayName,
         email: user.email,
@@ -739,6 +741,7 @@ export default function OnboardingPage() {
         ...data,
         countryDialCode: countryDialCodeForAction,
         birthDate: data.birthDate || null,
+        phoneNumber: data.phoneNumber || null,
       };
 
       const result = await completeOnboardingAction(profileDataForAction, authUserDataPayload);

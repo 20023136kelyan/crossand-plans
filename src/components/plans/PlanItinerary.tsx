@@ -112,15 +112,16 @@ export function PlanItinerary({ itinerary }: PlanItineraryProps) {
           }
 
           return (
-            <Card key={index} className="overflow-hidden bg-background/30 backdrop-blur-sm border border-border/30 hover:bg-background/40 transition-all duration-300 hover:shadow-lg">
+            <Card key={index} className="overflow-hidden bg-background/50 backdrop-blur-sm border border-border/30 hover:bg-background/60 transition-all duration-300 hover:shadow-lg">
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-0">
                 {/* Image Section */}
-                <div className="relative h-48 lg:h-full lg:col-span-1">
+                <div className="relative h-48 lg:h-full lg:col-span-1 lg:rounded-r-3xl overflow-hidden">
                   <Image
                     src={itemPhotoUrl}
                     alt={item.placeName}
                     fill
                     style={{ objectFit: 'cover' }}
+                    className="lg:rounded-r-3xl"
                     unoptimized={itemPhotoUrl.includes('maps.googleapis.com')}
                     onError={(e) => {
                       console.error(`Image failed to load for ${item.placeName}:`, {
@@ -130,6 +131,8 @@ export function PlanItinerary({ itinerary }: PlanItineraryProps) {
                       });
                     }}
                   />
+                  {/* Gradient overlay for softer transition */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-background/20 lg:bg-gradient-to-r lg:from-transparent lg:via-transparent lg:to-background/30" />
                   {/* Step Number Badge */}
                   <div className="absolute top-4 left-4">
                     <Badge className="bg-black/20 backdrop-blur-sm border-0 text-white px-3 py-1.5 text-sm font-bold">
@@ -172,16 +175,19 @@ export function PlanItinerary({ itinerary }: PlanItineraryProps) {
                 </div>
                 
                 {/* Content Section */}
-                <div className="lg:col-span-2 p-6">
-                  <h4 className="text-xl font-bold text-foreground mb-2">
-                    {item.placeName}
-                  </h4>
-                  {item.address && (
-                    <div className="flex items-center gap-2 text-muted-foreground mb-4">
-                      <MapPin className="h-4 w-4" />
-                      <span className="text-sm">{item.address}</span>
-                    </div>
-                  )}
+                <div className="lg:col-span-2 p-6 lg:pl-8 relative">
+                   {/* Subtle connecting element */}
+                   <div className="hidden lg:block absolute left-0 top-6 bottom-6 w-px bg-gradient-to-b from-transparent via-border/30 to-transparent" />
+                   
+                   <h4 className="text-xl font-bold text-foreground mb-2">
+                     {item.placeName}
+                   </h4>
+                   {item.address && (
+                     <div className="flex items-center gap-2 text-muted-foreground mb-4">
+                       <MapPin className="h-4 w-4" />
+                       <span className="text-sm">{item.address}</span>
+                     </div>
+                   )}
                   
                   {/* Time and Duration */}
                   {(item.startTime || item.endTime || item.durationMinutes) && (
@@ -208,27 +214,27 @@ export function PlanItinerary({ itinerary }: PlanItineraryProps) {
                   )}
                   
                   {/* Stats Pills */}
-                  <div className="flex flex-wrap gap-3 mb-4">
+                  <div className="flex flex-wrap gap-1.5 mb-4">
                     {typeof item.rating === 'number' && (
-                      <div className="flex items-center gap-2 bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200 px-3 py-2 rounded-full">
-                        <Star className="h-4 w-4 fill-current" />
-                        <span className="text-sm font-medium">{item.rating.toFixed(1)}</span>
+                      <div className="flex items-center gap-1 bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200 px-2 py-1 rounded-full">
+                        <Star className="h-3 w-3 fill-current" />
+                        <span className="text-xs font-medium">{item.rating.toFixed(1)}</span>
                         <span className="text-xs opacity-75">({formatReviewCount(item.reviewCount || 0)})</span>
                       </div>
                     )}
                     {typeof item.priceLevel === 'number' && (
-                      <div className="flex items-center gap-2 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-3 py-2 rounded-full">
-                        <DollarSign className="h-4 w-4" />
-                        <span className="text-sm font-medium">{'$'.repeat(item.priceLevel)}</span>
+                      <div className="flex items-center gap-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded-full">
+                        <DollarSign className="h-3 w-3" />
+                        <span className="text-xs font-medium">{'$'.repeat(item.priceLevel)}</span>
                       </div>
                     )}
                     {item.phoneNumber && (
                       <a 
                         href={`tel:${item.phoneNumber}`}
-                        className="flex items-center gap-2 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-3 py-2 rounded-full hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors cursor-pointer"
+                        className="flex items-center gap-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded-full hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors cursor-pointer"
                       >
-                        <Phone className="h-4 w-4" />
-                        <span className="text-sm font-medium">Call</span>
+                        <Phone className="h-3 w-3" />
+                        <span className="text-xs font-medium">Call</span>
                       </a>
                     )}
                     {item.website && (
@@ -236,10 +242,10 @@ export function PlanItinerary({ itinerary }: PlanItineraryProps) {
                         href={item.website}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center justify-center bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 w-10 h-10 rounded-full hover:bg-purple-200 dark:hover:bg-purple-800 transition-colors cursor-pointer"
+                        className="flex items-center justify-center bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 w-7 h-7 rounded-full hover:bg-purple-200 dark:hover:bg-purple-800 transition-colors cursor-pointer"
                         title="Visit Website"
                       >
-                        <Globe className="h-4 w-4" />
+                        <Globe className="h-3 w-3" />
                       </a>
                     )}
                   </div>

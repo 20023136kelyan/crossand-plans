@@ -8,11 +8,13 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { 
     Loader2, Edit3, MessageSquare, ShieldCheck as AdminIcon, CheckCircle, Settings as SettingsIcon, 
-    Users as UsersIcon, ChevronLeft, UserPlus, XCircle, ThumbsUp, Check, MoreVertical, Camera
+    Users as UsersIcon, ChevronLeft, UserPlus, XCircle, ThumbsUp, Check, MoreVertical, Camera,
+    LayoutGrid, Calendar, Users
 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { 
   fetchPublicUserProfileDataAction, 
   sendFriendRequestAction, 
@@ -20,6 +22,7 @@ import {
   declineFriendRequestAction, 
   removeFriendAction 
 } from '@/app/actions/userActions';
+import { getFriendships } from '@/services/userService';
 import { initiateDirectChatAction } from '@/app/actions/chatActions';
 import type { UserProfile, FeedPost, UserStats, FriendEntry, SearchedUser } from "@/types/user";
 import { cn } from "@/lib/utils";
@@ -57,6 +60,8 @@ export default function PublicProfilePage() {
 
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
   const [selectedPostIndex, setSelectedPostIndex] = useState<number | null>(null);
+  
+  const friendshipUnsubscribeRef = useRef<(() => void) | null>(null);
 
   const fetchProfileAndFriendship = useCallback(async () => {
     if (!profileId) {
@@ -83,14 +88,27 @@ export default function PublicProfilePage() {
         if (currentUser && currentUser.uid !== profileId && result.userProfile) {
           setFriendActionLoading(true);
           try {
-            const friendships = await getFriendships(currentUser.uid); // Assumes getFriendships is client-safe
-            const friendEntry = friendships.find(f => f.friendUid === profileId);
-            setFriendshipStatus(friendEntry ? friendEntry.status : 'not_friends');
+            // Use getFriendships with proper callback pattern
+            const unsubscribe = getFriendships(
+              currentUser.uid,
+              (friendships: FriendEntry[]) => {
+                const friendEntry = friendships.find((f: FriendEntry) => f.friendUid === profileId);
+                setFriendshipStatus(friendEntry ? friendEntry.status : 'not_friends');
+                setFriendActionLoading(false);
+              },
+              (error: Error) => {
+                console.error("Error fetching friendship status:", error);
+                setFriendshipStatus('not_friends');
+                toast({ title: "Friendship Status Error", description: error.message || "Could not determine friendship status.", variant: "default" });
+                setFriendActionLoading(false);
+              }
+            );
+            // Store unsubscribe function for cleanup
+            friendshipUnsubscribeRef.current = unsubscribe;
           } catch (fsError: any) {
             console.error("Error fetching friendship status:", fsError);
             setFriendshipStatus('not_friends'); 
             toast({ title: "Friendship Status Error", description: fsError.message || "Could not determine friendship status.", variant: "default" });
-          } finally {
             setFriendActionLoading(false);
           }
         } else if (currentUser && currentUser.uid === profileId) {
@@ -108,6 +126,14 @@ export default function PublicProfilePage() {
 
   useEffect(() => {
     fetchProfileAndFriendship();
+    
+    // Cleanup function to unsubscribe from friendship listener
+    return () => {
+      if (friendshipUnsubscribeRef.current) {
+        friendshipUnsubscribeRef.current();
+        friendshipUnsubscribeRef.current = null;
+      }
+    };
   }, [fetchProfileAndFriendship]);
 
   const { userProfile, userPosts, userStats } = profileData || { userProfile: null, userPosts: [], userStats: null };
@@ -131,14 +157,16 @@ export default function PublicProfilePage() {
       const targetUserInfoForAction: SearchedUser = { 
         uid: userProfile.uid,
         name: userProfile.name,
+        username: userProfile.username,
+        email: userProfile.email,
         avatarUrl: userProfile.avatarUrl,
         role: userProfile.role,
         isVerified: userProfile.isVerified,
       };
 
       switch (actionType) {
-        case 'send': result = await sendFriendRequestAction(targetUserInfoForAction, idToken); break;
-        case 'accept': result = await acceptFriendRequestAction(targetUserInfoForAction, idToken); break;
+        case 'send': result = await sendFriendRequestAction(userProfile.uid, idToken); break;
+        case 'accept': result = await acceptFriendRequestAction(userProfile.uid, idToken); break;
         case 'decline':
         case 'cancel': result = await declineFriendRequestAction(userProfile.uid, idToken); break;
         case 'remove': result = await removeFriendAction(userProfile.uid, idToken); break;
@@ -181,11 +209,12 @@ export default function PublicProfilePage() {
           uid: userProfile.uid, 
           name: userProfile.name, 
           avatarUrl: userProfile.avatarUrl,
-          // Pass role and isVerified from the viewed profile for chat participant info
-          role: userProfile.role,
-          isVerified: userProfile.isVerified,
-        }, 
-        idToken // Pass idToken instead of full currentUserData object
+        },
+        {
+          uid: currentUser.uid,
+          name: currentUserProfile?.name || currentUser.displayName,
+          avatarUrl: currentUserProfile?.avatarUrl || currentUser.photoURL,
+        }
       );
       if (result.success && result.chatId) {
         router.push(`/messages/${result.chatId}`);
@@ -255,118 +284,262 @@ export default function PublicProfilePage() {
   return (
     <>
       <div className="min-h-screen bg-background text-foreground">
+        <header className="md:hidden sticky top-0 z-30 flex items-center justify-between px-3 py-2 bg-background/80 backdrop-blur-sm">
+          <Button variant="ghost" size="icon" onClick={() => router.back()} className="text-muted-foreground hover:text-foreground" aria-label="Go back">
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <div className="flex-1"></div>
+        </header>
         <div className="container mx-auto max-w-3xl px-0 sm:px-4">
-          <header className="px-4 py-3 sm:p-4 md:p-6 sticky top-0 bg-background/80 backdrop-blur-sm z-30 border-b border-border/30">
-            <div className="flex items-center justify-between">
-                <Button variant="ghost" size="icon" onClick={() => router.back()} className="text-muted-foreground hover:text-foreground" aria-label="Go back">
-                    <ChevronLeft className="h-5 w-5" />
-                </Button>
-                <h2 className="text-md font-semibold text-foreground/90 truncate">{userProfile.name || "Profile"}</h2>
-                {isOwnProfile ? (
-                     <Button variant="ghost" size="icon" asChild className="text-muted-foreground hover:text-foreground" aria-label="My Settings">
-                        <Link href="/users/settings"><SettingsIcon className="h-5 w-5" /></Link>
-                     </Button>
-                ) : (
-                    <div className="w-9 h-9"></div> 
-                )}
-            </div>
-          </header>
-          
-          <div className="p-4 md:p-6">
-            <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
-              <Avatar className="h-20 w-20 sm:h-24 sm:w-24 text-3xl sm:text-4xl border-2 border-primary/30">
-                <AvatarImage src={userProfile.avatarUrl || undefined} alt={userProfile.name || "User Avatar"} data-ai-hint="person portrait"/>
-                <AvatarFallback>{userInitial}</AvatarFallback>
-              </Avatar>
-              <div className="flex-1 text-center sm:text-left w-full">
-                <div className="flex items-center justify-center sm:justify-start mb-1">
-                  <h1 className="text-xl sm:text-2xl font-bold text-foreground/90">{userProfile.name || "Macaroom User"}</h1>
-                  <VerificationBadgeInline role={userProfile.role} isVerified={userProfile.isVerified} />
-                </div>
-                <div className="flex justify-center sm:justify-start gap-x-4 gap-y-1 text-xs text-muted-foreground mb-2 flex-wrap">
-                  <div><span className="font-semibold text-foreground/80">{userStats?.postCount ?? 0}</span> Posts</div>
-                  <div><span className="font-semibold text-foreground/80">{userStats?.friendsCount ?? 0}</span> Friends</div>
-                  <div><span className="font-semibold text-foreground/80">{userStats?.plansCreatedCount ?? 0}</span> Plans</div>
-                  <div><span className="font-semibold text-foreground/80">{userStats?.plansSharedOrExperiencedCount ?? 0}</span> Shared</div>
-                </div>
-                {userProfile.bio && (
-                  <p className="text-xs sm:text-sm text-foreground/80 leading-relaxed line-clamp-3 sm:line-clamp-2">{userProfile.bio}</p>
-                )}
-              </div>
-            </div>
 
-            <div className="mt-4 sm:mt-5 flex flex-col sm:flex-row gap-2">
-              {isOwnProfile ? (
-                <Button variant="outline" className="w-full sm:flex-1" asChild>
-                  <Link href="/onboarding">
-                    <Edit3 className="mr-2 h-4 w-4" /> Edit Profile
-                  </Link>
-                </Button>
-              ) : (
-                <>
-                  <Button 
-                    variant={friendshipStatus === 'friends' ? 'secondary' : (friendshipStatus === 'pending_sent' ? 'outline' : 'default')} 
-                    className="w-full sm:flex-1" 
-                    disabled={friendActionLoading || friendshipStatus === 'is_self' || friendshipStatus === null}
-                    onClick={() => {
-                      if (friendshipStatus === 'not_friends') handleFriendAction('send');
-                      else if (friendshipStatus === 'pending_received') handleFriendAction('accept');
-                      else if (friendshipStatus === 'pending_sent') handleFriendAction('cancel');
-                      else if (friendshipStatus === 'friends') handleFriendAction('remove');
-                    }}
-                  >
-                    {friendActionLoading && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
-                    {friendshipStatus === 'friends' ? <><UserPlus className="mr-2 h-4 w-4 text-destructive" /> Unfriend</> 
-                      : friendshipStatus === 'pending_sent' ? <><XCircle className="mr-2 h-4 w-4"/>Request Sent</>
-                      : friendshipStatus === 'pending_received' ? <><Check className="mr-2 h-4 w-4"/>Accept Request</>
-                      : friendshipStatus === 'not_friends' ? <><UserPlus className="mr-2 h-4 w-4"/>Add Friend</>
-                      : 'Loading Status...'}
-                  </Button>
-                  <Button variant="outline" className="w-full sm:flex-1" onClick={handleInitiateChat} disabled={isInitiatingChat}>
-                    {isInitiatingChat ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <MessageSquare className="mr-2 h-4 w-4" />} Message
-                  </Button>
-                </>
-              )}
+          {/* Enhanced Profile Header */}
+          <div className="relative bg-gradient-to-br from-background via-background/95 to-muted/20 border-b border-border/30">
+            <div className="px-6 pt-8 pb-6">
+              <div className="flex items-start gap-6">
+                <div className="relative group">
+                  <Avatar className="h-20 w-20 sm:h-24 sm:w-24 text-xl sm:text-2xl ring-2 ring-border/40 shadow-lg flex-shrink-0 transition-all duration-300 group-hover:ring-primary/50 group-hover:shadow-xl">
+                    <AvatarImage src={userProfile.avatarUrl || undefined} alt={userProfile.username || userProfile.name || "User Avatar"} data-ai-hint="person portrait"/>
+                    <AvatarFallback className="bg-gradient-to-br from-muted to-muted/80 text-muted-foreground font-semibold">{userInitial}</AvatarFallback>
+                  </Avatar>
+                  <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-gradient-to-br from-green-400 to-green-500 rounded-full border-2 border-background shadow-sm"></div>
+                </div>
+                <div className="flex-1 min-w-0 space-y-3">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">@{userProfile.username || "user"}</h1>
+                      <VerificationBadgeInline role={userProfile.role} isVerified={userProfile.isVerified} />
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      {isOwnProfile ? (
+                        <Button size="sm" variant="outline" className="h-8 px-3 text-xs font-medium rounded-lg border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all duration-200" asChild>
+                          <Link href="/settings">
+                            <SettingsIcon className="h-3.5 w-3.5 mr-1.5" />
+                            Edit Profile
+                          </Link>
+                        </Button>
+                      ) : (
+                        <>
+                          {/* Chat Button */}
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="h-8 px-3 text-xs font-medium rounded-lg border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all duration-200" 
+                            onClick={handleInitiateChat}
+                            disabled={friendActionLoading || isInitiatingChat}
+                          >
+                            {isInitiatingChat ? (
+                              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                            ) : (
+                              <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
+                            )}
+                            Chat
+                          </Button>
+                          
+                          {/* Friend Action Button */}
+                          {friendshipStatus === 'friends' && (
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="h-8 px-3 text-xs font-medium rounded-lg border-destructive/30 text-destructive hover:bg-destructive hover:text-destructive-foreground hover:border-destructive transition-all duration-200" 
+                              onClick={() => handleFriendAction('remove')}
+                              disabled={friendActionLoading}
+                            >
+                              {friendActionLoading ? (
+                                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                              ) : (
+                                <XCircle className="h-3.5 w-3.5 mr-1.5" />
+                              )}
+                              Remove Friend
+                            </Button>
+                          )}
+                          
+                          {friendshipStatus === 'pending_sent' && (
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="h-8 px-3 text-xs font-medium rounded-lg border-border/50 hover:border-destructive/50 hover:bg-destructive/5 transition-all duration-200" 
+                              onClick={() => handleFriendAction('cancel')}
+                              disabled={friendActionLoading}
+                            >
+                              {friendActionLoading ? (
+                                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                              ) : (
+                                <XCircle className="h-3.5 w-3.5 mr-1.5" />
+                              )}
+                              Cancel Request
+                            </Button>
+                          )}
+                          
+                          {friendshipStatus === 'pending_received' && (
+                            <>
+                              <Button 
+                                size="sm" 
+                                variant="default" 
+                                className="h-8 px-3 text-xs font-medium rounded-lg bg-primary hover:bg-primary/90 transition-all duration-200 shadow-sm" 
+                                onClick={() => handleFriendAction('accept')}
+                                disabled={friendActionLoading}
+                              >
+                                {friendActionLoading ? (
+                                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                                ) : (
+                                  <Check className="h-3.5 w-3.5 mr-1.5" />
+                                )}
+                                Accept
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                className="h-8 px-3 text-xs font-medium rounded-lg border-border/50 hover:border-destructive/50 hover:bg-destructive/5 transition-all duration-200" 
+                                onClick={() => handleFriendAction('decline')}
+                                disabled={friendActionLoading}
+                              >
+                                {friendActionLoading ? (
+                                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                                ) : (
+                                  <XCircle className="h-3.5 w-3.5 mr-1.5" />
+                                )}
+                                Decline
+                              </Button>
+                            </>
+                          )}
+                          
+                          {friendshipStatus === 'not_friends' && (
+                            <Button 
+                              size="sm" 
+                              variant="default" 
+                              className="h-8 px-3 text-xs font-medium rounded-lg bg-primary hover:bg-primary/90 transition-all duration-200 shadow-sm" 
+                              onClick={() => handleFriendAction('send')}
+                              disabled={friendActionLoading}
+                            >
+                              {friendActionLoading ? (
+                                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                              ) : (
+                                <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+                              )}
+                              Send Friend Request
+                            </Button>
+                          )}
+                          
+                          {/* More Options Dropdown */}
+                          <Button size="sm" variant="outline" className="h-8 w-8 p-0 rounded-lg border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all duration-200">
+                            <MoreVertical className="h-3.5 w-3.5" />
+                            <span className="sr-only">More options</span>
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {userProfile.name && (
+                    <h2 className="text-lg font-semibold text-foreground tracking-tight">{userProfile.name}</h2>
+                  )}
+                  {userProfile.bio && (
+                    <p className="text-sm text-muted-foreground/90 leading-relaxed max-w-md">{userProfile.bio}</p>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
           
-          <div className="border-t border-border/30 pt-1">
-            {userPosts.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <Camera className="mx-auto h-16 w-16 opacity-30 mb-3" />
-                <p className="font-semibold text-lg">No Posts Yet</p>
-                {isOwnProfile && <p className="text-sm">Share your first plan highlight!</p>}
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 gap-0.5 sm:gap-1">
-                {userPosts.map((post, index) => (
-                  <button 
-                    key={post.id} 
-                    onClick={() => openPostModal(index)}
-                    className="aspect-square relative bg-muted overflow-hidden group focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background rounded-sm"
-                    aria-label={`View post: ${post.text?.substring(0,30) || 'Image post'}`}
-                  >
-                    {post.mediaUrl ? (
-                        <Image
-                        src={post.mediaUrl}
-                        alt={post.text || `Post by ${userProfile.name}`}
-                        fill
-                        sizes="(max-width: 640px) 33vw, (max-width: 768px) 33vw, 250px"
-                        style={{ objectFit: 'cover' }}
-                        className="group-hover:opacity-80 transition-opacity"
-                        data-ai-hint="user generated content"
-                        unoptimized={!post.mediaUrl.startsWith('http') || post.mediaUrl.includes('placehold.co') || post.mediaUrl.includes('firebasestorage.googleapis.com')}
-                        />
-                    ) : (
-                         <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground p-1">No Image</div>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+          <div className="mt-0">
+            <Tabs defaultValue="posts" className="w-full">
+              <TabsList className="w-full grid grid-cols-3 h-16 bg-transparent p-0 border-b border-border/20">
+                <TabsTrigger 
+                  value="posts" 
+                  className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2"
+                >
+                  <span className="text-lg font-bold text-foreground">{userPosts?.length ?? 0}</span>
+                  <div className="flex items-center gap-1.5">
+                    <LayoutGrid className="h-4 w-4" />
+                    <span className="text-xs font-medium leading-tight">Posts</span>
+                  </div>
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="plans" 
+                  className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2"
+                >
+                  <span className="text-lg font-bold text-foreground">{userStats?.plansCreatedCount ?? 0}</span>
+                  <div className="flex items-center gap-1.5">
+                    <Calendar className="h-4 w-4" />
+                    <span className="text-xs font-medium leading-tight">Plans</span>
+                  </div>
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="followers" 
+                  className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2"
+                >
+                  <span className="text-lg font-bold text-foreground">{userStats?.followersCount ?? 0}</span>
+                  <div className="flex items-center gap-1.5">
+                    <Users className="h-4 w-4" />
+                    <span className="text-xs font-medium leading-tight">Followers</span>
+                  </div>
+                </TabsTrigger>
+              </TabsList>
+              
+              {/* Posts Tab Content */}
+              <TabsContent value="posts" className="mt-6 p-0">
+                {userPosts.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Camera className="mx-auto h-16 w-16 opacity-30 mb-3" />
+                    <p className="font-semibold text-lg">No Posts Yet</p>
+                    {isOwnProfile && <p className="text-sm">Share your first plan highlight!</p>}
+                  </div>
+                ) : (
+                  <div className="columns-3 gap-0.5 sm:gap-1 px-0.5 sm:px-1 pb-4 space-y-0.5 sm:space-y-1">
+                    {userPosts.map((post, index) => (
+                      <button 
+                        key={post.id} 
+                        onClick={() => openPostModal(index)}
+                        className="relative bg-muted overflow-hidden group focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background rounded-sm w-full break-inside-avoid mb-0.5 sm:mb-1 block"
+                        aria-label={`View post: ${post.text?.substring(0,30) || 'Image post'}`}
+                      >
+                        {post.mediaUrl ? (
+                          <Image
+                            src={post.mediaUrl}
+                            alt={post.text || `Post by ${userProfile.name}`}
+                            width={250}
+                            height={250}
+                            style={{ 
+                              width: '100%', 
+                              height: 'auto',
+                              objectFit: 'cover'
+                            }}
+                            className="group-hover:opacity-80 transition-opacity w-full h-auto"
+                            data-ai-hint="user generated content"
+                            sizes="(max-width: 640px) 33vw, (max-width: 768px) 33vw, 250px"
+                            unoptimized={!post.mediaUrl.startsWith('http') || post.mediaUrl.includes('placehold.co') || post.mediaUrl.includes('firebasestorage.googleapis.com')}
+                          />
+                        ) : (
+                          <div className="w-full aspect-square flex items-center justify-center text-xs text-muted-foreground p-1">No Image</div>
+                        )}
+                      </button>
+                    ))}
+                   </div>
+                 )}
+               </TabsContent>
+               
+               {/* Plans Tab Content */}
+               <TabsContent value="plans" className="mt-6 p-0">
+                 <div className="text-center py-12 text-muted-foreground">
+                   <Calendar className="mx-auto h-16 w-16 opacity-30 mb-3" />
+                   <p className="font-semibold text-lg">Plans</p>
+                   <p className="text-sm">Created plans will be displayed here</p>
+                   <p className="text-xs mt-1">Privacy settings will control visibility</p>
+                 </div>
+               </TabsContent>
+               
+               {/* Followers Tab Content */}
+               <TabsContent value="followers" className="mt-6 p-0">
+                 <div className="text-center py-12 text-muted-foreground">
+                   <Users className="mx-auto h-16 w-16 opacity-30 mb-3" />
+                   <p className="font-semibold text-lg">Followers</p>
+                   <p className="text-sm">Followers list will be displayed here</p>
+                   <p className="text-xs mt-1">Privacy settings will control visibility</p>
+                 </div>
+               </TabsContent>
+             </Tabs>
+           </div>
+         </div>
+       </div>
 
       {selectedPost && isPostModalOpen && userProfile && (
         <PostDetailModal

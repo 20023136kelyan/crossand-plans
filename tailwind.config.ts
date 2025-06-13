@@ -7,6 +7,22 @@ export default {
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
+  safelist: [
+    // Dynamic gradient classes for color extraction
+    {
+      pattern: /bg-gradient-to-(br|r|l|t|b|tr|tl|bl)$/,
+    },
+    {
+      pattern: /from-(red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-(100|200|300|400|500|600|700|800|900)\/(10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95)$/,
+    },
+    {
+      pattern: /via-(red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-(100|200|300|400|500|600|700|800|900)\/(10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95)$/,
+    },
+    {
+      pattern: /to-(red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-(100|200|300|400|500|600|700|800|900)\/(10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95)$/,
+    },
+    'to-transparent',
+  ],
   theme: {
   	extend: {
   		colors: {

@@ -20,10 +20,12 @@ import { getFeedPostsAdmin } from '@/services/feedService.server';
 import type { OnboardingProfileData, SearchedUser, UserProfile, UserStats, FriendStatus, FeedPost, UserPreferences } from '@/types/user'; // Added FeedPost and UserPreferences
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { authAdmin, storageAdmin, firestoreAdmin } from '@/lib/firebaseAdmin';
+import { authAdmin, firestoreAdmin } from '@/lib/firebaseAdmin';
 import { getAuth } from 'firebase-admin/auth';
 import { FieldValue } from 'firebase-admin/firestore';
 import { commonImageExtensions } from '@/lib/utils';
+import { validateImageFile } from '@/lib/imageProcessing';
+import { uploadAvatar } from '@/lib/postingSystem';
 import { Firestore } from 'firebase-admin/firestore';
 
 // Collection constants
@@ -166,10 +168,7 @@ export async function updateUserAvatarAction(
     console.error("[updateUserAvatarAction] Admin Auth service not available.");
     return { success: false, error: "Server error: Auth service not available." };
   }
-  if (!storageAdmin) {
-    console.error("[updateUserAvatarAction] Admin Storage service not available.");
-    return { success: false, error: "Server error: Storage service not available." };
-  }
+
   if (!firestoreAdmin) {
      console.error("[updateUserAvatarAction] Admin Firestore service not available.");
     return { success: false, error: "Server error: Database service not available." };
@@ -193,57 +192,26 @@ export async function updateUserAvatarAction(
     return { success: false, error: "No image file provided." };
   }
 
-  const getMimeTypeFromServer = (fileName: string): string | null => {
-    const extension = fileName.split('.').pop()?.toLowerCase();
-    if (!extension) return null;
-    const mimeTypes: Record<string, string> = {
-      'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif',
-      'webp': 'image/webp', 'bmp': 'image/bmp', 'svg': 'image/svg+xml', 'avif': 'image/avif'
-    };
-    return mimeTypes[extension] || null;
-  };
-
-  let determinedContentType = imageFile.type;
-  if (!determinedContentType || !determinedContentType.startsWith('image/')) {
-    determinedContentType = getMimeTypeFromServer(imageFile.name);
-  }
-
-  if (!determinedContentType || !determinedContentType.startsWith('image/')) {
-    return { success: false, error: `Invalid file type for ${imageFile.name}. Please use JPG, PNG, GIF, WEBP.` };
-  }
-
-  if (imageFile.size > 2 * 1024 * 1024) { // 2MB limit
-    return { success: false, error: "Image size should not exceed 2MB." };
+  // Upload avatar using centralized posting system
+  let downloadURL: string;
+  try {
+    const uploadResult = await uploadAvatar(imageFile, userId, idToken);
+    if (uploadResult.success) {
+      downloadURL = uploadResult.data?.url || '';
+      if (!downloadURL) {
+        console.error(`[updateUserAvatarAction] Upload succeeded but no URL returned for user ${userId}`);
+        return { success: false, error: 'Failed to get avatar URL after upload' };
+      }
+    } else {
+      console.error(`[updateUserAvatarAction] Avatar upload failed for user ${userId}:`, uploadResult.error);
+      return { success: false, error: `Failed to upload avatar: ${uploadResult.error}` };
+    }
+  } catch (error: any) {
+    console.error(`[updateUserAvatarAction] Avatar upload failed for user ${userId}:`, error);
+    return { success: false, error: `Failed to upload avatar: ${error.message || 'Unknown upload error'}` };
   }
 
   try {
-    const bucketNameForAction = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-    const bucket = bucketNameForAction ? storageAdmin.bucket(bucketNameForAction) : storageAdmin.bucket();
-    if (!bucket) {
-      console.error("[updateUserAvatarAction] Could not access Firebase Storage bucket.");
-      return { success: false, error: 'Server error: Storage bucket not accessible.' };
-    }
-    const bucketName = bucket.name;
-
-    const originalName = imageFile.name;
-    const extension = originalName.split('.').pop()?.toLowerCase() || 'jpg';
-    // Use a consistent filename like 'profile_pic' to overwrite, or add a timestamp for versions
-    const fileName = `user_avatars/${userId}/profile_pic.${extension}`; 
-    
-    const blob = bucket.file(fileName);
-    const buffer = Buffer.from(await imageFile.arrayBuffer());
-
-    await blob.save(buffer, {
-      metadata: { 
-        contentType: determinedContentType, 
-        cacheControl: 'no-cache, max-age=0',
-        customMetadata: { uploaderUid: userId } 
-      },
-      public: true,
-    });
-    
-    // Construct the public URL manually - this is more reliable for public objects
-    const downloadURL = `https://storage.googleapis.com/${bucketName}/${encodeURIComponent(fileName)}?t=${Date.now()}`;
     
     await updateUserProfileAvatarAdmin(userId, downloadURL);
 

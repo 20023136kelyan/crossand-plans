@@ -15,8 +15,9 @@ import {
 import {
   Loader2, Edit3, MessageSquare, ShieldCheck as AdminIcon, CheckCircle, Settings as SettingsIcon,
   UserPlus, XCircle as XIcon, Check, MoreVertical, Camera, ChevronLeft, Users as UsersIconIcon,
-  RotateCcw, EyeOff, Phone, Video
+  RotateCcw, EyeOff, Phone, Video, LayoutGrid, Calendar, Users
 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
@@ -33,6 +34,7 @@ import {
 import { initiateDirectChatAction } from '@/app/actions/chatActions';
 import type { UserProfile, FeedPost, UserStats, FriendStatus, UserRoleType, FriendEntry } from "@/types/user";
 import { cn, commonImageExtensions } from "@/lib/utils";
+import { FileValidators } from '@/lib/fileValidation';
 import { PostDetailModal } from '@/components/feed/PostDetailModal';
 import ReactCrop, { type Crop, type PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
@@ -441,26 +443,20 @@ export default function UserProfilePage() {
   const handleAvatarFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {
       const file = event.target.files[0];
-      if (file.size > 2 * 1024 * 1024) { 
-        toast({ title: "File Too Large", description: "Avatar image should not exceed 2MB.", variant: "destructive" });
+      // Use centralized validation
+      const validation = FileValidators.avatar(file);
+      if (!validation.valid) {
+        toast({ title: "File Validation Error", description: validation.error, variant: "destructive" });
         if (avatarFileInputRef.current) avatarFileInputRef.current.value = "";
         return;
       }
-      let isValidType = false;
-      const clientMimeType = file.type;
-      if (clientMimeType && clientMimeType.startsWith('image/')) {
-        isValidType = true;
-      } else {
-        const extension = file.name.split('.').pop()?.toLowerCase();
-        if (extension && commonImageExtensions.includes(extension)) {
-          isValidType = true;
-        }
+      
+      // Show warnings if any
+      if (validation.warnings && validation.warnings.length > 0) {
+        console.warn('Avatar file validation warnings:', validation.warnings);
       }
-      if (!isValidType) {
-        toast({ title: "Invalid File Type", description: "Please select a valid image file (PNG, JPG, GIF, WEBP).", variant: "destructive" });
-        if (avatarFileInputRef.current) avatarFileInputRef.current.value = "";
-        return;
-      }
+      
+      // Validation passed, proceed with file selection
 
       const reader = new FileReader();
       reader.addEventListener('load', () => {
@@ -671,190 +667,321 @@ export default function UserProfilePage() {
   const userInitial = userProfile.name ? userProfile.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : (userProfile.email ? userProfile.email[0].toUpperCase() : 'U');
 
   return (
-    <>
-      <div className="min-h-screen bg-background text-foreground">
-         <header className="sticky top-0 z-30 flex items-center justify-between p-3 bg-background/80 backdrop-blur-sm border-b border-muted-foreground/30">
+    <div className="min-h-screen bg-background text-foreground">
+         <header className="md:hidden sticky top-0 z-30 flex items-center justify-between px-3 py-2 bg-background/80 backdrop-blur-sm">
             <Button variant="ghost" size="icon" onClick={() => router.back()} className="text-muted-foreground hover:text-foreground" aria-label="Go back">
                 <ChevronLeft className="h-5 w-5" />
             </Button>
-            <h2 className="text-md font-semibold text-foreground/90 truncate">{userProfile.name || "Profile"}</h2>
-            {isOwnProfile ? (
-                 <Button variant="ghost" size="icon" asChild className="text-muted-foreground hover:text-foreground" aria-label="My Settings">
-                    <Link href="/users/settings"><SettingsIcon className="h-5 w-5" /></Link>
-                 </Button>
-            ) : (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-9 w-9 text-foreground hover:bg-foreground/10" aria-label="More options">
-                    <MoreVertical className="h-5 w-5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onSelect={() => handleReportUser()} className="text-xs cursor-pointer">Report User</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => handleBlockUser()} className="text-xs cursor-pointer">Block User</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+            <div className="flex-1"></div>
         </header>
 
-        <div className="flex flex-col items-center px-4 md:px-0 py-6">
-          <div className="relative group">
-            <Avatar className={cn("h-24 w-24 sm:h-28 sm:w-28 md:h-32 md:w-32 text-4xl border-2 border-primary/30 shadow-lg", avatarPreviewUrl && "ring-2 ring-offset-2 ring-offset-background ring-primary")}
-              key={avatarPreviewUrl || userProfile.avatarUrl || 'default'}>
-              <AvatarImage 
-                src={avatarPreviewUrl || userProfile.avatarUrl || undefined} 
-                alt={userProfile.name || "User Avatar"} 
-                data-ai-hint="person portrait"
-              />
-              <AvatarFallback>{userInitial}</AvatarFallback>
-            </Avatar>
-            {isOwnProfile && !avatarPreviewUrl && (
-              <button
-                onClick={() => avatarFileInputRef.current?.click()}
-                className="absolute bottom-0 right-0 bg-card p-1.5 rounded-full shadow-md hover:bg-secondary transition-colors cursor-pointer border border-border/50 opacity-80 group-hover:opacity-100"
-                aria-label="Change profile picture"
-                disabled={isUploadingAvatar || isCropperModalOpen}
-              >
-                <Camera className="h-4 w-4 text-primary" />
-              </button>
-            )}
-            <input type="file" accept="image/png, image/jpeg, image/gif, image/webp, image/*" ref={avatarFileInputRef} onChange={handleAvatarFileSelect} className="hidden" />
-          </div>
+        {/* Enhanced Profile Header */}
+        <div className="relative bg-gradient-to-br from-background via-background/95 to-muted/20 border-b border-border/30">
+          <div className="px-6 pt-8 pb-6">
+            <div className="flex items-start gap-6">
+              <div className="relative group">
+                <Avatar className={cn("h-20 w-20 sm:h-24 sm:w-24 text-xl sm:text-2xl ring-2 ring-border/40 shadow-lg flex-shrink-0 transition-all duration-300 group-hover:ring-primary/50 group-hover:shadow-xl", avatarPreviewUrl && "ring-2 ring-offset-2 ring-offset-background ring-primary")}
+                  key={avatarPreviewUrl || userProfile.avatarUrl || 'default'}>
+                  <AvatarImage 
+                    src={avatarPreviewUrl || userProfile.avatarUrl || undefined} 
+                    alt={userProfile.username || userProfile.name || "User Avatar"} 
+                    data-ai-hint="person portrait"
+                  />
+                  <AvatarFallback className="bg-gradient-to-br from-muted to-muted/80 text-muted-foreground font-semibold">{userInitial}</AvatarFallback>
+                </Avatar>
+                <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-gradient-to-br from-green-400 to-green-500 rounded-full border-2 border-background shadow-sm"></div>
+                {isOwnProfile && !avatarPreviewUrl && (
+                  <button
+                    onClick={() => avatarFileInputRef.current?.click()}
+                    className="absolute bottom-0 right-0 bg-card p-1.5 rounded-full shadow-md hover:bg-secondary transition-colors cursor-pointer border border-border/50 opacity-80 group-hover:opacity-100"
+                    aria-label="Change profile picture"
+                    disabled={isUploadingAvatar || isCropperModalOpen}
+                  >
+                    <Camera className="h-4 w-4 text-primary" />
+                  </button>
+                )}
+                <input type="file" accept="image/png, image/jpeg, image/gif, image/webp, image/*" ref={avatarFileInputRef} onChange={handleAvatarFileSelect} className="hidden" />
+              </div>
 
-          <h1 className="text-xl md:text-2xl font-bold mt-3 flex items-center text-center">
-            {userProfile.name || "Macaroom User"}
-            <VerificationBadgeInline role={userProfile.role} isVerified={userProfile.isVerified} />
-          </h1>
-          
-          {userProfile.bio && (
-            <p className="text-sm text-center text-muted-foreground max-w-md mt-1 mb-4 leading-relaxed px-2">
-              {userProfile.bio}
-            </p>
-          )}
-          
-          <div className="flex justify-around w-full max-w-sm my-4 text-sm">
-            <div className="text-center"><p className="font-bold text-base sm:text-lg text-foreground">{userStats?.postCount ?? 0}</p><p className="text-xs text-muted-foreground">Posts</p></div>
-            <div className="text-center"><p className="font-bold text-base sm:text-lg text-foreground">{userStats?.followersCount ?? 0}</p><p className="text-xs text-muted-foreground">Followers</p></div>
-            <div className="text-center"><p className="font-bold text-base sm:text-lg text-foreground">{userStats?.followingCount ?? 0}</p><p className="text-xs text-muted-foreground">Following</p></div>
-            <div className="text-center"><p className="font-bold text-base sm:text-lg text-foreground">{userStats?.plansCreatedCount ?? 0}</p><p className="text-xs text-muted-foreground">Plans</p></div>
-            <div className="text-center"><p className="font-bold text-base sm:text-lg text-foreground">{userStats?.plansSharedOrExperiencedCount ?? 0}</p><p className="text-xs text-muted-foreground">Shared</p></div>
+              <div className="flex-1 min-w-0 space-y-3">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">@{userProfile.username || "user"}</h1>
+                    <VerificationBadgeInline role={userProfile.role} isVerified={userProfile.isVerified} />
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    {isOwnProfile ? (
+                      <Button size="sm" variant="outline" className="h-8 px-3 text-xs font-medium rounded-lg border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all duration-200" asChild>
+                        <Link href="/users/edit-profile">
+                          <Edit3 className="h-3.5 w-3.5 mr-1.5" />
+                          Edit Profile
+                        </Link>
+                      </Button>
+                    ) : (
+                      <>
+                        {/* Chat Button */}
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="h-8 px-3 text-xs font-medium rounded-lg border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all duration-200" 
+                          onClick={handleInitiateChat}
+                          disabled={actionLoading || isInitiatingChat}
+                        >
+                          {isInitiatingChat ? (
+                            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                          ) : (
+                            <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
+                          )}
+                          Chat
+                        </Button>
+                        
+                        {/* Friend Action Button */}
+                        {friendshipStatusWithViewer === 'friends' && (
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="h-8 px-3 text-xs font-medium rounded-lg border-destructive/30 text-destructive hover:bg-destructive hover:text-destructive-foreground hover:border-destructive transition-all duration-200" 
+                            onClick={() => handleFriendRequestButtonAction('remove')}
+                            disabled={followActionLoading}
+                          >
+                            {followActionLoading ? (
+                              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                            ) : (
+                              <XIcon className="h-3.5 w-3.5 mr-1.5" />
+                            )}
+                            Remove Friend
+                          </Button>
+                        )}
+                        
+                        {friendshipStatusWithViewer === 'pending_sent' && (
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="h-8 px-3 text-xs font-medium rounded-lg border-border/50 hover:border-destructive/50 hover:bg-destructive/5 transition-all duration-200" 
+                            onClick={() => handleFriendRequestButtonAction('cancel')}
+                            disabled={followActionLoading}
+                          >
+                            {followActionLoading ? (
+                              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                            ) : (
+                              <XIcon className="h-3.5 w-3.5 mr-1.5" />
+                            )}
+                            Cancel Request
+                          </Button>
+                        )}
+                        
+                        {friendshipStatusWithViewer === 'pending_received' && (
+                          <>
+                            <Button 
+                              size="sm" 
+                              variant="default" 
+                              className="h-8 px-3 text-xs font-medium rounded-lg bg-primary hover:bg-primary/90 transition-all duration-200 shadow-sm" 
+                              onClick={() => handleFriendRequestButtonAction('accept')}
+                              disabled={followActionLoading}
+                            >
+                              {followActionLoading ? (
+                                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                              ) : (
+                                <Check className="h-3.5 w-3.5 mr-1.5" />
+                              )}
+                              Accept
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="h-8 px-3 text-xs font-medium rounded-lg border-border/50 hover:border-destructive/50 hover:bg-destructive/5 transition-all duration-200" 
+                              onClick={() => handleFriendRequestButtonAction('decline')}
+                              disabled={followActionLoading}
+                            >
+                              {followActionLoading ? (
+                                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                              ) : (
+                                <XIcon className="h-3.5 w-3.5 mr-1.5" />
+                              )}
+                              Decline
+                            </Button>
+                          </>
+                        )}
+                        
+                        {friendshipStatusWithViewer !== 'friends' && friendshipStatusWithViewer !== 'pending_sent' && friendshipStatusWithViewer !== 'pending_received' && (
+                          <Button 
+                            size="sm" 
+                            variant="default" 
+                            className="h-8 px-3 text-xs font-medium rounded-lg bg-primary hover:bg-primary/90 transition-all duration-200 shadow-sm" 
+                            onClick={() => handleFriendRequestButtonAction('send')}
+                            disabled={followActionLoading}
+                          >
+                            {followActionLoading ? (
+                              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                            ) : (
+                              <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+                            )}
+                            Send Friend Request
+                          </Button>
+                        )}
+                        
+                        {/* More Options Dropdown */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="outline" className="h-8 w-8 p-0 rounded-lg border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all duration-200">
+                              <MoreVertical className="h-3.5 w-3.5" />
+                              <span className="sr-only">More options</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48 bg-background/95 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg">
+                            <DropdownMenuItem onSelect={() => handleReportUser()} className="text-xs cursor-pointer text-destructive focus:text-destructive hover:bg-destructive/10 rounded-md transition-colors">
+                              Report User
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => handleBlockUser()} className="text-xs cursor-pointer text-destructive focus:text-destructive hover:bg-destructive/10 rounded-md transition-colors">
+                              Block User
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </>
+                    )}
+                  </div>
+              </div>
+              {userProfile.name && (
+                <h2 className="text-lg font-semibold text-foreground tracking-tight mt-4">{userProfile.name}</h2>
+              )}
+              {userProfile.bio && (
+                <p className="text-sm text-muted-foreground/90 leading-relaxed mt-3 max-w-md">
+                  {userProfile.bio}
+                </p>
+              )}
+            </div>
           </div>
+        </div>
           
+        <div className="px-4 pb-4">
           {avatarPreviewUrl && isOwnProfile && (
-            <div className="flex gap-2 my-3 w-full max-w-xs justify-center">
-              <Button onClick={handleSaveAvatarToServer} disabled={isUploadingAvatar} size="sm" className="text-xs h-8 flex-1">
-                {isUploadingAvatar ? <Loader2 className="animate-spin mr-1.5 h-3.5 w-3.5" /> : <Check className="mr-1.5 h-3.5 w-3.5" />} Save Avatar
+            <div className="flex gap-2 mb-3">
+              <Button onClick={handleSaveAvatarToServer} disabled={isUploadingAvatar} className="flex-1 h-8 text-sm font-medium">
+                {isUploadingAvatar ? <Loader2 className="animate-spin mr-1.5 h-3.5 w-3.5" /> : "Save Avatar"}
               </Button>
-              <Button variant="ghost" onClick={handleCancelAvatarChangeOnProfile} disabled={isUploadingAvatar} size="sm" className="text-xs h-8 flex-1">
-                <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Cancel
+              <Button variant="outline" onClick={handleCancelAvatarChangeOnProfile} disabled={isUploadingAvatar} className="flex-1 h-8 text-sm font-medium">
+                Cancel
               </Button>
             </div>
           )}
 
-         {!avatarPreviewUrl && (
-          <div className="flex flex-row gap-2 mt-4 w-full max-w-xs justify-center">
-            {isOwnProfile ? (
-              <Button variant="outline" className="w-full h-9 text-sm" asChild>
-                <Link href="/onboarding">
-                  <Edit3 className="mr-2 h-4 w-4" /> Edit Profile
-                </Link>
-              </Button>
-            ) : (
-              <>
-                {friendshipStatusWithViewer === 'friends' ? (
-                  <div className="flex gap-2 w-full">
-                    <Button variant="outline" className="flex-1 h-9 text-sm" onClick={handleInitiateChat} disabled={actionLoading || isInitiatingChat}>
-                      {isInitiatingChat ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <MessageSquare className="mr-2 h-4 w-4" />} Message
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      className={cn("flex-1 h-9 text-sm text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30")} 
-                      disabled={actionLoading || followActionLoading} 
-                      onClick={() => handleFriendRequestButtonAction('remove')}
-                    >
-                      {(actionLoading) ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4"/>} 
-                      Unfriend
-                    </Button>
-                  </div>
-                ) : friendshipStatusWithViewer === 'pending_sent' ? (
-                  <Button variant="outline" className="w-full h-9 text-sm" disabled={actionLoading || followActionLoading} onClick={() => handleFriendRequestButtonAction('cancel')}>
-                    {(actionLoading) ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <XIcon className="mr-2 h-4 w-4" />} Request Sent
-                  </Button>
-                ) : friendshipStatusWithViewer === 'pending_received' ? (
-                  <div className="flex gap-2 w-full">
-                    <Button className="flex-1 h-9 text-sm" disabled={actionLoading || followActionLoading} onClick={() => handleFriendRequestButtonAction('accept')}>
-                      {(actionLoading) ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Check className="mr-2 h-4 w-4" />} Accept
-                    </Button>
-                    <Button variant="outline" onClick={() => handleFriendRequestButtonAction('decline')} disabled={actionLoading || followActionLoading} className="flex-1 h-9 text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10">
-                      Decline
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex gap-2 w-full">
-                    <Button 
-                      variant="default" 
-                      className="flex-1 h-9 text-sm"
-                      disabled={followActionLoading || isFollowing === null} 
-                      onClick={() => handleFriendRequestButtonAction('send')}
-                    >
-                      {(followActionLoading) ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4" />}
-                      Add Friend
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      className="flex-1 h-9 text-sm" 
-                      onClick={handleInitiateChat} 
-                      disabled={actionLoading || isInitiatingChat}
-                    >
-                      {isInitiatingChat ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <MessageSquare className="mr-2 h-4 w-4" />} Message
-                    </Button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-          )}
+
         </div>
 
-        <div className="border-t border-border/20 pt-1">
-          {userPostsArray.length > 0 && (
-            <h2 className="text-center text-sm font-semibold uppercase text-muted-foreground tracking-wider my-4 pt-2 border-t border-border/20">Posts</h2>
-          )}
-          {userPostsArray.length === 0 && !loadingProfile ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Camera className="mx-auto h-16 w-16 opacity-30 mb-3" />
-              <p className="font-semibold text-lg">No Posts Yet</p>
-              {isOwnProfile && <p className="text-sm">Share your first plan highlight!</p>}
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 gap-0.5 sm:gap-1 px-0.5 sm:px-1 pb-4">
-              {userPostsArray.map((post, index) => (
-                <button
-                  key={post.id}
-                  onClick={() => openPostModal(index)}
-                  className="aspect-square relative bg-muted overflow-hidden group focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background rounded-md"
-                  aria-label={`View post: ${post.text?.substring(0, 30) || 'Image post'}`}
-                >
-                  {post.mediaUrl ? (
-                    <Image
-                      src={post.mediaUrl}
-                      alt={post.text || `Post by ${userProfile.name}`}
-                      fill
-                      sizes="(max-width: 640px) 33vw, (max-width: 768px) 33vw, 250px"
-                      style={{ objectFit: 'cover' }}
-                      className="group-hover:opacity-80 transition-opacity"
-                      data-ai-hint="user generated content"
-                      unoptimized={!post.mediaUrl?.startsWith('http') || post.mediaUrl.includes('placehold.co')}
-                      priority={index < 3}
-                      loading={index < 3 ? 'eager' : 'lazy'}
-                    />
-                  ) : (
-                       <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground p-1">No Image</div>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="mt-0">
+          <Tabs defaultValue="posts" className="w-full">
+            <TabsList className="w-full grid grid-cols-4 h-16 bg-transparent p-0 border-b border-border/20">
+              <TabsTrigger 
+                value="posts" 
+                className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2"
+              >
+                <span className="text-lg font-bold text-foreground">{userPostsArray?.length ?? 0}</span>
+                <div className="flex items-center gap-1.5">
+                  <LayoutGrid className="h-4 w-4" />
+                  <span className="text-xs font-medium leading-tight">Posts</span>
+                </div>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="plans" 
+                className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2"
+              >
+                <span className="text-lg font-bold text-foreground">{userStats?.plansCreatedCount ?? 0}</span>
+                <div className="flex items-center gap-1.5">
+                  <Calendar className="h-4 w-4" />
+                  <span className="text-xs font-medium leading-tight">Plans</span>
+                </div>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="followers" 
+                className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2"
+              >
+                <span className="text-lg font-bold text-foreground">{userStats?.followersCount ?? 0}</span>
+                <div className="flex items-center gap-1.5">
+                  <Users className="h-4 w-4" />
+                  <span className="text-xs font-medium leading-tight">Followers</span>
+                </div>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="following" 
+                className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2"
+              >
+                <span className="text-lg font-bold text-foreground">{userStats?.followingCount ?? 0}</span>
+                <div className="flex items-center gap-1.5">
+                  <UserPlus className="h-4 w-4" />
+                  <span className="text-xs font-medium leading-tight">Following</span>
+                </div>
+              </TabsTrigger>
+            </TabsList>
+            
+            {/* Posts Tab Content */}
+            <TabsContent value="posts" className="mt-6 p-0">
+              {userPostsArray.length === 0 && !loadingProfile ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Camera className="mx-auto h-16 w-16 opacity-30 mb-3" />
+                  <p className="font-semibold text-lg">No Posts Yet</p>
+                  {isOwnProfile && <p className="text-sm">Share your first plan highlight!</p>}
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-0.5 sm:gap-1 px-0.5 sm:px-1 pb-4">
+                  {userPostsArray.map((post, index) => (
+                    <button
+                      key={post.id}
+                      onClick={() => openPostModal(index)}
+                      className="aspect-square relative bg-muted overflow-hidden group focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background rounded-md"
+                      aria-label={`View post: ${post.text?.substring(0, 30) || 'Image post'}`}
+                    >
+                      {post.mediaUrl ? (
+                        <Image
+                          src={post.mediaUrl}
+                          alt={post.text || `Post by ${userProfile.name}`}
+                          fill
+                          sizes="(max-width: 640px) 33vw, (max-width: 768px) 33vw, 250px"
+                          style={{ objectFit: 'cover' }}
+                          className="group-hover:opacity-80 transition-opacity"
+                          data-ai-hint="user generated content"
+                          unoptimized={!post.mediaUrl?.startsWith('http') || post.mediaUrl.includes('placehold.co')}
+                          priority={index < 3}
+                          loading={index < 3 ? 'eager' : 'lazy'}
+                        />
+                      ) : (
+                           <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground p-1">No Image</div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+            
+            {/* Plans Tab Content */}
+            <TabsContent value="plans" className="mt-6 p-0">
+              <div className="text-center py-12 text-muted-foreground">
+                <Calendar className="mx-auto h-16 w-16 opacity-30 mb-3" />
+                <p className="font-semibold text-lg">Plans</p>
+                <p className="text-sm">Created plans will be displayed here</p>
+                <p className="text-xs mt-1">Privacy settings will control visibility</p>
+              </div>
+            </TabsContent>
+            
+            {/* Followers Tab Content */}
+            <TabsContent value="followers" className="mt-6 p-0">
+              <div className="text-center py-12 text-muted-foreground">
+                <Users className="mx-auto h-16 w-16 opacity-30 mb-3" />
+                <p className="font-semibold text-lg">Followers</p>
+                <p className="text-sm">Followers list will be displayed here</p>
+                <p className="text-xs mt-1">Privacy settings will control visibility</p>
+              </div>
+            </TabsContent>
+            
+            {/* Following Tab Content */}
+            <TabsContent value="following" className="mt-6 p-0">
+              <div className="text-center py-12 text-muted-foreground">
+                <UserPlus className="mx-auto h-16 w-16 opacity-30 mb-3" />
+                <p className="font-semibold text-lg">Following</p>
+                <p className="text-sm">Following list will be displayed here</p>
+                <p className="text-xs mt-1">Privacy settings will control visibility</p>
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
 
@@ -908,6 +1035,6 @@ export default function UserProfilePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }

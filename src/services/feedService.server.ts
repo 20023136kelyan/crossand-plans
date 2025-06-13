@@ -1,10 +1,10 @@
 // src/services/feedService.server.ts
 import 'server-only';
-import { firestoreAdmin } from '@/lib/firebaseAdmin';
+import { firestoreAdmin, ensureFirebaseAdminInitialized } from '@/lib/firebaseAdmin';
 import type { FeedPost, FeedPostVisibility, UserRoleType, FeedComment } from '@/types/user';
 import { Timestamp as AdminTimestamp, FieldValue, type DocumentData, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { getFriendUidsAdmin } from '@/services/userService.server'; 
-import type { FirebaseFirestore } from 'firebase-admin/firestore';
+import type { Firestore } from 'firebase-admin/firestore';
 
 const FEED_POSTS_COLLECTION = 'feedPosts';
 const COMMENTS_SUBCOLLECTION = 'comments';
@@ -26,10 +26,27 @@ const convertAdminTimestampToISO = (ts: any): string => {
     return new Date(0).toISOString();
 };
 
-const mapDocToFeedPost = (doc: FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData>): FeedPost => {
-  if (!firestoreAdmin) { // Should ideally not be needed if checked at function entry
+const convertTimestampToMillis = (ts: any): number => {
+    if (!ts) return 0;
+    if (ts instanceof AdminTimestamp) return ts.toDate().getTime();
+    if (ts && typeof ts.toDate === 'function') { 
+        try { return ts.toDate().getTime(); } catch(e) { /* ignore */ }
+    }
+    if (ts instanceof Date) return ts.getTime();
+    if (typeof ts === 'string') {
+        try {
+            const parsedDate = new Date(ts);
+            if (!isNaN(parsedDate.getTime())) return parsedDate.getTime(); 
+        } catch (e) { /* ignore */ }
+    }
+    console.warn(`[convertTimestampToMillis - FeedService.server] Unexpected timestamp type: ${typeof ts}, value: ${JSON.stringify(ts)}. Returning 0.`);
+    return 0;
+};
+
+const mapDocToFeedPost = (doc: QueryDocumentSnapshot<DocumentData> | import('firebase-admin/firestore').DocumentSnapshot<DocumentData>): FeedPost => {
+  if (!firestoreAdmin) {
     console.error("[mapDocToFeedPost] Firestore Admin SDK is not initialized. This is an unexpected state.");
-    // Fallback or throw error
+    throw new Error("Server configuration error: Database service not available in mapDocToFeedPost.");
   }
   const data = doc.data()!;
   return {
@@ -58,9 +75,21 @@ export const getFeedPostsAdmin = async (
   forUserId?: string,
   lastPostCreatedAt?: string // New parameter
 ): Promise<{ posts: FeedPost[]; nextCursor?: string }> => {
-  if (!firestoreAdmin) {
+  // Ensure Firebase Admin is properly initialized
+  if (!ensureFirebaseAdminInitialized() || !firestoreAdmin) {
     console.error("[getFeedPostsAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
     throw new Error("Server configuration error: Database service not available.");
+  }
+  
+  // Additional safety check for firestoreAdmin methods
+  try {
+    if (typeof firestoreAdmin.collection !== 'function') {
+      console.error("[getFeedPostsAdmin] CRITICAL: Firestore Admin instance is invalid - missing collection method.");
+      throw new Error("Server configuration error: Database service is not properly initialized.");
+    }
+  } catch (initError) {
+    console.error("[getFeedPostsAdmin] CRITICAL: Error accessing Firestore Admin instance:", initError);
+    throw new Error("Server configuration error: Database service initialization failed.");
   }
   console.log(`[getFeedPostsAdmin] Fetching feed. currentViewerId: ${currentUserId || 'public/unauthenticated'}, forUserId: ${forUserId || 'general feed'}, limit: ${limitCount}, lastPostCreatedAt: ${lastPostCreatedAt}`);
 
@@ -158,8 +187,8 @@ export const getFeedPostsAdmin = async (
     const combinedPosts = Array.from(postsMap.values());
     if(mainQueryProcessed) {
         combinedPosts.sort((a, b) => {
-          const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          const timeA = a.createdAt ? convertTimestampToMillis(a.createdAt) : 0;
+          const timeB = b.createdAt ? convertTimestampToMillis(b.createdAt) : 0;
           return timeB - timeA;
         });
         
@@ -167,7 +196,7 @@ export const getFeedPostsAdmin = async (
         let nextCursor: string | undefined = undefined;
         if (limitedPosts.length > 0 && limitedPosts.length === limitCount) { 
             const lastFetchedPost = limitedPosts[limitedPosts.length - 1];
-            nextCursor = lastFetchedPost.createdAt;
+            nextCursor = typeof lastFetchedPost.createdAt === 'string' ? lastFetchedPost.createdAt : convertAdminTimestampToISO(lastFetchedPost.createdAt);
         }
         
         console.log(`[getFeedPostsAdmin] Total combined posts before final limit: ${combinedPosts.length}. Returning ${limitedPosts.length} posts. Next cursor: ${nextCursor}`);
@@ -351,7 +380,7 @@ export const addCommentToPostAdmin = async (
         commentsCount: newCommentsCount,
         // Use a placeholder for updatedAt, as serverTimestamp is not resolved until commit.
         // Actual value will be fetched or assumed from createdCommentDoc if needed.
-        updatedAt: new Date().toISOString() 
+        // updatedAt is not part of FeedPost interface 
       };
     });
     
@@ -366,6 +395,7 @@ export const addCommentToPostAdmin = async (
         postId: createdCommentDoc.data()!.postId,
         userId: createdCommentDoc.data()!.userId,
         userName: createdCommentDoc.data()!.userName,
+        username: createdCommentDoc.data()!.username || null,
         userAvatarUrl: createdCommentDoc.data()!.userAvatarUrl,
         text: createdCommentDoc.data()!.text,
         createdAt: convertAdminTimestampToISO(createdCommentDoc.data()!.createdAt),
@@ -428,9 +458,8 @@ export const incrementPostSharesAdmin = async (postId: string): Promise<Incremen
         const mappedPost = mapDocToFeedPost(postDoc);
         finalUpdatedPost = {
             ...mappedPost,
-            sharesCount: newSharesCount,
-            // Placeholder for updatedAt, similar to addCommentToPostAdmin
-            updatedAt: new Date().toISOString() 
+            sharesCount: newSharesCount
+            // updatedAt is not part of FeedPost interface 
         };
     });
 
@@ -540,7 +569,7 @@ export const deleteCommentFromPostAdmin = async (
       }
 
       const commentData = commentDoc.data();
-      if (commentData.userId !== requestingUserId) {
+      if (!commentData || commentData.userId !== requestingUserId) {
         throw { customError: true, message: "User not authorized to delete this comment.", code: "UNAUTHORIZED_COMMENT_DELETE" };
       }
 
@@ -553,8 +582,8 @@ export const deleteCommentFromPostAdmin = async (
       const mappedPost = mapDocToFeedPost(postDoc);
       finalUpdatedPost = {
         ...mappedPost,
-        commentsCount: Math.max(0, (postDoc.data()?.commentsCount || 1) - 1),
-        updatedAt: new Date().toISOString()
+        commentsCount: Math.max(0, (postDoc.data()?.commentsCount || 1) - 1)
+        // updatedAt is not part of FeedPost interface
       };
     });
 
@@ -587,41 +616,56 @@ export const updateUserAvatarInFeedAdmin = async (userId: string, newAvatarUrl: 
   }
 
   try {
-    // Update all feed posts by the user
-    const postsQuery = firestoreAdmin.collection(FEED_POSTS_COLLECTION).where('userId', '==', userId);
-    const postsSnapshot = await postsQuery.get();
+    // Execute both queries concurrently
+    const [postsSnapshot, allPostsSnapshot] = await Promise.all([
+      firestoreAdmin.collection(FEED_POSTS_COLLECTION).where('userId', '==', userId).get(),
+      firestoreAdmin.collection(FEED_POSTS_COLLECTION).get()
+    ]);
     
+    const updatePromises: Promise<void>[] = [];
+    
+    // Update all feed posts by the user
     if (!postsSnapshot.empty) {
-      const batch = firestoreAdmin.batch();
-      let operationsCount = 0;
-      const MAX_BATCH_SIZE = 500;
-      let currentBatch = batch;
-
-      for (const doc of postsSnapshot.docs as QueryDocumentSnapshot<DocumentData>[]) {
-        currentBatch.update(doc.ref, { userAvatarUrl: newAvatarUrl });
-        operationsCount++;
-
-        if (operationsCount >= MAX_BATCH_SIZE) {
-          await currentBatch.commit();
-          currentBatch = firestoreAdmin.batch();
-          operationsCount = 0;
+      const updatePostsPromise = (async () => {
+        if (!firestoreAdmin) {
+          throw new Error("Firestore Admin SDK not available");
         }
-      }
+        const batch = firestoreAdmin.batch();
+        let operationsCount = 0;
+        const MAX_BATCH_SIZE = 500;
+        let currentBatch = batch;
 
-      if (operationsCount > 0) {
-        await currentBatch.commit();
-      }
+        for (const doc of postsSnapshot.docs as QueryDocumentSnapshot<DocumentData>[]) {
+          currentBatch.update(doc.ref, { userAvatarUrl: newAvatarUrl });
+          operationsCount++;
+
+          if (operationsCount >= MAX_BATCH_SIZE) {
+            await currentBatch.commit();
+            if (!firestoreAdmin) {
+              throw new Error("Firestore Admin SDK not available");
+            }
+            currentBatch = firestoreAdmin.batch();
+            operationsCount = 0;
+          }
+        }
+
+        if (operationsCount > 0) {
+          await currentBatch.commit();
+        }
+      })();
+      
+      updatePromises.push(updatePostsPromise);
     }
 
-    // Update all comments by the user across all posts
-    const allPostsQuery = firestoreAdmin.collection(FEED_POSTS_COLLECTION);
-    const allPostsSnapshot = await allPostsQuery.get();
-
-    for (const postDoc of allPostsSnapshot.docs as QueryDocumentSnapshot<DocumentData>[]) {
+    // Update all comments by the user across all posts (concurrent processing)
+    const commentUpdatePromises = allPostsSnapshot.docs.map(async (postDoc) => {
       const commentsQuery = postDoc.ref.collection(COMMENTS_SUBCOLLECTION).where('userId', '==', userId);
       const commentsSnapshot = await commentsQuery.get();
 
       if (!commentsSnapshot.empty) {
+        if (!firestoreAdmin) {
+          throw new Error("Firestore Admin SDK not available");
+        }
         const batch = firestoreAdmin.batch();
         let operationsCount = 0;
         const MAX_BATCH_SIZE = 500;
@@ -633,6 +677,9 @@ export const updateUserAvatarInFeedAdmin = async (userId: string, newAvatarUrl: 
 
           if (operationsCount >= MAX_BATCH_SIZE) {
             await currentBatch.commit();
+            if (!firestoreAdmin) {
+              throw new Error("Firestore Admin SDK not available");
+            }
             currentBatch = firestoreAdmin.batch();
             operationsCount = 0;
           }
@@ -642,7 +689,12 @@ export const updateUserAvatarInFeedAdmin = async (userId: string, newAvatarUrl: 
           await currentBatch.commit();
         }
       }
-    }
+    });
+    
+    updatePromises.push(...commentUpdatePromises);
+    
+    // Wait for all updates to complete
+    await Promise.all(updatePromises);
 
     console.log(`[updateUserAvatarInFeedAdmin] Successfully updated avatar URL for user ${userId} in all feed posts and comments.`);
   } catch (error) {

@@ -26,7 +26,7 @@ import { canUserCommentAndRate, hasUserRSVPd } from '@/utils/planPermissions';
 import { createFeedPostAction } from '@/app/actions/feedActions';
 
 // Import new modular components
-import { PlanHero } from '@/components/plans/PlanHero';
+import PlanHero from '@/components/plans/PlanHero';
 import { PlanDetailsHeader } from '@/components/plans/PlanDetailsHeader';
 import { PlanInfoCards } from '@/components/plans/PlanInfoCards';
 import { PlanParticipants } from '@/components/plans/PlanParticipants';
@@ -40,7 +40,7 @@ import { DeletePlanDialog } from '@/components/plans/DeletePlanDialog';
 import { AdvancedRSVPDialog } from '@/components/plans/AdvancedRSVPDialog';
 import { WaitlistDialog } from '@/components/plans/WaitlistDialog';
 import { CopyPlanDialog } from '@/components/plans/CopyPlanDialog';
-import { ParticipantManagementDialog } from '@/components/plans/ParticipantManagementDialog';
+import ParticipantManagementDialog from '@/components/plans/ParticipantManagementDialog';
 import { EnhancedPlanSharingDialog } from '@/components/plans/EnhancedPlanSharingDialog';
 import { PlanItinerary } from '@/components/plans/PlanItinerary';
 import { PlanMap } from '@/components/plans/PlanMap';
@@ -328,11 +328,18 @@ const [deleteLoading, setDeleteLoading] = useState(false);
   const handleShareToFeed = async (message: string) => {
     if (!user || !plan) return;
     
+    // Check if plan has photo highlights
+    const highlightImageUrl = plan.photoHighlights?.[0];
+    if (!highlightImageUrl) {
+      toast.error('Please add a photo highlight to this plan before sharing to feed');
+      return;
+    }
+    
     try {
       await createFeedPostAction({
         planId: planId,
         planName: plan.name,
-        highlightImageUrl: plan.photoHighlights?.[0] || '',
+        highlightImageUrl: highlightImageUrl,
         postText: message,
         visibility: 'public'
       }, await user.getIdToken());

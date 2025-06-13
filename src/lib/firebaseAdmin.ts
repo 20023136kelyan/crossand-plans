@@ -141,17 +141,40 @@ function initializeWithRetry() {
     if (retryCount < MAX_RETRIES) {
       retryCount++;
       console.log(`[firebaseAdmin] Retrying initialization (${retryCount}/${MAX_RETRIES})...`);
-      initializeWithRetry();
+      setTimeout(() => initializeWithRetry(), 1000); // Add delay between retries
     } else {
       console.error('[firebaseAdmin] Maximum retry attempts reached. Firebase Admin SDK initialization failed.');
+      // Set instances to null to ensure proper error handling
+      firestoreAdminInstance = null;
+      authAdminInstance = null;
+      storageAdminInstance = null;
     }
   }
 }
 
 initializeWithRetry();
 
-// Export instances with proper typing
-export const firestoreAdmin = firestoreAdminInstance as unknown as Firestore;
-export const authAdmin = authAdminInstance as unknown as admin.auth.Auth;
-export const storageAdmin = storageAdminInstance as unknown as admin.storage.Storage;
+// Export instances with proper typing and safety checks
+export const firestoreAdmin = firestoreAdminInstance ? (firestoreAdminInstance as Firestore) : null;
+export const authAdmin = authAdminInstance ? (authAdminInstance as admin.auth.Auth) : null;
+export const storageAdmin = storageAdminInstance ? (storageAdminInstance as admin.storage.Storage) : null;
 export { adminAppInstance as firebaseAdminApp };
+
+// Helper function to ensure Firebase Admin is initialized
+export function ensureFirebaseAdminInitialized(): boolean {
+  if (!appInitialized || !firestoreAdminInstance || !authAdminInstance) {
+    console.error('[firebaseAdmin] Firebase Admin SDK is not properly initialized');
+    console.log('[firebaseAdmin] Attempting re-initialization...');
+    try {
+      initializeWithRetry();
+      return appInitialized && !!firestoreAdminInstance && !!authAdminInstance;
+    } catch (error) {
+      console.error('[firebaseAdmin] Re-initialization failed:', error);
+      return false;
+    }
+  }
+  return true;
+}
+
+// Log initialization status for debugging
+console.log(`[firebaseAdmin] Export status: Firestore: ${firestoreAdmin ? 'initialized' : 'null'}, Auth: ${authAdmin ? 'initialized' : 'null'}, Storage: ${storageAdmin ? 'initialized' : 'null'}`);

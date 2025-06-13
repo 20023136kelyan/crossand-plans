@@ -37,6 +37,8 @@ import type {
   UserAffinity
 } from '@/types/user';
 import { revalidatePath } from 'next/cache';
+import { validateImageFile } from '@/lib/imageProcessing';
+import { uploadPostHighlight } from '@/lib/postingSystem';
 import { z } from 'zod';
 import { generateFullPlan, type GenerateFullPlanInput } from '@/ai/flows/generate-full-plan';
 import { authAdmin, firestoreAdmin, storageAdmin } from '@/lib/firebaseAdmin'; 
@@ -987,31 +989,17 @@ export async function addPhotoHighlightAction(
   
   // console.log(`[addPhotoHighlightAction] Received file: ${file.name}, Client-side Type: ${file.type}, Size: ${file.size} for plan ${planId}`);
 
-  const getMimeTypeFromServer = (fileName: string): string | null => {
-    const extension = fileName.split('.').pop()?.toLowerCase();
-    if (!extension) return null;
-    const mimeTypes: Record<string, string> = {
-      'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'gif': 'image/gif',
-      'webp': 'image/webp', 'bmp': 'image/bmp', 'svg': 'image/svg+xml', 'avif': 'image/avif', 'tiff': 'image/tiff',
-    };
-    return mimeTypes[extension] || null;
-  };
-
-  let determinedContentType = file.type;
-  if (!determinedContentType || !determinedContentType.startsWith('image/')) {
-    console.warn(`[addPhotoHighlightAction] Client-side type '${file.type}' for ${file.name} is invalid/missing. Inferring from extension.`);
-    determinedContentType = getMimeTypeFromServer(file.name) || '';
+  // Use centralized upload and processing system
+  const uploadResult = await uploadPostHighlight(file, userId, idToken, planId);
+  if (!uploadResult.success) {
+    console.error(`[addPhotoHighlightAction] Upload failed for plan ${planId}:`, uploadResult.error);
+    return { success: false, error: uploadResult.error || "Failed to upload image." };
   }
-
-  if (!determinedContentType || !determinedContentType.startsWith('image/')) {
-    const errorMsg = `Invalid file type for ${file.name}. Detected: ${file.type}, Inferred: ${determinedContentType}. Please use JPG, PNG, GIF, WEBP.`;
-    console.error(`[addPhotoHighlightAction] ${errorMsg}`);
-    return { success: false, error: errorMsg };
-  }
-  // console.log(`[addPhotoHighlightAction] Using Content-Type: '${determinedContentType}' for ${file.name} for upload.`);
-
-  if (file.size > 5 * 1024 * 1024) { 
-    return { success: false, error: "Image size should not exceed 5MB." };
+  
+  const uploadedImageUrl = uploadResult.data?.url;
+  if (!uploadedImageUrl) {
+    console.error(`[addPhotoHighlightAction] No URL returned from upload for plan ${planId}`);
+    return { success: false, error: "Failed to get uploaded image URL." };
   }
 
   try {
@@ -1033,45 +1021,13 @@ export async function addPhotoHighlightAction(
       return { success: false, error: "Photo highlights can only be added to past plans." };
     }
     
-    // console.log(`[addPhotoHighlightAction] Type of storageAdmin: ${typeof storageAdmin}`);
-    if (typeof storageAdmin?.bucket !== 'function') {
-        console.error("[addPhotoHighlightAction] storageAdmin.bucket is NOT a function. Storage Admin SDK might not be initialized correctly.");
-        throw new Error("Server error: Storage service misconfiguration.");
-    }
-    
-    const bucketNameForAction = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-    const bucket = bucketNameForAction ? storageAdmin.bucket(bucketNameForAction) : storageAdmin.bucket();
-    
-    if (!bucket) {
-      console.error("[addPhotoHighlightAction] Could not access Firebase Storage bucket.");
-      return { success: false, error: 'Server error: Storage bucket not accessible.' };
-    }
-    const bucketName = bucket.name;
-    // console.log(`[addPhotoHighlightAction] Using bucket: ${bucketName}`);
-    
-    const originalName = file.name;
-    const extension = originalName.split('.').pop()?.toLowerCase() || '';
-    const baseName = extension ? originalName.substring(0, originalName.lastIndexOf(`.${extension}`)) : originalName;
-    const sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9._-]/g, '_'); 
-    const sanitizedFileName = extension ? `${sanitizedBaseName}.${extension}` : sanitizedBaseName;
-    
-    const filePath = `plans/${planId}/highlights/${userId}/${Date.now()}-${sanitizedFileName}`;
-    const blob = bucket.file(filePath);
-    
-    const buffer = Buffer.from(await file.arrayBuffer());
-    // console.log(`[addPhotoHighlightAction] Uploading ${filePath} with Content-Type: ${determinedContentType}`);
-    await blob.save(buffer, {
-      metadata: { contentType: determinedContentType, cacheControl: 'public, max-age=31536000', customMetadata: { uploaderUid: userId }},
-      public: true, 
-    });
-    
-    const publicUrl = `https://storage.googleapis.com/${bucketName}/${filePath.replace(/\s/g, '%20')}`;
-    // console.log(`[addPhotoHighlightAction] Image uploaded. Public URL: ${publicUrl}`);
+    // Image has already been uploaded using centralized posting system
+    // console.log(`[addPhotoHighlightAction] Using uploaded image URL: ${uploadedImageUrl}`);
 
 
     const planDocRef = firestoreAdmin.collection(PLANS_COLLECTION).doc(planId);
     await planDocRef.update({
-      photoHighlights: FieldValue.arrayUnion(publicUrl),
+      photoHighlights: FieldValue.arrayUnion(uploadedImageUrl),
       updatedAt: FieldValue.serverTimestamp(),
     });
     // console.log(`[addPhotoHighlightAction] Firestore updated for plan ${planId} with new highlight URL.`);
@@ -1371,6 +1327,9 @@ export async function getPublicPlanByIdAction(planId: string): Promise<{ plan: P
 
 export async function getPublishedPlansByCityAction(cityName: string): Promise<{ success: boolean; plans?: Plan[]; error?: string }> {
   try {
+    if (!firestoreAdmin) {
+      return { success: false, error: 'Database service not available' };
+    }
     const plansRef = firestoreAdmin.collection('plans');
     const snapshot = await plansRef
       .where('status', '==', 'published')
@@ -1468,6 +1427,9 @@ export async function getPublishedPlansByCategoryAction(categoryName: string): P
 
 export async function generatePlanQRAction(planId: string, idToken: string): Promise<{ success: boolean; qrData?: string; error?: string }> {
   try {
+    if (!authAdmin) {
+      return { success: false, error: 'Authentication service not available' };
+    }
     const decodedToken = await authAdmin.verifyIdToken(idToken);
     const userId = decodedToken.uid;
 
@@ -1502,6 +1464,9 @@ export async function completePlanAction(
   idToken: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    if (!authAdmin) {
+      return { success: false, error: 'Authentication service not available' };
+    }
     const decodedToken = await authAdmin.verifyIdToken(idToken);
     const userId = decodedToken.uid;
 
@@ -1526,6 +1491,9 @@ export async function getAffinityScoreAction(
   idToken: string
 ): Promise<{ success: boolean; score?: number; error?: string }> {
   try {
+    if (!authAdmin) {
+      return { success: false, error: 'Authentication service not available' };
+    }
     const decodedToken = await authAdmin.verifyIdToken(idToken);
     const userRole = decodedToken.role as UserRoleType | undefined;
     
@@ -1547,6 +1515,9 @@ export async function getUserAffinitiesAction(
   idToken: string
 ): Promise<{ success: boolean; affinities?: UserAffinity[]; error?: string }> {
   try {
+    if (!authAdmin) {
+      return { success: false, error: 'Authentication service not available' };
+    }
     const decodedToken = await authAdmin.verifyIdToken(idToken);
     const userRole = decodedToken.role as UserRoleType | undefined;
     
