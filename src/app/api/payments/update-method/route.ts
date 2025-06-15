@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/firebaseAdmin';
-import { getAuth } from 'firebase-admin/auth';
+import { authAdmin } from '@/lib/firebaseAdmin';
 import Stripe from 'stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-06-20',
+  apiVersion: '2025-05-28.basil',
 });
 
 export async function POST(request: NextRequest) {
@@ -20,7 +19,7 @@ export async function POST(request: NextRequest) {
     // Verify the Firebase token
     let decodedToken;
     try {
-      decodedToken = await getAuth().verifyIdToken(token);
+      decodedToken = await authAdmin!.verifyIdToken(token);
     } catch (error) {
       console.error('Token verification failed:', error);
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
@@ -45,12 +44,15 @@ export async function POST(request: NextRequest) {
       
       // First, try to find existing customer by Firebase UID
       const existingCustomers = await stripe.customers.list({
-        metadata: { firebase_uid: userId },
-        limit: 1
+        limit: 100
       });
+      
+      const existingCustomer = existingCustomers.data.find(
+        customer => customer.metadata?.firebase_uid === userId
+      );
 
-      if (existingCustomers.data.length > 0) {
-        customerId = existingCustomers.data[0].id;
+      if (existingCustomer) {
+        customerId = existingCustomer.id;
       } else {
         // Create new customer if not found
         const customer = await stripe.customers.create({

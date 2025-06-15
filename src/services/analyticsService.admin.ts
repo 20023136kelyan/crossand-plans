@@ -205,7 +205,7 @@ async function fetchAnalyticsForPeriod(db: Firestore, from: Date, to: Date) {
   // Fetch completed plans
   const completedPlansQuery = db
     .collection('plans')
-    .where('isCompleted', '==', true)
+    .where('status', '==', 'completed')
     .where('updatedAt', '>=', fromISO)
     .where('updatedAt', '<', toISO);
   

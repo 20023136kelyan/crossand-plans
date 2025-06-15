@@ -38,7 +38,7 @@ import {
   Sparkles as GamificationIcon, Wallet, MessagesSquare as SocialInteractionIcon, 
   Heart, Activity, AlertTriangle, ChefHat, UsersRound, MapPin as TravelToleranceIcon, 
   Gift, Loader2, CreditCard, Bell, Lock, Eye, EyeOff, Globe, Mail, Zap, 
-  Trash2, HelpCircle, FileText, Shield
+  Trash2, HelpCircle, FileText, Shield, Star
 } from 'lucide-react';
 
 interface UserData {
@@ -96,15 +96,43 @@ export default function SettingsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState('account');
+  const [activeTab, setActiveTab] = useState<string | null>(null);
   
   // Handle tab parameter from URL
   useEffect(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam && ['account', 'profile', 'subscription', 'notifications', 'security'].includes(tabParam)) {
+    if (tabParam && ['account', 'profile', 'preferences', 'planning', 'engagement', 'subscription', 'notifications', 'security', 'privacy'].includes(tabParam)) {
       setActiveTab(tabParam);
     }
   }, [searchParams]);
+
+  // Load privacy settings
+  useEffect(() => {
+    const loadPrivacySettings = async () => {
+      if (!user) return;
+      
+      try {
+        const idToken = await user.getIdToken();
+        const response = await fetch('/api/users/privacy', {
+          headers: {
+            'Authorization': `Bearer ${idToken}`
+          }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setPrivacySettings({
+            plansVisibility: data.privacySettings?.plansVisibility || 'public',
+            followersVisibility: data.privacySettings?.followersVisibility || 'public',
+            followingVisibility: data.privacySettings?.followingVisibility || 'public'
+          });
+        }
+      } catch (error) {
+        console.error('Error loading privacy settings:', error);
+      }
+    };
+    
+    loadPrivacySettings();
+  }, [user]);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
@@ -143,6 +171,12 @@ export default function SettingsPage() {
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
   const [isTogglingAutoRenew, setIsTogglingAutoRenew] = useState(false);
+  const [isSavingPrivacy, setIsSavingPrivacy] = useState(false);
+  const [privacySettings, setPrivacySettings] = useState({
+    plansVisibility: 'public',
+    followersVisibility: 'public',
+    followingVisibility: 'public'
+  });
 
   // Function to calculate activity score
   const calculateActivityScore = useCallback((stats: any, profile: any) => {
@@ -406,18 +440,24 @@ export default function SettingsPage() {
       }
     }
 
-    // Parse address
+    // Parse address with improved validation
     let physicalAddress = null;
-    if (profileForm.address) {
-      // This is a simplified example - in a real app, you'd use a proper address parser
-      const addressParts = profileForm.address.split(',').map(part => part.trim());
+    if (profileForm.address && profileForm.address.trim()) {
+      const addressParts = profileForm.address.split(',').map(part => part.trim()).filter(part => part.length > 0);
+      
+      // More robust address parsing with validation
       physicalAddress = {
         street: addressParts[0] || '',
         city: addressParts[1] || '',
         state: addressParts[2] || '',
         zipCode: addressParts[3] || '',
-        country: addressParts[4] || ''
+        country: addressParts[4] || 'United States' // Default country
       };
+      
+      // Validate that we have at least street and city
+      if (!physicalAddress.street || !physicalAddress.city) {
+        throw new Error('Please provide at least street address and city in the format: Street, City, State, ZIP, Country');
+      }
     }
     
     // Update profile in Firestore
@@ -888,6 +928,44 @@ const handleSaveNotifications = async () => {
     // Toast and router.push('/login') will be handled by AuthContext
   };
 
+  // Handle privacy settings save
+  const handleSavePrivacySettings = async () => {
+    if (!user) return;
+    
+    try {
+      setIsSavingPrivacy(true);
+      
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/users/privacy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ privacySettings })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to save privacy settings');
+      }
+      
+      toast({
+        title: 'Privacy Settings Updated',
+        description: 'Your privacy preferences have been saved successfully.',
+        variant: 'default'
+      });
+    } catch (error) {
+      console.error('Error saving privacy settings:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to save privacy settings. Please try again.',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsSavingPrivacy(false);
+    }
+  };
+
   if (authLoading || (!currentUserProfile && user)) {
     return (
       <div className="flex min-h-[calc(100vh-10rem)] items-center justify-center">
@@ -919,183 +997,285 @@ const handleSaveNotifications = async () => {
     : null;
 
   return (
-    <div className="pb-16 md:pb-8 max-w-5xl mx-auto px-4 sm:px-6">
-      {/* Page Header */}
-      <div className="flex items-center justify-between py-3 mb-4 sticky top-0 bg-background/90 backdrop-blur-sm z-10 border-b border-border/30 -mx-4 px-4 sm:-mx-6 sm:px-6">
-        <Button variant="ghost" size="icon" onClick={() => router.push(`/users/${user.uid}`)} className="text-muted-foreground hover:text-foreground">
+    <div className="min-h-screen bg-background text-foreground">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 sticky top-0 bg-background/80 backdrop-blur-md z-10 border-b border-border">
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          onClick={() => activeTab ? setActiveTab(null) : router.push(`/users/${user.uid}`)} 
+          className="hover:bg-muted"
+        >
           <ChevronLeft className="h-5 w-5" />
-          <span className="sr-only">Back to Profile</span>
         </Button>
-        <h1 className="text-lg font-semibold text-foreground/90">Account Settings</h1>
-        <div className="w-9 h-9"></div> {/* Spacer for balance */}
+        <h1 className="text-lg font-semibold">
+          {activeTab ? activeTab.charAt(0).toUpperCase() + activeTab.slice(1) : 'Settings'}
+        </h1>
+        <div className="w-9 h-9"></div>
       </div>
 
-      {/* Profile Summary Card */}
-      <Card className="mb-6 bg-card/70 border-border/30 shadow-md">
-        <CardHeader className="flex flex-row items-center gap-4 p-4">
-          <Avatar className="h-16 w-16 border-2 border-background shadow-sm">
-            {currentUserProfile.avatarUrl && <AvatarImage src={currentUserProfile.avatarUrl} alt={currentUserProfile.name || 'User Avatar'} data-ai-hint="person portrait"/>}
-            <AvatarFallback className="text-2xl">{userInitial}</AvatarFallback>
-          </Avatar>
-          <div>
-            <div className="flex items-center">
-              <h2 className="text-lg font-bold text-foreground/90">{currentUserProfile.name || 'Macaroom User'}</h2>
+      {/* Profile Header - Only show when no tab is active */}
+      {!activeTab && (
+        <div className="flex flex-col items-center px-6 py-8">
+          <div className="relative mb-4">
+            <Avatar className="h-24 w-24 border-4 border-border">
+              {currentUserProfile.avatarUrl && (
+                <AvatarImage 
+                  src={currentUserProfile.avatarUrl} 
+                  alt={currentUserProfile.name || 'User Avatar'} 
+                  data-ai-hint="person portrait"
+                />
+              )}
+              <AvatarFallback className="text-2xl bg-muted">{userInitial}</AvatarFallback>
+            </Avatar>
+            <div className="absolute -bottom-1 -right-1 bg-blue-500 rounded-full p-1">
+              <CheckCircle className="h-4 w-4 text-white" />
+            </div>
+          </div>
+          
+          <div className="text-center mb-6">
+            <div className="flex items-center justify-center mb-1">
+              <h2 className="text-xl font-bold">{currentUserProfile.name || 'Macaroom User'}</h2>
               <VerificationBadge role={currentUserProfile.role} isVerified={currentUserProfile.isVerified} />
             </div>
-            <p className="text-sm text-muted-foreground">{currentUserProfile.email}</p>
+            <p className="text-muted-foreground text-sm">{currentUserProfile.email}</p>
           </div>
-        </CardHeader>
-      </Card>
+        </div>
+      )}
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-5 mb-6">
-          <TabsTrigger value="account" className="text-xs sm:text-sm">
-            <User className="h-4 w-4 mr-2 hidden sm:inline" />
-            Account
-          </TabsTrigger>
-          <TabsTrigger value="profile" className="text-xs sm:text-sm">
-            <Edit3 className="h-4 w-4 mr-2 hidden sm:inline" />
-            Profile
-          </TabsTrigger>
-          <TabsTrigger value="subscription" className="text-xs sm:text-sm">
-            <Zap className="h-4 w-4 mr-2 hidden sm:inline" />
-            Subscription
-          </TabsTrigger>
-          <TabsTrigger value="notifications" className="text-xs sm:text-sm">
-            <Bell className="h-4 w-4 mr-2 hidden sm:inline" />
-            Notifications
-          </TabsTrigger>
-          <TabsTrigger value="security" className="text-xs sm:text-sm">
-            <Lock className="h-4 w-4 mr-2 hidden sm:inline" />
-            Security
-          </TabsTrigger>
-        </TabsList>
+      {/* Conditional Content Rendering */}
+      {!activeTab && (
+        <div className="px-6 space-y-6">
+          {/* Account & Profile Section */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider px-2">Account & Profile</h3>
+            <div className="space-y-2">
+              <div 
+                onClick={() => setActiveTab('account')}
+                className="flex items-center justify-between p-4 rounded-xl transition-all cursor-pointer bg-muted/50 hover:bg-muted"
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-blue-500/20 rounded-lg">
+                    <User className="h-5 w-5 text-blue-400" />
+                  </div>
+                  <div>
+                    <span className="font-medium">Account</span>
+                    <p className="text-xs text-muted-foreground">Email, username, language</p>
+                  </div>
+                </div>
+                <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
+              </div>
+              
+              <div 
+                onClick={() => setActiveTab('profile')}
+                className="flex items-center justify-between p-4 rounded-xl transition-all cursor-pointer bg-muted/50 hover:bg-muted"
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-green-500/20 rounded-lg">
+                    <Edit3 className="h-5 w-5 text-green-400" />
+                  </div>
+                  <div>
+                    <span className="font-medium">Profile</span>
+                    <p className="text-xs text-muted-foreground">Name, bio, contact info</p>
+                  </div>
+                </div>
+                <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
+              </div>
+            </div>
+          </div>
 
-        {/* Account Tab */}
-        <TabsContent value="account" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Account Information</CardTitle>
-              <CardDescription>Manage your account details and preferences</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          {/* Planning & Preferences Section */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider px-2">Planning & Preferences</h3>
+            <div className="space-y-2">
+              <div 
+                onClick={() => setActiveTab('preferences')}
+                className="flex items-center justify-between p-4 rounded-xl transition-all cursor-pointer bg-muted/50 hover:bg-muted"
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-pink-500/20 rounded-lg">
+                    <Heart className="h-5 w-5 text-pink-400" />
+                  </div>
+                  <div>
+                    <span className="font-medium">Preferences</span>
+                    <p className="text-xs text-muted-foreground">Interests, activity types</p>
+                  </div>
+                </div>
+                <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
+              </div>
+              
+              <div 
+                onClick={() => setActiveTab('planning')}
+                className="flex items-center justify-between p-4 rounded-xl transition-all cursor-pointer bg-muted/50 hover:bg-muted"
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-indigo-500/20 rounded-lg">
+                    <Palette className="h-5 w-5 text-indigo-400" />
+                  </div>
+                  <div>
+                    <span className="font-medium">Planning Style</span>
+                    <p className="text-xs text-muted-foreground">Customize your planning experience</p>
+                  </div>
+                </div>
+                <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
+              </div>
+            </div>
+          </div>
+
+          {/* Social & Engagement Section */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider px-2">Social & Engagement</h3>
+            <div className="space-y-2">
+              <div 
+                onClick={() => setActiveTab('engagement')}
+                className="flex items-center justify-between p-4 rounded-xl transition-all cursor-pointer bg-muted/50 hover:bg-muted"
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-amber-500/20 rounded-lg">
+                    <Star className="h-5 w-5 text-amber-400" />
+                  </div>
+                  <div>
+                    <span className="font-medium">Engagement</span>
+                    <p className="text-xs text-muted-foreground">Activity score, achievements</p>
+                  </div>
+                </div>
+                <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
+              </div>
+              
+              <div 
+                onClick={() => setActiveTab('privacy')}
+                className="flex items-center justify-between p-4 rounded-xl transition-all cursor-pointer bg-muted/50 hover:bg-muted"
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-cyan-500/20 rounded-lg">
+                    <Shield className="h-5 w-5 text-cyan-400" />
+                  </div>
+                  <div>
+                    <span className="font-medium">Privacy</span>
+                    <p className="text-xs text-muted-foreground">Control who sees your content</p>
+                  </div>
+                </div>
+                <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
+              </div>
+            </div>
+          </div>
+
+          {/* Subscription & Notifications Section */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider px-2">Subscription & Notifications</h3>
+            <div className="space-y-2">
+              <div 
+                onClick={() => setActiveTab('subscription')}
+                className="flex items-center justify-between p-4 rounded-xl transition-all cursor-pointer bg-muted/50 hover:bg-muted"
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-yellow-500/20 rounded-lg">
+                    <Zap className="h-5 w-5 text-yellow-400" />
+                  </div>
+                  <div>
+                    <span className="font-medium">Subscription</span>
+                    <p className="text-xs text-muted-foreground">Manage your plan and billing</p>
+                  </div>
+                </div>
+                <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
+              </div>
+              
+              <div 
+                onClick={() => setActiveTab('notifications')}
+                className="flex items-center justify-between p-4 rounded-xl transition-all cursor-pointer bg-muted/50 hover:bg-muted"
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-purple-500/20 rounded-lg">
+                    <Bell className="h-5 w-5 text-purple-400" />
+                  </div>
+                  <div>
+                    <span className="font-medium">Notifications</span>
+                    <p className="text-xs text-muted-foreground">Email, push, and plan reminders</p>
+                  </div>
+                </div>
+                <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
+              </div>
+            </div>
+          </div>
+
+          {/* Security Section */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider px-2">Security</h3>
+            <div className="space-y-2">
+              <div 
+                onClick={() => setActiveTab('security')}
+                className="flex items-center justify-between p-4 rounded-xl transition-all cursor-pointer bg-muted/50 hover:bg-muted"
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-red-500/20 rounded-lg">
+                    <Lock className="h-5 w-5 text-red-400" />
+                  </div>
+                  <div>
+                    <span className="font-medium">Security</span>
+                    <p className="text-xs text-muted-foreground">Password, 2FA, account safety</p>
+                  </div>
+                </div>
+                <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Tab Content Area */}
+      <div className="w-full flex-1 overflow-y-auto pb-20 pt-6">
+        {activeTab === 'account' && (
+          <div className="px-6 space-y-4">
+          <div className="bg-card rounded-xl p-6 border border-border">
+            <h3 className="text-lg font-semibold mb-4">Account Information</h3>
+            <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" value={currentUserProfile.email || ''} readOnly className="bg-muted/50" />
+                <Label htmlFor="email" className="text-muted-foreground">Email</Label>
+                <Input 
+                  id="email" 
+                  value={currentUserProfile.email || ''} 
+                  readOnly 
+                  className="bg-muted border-border" 
+                />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
-                <Input id="username" value={currentUserProfile.username || ''} readOnly className="bg-muted/50" />
-                <p className="text-xs text-muted-foreground">This is your unique username</p>
+                <Label htmlFor="phone" className="text-muted-foreground">Phone Number</Label>
+                <Input 
+                  id="phone" 
+                  value={profileForm.phone} 
+                  onChange={handleProfileChange} 
+                />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="language">Language</Label>
-                <div className="flex items-center space-x-2">
+                <Label htmlFor="birthdate" className="text-muted-foreground">Birth Date</Label>
+                <Input 
+                  id="birthdate" 
+                  type="date" 
+                  value={profileForm.birthdate}
+                  onChange={handleProfileChange}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="address" className="text-muted-foreground">Address</Label>
+                <Input 
+                  id="address" 
+                  value={profileForm.address} 
+                  onChange={handleProfileChange} 
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">Language</Label>
+                <div className="flex items-center space-x-2 p-3 bg-muted rounded-lg border border-border">
                   <Globe className="h-4 w-4 text-muted-foreground" />
                   <span>English (US)</span>
                 </div>
               </div>
               
-              <Separator />
-              
-              <div className="space-y-2">
-                <Label>Delete Account</Label>
-                <p className="text-sm text-muted-foreground">
-                  Permanently delete your account and all of your content.
-                </p>
-                <Button 
-                  variant="destructive" 
-                  size="sm" 
-                  className="mt-2"
-                  onClick={handleDeleteAccount}
-                  disabled={isDeletingAccount}
-                >
-                  {isDeletingAccount ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Deleting...
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Delete Account
-                    </>
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Profile Tab */}
-        <TabsContent value="profile" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Profile Settings</CardTitle>
-              <CardDescription>Manage your profile information and preferences</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Full Name</Label>
-                  <Input 
-                    id="name" 
-                    value={profileForm.name} 
-                    onChange={handleProfileChange} 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="username">Username</Label>
-                  <Input 
-                    id="username" 
-                    value={currentUserProfile.username || ''} 
-                    readOnly 
-                    className="bg-muted/50" 
-                  />
-                  <p className="text-xs text-muted-foreground">Username cannot be changed after signup</p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number</Label>
-                  <Input 
-                    id="phone" 
-                    value={profileForm.phone} 
-                    onChange={handleProfileChange} 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="birthdate">Birth Date</Label>
-                  <Input 
-                    id="birthdate" 
-                    type="date" 
-                    value={profileForm.birthdate}
-                    onChange={handleProfileChange}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="address">Address</Label>
-                  <Input 
-                    id="address" 
-                    value={profileForm.address} 
-                    onChange={handleProfileChange} 
-                  />
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="bio">Bio</Label>
-                <textarea 
-                  id="bio" 
-                  className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  value={profileForm.bio}
-                  onChange={handleProfileChange}
-                  placeholder="Tell us about yourself..."
-                />
-              </div>
-              
-              <div className="flex justify-end">
+              <div className="flex justify-end pt-4">
                 <Button 
                   onClick={handleSaveProfile} 
                   disabled={isSavingProfile}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
                 >
                   {isSavingProfile ? (
                     <>
@@ -1107,37 +1287,100 @@ const handleSaveNotifications = async () => {
                   )}
                 </Button>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
           
-          <Card>
-            <CardHeader>
-              <CardTitle>Preferences & Restrictions</CardTitle>
-              <CardDescription>Manage your preferences and dietary restrictions</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-red-500/10 rounded-xl p-6 border border-red-500/20">
+            <h3 className="text-lg font-semibold mb-2 text-red-400">Danger Zone</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Permanently delete your account and all of your content.
+            </p>
+            <Button 
+              variant="destructive" 
+              size="sm" 
+              className="bg-red-600 hover:bg-red-700"
+              onClick={handleDeleteAccount}
+              disabled={isDeletingAccount}
+            >
+              {isDeletingAccount ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Account
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+        )}
+
+        {activeTab === 'profile' && (
+          <div className="px-6 space-y-4">
+          <div className="bg-card rounded-xl p-6 border border-border">
+            <h3 className="text-lg font-semibold mb-4">Profile Information</h3>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-2">
-                  <Label>Health & Diet</Label>
-                  <Link href="/onboarding?step=2" className="flex items-center text-sm text-primary hover:underline">
-                    <Edit3 className="h-3.5 w-3.5 mr-1" />
-                    Edit Health & Diet Preferences
-                  </Link>
+                  <Label htmlFor="name" className="text-muted-foreground">Full Name</Label>
+                  <Input 
+                    id="name" 
+                    value={profileForm.name} 
+                    onChange={handleProfileChange} 
+                  />
+                  <p className="text-xs text-muted-foreground">This will be displayed on your profile</p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Activity Preferences</Label>
-                  <Link href="/onboarding?step=3" className="flex items-center text-sm text-primary hover:underline">
-                    <Edit3 className="h-3.5 w-3.5 mr-1" />
-                    Edit Activity Preferences
-                  </Link>
+                  <Label htmlFor="username" className="text-muted-foreground">Username</Label>
+                  <Input 
+                    id="username" 
+                    value={currentUserProfile.username || ''} 
+                    readOnly 
+                    className="bg-muted" 
+                  />
+                  <p className="text-xs text-muted-foreground">This is your unique username displayed on your profile</p>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+              
+              <div className="space-y-2">
+                <Label htmlFor="bio" className="text-muted-foreground">Bio</Label>
+                <textarea 
+                  id="bio" 
+                  className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  value={profileForm.bio}
+                  onChange={handleProfileChange}
+                  placeholder="Tell us about yourself..."
+                />
+              </div>
+              
+              <div className="flex justify-end pt-4">
+                <Button 
+                  onClick={handleSaveProfile} 
+                  disabled={isSavingProfile}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  {isSavingProfile ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Changes'
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+          
 
-        {/* Subscription Tab */}
-        <TabsContent value="subscription" className="space-y-6">
+        </div>
+        )}
+
+        {activeTab === 'subscription' && (
+          <div className="px-6 space-y-6">
           {isLoading ? (
             <div className="space-y-4">
               <Skeleton className="w-full h-[300px] rounded-lg" />
@@ -1149,23 +1392,7 @@ const handleSaveNotifications = async () => {
             </div>
           ) : (
             <>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Your Activity</CardTitle>
-                  <CardDescription>Track your engagement and activity level</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ActivityScoreCard
-                    activityScore={userData?.activityScore || 0}
-                    plansCreated={userData?.userStats?.plansCreatedCount || 0}
-                    plansShared={userData?.userStats?.plansSharedOrExperiencedCount || 0}
-                    eventAttendance={userData?.userProfile?.eventAttendanceScore || 0}
-                    levelTitle={userData?.userProfile?.levelTitle || "Newbie Planner"}
-                    levelStars={userData?.userProfile?.levelStars || 1}
-                  />
-                </CardContent>
-              </Card>
-              
+
               <Card>
                 <CardHeader>
                   <CardTitle>Subscription Plans</CardTitle>
@@ -1320,10 +1547,299 @@ const handleSaveNotifications = async () => {
               )}
             </>
           )}
-        </TabsContent>
+        </div>
+        )}
 
-        {/* Notifications Tab */}
-        <TabsContent value="notifications" className="space-y-6">
+        {activeTab === 'preferences' && (
+          <div className="px-6 space-y-6">
+          <div className="space-y-6">
+            {/* Health & Diet Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Heart className="mr-2 h-5 w-5 text-pink-500" />
+                  Health & Diet
+                </CardTitle>
+                <CardDescription>Manage your dietary restrictions and health preferences</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Allergies</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {currentUserProfile.allergies && currentUserProfile.allergies.length > 0 ? (
+                      currentUserProfile.allergies.map((allergy, index) => (
+                        <Badge key={index} variant="secondary">{allergy}</Badge>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No allergies specified</p>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Dietary Restrictions</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {currentUserProfile.dietaryRestrictions && currentUserProfile.dietaryRestrictions.length > 0 ? (
+                      currentUserProfile.dietaryRestrictions.map((restriction, index) => (
+                        <Badge key={index} variant="secondary">{restriction}</Badge>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No dietary restrictions specified</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <Link href="/onboarding?step=2" className="flex items-center text-sm text-primary hover:underline">
+                    <Edit3 className="h-3.5 w-3.5 mr-1" />
+                    Edit Health & Diet Preferences
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Culinary Preferences Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <ChefHat className="mr-2 h-5 w-5 text-orange-500" />
+                  Culinary Preferences
+                </CardTitle>
+                <CardDescription>Your favorite cuisines and food preferences</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Favorite Cuisines</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {currentUserProfile.favoriteCuisines && currentUserProfile.favoriteCuisines.length > 0 ? (
+                      currentUserProfile.favoriteCuisines.map((cuisine, index) => (
+                        <Badge key={index} variant="secondary">{cuisine}</Badge>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No favorite cuisines specified</p>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>General Food Notes</Label>
+                  <p className="text-sm text-foreground/90">
+                    {currentUserProfile.generalPreferences || "No general food preferences specified"}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Activity Preferences Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Activity className="mr-2 h-5 w-5 text-green-500" />
+                  Activity Preferences
+                </CardTitle>
+                <CardDescription>Your activity preferences and limitations</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Physical Limitations</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {currentUserProfile.physicalLimitations && currentUserProfile.physicalLimitations.length > 0 ? (
+                      currentUserProfile.physicalLimitations.map((limitation, index) => (
+                        <Badge key={index} variant="secondary">{limitation}</Badge>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No physical limitations specified</p>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Preferred Activities</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {currentUserProfile.activityTypePreferences && currentUserProfile.activityTypePreferences.length > 0 ? (
+                      currentUserProfile.activityTypePreferences.map((activity, index) => (
+                        <Badge key={index} variant="secondary">{activity}</Badge>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No preferred activities specified</p>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Disliked Activities</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {currentUserProfile.activityTypeDislikes && currentUserProfile.activityTypeDislikes.length > 0 ? (
+                      currentUserProfile.activityTypeDislikes.map((activity, index) => (
+                        <Badge key={index} variant="destructive">{activity}</Badge>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No disliked activities specified</p>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Environmental Sensitivities</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {currentUserProfile.environmentalSensitivities && currentUserProfile.environmentalSensitivities.length > 0 ? (
+                      currentUserProfile.environmentalSensitivities.map((sensitivity, index) => (
+                        <Badge key={index} variant="secondary">{sensitivity}</Badge>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No environmental sensitivities specified</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <Link href="/onboarding?step=3" className="flex items-center text-sm text-primary hover:underline">
+                    <Edit3 className="h-3.5 w-3.5 mr-1" />
+                    Edit Activity Preferences
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+        )}
+
+        {activeTab === 'planning' && (
+          <div className="px-6 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Palette className="mr-2 h-5 w-5 text-indigo-500" />
+                Planning Style
+              </CardTitle>
+              <CardDescription>Your planning preferences and style</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Travel Tolerance</Label>
+                  <p className="text-sm text-foreground/90">
+                    {currentUserProfile.travelTolerance || "Not specified"}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Budget Notes</Label>
+                  <p className="text-sm text-foreground/90">
+                    {currentUserProfile.budgetFlexibilityNotes || "Not specified"}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Preferred Group Size</Label>
+                  <p className="text-sm text-foreground/90">
+                    {currentUserProfile.socialPreferences?.preferredGroupSize || "Not specified"}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Interaction Level</Label>
+                  <p className="text-sm text-foreground/90">
+                    {currentUserProfile.socialPreferences?.interactionLevel || "Not specified"}
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Availability Notes</Label>
+                <p className="text-sm text-foreground/90">
+                  {currentUserProfile.availabilityNotes || "No availability notes specified"}
+                </p>
+              </div>
+              <div className="flex justify-end">
+                <Link href="/onboarding?step=3" className="flex items-center text-sm text-primary hover:underline">
+                  <Edit3 className="h-3.5 w-3.5 mr-1" />
+                  Edit Planning Style
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        )}
+
+        {activeTab === 'engagement' && (
+          <div className="px-6 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Your Activity</CardTitle>
+              <CardDescription>Track your engagement and activity level</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ActivityScoreCard
+                activityScore={userData?.activityScore || 0}
+                plansCreated={userData?.userStats?.plansCreatedCount || 0}
+                plansShared={userData?.userStats?.plansSharedOrExperiencedCount || 0}
+                eventAttendance={userData?.userProfile?.eventAttendanceScore || 0}
+                levelTitle={userData?.userProfile?.levelTitle || "Newbie Planner"}
+                levelStars={userData?.userProfile?.levelStars || 1}
+              />
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Star className="mr-2 h-5 w-5 text-amber-500" />
+                Engagement & Activity
+              </CardTitle>
+              <CardDescription>Your activity level and engagement metrics</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+                <div className="space-y-2">
+                  <div className="text-3xl font-bold text-foreground/90">
+                    {currentUserProfile.eventAttendanceScore || 0}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Attendance Score</p>
+                </div>
+                <div className="space-y-2">
+                  <div className="text-xl font-semibold text-foreground/90">
+                    {currentUserProfile.levelTitle || "Newbie Planner"}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Level</p>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-center items-center space-x-1">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <Star 
+                        key={i} 
+                        className={`h-5 w-5 ${
+                          i < (currentUserProfile.levelStars || 1) 
+                            ? 'text-amber-400 fill-amber-400' 
+                            : 'text-muted-foreground/30'
+                        }`} 
+                      />
+                    ))}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Stars</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          {userData && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Activity Statistics</CardTitle>
+                <CardDescription>Your platform activity overview</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="text-center p-4 bg-muted/50 rounded-lg">
+                    <div className="text-2xl font-bold text-foreground/90">
+                      {userData.userStats?.plansCreatedCount || 0}
+                    </div>
+                    <p className="text-sm text-muted-foreground">Plans Created</p>
+                  </div>
+                  <div className="text-center p-4 bg-muted/50 rounded-lg">
+                    <div className="text-2xl font-bold text-foreground/90">
+                      {userData.userStats?.plansSharedOrExperiencedCount || 0}
+                    </div>
+                    <p className="text-sm text-muted-foreground">Plans Shared/Experienced</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+        )}
+
+        {activeTab === 'notifications' && (
+          <div className="px-6 space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Notification Preferences</CardTitle>
@@ -1401,10 +1917,243 @@ const handleSaveNotifications = async () => {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
+        </div>
+        )}
 
-        {/* Security Tab */}
-        <TabsContent value="security" className="space-y-6">
+        {activeTab === 'privacy' && (
+          <div className="px-6 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Privacy Settings</CardTitle>
+              <CardDescription>Control who can see your profile information</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-4">
+                <div className="space-y-3">
+                  <Label className="text-base font-medium">Plans Visibility</Label>
+                  <p className="text-sm text-muted-foreground">Choose who can see the plans you've created</p>
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <input 
+                        type="radio" 
+                        id="plans-public" 
+                        name="plansVisibility" 
+                        value="public" 
+                        checked={privacySettings.plansVisibility === 'public'}
+                        onChange={(e) => setPrivacySettings(prev => ({ ...prev, plansVisibility: e.target.value }))}
+                        className="w-4 h-4 text-primary" 
+                      />
+                      <Label htmlFor="plans-public" className="text-sm font-normal cursor-pointer">
+                        <Globe className="inline h-4 w-4 mr-2" />
+                        Public - Anyone can see your plans
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input 
+                        type="radio" 
+                        id="plans-followers" 
+                        name="plansVisibility" 
+                        value="followers" 
+                        checked={privacySettings.plansVisibility === 'followers'}
+                        onChange={(e) => setPrivacySettings(prev => ({ ...prev, plansVisibility: e.target.value }))}
+                        className="w-4 h-4 text-primary" 
+                      />
+                      <Label htmlFor="plans-followers" className="text-sm font-normal cursor-pointer">
+                        <UsersRound className="inline h-4 w-4 mr-2" />
+                        Followers - Only your followers can see your plans
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input 
+                        type="radio" 
+                        id="plans-friends" 
+                        name="plansVisibility" 
+                        value="friends" 
+                        checked={privacySettings.plansVisibility === 'friends'}
+                        onChange={(e) => setPrivacySettings(prev => ({ ...prev, plansVisibility: e.target.value }))}
+                        className="w-4 h-4 text-primary" 
+                      />
+                      <Label htmlFor="plans-friends" className="text-sm font-normal cursor-pointer">
+                        <Heart className="inline h-4 w-4 mr-2" />
+                        Friends - Only your friends can see your plans
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input 
+                        type="radio" 
+                        id="plans-private" 
+                        name="plansVisibility" 
+                        value="private" 
+                        checked={privacySettings.plansVisibility === 'private'}
+                        onChange={(e) => setPrivacySettings(prev => ({ ...prev, plansVisibility: e.target.value }))}
+                        className="w-4 h-4 text-primary" 
+                      />
+                      <Label htmlFor="plans-private" className="text-sm font-normal cursor-pointer">
+                        <Lock className="inline h-4 w-4 mr-2" />
+                        Private - Only you can see your plans
+                      </Label>
+                    </div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-3">
+                  <Label className="text-base font-medium">Followers List Visibility</Label>
+                  <p className="text-sm text-muted-foreground">Choose who can see your followers list</p>
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <input 
+                        type="radio" 
+                        id="followers-public" 
+                        name="followersVisibility" 
+                        value="public" 
+                        checked={privacySettings.followersVisibility === 'public'}
+                        onChange={(e) => setPrivacySettings(prev => ({ ...prev, followersVisibility: e.target.value }))}
+                        className="w-4 h-4 text-primary" 
+                      />
+                      <Label htmlFor="followers-public" className="text-sm font-normal cursor-pointer">
+                        <Globe className="inline h-4 w-4 mr-2" />
+                        Public - Anyone can see your followers
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input 
+                        type="radio" 
+                        id="followers-followers" 
+                        name="followersVisibility" 
+                        value="followers" 
+                        checked={privacySettings.followersVisibility === 'followers'}
+                        onChange={(e) => setPrivacySettings(prev => ({ ...prev, followersVisibility: e.target.value }))}
+                        className="w-4 h-4 text-primary" 
+                      />
+                      <Label htmlFor="followers-followers" className="text-sm font-normal cursor-pointer">
+                        <UsersRound className="inline h-4 w-4 mr-2" />
+                        Followers - Only your followers can see your followers list
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input 
+                        type="radio" 
+                        id="followers-friends" 
+                        name="followersVisibility" 
+                        value="friends" 
+                        checked={privacySettings.followersVisibility === 'friends'}
+                        onChange={(e) => setPrivacySettings(prev => ({ ...prev, followersVisibility: e.target.value }))}
+                        className="w-4 h-4 text-primary" 
+                      />
+                      <Label htmlFor="followers-friends" className="text-sm font-normal cursor-pointer">
+                        <Heart className="inline h-4 w-4 mr-2" />
+                        Friends - Only your friends can see your followers list
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input 
+                        type="radio" 
+                        id="followers-private" 
+                        name="followersVisibility" 
+                        value="private" 
+                        checked={privacySettings.followersVisibility === 'private'}
+                        onChange={(e) => setPrivacySettings(prev => ({ ...prev, followersVisibility: e.target.value }))}
+                        className="w-4 h-4 text-primary" 
+                      />
+                      <Label htmlFor="followers-private" className="text-sm font-normal cursor-pointer">
+                        <Lock className="inline h-4 w-4 mr-2" />
+                        Private - Only you can see your followers list
+                      </Label>
+                    </div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-3">
+                  <Label className="text-base font-medium">Following List Visibility</Label>
+                  <p className="text-sm text-muted-foreground">Choose who can see who you're following</p>
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <input 
+                        type="radio" 
+                        id="following-public" 
+                        name="followingVisibility" 
+                        value="public" 
+                        checked={privacySettings.followingVisibility === 'public'}
+                        onChange={(e) => setPrivacySettings(prev => ({ ...prev, followingVisibility: e.target.value }))}
+                        className="w-4 h-4 text-primary" 
+                      />
+                      <Label htmlFor="following-public" className="text-sm font-normal cursor-pointer">
+                        <Globe className="inline h-4 w-4 mr-2" />
+                        Public - Anyone can see who you're following
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input 
+                        type="radio" 
+                        id="following-followers" 
+                        name="followingVisibility" 
+                        value="followers" 
+                        checked={privacySettings.followingVisibility === 'followers'}
+                        onChange={(e) => setPrivacySettings(prev => ({ ...prev, followingVisibility: e.target.value }))}
+                        className="w-4 h-4 text-primary" 
+                      />
+                      <Label htmlFor="following-followers" className="text-sm font-normal cursor-pointer">
+                        <UsersRound className="inline h-4 w-4 mr-2" />
+                        Followers - Only your followers can see who you're following
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input 
+                        type="radio" 
+                        id="following-friends" 
+                        name="followingVisibility" 
+                        value="friends" 
+                        checked={privacySettings.followingVisibility === 'friends'}
+                        onChange={(e) => setPrivacySettings(prev => ({ ...prev, followingVisibility: e.target.value }))}
+                        className="w-4 h-4 text-primary" 
+                      />
+                      <Label htmlFor="following-friends" className="text-sm font-normal cursor-pointer">
+                        <Heart className="inline h-4 w-4 mr-2" />
+                        Friends - Only your friends can see who you're following
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input 
+                        type="radio" 
+                        id="following-private" 
+                        name="followingVisibility" 
+                        value="private" 
+                        checked={privacySettings.followingVisibility === 'private'}
+                        onChange={(e) => setPrivacySettings(prev => ({ ...prev, followingVisibility: e.target.value }))}
+                        className="w-4 h-4 text-primary" 
+                      />
+                      <Label htmlFor="following-private" className="text-sm font-normal cursor-pointer">
+                        <Lock className="inline h-4 w-4 mr-2" />
+                        Private - Only you can see who you're following
+                      </Label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-4">
+                  <Button 
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={handleSavePrivacySettings}
+                    disabled={isSavingPrivacy}
+                  >
+                    {isSavingPrivacy ? (
+                      <Loader2 className="animate-spin mr-2 h-4 w-4" />
+                    ) : null}
+                    Save Privacy Settings
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        )}
+
+        {activeTab === 'security' && (
+          <div className="px-6 space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Security Settings</CardTitle>
@@ -1556,37 +2305,42 @@ const handleSaveNotifications = async () => {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
-
-      <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center space-x-4">
-          <Button variant="outline" asChild>
-            <Link href="/help">
-              <HelpCircle className="h-4 w-4 mr-2" />
-              Help Center
-            </Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href="/privacy">
-              <FileText className="h-4 w-4 mr-2" />
-              Privacy Policy
-            </Link>
-          </Button>
         </div>
-        
-        <Button variant="destructive" className="w-full sm:w-auto" onClick={handleSignOut}>
-          <LogOut className="h-4 w-4 mr-2" />
-          Log Out
-        </Button>
+        )}
       </div>
-
-      <CardFooter className="p-4 text-center border-t border-border/20 mt-8">
-        <p className="text-xs text-muted-foreground w-full">
-          Profile created: {currentUserProfile.createdAt && isValid(currentUserProfile.createdAt as Date) ? format(currentUserProfile.createdAt as Date, 'PPP p') : 'N/A'} <br/>
-          Last updated: {currentUserProfile.updatedAt && isValid(currentUserProfile.updatedAt as Date) ? format(currentUserProfile.updatedAt as Date, 'PPP p') : 'N/A'}
-        </p>
-      </CardFooter>
+      
+      {/* Footer Actions */}
+      {!activeTab && (
+        <div className="px-6 mt-8 space-y-4">
+          <div className="bg-card rounded-xl p-6 border border-border">
+            <div className="flex flex-col space-y-3">
+              <Button variant="outline" asChild>
+                <Link href="/help">
+                  <HelpCircle className="h-4 w-4 mr-2" />
+                  Help Center
+                </Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href="/privacy">
+                  <FileText className="h-4 w-4 mr-2" />
+                  Privacy Policy
+                </Link>
+              </Button>
+              <Button variant="destructive" className="bg-red-600 hover:bg-red-700" onClick={handleSignOut}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Log Out
+              </Button>
+            </div>
+          </div>
+          
+          <div className="text-center py-4">
+            <p className="text-xs text-muted-foreground">
+              Profile created: {currentUserProfile.createdAt && isValid(currentUserProfile.createdAt as Date) ? format(currentUserProfile.createdAt as Date, 'PPP p') : 'N/A'} <br/>
+              Last updated: {currentUserProfile.updatedAt && isValid(currentUserProfile.updatedAt as Date) ? format(currentUserProfile.updatedAt as Date, 'PPP p') : 'N/A'}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

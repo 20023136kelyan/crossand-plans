@@ -13,7 +13,7 @@ export function canUserCommentAndRate(plan: Plan, userId: string | null | undefi
   }
 
   // Plan must be completed
-  if (!plan.isCompleted) {
+  if (plan.status !== 'completed') {
     return false;
   }
 

@@ -9,18 +9,18 @@ import { Separator } from "@/components/ui/separator";
 import { 
     User, Loader2, CalendarDays, Smartphone, Home, ListChecks, Palette, Sparkles as GamificationIcon, 
     Wallet, MessagesSquare as SocialInteractionIcon, Heart, Activity, AlertTriangle, ChefHat, ChevronDown, 
-    ChevronUp, UsersRound, ChevronLeft, Edit3, MessageSquare, ShieldCheck as AdminIcon, CheckCircle, UserPlus, X as XIcon, Check 
+    ChevronUp, UsersRound, ChevronLeft, Edit3, MessageSquare, ShieldCheck as AdminIcon, CheckCircle, UserPlus, X as XIcon, Check, MapPin as TravelToleranceIcon 
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState, useCallback } from "react";
 import { getUserProfile, getFriendships } from "@/services/userService"; 
-import type { UserProfile, FriendEntry, UserRoleType } from "@/types/user";
+import type { UserProfile, FriendEntry, UserRoleType, FriendStatus } from "@/types/user";
 import { format } from 'date-fns'; 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { initiateDirectChatAction } from '@/app/actions/chatActions';
-import { sendFriendRequestAction, acceptFriendRequestAction, declineFriendRequestAction, removeFriendAction } from '@/app/actions/friendActions';
+import { sendFriendRequestAction, acceptFriendRequestAction, declineFriendRequestAction, removeFriendAction } from '@/app/actions/userActions';
 
 const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, isVerified: boolean }) => {
   if (role === 'admin') {
@@ -127,9 +127,10 @@ export default function FriendProfilePage() {
           if (currentUser.uid === profile.uid) {
             setFriendshipStatus('is_self');
           } else {
-            const friendships = await getFriendships(currentUser.uid); 
-            const friendEntry = friendships.find(f => f.friendUid === friendUserId);
-            setFriendshipStatus(friendEntry?.status || 'not_friends');
+            getFriendships(currentUser.uid, (friends) => {
+              const friendEntry = friends.find(f => f.friendUid === friendUserId);
+              setFriendshipStatus(friendEntry?.status || 'not_friends');
+            });
           }
         }
       } catch (error) {

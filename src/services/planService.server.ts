@@ -654,7 +654,10 @@ export const deletePlanAdmin = async (planId: string, requestingUserId: string):
         batch.delete(doc.ref);
         count++;
         if (count === 499) { 
-          batch.commit().then(() => batch = firestoreAdmin.batch()); 
+          batch.commit().then(() => {
+            if (!firestoreAdmin) throw new Error("Firestore Admin SDK not available");
+            batch = firestoreAdmin.batch();
+          }); 
           count = 0;
         }
       });
@@ -734,7 +737,7 @@ export const getCompletedPlansAdmin = async (): Promise<Plan[]> => {
     // 2. Explicitly marked as completed
     const completedPlansSnapshot = await plansRef
       .where('status', '==', 'published')
-      .where('isCompleted', '==', true)
+      .where('status', '==', 'completed')
       .get();
 
     const plans: Plan[] = [];
@@ -750,6 +753,67 @@ export const getCompletedPlansAdmin = async (): Promise<Plan[]> => {
     return plans;
   } catch (error) {
     console.error('[getCompletedPlansAdmin] Error fetching completed plans (Admin SDK):', error);
+    return [];
+  }
+};
+
+export const getUserPlansAdmin = async (userId: string): Promise<Plan[]> => {
+  if (!firestoreAdmin) {
+    console.error("[getUserPlansAdmin] Firestore Admin SDK is not initialized.");
+    return [];
+  }
+  if (!userId) {
+    console.error("[getUserPlansAdmin] No userId provided.");
+    return [];
+  }
+  
+  try {
+    const plansRef = firestoreAdmin.collection(PLANS_COLLECTION);
+    
+    // Get hosted plans (all statuses)
+    const hostedQuery = plansRef
+      .where('hostId', '==', userId)
+      .orderBy('eventTime', 'desc');
+    const hostedSnapshot = await hostedQuery.get();
+    
+    // Get invited plans (all statuses)
+    const invitedQuery = plansRef
+      .where('invitedParticipantUserIds', 'array-contains', userId)
+      .orderBy('eventTime', 'desc');
+    const invitedSnapshot = await invitedQuery.get();
+    
+    const plans: Plan[] = [];
+    const planIds = new Set<string>();
+    
+    // Add hosted plans
+    hostedSnapshot.forEach(docSnap => {
+      const plan = mapAdminDocToPlan(docSnap);
+      if (!planIds.has(plan.id)) {
+        plans.push(plan);
+        planIds.add(plan.id);
+      }
+    });
+    
+    // Add invited plans (avoid duplicates)
+    invitedSnapshot.forEach(docSnap => {
+      const plan = mapAdminDocToPlan(docSnap);
+      if (!planIds.has(plan.id)) {
+        plans.push(plan);
+        planIds.add(plan.id);
+      }
+    });
+    
+    // Sort by eventTime descending
+    plans.sort((a, b) => {
+      const timeA = new Date(a.eventTime).getTime();
+      const timeB = new Date(b.eventTime).getTime();
+      return timeB - timeA;
+    });
+    
+    console.log(`[getUserPlansAdmin] Found ${plans.length} plans for user ${userId}`);
+    return plans;
+  } catch (error) {
+    console.error(`[getUserPlansAdmin] Error fetching plans for user ${userId}:`, error);
     return [];
   }
 };

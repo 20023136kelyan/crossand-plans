@@ -38,6 +38,17 @@ const convertClientPlanTimestampsToISO = (data: any): Pick<Plan, 'eventTime' | '
             const parsed = parseISO(ts);
             if (isValid(parsed)) return ts; // Already valid ISO string
         } catch (e) { /* ignore */ }
+        
+        // Handle time-only format for templates (e.g., "19:00:00")
+        if (/^\d{2}:\d{2}:\d{2}$/.test(ts)) {
+          // For templates, convert time-only to today's date with that time
+          const today = new Date().toISOString().split('T')[0]; // Get YYYY-MM-DD
+          const fullDateTime = `${today}T${ts}.000Z`;
+          try {
+            const parsed = parseISO(fullDateTime);
+            if (isValid(parsed)) return fullDateTime;
+          } catch (e) { /* ignore */ }
+        }
     }
     console.warn(`[convertClientPlanTimestampsToISO] Unexpected plan timestamp type: ${typeof ts}. Value: ${JSON.stringify(ts)}. Returning epoch ISO string.`);
     return new Date(0).toISOString();
@@ -55,6 +66,17 @@ const convertClientPlanTimestampsToISO = (data: any): Pick<Plan, 'eventTime' | '
             const parsed = parseISO(ts);
             if (isValid(parsed)) return ts;
         } catch (e) { /* ignore */ }
+        
+        // Handle time-only format for templates (e.g., "19:00:00")
+        if (/^\d{2}:\d{2}:\d{2}$/.test(ts)) {
+          // For templates, convert time-only to today's date with that time
+          const today = new Date().toISOString().split('T')[0]; // Get YYYY-MM-DD
+          const fullDateTime = `${today}T${ts}.000Z`;
+          try {
+            const parsed = parseISO(fullDateTime);
+            if (isValid(parsed)) return fullDateTime;
+          } catch (e) { /* ignore */ }
+        }
     }
     return null;
   };
@@ -477,7 +499,7 @@ export const getCompletedPlansForParticipant = (
   const q = query(
     plansRef,
     where('invitedParticipantUserIds', 'array-contains', userId),
-    where('isCompleted', '==', true)
+    where('status', '==', 'completed')
   );
 
   return onSnapshot(

@@ -9,9 +9,10 @@ import { Button } from "@/components/ui/button";
 import { 
     Loader2, Edit3, MessageSquare, ShieldCheck as AdminIcon, CheckCircle, Settings as SettingsIcon, 
     Users as UsersIcon, ChevronLeft, UserPlus, XCircle, ThumbsUp, Check, MoreVertical, Camera,
-    LayoutGrid, Calendar, Users
+    LayoutGrid, Calendar, Users, Eye, Upload
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
@@ -60,6 +61,7 @@ export default function PublicProfilePage() {
 
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
   const [selectedPostIndex, setSelectedPostIndex] = useState<number | null>(null);
+  const [isProfilePictureModalOpen, setIsProfilePictureModalOpen] = useState(false);
   
   const friendshipUnsubscribeRef = useRef<(() => void) | null>(null);
 
@@ -293,14 +295,19 @@ export default function PublicProfilePage() {
         <div className="container mx-auto max-w-3xl px-0 sm:px-4">
 
           {/* Enhanced Profile Header */}
-          <div className="relative bg-gradient-to-br from-background via-background/95 to-muted/20 border-b border-border/30">
-            <div className="px-6 pt-8 pb-6">
+          <div className="relative bg-gradient-to-br from-background via-background/95 to-muted/20 border-b border-border/30 rounded-b-3xl md:rounded-t-3xl">
+            <div className="px-6 pt-8 pb-12">
               <div className="flex items-start gap-6">
                 <div className="relative group">
-                  <Avatar className="h-20 w-20 sm:h-24 sm:w-24 text-xl sm:text-2xl ring-2 ring-border/40 shadow-lg flex-shrink-0 transition-all duration-300 group-hover:ring-primary/50 group-hover:shadow-xl">
-                    <AvatarImage src={userProfile.avatarUrl || undefined} alt={userProfile.username || userProfile.name || "User Avatar"} data-ai-hint="person portrait"/>
-                    <AvatarFallback className="bg-gradient-to-br from-muted to-muted/80 text-muted-foreground font-semibold">{userInitial}</AvatarFallback>
-                  </Avatar>
+                  <button 
+                    onClick={() => setIsProfilePictureModalOpen(true)}
+                    className="group relative focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background rounded-full"
+                  >
+                    <Avatar className="h-20 w-20 sm:h-24 sm:w-24 text-xl sm:text-2xl ring-2 ring-border/40 shadow-lg flex-shrink-0 transition-all duration-300 group-hover:ring-primary/50 group-hover:shadow-xl">
+                      <AvatarImage src={userProfile.avatarUrl || undefined} alt={userProfile.username || userProfile.name || "User Avatar"} data-ai-hint="person portrait"/>
+                      <AvatarFallback className="bg-gradient-to-br from-muted to-muted/80 text-muted-foreground font-semibold">{userInitial}</AvatarFallback>
+                    </Avatar>
+                  </button>
                   <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-gradient-to-br from-green-400 to-green-500 rounded-full border-2 border-background shadow-sm"></div>
                 </div>
                 <div className="flex-1 min-w-0 space-y-3">
@@ -311,12 +318,18 @@ export default function PublicProfilePage() {
                     </div>
                     <div className="flex gap-2 flex-wrap">
                       {isOwnProfile ? (
-                        <Button size="sm" variant="outline" className="h-8 px-3 text-xs font-medium rounded-lg border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all duration-200" asChild>
-                          <Link href="/settings">
-                            <SettingsIcon className="h-3.5 w-3.5 mr-1.5" />
-                            Edit Profile
-                          </Link>
-                        </Button>
+                        <>
+                          <Button size="sm" variant="outline" className="h-8 px-3 text-xs font-medium rounded-lg border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all duration-200" asChild>
+                            <Link href="/settings">
+                              Edit Profile
+                            </Link>
+                          </Button>
+                          <Button size="sm" variant="outline" className="h-8 w-8 p-0 rounded-lg border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all duration-200" asChild>
+                            <Link href="/settings">
+                              <SettingsIcon className="h-3.5 w-3.5" />
+                            </Link>
+                          </Button>
+                        </>
                       ) : (
                         <>
                           {/* Chat Button */}
@@ -440,38 +453,31 @@ export default function PublicProfilePage() {
             </div>
           </div>
           
-          <div className="mt-0">
+          <div className="mt-0 bg-background rounded-t-[3rem] -mt-8 relative z-10 pt-4">
             <Tabs defaultValue="posts" className="w-full">
-              <TabsList className="w-full grid grid-cols-3 h-16 bg-transparent p-0 border-b border-border/20">
+              <TabsList className="w-full flex h-16 bg-transparent p-0">
                 <TabsTrigger 
                   value="posts" 
-                  className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2"
+                  className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2 flex-1"
                 >
                   <span className="text-lg font-bold text-foreground">{userPosts?.length ?? 0}</span>
-                  <div className="flex items-center gap-1.5">
-                    <LayoutGrid className="h-4 w-4" />
-                    <span className="text-xs font-medium leading-tight">Posts</span>
-                  </div>
+                  <LayoutGrid className="h-4 w-4" />
                 </TabsTrigger>
+                <div className="w-px h-8 bg-border/30 self-center"></div>
                 <TabsTrigger 
                   value="plans" 
-                  className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2"
+                  className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2 flex-1"
                 >
                   <span className="text-lg font-bold text-foreground">{userStats?.plansCreatedCount ?? 0}</span>
-                  <div className="flex items-center gap-1.5">
-                    <Calendar className="h-4 w-4" />
-                    <span className="text-xs font-medium leading-tight">Plans</span>
-                  </div>
+                  <Calendar className="h-4 w-4" />
                 </TabsTrigger>
+                <div className="w-px h-8 bg-border/30 self-center"></div>
                 <TabsTrigger 
                   value="followers" 
-                  className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2"
+                  className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2 flex-1"
                 >
                   <span className="text-lg font-bold text-foreground">{userStats?.followersCount ?? 0}</span>
-                  <div className="flex items-center gap-1.5">
-                    <Users className="h-4 w-4" />
-                    <span className="text-xs font-medium leading-tight">Followers</span>
-                  </div>
+                  <Users className="h-4 w-4" />
                 </TabsTrigger>
               </TabsList>
               
@@ -553,6 +559,47 @@ export default function PublicProfilePage() {
           hasPrevious={selectedPostIndex !== null && selectedPostIndex > 0}
         />
       )}
+      
+      {/* Profile Picture Modal */}
+      <Dialog open={isProfilePictureModalOpen} onOpenChange={setIsProfilePictureModalOpen}>
+        <DialogContent className="sm:max-w-md p-6 bg-card border-border/50">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold">Profile Picture</DialogTitle>
+            <DialogDescription>
+              {isOwnProfile ? "View or change your profile picture" : `View ${userProfile?.name || userProfile?.username}'s profile picture`}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex flex-col items-center space-y-4">
+            <Avatar className="h-32 w-32 border-2 border-border/20 shadow-lg">
+              <AvatarImage src={userProfile?.avatarUrl || undefined} alt={userProfile?.username || userProfile?.name || "User Avatar"} />
+              <AvatarFallback className="text-2xl font-semibold bg-gradient-to-br from-muted to-muted/80 text-muted-foreground">{userInitial}</AvatarFallback>
+            </Avatar>
+          </div>
+          
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setIsProfilePictureModalOpen(false)} className="flex-1">
+              Close
+            </Button>
+            {isOwnProfile ? (
+              <Button className="flex-1" onClick={() => {
+                setIsProfilePictureModalOpen(false);
+                // TODO: Implement upload functionality similar to the post creation interface
+              }}>
+                <Upload className="h-4 w-4 mr-2" />
+                Change Picture
+              </Button>
+            ) : (
+              <Button variant="outline" className="flex-1" onClick={() => {
+                // TODO: Implement full-screen view
+              }}>
+                <Eye className="h-4 w-4 mr-2" />
+                View Full Size
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

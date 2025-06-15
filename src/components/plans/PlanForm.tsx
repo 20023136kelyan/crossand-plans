@@ -1,8 +1,8 @@
 'use client';
 
-import React from 'react';
+
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm, useFieldArray, useWatch } from 'react-hook-form';
+import { useForm, useFieldArray, useWatch, UseFieldArrayRemove } from 'react-hook-form';
 import { useCallback } from 'react';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
@@ -58,7 +58,9 @@ import { Separator } from '../ui/separator';
 
 // Constants
 const GOOGLE_MAPS_LIBRARIES: Libraries = ['places', 'geocoding', 'marker'];
-const planStatusOptions = ['published', 'draft', 'cancelled'] as const;
+const planStatusOptions = ['published', 'draft', 'cancelled', 'archived', 'completed'] as const;
+const creationStatusOptions = ['published', 'draft'] as const;
+const editingStatusOptions = ['published', 'draft'] as const;
 const planTypeOptions = ['single-stop', 'multi-stop'] as const;
 const priceRangeOptions: Array<{ value: PriceRangeType | '', label: string }> = [
   { value: '', label: 'Any' },
@@ -259,7 +261,13 @@ interface CollapsibleSectionProps {
 function CollapsibleSection({ header, children, isExpanded, onToggle, className }: CollapsibleSectionProps) {
   return (
     <div className={cn("space-y-3", className)}>
-      <div onClick={onToggle}>
+      <div onClick={(e) => {
+        // Only allow toggling if the click is on the header itself, not on form elements
+        const target = e.target as HTMLElement;
+        if (!target.closest('button, input, select, [role="combobox"], [role="option"]')) {
+          onToggle();
+        }
+      }}>
         {header}
       </div>
       <div 
@@ -575,10 +583,15 @@ interface ItinerarySectionProps {
 }
 
 function ItinerarySection({ form, isGoogleMapsApiLoaded, googleMapsApiKey }: ItinerarySectionProps) {
-  const { fields, append, remove, move: originalMove } = useFieldArray({
+  const { fields, append, remove: originalRemove, move: originalMove } = useFieldArray({
     control: form.control,
     name: "itinerary",
   });
+
+  // Wrapper for remove function to match UseFieldArrayRemove type
+  const remove: UseFieldArrayRemove = useCallback((index?: number | number[]) => {
+    originalRemove(index);
+  }, [originalRemove]);
 
   // Custom move function that keeps time slots static
    const move = useCallback((fromIndex: number, toIndex: number) => {
@@ -586,7 +599,7 @@ function ItinerarySection({ form, isGoogleMapsApiLoaded, googleMapsApiKey }: Iti
      const currentValues = form.getValues('itinerary');
      
      // Store the time slots in their original positions
-     const timeSlots = currentValues.map(item => ({
+     const timeSlots = currentValues.map((item: ItineraryItemSchemaValues) => ({
        startTime: item.startTime,
        endTime: item.endTime
      }));
@@ -599,7 +612,7 @@ function ItinerarySection({ form, isGoogleMapsApiLoaded, googleMapsApiKey }: Iti
        const movedValues = form.getValues('itinerary');
        
        // Apply the original time slots to the moved items
-       movedValues.forEach((item, index) => {
+       movedValues.forEach((item: ItineraryItemSchemaValues, index: number) => {
          if (timeSlots[index]) {
            form.setValue(`itinerary.${index}.startTime`, timeSlots[index].startTime);
            form.setValue(`itinerary.${index}.endTime`, timeSlots[index].endTime);
@@ -722,7 +735,7 @@ function ItinerarySection({ form, isGoogleMapsApiLoaded, googleMapsApiKey }: Iti
 interface ItineraryItemsProps {
   fields: any[];
   form: any;
-  remove: (index: number) => void;
+  remove: UseFieldArrayRemove;
   move: (from: number, to: number) => void;
   isGoogleMapsApiLoaded: boolean;
 }
@@ -794,9 +807,10 @@ function ParticipantsSection({ form, isExpanded, onToggle }: ParticipantsSection
 // Finalize Section
 interface FinalizeSectionProps {
   form: any;
+  formMode: 'create' | 'edit';
 }
 
-function FinalizeSection({ form, isExpanded, onToggle }: FinalizeSectionProps & { isExpanded: boolean; onToggle: () => void }) {
+function FinalizeSection({ form, formMode, isExpanded, onToggle }: FinalizeSectionProps & { isExpanded: boolean; onToggle: () => void }) {
   return (
     <CollapsibleSection
       header={
@@ -826,7 +840,7 @@ function FinalizeSection({ form, isExpanded, onToggle }: FinalizeSectionProps & 
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {planStatusOptions.map(opt => (
+                    {(formMode === 'create' ? creationStatusOptions : editingStatusOptions).map(opt => (
                       <SelectItem key={opt} value={opt} className="text-sm py-2">
                         {opt.charAt(0).toUpperCase() + opt.slice(1)}
                       </SelectItem>
@@ -858,6 +872,8 @@ export function PlanForm({
   const [hasAutoPopulated, setHasAutoPopulated] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [allowSubmission, setAllowSubmission] = useState(false);
   const formMode = propFormMode || (initialData?.id ? 'edit' : 'create');
 
   // Step navigation
@@ -888,18 +904,21 @@ export function PlanForm({
 
   const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
   const { isLoaded, loadError } = useJsApiLoader({
+    id: 'google-map-script',
     googleMapsApiKey: googleMapsApiKey || "",
     libraries: GOOGLE_MAPS_LIBRARIES,
     version: "beta",
+    mapIds: ['crossand-plans-map'],
   });
 
   const form = useForm<PlanFormValues>({
     resolver: zodResolver(planFormSchema),
+    mode: 'onChange',
     defaultValues: {
       id: initialData?.id || undefined,
       name: initialData?.name || '',
       description: initialData?.description || '',
-      eventDateTime: initialData?.eventDateTime ? new Date(initialData.eventDateTime) : new Date(),
+      eventDateTime: initialData?.eventTime ? new Date(initialData.eventTime) : new Date(),
       primaryLocation: initialData?.primaryLocation || '',
       city: initialData?.city || '',
       eventType: initialData?.eventType || '',
@@ -910,8 +929,8 @@ export function PlanForm({
       photoHighlights: initialData?.photoHighlights || [],
       itinerary: initialData?.itinerary?.length ? initialData.itinerary.map(item => ({
         ...item,
-        startTime: item.startTime,
-        endTime: item.endTime || null,
+        startTime: item.startTime || undefined,
+        endTime: item.endTime || undefined,
       })) : [{
         id: crypto.randomUUID(),
         placeName: '',
@@ -1006,6 +1025,11 @@ export function PlanForm({
       setHasAutoPopulated(true);
       setCurrentStep(4);
       setCompletedSteps(new Set([1, 2, 3]));
+      // Prevent automatic submission on initial load
+      setTimeout(() => setIsInitialLoad(false), 1000);
+    } else {
+      // For create mode, allow submissions after a short delay
+      setTimeout(() => setIsInitialLoad(false), 500);
     }
   }, [formMode, initialData]);
 
@@ -1013,7 +1037,53 @@ export function PlanForm({
     setIsSubmittingForm(propIsSubmitting || false);
   }, [propIsSubmitting]);
 
-  const processAndSubmit = async (data: PlanFormValues) => {
+  const processAndSubmit = async (data: PlanFormValues, event?: React.FormEvent) => {
+    // Debug logging to track automatic submissions
+    console.log('Form submission triggered:', {
+      currentStep,
+      formMode,
+      hasInitialData: !!initialData,
+      isInitialLoad,
+      eventType: event?.type,
+      eventTarget: event?.target,
+      eventIsTrusted: event?.isTrusted,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Prevent submission during initial load
+    if (isInitialLoad) {
+      console.warn('Form submission prevented: initial load period');
+      event?.preventDefault();
+      return;
+    }
+    
+    // Prevent programmatic submissions (not triggered by user interaction)
+    if (event && !event.isTrusted) {
+      console.warn('Form submission prevented: programmatic submission detected');
+      event.preventDefault();
+      return;
+    }
+    
+    // Only allow submission on step 4 and when explicitly allowed
+      if (currentStep !== 4 || !allowSubmission) {
+        console.warn('Form submission prevented:', { currentStep, allowSubmission });
+        event?.preventDefault();
+        return;
+      }
+      
+      // Reset submission flag after use
+      setAllowSubmission(false);
+    
+    // Add a small delay to prevent accidental rapid submissions
+    if (event && event.type === 'submit') {
+      // Check if this is a programmatic submission vs user-initiated
+      const isUserInitiated = event.isTrusted !== false;
+      if (!isUserInitiated) {
+        console.warn('Programmatic form submission detected, adding delay');
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+    
     try {
       setIsSubmittingForm(true);
       await onSubmit(data);
@@ -1031,7 +1101,7 @@ export function PlanForm({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(processAndSubmit)} className="flex flex-col h-full bg-gradient-to-br from-background via-background/95 to-background/90">
+      <form onSubmit={(e) => form.handleSubmit((data) => processAndSubmit(data, e))(e)} className="flex flex-col h-full bg-gradient-to-br from-background via-background/95 to-background/90">
         {/* Modern Header */}
         <div className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl border-b border-border/20 px-4 py-3 shadow-sm">
           <div className="flex items-center justify-between">
@@ -1176,47 +1246,62 @@ export function PlanForm({
                 </div>
               </div>
               
-              <FinalizeSection form={form} isExpanded={true} onToggle={() => {}} />
+              <FinalizeSection form={form} formMode={formMode} isExpanded={true} onToggle={() => {}} />
             </div>
           )}
         </div>
 
         {/* Modern Navigation */}
         <div className="relative bg-card/50 backdrop-blur-sm border-t border-border/20">
-          <div className="p-4">
-            <div className="flex items-center justify-between gap-4">
-              {currentStep > 1 ? (
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={goToPreviousStep}
-                  className="h-11 px-6 text-sm font-medium border-border/50 hover:border-primary/40 hover:bg-primary/5 transition-all duration-300 rounded-xl shadow-sm hover:shadow-md"
-                >
-                  <ArrowLeft className="mr-2 h-4 w-4" /> 
-                  Previous
-                </Button>
-              ) : (
-                <div className="w-24"></div>
-              )}
+          <div className="p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex gap-2">
+                {currentStep > 1 && (
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={goToPreviousStep}
+                    className="h-9 px-4 text-sm font-medium border-border/50 hover:border-primary/40 hover:bg-primary/5 transition-all duration-300 rounded-lg shadow-sm hover:shadow-md"
+                  >
+                    <ArrowLeft className="mr-1 h-3.5 w-3.5" /> 
+                    Previous
+                  </Button>
+                )}
+                
+                {/* Back to AI Button (only on first step) */}
+                {onBackToAICriteria && currentStep === 1 && (
+                  <Button 
+                    type="button" 
+                    variant="ghost" 
+                    onClick={onBackToAICriteria} 
+                    disabled={isSubmittingForm} 
+                    className="h-9 px-4 text-sm font-medium hover:bg-muted/50 transition-colors rounded-lg"
+                  >
+                    <ArrowLeft className="mr-1 h-3.5 w-3.5" /> 
+                    Back to AI Generation
+                  </Button>
+                )}
+              </div>
               
               {currentStep < 4 ? (
                 <Button 
                   type="button" 
                   onClick={goToNextStep}
                   disabled={!canProceedToNext}
-                  className="h-11 px-8 text-sm font-semibold bg-gradient-to-r from-primary via-primary/95 to-primary/90 hover:from-primary/95 hover:to-primary/85 shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl"
+                  className="h-9 px-6 text-sm font-semibold bg-gradient-to-r from-primary via-primary/95 to-primary/90 hover:from-primary/95 hover:to-primary/85 shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg"
                 >
                   Continue
-                  <ChevronDown className="ml-2 h-4 w-4 rotate-[-90deg]" />
+                  <ChevronDown className="ml-1 h-3.5 w-3.5 rotate-[-90deg]" />
                 </Button>
               ) : (
                 <Button 
                   type="submit" 
+                  onClick={() => setAllowSubmission(true)}
                   disabled={isSubmittingForm || (!isLoaded && !!googleMapsApiKey && !loadError && formMode === 'create')} 
-                  className="h-11 px-8 text-sm font-semibold bg-gradient-to-r from-green-600 via-green-500 to-green-400 hover:from-green-500 hover:to-green-300 text-white shadow-lg hover:shadow-xl transition-all duration-300 rounded-xl"
+                  className="h-9 px-6 text-sm font-semibold bg-gradient-to-r from-green-600 via-green-500 to-green-400 hover:from-green-500 hover:to-green-300 text-white shadow-lg hover:shadow-xl transition-all duration-300 rounded-lg"
                 >
                   {(isSubmittingForm || (!isLoaded && !!googleMapsApiKey && !loadError && formMode === 'create')) && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
                   )}
                   {formMode === 'create' 
                     ? (initialData?.id ? 'Save Generated Plan' : 'Publish Plan') 
@@ -1225,22 +1310,6 @@ export function PlanForm({
                 </Button>
               )}
             </div>
-            
-            {/* Back to AI Button (if available) */}
-            {onBackToAICriteria && (
-              <div className="mt-3 pt-3 border-t border-border/20">
-                <Button 
-                  type="button" 
-                  variant="ghost" 
-                  onClick={onBackToAICriteria} 
-                  disabled={isSubmittingForm} 
-                  className="h-9 px-4 text-xs font-medium hover:bg-muted/50 transition-colors w-full rounded-lg"
-                >
-                  <ArrowLeft className="mr-2 h-3.5 w-3.5" /> 
-                  Back to AI Generation
-                </Button>
-              </div>
-            )}
           </div>
         </div>
       </form>

@@ -1,12 +1,116 @@
-import { firestoreAdmin } from '@/lib/firebaseAdmin';
-import { PlanCompletion, UserAffinity, Plan } from '@/types/user';
+import { firestoreAdmin } from '../lib/firebaseAdmin';
+import type { Plan, PlanCompletion, UserAffinity } from '../types/user';
 import { v4 as uuidv4 } from 'uuid';
 import { addHours } from 'date-fns';
 import * as crypto from 'crypto';
 import { Firestore } from 'firebase-admin/firestore';
 
+const PLANS_COLLECTION = 'plans';
 const PLAN_COMPLETIONS_COLLECTION = 'plan_completions';
 const USER_AFFINITIES_COLLECTION = 'user_affinities';
+
+// Unified completion status interface
+export interface CompletionStatus {
+  isPlanCompleted: boolean; // Plan-level completion (host marked as completed)
+  isUserConfirmed: boolean; // User has confirmed their participation
+  planCompletedAt?: string; // When host marked plan as completed
+  userCompletedAt?: string; // When user confirmed their completion
+  totalConfirmations: number; // Number of users who confirmed
+  totalParticipants: number; // Total number of participants (including host)
+  confirmationRate: number; // Percentage of participants who confirmed
+}
+
+/**
+ * Get unified completion status for a plan and specific user
+ */
+export async function getCompletionStatus(
+  planId: string, 
+  userId: string
+): Promise<CompletionStatus | null> {
+  if (!firestoreAdmin) {
+    console.error('[getCompletionStatus] Firestore admin not initialized');
+    return null;
+  }
+
+  try {
+    // Get plan data
+    const planDoc = await firestoreAdmin.collection(PLANS_COLLECTION).doc(planId).get();
+    if (!planDoc.exists) return null;
+    
+    const plan = planDoc.data() as Plan;
+    
+    // Get user's individual completion record
+    const completionQuery = await firestoreAdmin!
+      .collection(PLAN_COMPLETIONS_COLLECTION)
+      .where('planId', '==', planId)
+      .where('userId', '==', userId)
+      .limit(1)
+      .get();
+    
+    const userCompletion = completionQuery.empty ? null : completionQuery.docs[0].data() as PlanCompletion;
+    
+    // Calculate totals
+    const totalParticipants = 1 + (plan.participantUserIds?.length || 0); // Host + participants
+    const totalConfirmations = plan.completionConfirmedBy?.length || 0;
+    const confirmationRate = totalParticipants > 0 ? (totalConfirmations / totalParticipants) * 100 : 0;
+    
+    return {
+      isPlanCompleted: plan.status === 'completed',
+      isUserConfirmed: plan.completionConfirmedBy?.includes(userId) || false,
+      planCompletedAt: plan.completedAt,
+      userCompletedAt: userCompletion?.completedAt,
+      totalConfirmations,
+      totalParticipants,
+      confirmationRate
+    };
+  } catch (error) {
+    console.error('[getCompletionStatus] Error:', error);
+    return null;
+  }
+}
+
+/**
+ * Check if a plan should be considered "fully completed"
+ * A plan is fully completed when:
+ * 1. Host has marked it as completed (status = 'completed')
+ * 2. At least 50% of participants have confirmed (or all if less than 4 people)
+ */
+export function isFullyCompleted(status: CompletionStatus): boolean {
+  if (!status.isPlanCompleted) return false;
+  
+  // For small groups (4 or fewer), require all to confirm
+  if (status.totalParticipants <= 4) {
+    return status.totalConfirmations === status.totalParticipants;
+  }
+  
+  // For larger groups, require at least 50% confirmation
+  return status.confirmationRate >= 50;
+}
+
+/**
+ * Get completion status for multiple plans (for list views)
+ */
+export async function getBulkCompletionStatus(
+  planIds: string[],
+  userId: string
+): Promise<Record<string, CompletionStatus>> {
+  const results: Record<string, CompletionStatus> = {};
+  
+  // Process in batches to avoid overwhelming Firestore
+  const batchSize = 10;
+  for (let i = 0; i < planIds.length; i += batchSize) {
+    const batch = planIds.slice(i, i + batchSize);
+    const promises = batch.map(async (planId) => {
+      const status = await getCompletionStatus(planId, userId);
+      if (status) {
+        results[planId] = status;
+      }
+    });
+    await Promise.all(promises);
+  }
+  
+  return results;
+}
 
 // Helper function to generate a unique QR code data
 const generateQRCodeData = (planId: string, venueId: string): string => {
@@ -81,6 +185,19 @@ export async function recordPlanCompletion(
   const db = firestoreAdmin as Firestore;
 
   try {
+    // Check if user already has a completion record for this plan
+    const existingQuery = await firestoreAdmin
+      .collection(PLAN_COMPLETIONS_COLLECTION)
+      .where('planId', '==', planId)
+      .where('userId', '==', userId)
+      .limit(1)
+      .get();
+    
+    if (!existingQuery.empty) {
+      console.log(`[recordPlanCompletion] User ${userId} already has completion record for plan ${planId}`);
+      return true; // Already recorded, consider it successful
+    }
+
     const completion: PlanCompletion = {
       id: uuidv4(),
       planId,
@@ -88,7 +205,7 @@ export async function recordPlanCompletion(
       completedAt: new Date().toISOString(),
       verificationMethod,
       participantIds,
-      qrCodeData,
+      ...(qrCodeData && { qrCodeData }),
     };
 
     // Verify QR code if provided

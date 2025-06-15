@@ -2,16 +2,16 @@ import { firestoreAdmin } from '@/lib/firebaseAdmin';
 import type { Firestore } from 'firebase-admin/firestore';
 import type { UserPreferences } from '@/types/user';
 import type { Plan } from '@/types/plan';
-import type { Collection } from '@/types/collection';
+import type { PlanCollection } from '@/types/user';
 import type { SearchAnalytics } from './searchAnalyticsService.admin';
-import { calculatePersonalizedScore } from '@/lib/enhancedRanking';
+import { calculatePersonalizedScore } from '@/lib/utils/enhancedRanking';
 
 export interface RecommendationScore {
   id: string;
   type: 'plan' | 'collection';
   score: number;
   reasons: string[];
-  data: Plan | Collection;
+  data: Plan | PlanCollection;
 }
 
 export interface PersonalizedRecommendations {
@@ -60,18 +60,26 @@ export async function getPersonalizedRecommendations(
     // Analyze user behavior patterns including completion data
     const behaviorAnalysis = analyzeBehaviorPatterns(searchHistory, userInteractions, completedPlans);
     
+    // Create default preferences if none provided
+    const defaultPreferences: UserPreferences = {
+      preferredCategories: [],
+      preferredLocations: [],
+      preferredPriceRange: '$$'
+    };
+    const effectivePreferences = userPreferences || defaultPreferences;
+
     // Get content recommendations
     const [planRecommendations, collectionRecommendations, trendingPlans] = await Promise.all([
-      getRecommendedPlans(userId, userPreferences, behaviorAnalysis, db, limit),
-      getRecommendedCollections(userId, userPreferences, behaviorAnalysis, db, limit),
-      getTrendingPlans(userPreferences, behaviorAnalysis, db, Math.floor(limit / 2))
+      getRecommendedPlans(userId, effectivePreferences, behaviorAnalysis, db, limit),
+      getRecommendedCollections(userId, effectivePreferences, behaviorAnalysis, db, limit),
+      getTrendingPlans(effectivePreferences, behaviorAnalysis, db, Math.floor(limit / 2))
     ]);
 
     // Get similar users and category/location recommendations
     const [similarUsers, recommendedCategories, recommendedLocations] = await Promise.all([
-      findSimilarUsers(userId, userPreferences, behaviorAnalysis, db),
-      getRecommendedCategories(behaviorAnalysis, userPreferences),
-      getRecommendedLocations(behaviorAnalysis, userPreferences)
+      findSimilarUsers(userId, effectivePreferences, behaviorAnalysis, db),
+      getRecommendedCategories(behaviorAnalysis, effectivePreferences),
+      getRecommendedLocations(behaviorAnalysis, effectivePreferences)
     ]);
 
     return {
@@ -275,7 +283,7 @@ async function getRecommendedCollections(
       .limit(limit * 2)
       .get();
     
-    const collections = collectionsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Collection));
+    const collections = collectionsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PlanCollection));
     
     // Score and rank collections
     const scoredCollections: RecommendationScore[] = [];
@@ -332,12 +340,12 @@ async function getTrendingPlans(
     
     for (const plan of trendingPlans) {
       const baseScore = await calculateRecommendationScore(plan, userPreferences, behaviorAnalysis, 'plan');
-      const trendingBoost = (plan.saves || 0) * 0.1 + (plan.views || 0) * 0.05;
+      const trendingBoost = (plan.savesCount || 0) * 0.1 + (plan.recentViews?.length || 0) * 0.05;
       
       // Add completion rate boost for completed plans
       let completionBoost = 0;
-      if (plan.isCompleted) {
-        const participantCount = plan.invitedUsers?.filter(u => u.response === 'going').length || 0;
+      if (plan.status === 'completed') {
+        const participantCount = plan.participantUserIds?.length || 0;
         const confirmationCount = plan.completionConfirmedBy?.length || 0;
         if (participantCount > 0) {
           const completionRate = confirmationCount / participantCount;
@@ -376,7 +384,7 @@ async function getTrendingPlans(
  * Calculate recommendation score for content
  */
 async function calculateRecommendationScore(
-  content: Plan | Collection,
+  content: Plan | PlanCollection,
   userPreferences: UserPreferences,
   behaviorAnalysis: any,
   type: 'plan' | 'collection'
@@ -384,18 +392,24 @@ async function calculateRecommendationScore(
   let score = 0;
   
   // Base popularity score
-  score += (content.saves || 0) * 0.3;
-  score += (content.views || 0) * 0.1;
-  score += (content.rating || 0) * 2;
+  if ('savesCount' in content) {
+    score += (content.savesCount || 0) * 0.3;
+  }
+  if ('recentViews' in content) {
+    score += (content.recentViews?.length || 0) * 0.1;
+  }
+  if ('averageRating' in content) {
+    score += (content.averageRating || 0) * 2;
+  }
   
-  // Category preference match
-  if (content.category && userPreferences.preferredCategories?.includes(content.category)) {
+  // Category preference match for plans
+  if (type === 'plan' && 'eventType' in content && content.eventType && userPreferences.preferredCategories?.includes(content.eventType)) {
     score += 10;
   }
   
-  // Behavior pattern match
-  if (content.category && behaviorAnalysis.preferredCategories[content.category]) {
-    score += behaviorAnalysis.preferredCategories[content.category] * 2;
+  // Behavior pattern match for plans
+  if (type === 'plan' && 'eventType' in content && content.eventType && behaviorAnalysis.preferredCategories[content.eventType]) {
+    score += behaviorAnalysis.preferredCategories[content.eventType] * 2;
   }
   
   // Location preference match (for plans)
@@ -413,9 +427,11 @@ async function calculateRecommendationScore(
   }
   
   // Recency boost
-  const daysSinceUpdate = (Date.now() - new Date(content.updatedAt).getTime()) / (1000 * 60 * 60 * 24);
-  if (daysSinceUpdate < 7) {
-    score += (7 - daysSinceUpdate) * 0.5;
+  if (content.updatedAt) {
+    const daysSinceUpdate = (Date.now() - new Date(content.updatedAt).getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSinceUpdate < 7) {
+      score += (7 - daysSinceUpdate) * 0.5;
+    }
   }
   
   return Math.max(0, score);
@@ -425,18 +441,18 @@ async function calculateRecommendationScore(
  * Generate reasons for recommendation
  */
 function generateRecommendationReasons(
-  content: Plan | Collection,
+  content: Plan | PlanCollection,
   userPreferences: UserPreferences,
   behaviorAnalysis: any,
   type: 'plan' | 'collection'
 ): string[] {
   const reasons: string[] = [];
   
-  if (content.category && userPreferences.preferredCategories?.includes(content.category)) {
-    reasons.push(`Matches your interest in ${content.category}`);
+  if (type === 'plan' && 'eventType' in content && content.eventType && userPreferences.preferredCategories?.includes(content.eventType)) {
+    reasons.push(`Matches your interest in ${content.eventType}`);
   }
   
-  if (content.category && behaviorAnalysis.preferredCategories[content.category]) {
+  if (type === 'plan' && 'eventType' in content && content.eventType && behaviorAnalysis.preferredCategories[content.eventType]) {
     reasons.push(`Based on your search history`);
   }
   
@@ -446,17 +462,19 @@ function generateRecommendationReasons(
     reasons.push(`Located in your preferred area`);
   }
   
-  if ((content.rating || 0) >= 4.5) {
-    reasons.push(`Highly rated (${content.rating?.toFixed(1)} stars)`);
+  if ('averageRating' in content && (content.averageRating || 0) >= 4.5) {
+    reasons.push(`Highly rated (${content.averageRating?.toFixed(1)} stars)`);
   }
   
-  if ((content.saves || 0) > 100) {
-    reasons.push(`Popular with ${content.saves} saves`);
+  if ('savesCount' in content && (content.savesCount || 0) > 100) {
+    reasons.push(`Popular with ${content.savesCount} saves`);
   }
   
-  const daysSinceUpdate = (Date.now() - new Date(content.updatedAt).getTime()) / (1000 * 60 * 60 * 24);
-  if (daysSinceUpdate < 3) {
-    reasons.push('Recently updated');
+  if (content.updatedAt) {
+    const daysSinceUpdate = (Date.now() - new Date(content.updatedAt).getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSinceUpdate < 3) {
+      reasons.push('Recently updated');
+    }
   }
   
   return reasons.slice(0, 3); // Limit to 3 reasons
@@ -563,7 +581,7 @@ async function getUserCompletedPlans(userId: string, db: Firestore): Promise<any
     // Get plans where user is host and plan is completed
     const hostedCompletedQuery = db.collection(PLANS_COLLECTION)
       .where('hostId', '==', userId)
-      .where('isCompleted', '==', true);
+      .where('status', '==', 'completed');
     
     // Get plans where user is participant and confirmed completion
     const participatedCompletedQuery = db.collection(PLANS_COLLECTION)

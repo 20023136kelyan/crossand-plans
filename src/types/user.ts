@@ -60,6 +60,8 @@ export interface UserProfile {
   // Social graph
   followers: string[]; // Array of UIDs of users following this user
   following: string[]; // Array of UIDs of users this user is following
+  followersCount?: number; // Count of followers for display
+  ratingsCount?: number; // Count of ratings for display
   // 'friends' is derived from mutual follows + friendships subcollection
   
   // Saved content
@@ -260,6 +262,7 @@ export interface Plan {
   description: string | null;
   eventTime: string;
   location: string;
+  primaryLocation?: string;
   city: string;
   eventType: string | null;
   eventTypeLowercase: string;
@@ -309,9 +312,11 @@ export interface Plan {
   sharesCount?: number;
   savesCount?: number;
   type?: 'dayInLife' | 'regular';
+  /** @deprecated Use status field instead. Will be removed in future version. */
   isCompleted?: boolean;
-  completedAt?: string;
-  completionConfirmedBy?: string[];
+  completedAt?: string; // When the plan was marked as completed
+  completionConfirmedBy?: string[]; // Array of user IDs who confirmed completion
+  // Individual completion tracking is handled via PlanCompletion collection
   highlightsEnabled?: boolean;
   isTemplate?: boolean; // For admin-created template plans that don't require specific scheduling
   templateOriginalHostId?: string; // Original host ID when plan becomes template

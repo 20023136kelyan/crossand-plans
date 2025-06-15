@@ -293,7 +293,7 @@ const PlanHero = memo(function PlanHero({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() => router.push(`/plans/${plan.id}/edit`)}>
+                  <DropdownMenuItem onClick={() => router.push(`/plans/create?editId=${plan.id}`)}>
                     <Edit className="h-4 w-4 mr-2" />
                     Edit Plan
                   </DropdownMenuItem>

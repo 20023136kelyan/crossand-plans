@@ -172,6 +172,30 @@ export function PlanWeather({
         // Try just the first part (likely city)
         locationQueries.push(parts[0]);
       }
+    } else {
+      // For street addresses without city info, try common fallbacks
+      const addressPattern = /^\d+\s+[\w\s]+\s+(st|street|ave|avenue|blvd|boulevard|rd|road|dr|drive|ln|lane|ct|court|pl|place|way)$/i;
+      if (addressPattern.test(locationName.trim())) {
+        // Common cities for incomplete addresses - you may want to customize this
+        const commonCities = [
+          'San Francisco, CA, US',
+          'Los Angeles, CA, US',
+          'New York, NY, US',
+          'Chicago, IL, US',
+          'Houston, TX, US'
+        ];
+        
+        // Try the address with common cities
+        for (const city of commonCities) {
+          locationQueries.push(`${locationName}, ${city}`);
+        }
+        
+        // Extract street name and try just that
+        const streetMatch = locationName.match(/\d+\s+([\w\s]+)\s+(?:st|street|ave|avenue|blvd|boulevard|rd|road|dr|drive|ln|lane|ct|court|pl|place|way)/i);
+        if (streetMatch && streetMatch[1]) {
+          locationQueries.push(streetMatch[1].trim());
+        }
+      }
     }
     
     // Try each query until one succeeds
@@ -221,7 +245,7 @@ export function PlanWeather({
       if (!coords) {
         coords = await geocodeLocation(location);
         if (!coords) {
-          throw new Error('Unable to find coordinates for the specified location');
+          throw new Error(`Unable to find coordinates for the location: "${location}". Please try a more specific address with city and state, or provide coordinates directly.`);
         }
       }
 

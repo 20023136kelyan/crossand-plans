@@ -349,7 +349,7 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
                 </DropdownMenuItem>
               )}
               {/* Completion options for hosts when plan is past event time */}
-              {isHost && plan.eventTime && isValid(parseISO(plan.eventTime)) && isPast(parseISO(plan.eventTime)) && !plan.isCompleted && (
+              {isHost && plan.eventTime && isValid(parseISO(plan.eventTime)) && isPast(parseISO(plan.eventTime)) && plan.status !== 'completed' && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -365,7 +365,7 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
                 </>
               )}
               {/* Confirmation option for participants when plan is completed but not confirmed by them */}
-              {!isHost && plan.isCompleted && plan.completionConfirmedBy && !plan.completionConfirmedBy.includes(currentUserUid || '') && (
+              {!isHost && plan.status === 'completed' && plan.completionConfirmedBy && !plan.completionConfirmedBy.includes(currentUserUid || '') && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem

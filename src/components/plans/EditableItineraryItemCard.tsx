@@ -710,7 +710,7 @@ const EditableItineraryItemCardImpl = ({
         {/* Transit Information - Only show in editing mode */}
         {isEditing && index > 0 && (
           <div className="bg-gradient-to-r from-accent/10 to-accent/5 rounded-xl p-4 border border-accent/20">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex flex-row items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-accent/20 rounded-lg">
                   {transitModeOptions.find(option => option.value === transitMode)?.icon && (

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { VerificationBadge } from "@/components/ui/verification-badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -13,9 +14,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Loader2, Edit3, MessageSquare, ShieldCheck as AdminIcon, CheckCircle, Settings as SettingsIcon,
+  Loader2, Edit3, MessageSquare, ShieldCheck as AdminIcon, CheckCircle, Settings,
   UserPlus, XCircle as XIcon, Check, MoreVertical, Camera, ChevronLeft, Users as UsersIconIcon,
-  RotateCcw, EyeOff, Phone, Video, LayoutGrid, Calendar, Users
+  RotateCcw, EyeOff, Phone, Video, LayoutGrid, Calendar, Users, Eye, Upload, UserMinus, Instagram, X
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/context/AuthContext";
@@ -39,6 +40,7 @@ import { PostDetailModal } from '@/components/feed/PostDetailModal';
 import ReactCrop, { type Crop, type PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { getFriendships } from '@/services/userService';
+import type { User } from 'firebase/auth';
 
 const VerificationBadgeInline = ({ role, isVerified }: { role: UserProfile['role'], isVerified: UserProfile['isVerified'] }) => {
   if (!role && !isVerified) return null;
@@ -49,6 +51,280 @@ const VerificationBadgeInline = ({ role, isVerified }: { role: UserProfile['role
     return <CheckCircle className="ml-1.5 h-5 w-5 text-blue-500 fill-blue-200 shrink-0" aria-label="Verified User" />;
   }
   return null;
+};
+
+// Tab Content Components
+interface TabContentProps {
+  profileId: string;
+  isOwnProfile: boolean;
+  currentUser: User | null;
+}
+
+const PlansTabContent = ({ profileId, isOwnProfile, currentUser }: TabContentProps) => {
+  const [plans, setPlans] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const fetchPlans = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const response = await fetch(`/api/users/plans?userId=${profileId}`, {
+          headers: currentUser ? {
+            'Authorization': `Bearer ${await currentUser.getIdToken()}`
+          } : {}
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+          setPlans(result.plans || []);
+        } else {
+          setError(result.error || 'Failed to load plans');
+        }
+      } catch (err: any) {
+        setError('An error occurred while loading plans');
+        console.error('Error fetching plans:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPlans();
+  }, [profileId, currentUser]);
+
+  if (loading) {
+    return (
+      <div className="text-center py-12">
+        <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground mt-2">Loading plans...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        <EyeOff className="mx-auto h-16 w-16 opacity-30 mb-3" />
+        <p className="font-semibold text-lg">Plans Not Available</p>
+        <p className="text-sm">{error}</p>
+      </div>
+    );
+  }
+
+  if (plans.length === 0) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        <Calendar className="mx-auto h-16 w-16 opacity-30 mb-3" />
+        <p className="font-semibold text-lg">No Plans Yet</p>
+        <p className="text-sm">{isOwnProfile ? 'Create your first plan!' : 'No plans to display'}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4 px-4">
+      {plans.map((plan) => (
+        <div key={plan.id} className="bg-card border border-border rounded-lg p-4 hover:shadow-md transition-shadow">
+          <h3 className="font-semibold text-lg mb-2">{plan.name}</h3>
+          {plan.description && (
+            <p className="text-muted-foreground text-sm mb-2">{plan.description}</p>
+          )}
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Created {new Date(plan.createdAt).toLocaleDateString()}</span>
+            <span className="text-primary">{plan.participantCount || 0} participants</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const FollowersTabContent = ({ profileId, isOwnProfile, currentUser }: TabContentProps) => {
+  const [followers, setFollowers] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const fetchFollowers = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const response = await fetch(`/api/users/followers?userId=${profileId}`, {
+          headers: currentUser ? {
+            'Authorization': `Bearer ${await currentUser.getIdToken()}`
+          } : {}
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+          setFollowers(result.followers || []);
+        } else {
+          setError(result.error || 'Failed to load followers');
+        }
+      } catch (err: any) {
+        setError('An error occurred while loading followers');
+        console.error('Error fetching followers:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFollowers();
+  }, [profileId, currentUser]);
+
+  if (loading) {
+    return (
+      <div className="text-center py-12">
+        <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground mt-2">Loading followers...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        <EyeOff className="mx-auto h-16 w-16 opacity-30 mb-3" />
+        <p className="font-semibold text-lg">Followers Not Available</p>
+        <p className="text-sm">{error}</p>
+      </div>
+    );
+  }
+
+  if (followers.length === 0) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        <Users className="mx-auto h-16 w-16 opacity-30 mb-3" />
+        <p className="font-semibold text-lg">No Followers Yet</p>
+        <p className="text-sm">{isOwnProfile ? 'Share your profile to gain followers!' : 'No followers to display'}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 px-4">
+      {followers.map((follower) => (
+        <Link key={follower.uid} href={`/users/${follower.uid}`} className="block">
+          <div className="flex items-center space-x-3 p-3 bg-card border border-border rounded-lg hover:shadow-md transition-shadow">
+            <Avatar className="h-12 w-12">
+              <AvatarImage src={follower.avatarUrl || ''} alt={follower.name || follower.username || ''} />
+              <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary">
+                {(follower.name || follower.username)?.charAt(0)?.toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center space-x-1">
+                <p className="font-semibold text-sm truncate">{follower.name || follower.username}</p>
+                <VerificationBadgeInline role={follower.role} isVerified={follower.isVerified} />
+              </div>
+              {follower.username && follower.name && (
+                <p className="text-xs text-muted-foreground truncate">@{follower.username}</p>
+              )}
+            </div>
+          </div>
+        </Link>
+      ))}
+    </div>
+  );
+};
+
+const FollowingTabContent = ({ profileId, isOwnProfile, currentUser }: TabContentProps) => {
+  const [following, setFollowing] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const fetchFollowing = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const response = await fetch(`/api/users/following?userId=${profileId}`, {
+          headers: currentUser ? {
+            'Authorization': `Bearer ${await currentUser.getIdToken()}`
+          } : {}
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+          setFollowing(result.following || []);
+        } else {
+          setError(result.error || 'Failed to load following');
+        }
+      } catch (err: any) {
+        setError('An error occurred while loading following');
+        console.error('Error fetching following:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFollowing();
+  }, [profileId, currentUser]);
+
+  if (loading) {
+    return (
+      <div className="text-center py-12">
+        <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground mt-2">Loading following...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        <EyeOff className="mx-auto h-16 w-16 opacity-30 mb-3" />
+        <p className="font-semibold text-lg">Following Not Available</p>
+        <p className="text-sm">{error}</p>
+      </div>
+    );
+  }
+
+  if (following.length === 0) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        <UserPlus className="mx-auto h-16 w-16 opacity-30 mb-3" />
+        <p className="font-semibold text-lg">Not Following Anyone</p>
+        <p className="text-sm">{isOwnProfile ? 'Discover and follow interesting people!' : 'Not following anyone yet'}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 px-4">
+      {following.map((user) => (
+        <Link key={user.uid} href={`/users/${user.uid}`} className="block">
+          <div className="flex items-center space-x-3 p-3 bg-card border border-border rounded-lg hover:shadow-md transition-shadow">
+            <Avatar className="h-12 w-12">
+              <AvatarImage src={user.avatarUrl || ''} alt={user.name || user.username || ''} />
+              <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary">
+                {(user.name || user.username)?.charAt(0)?.toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center space-x-1">
+                <p className="font-semibold text-sm truncate">{user.name || user.username}</p>
+                <VerificationBadgeInline role={user.role} isVerified={user.isVerified} />
+              </div>
+              {user.username && user.name && (
+                <p className="text-xs text-muted-foreground truncate">@{user.username}</p>
+              )}
+            </div>
+          </div>
+        </Link>
+      ))}
+    </div>
+  );
 };
 
 interface ProfilePageData {
@@ -146,6 +422,7 @@ export default function UserProfilePage() {
   const [isInitiatingChat, setIsInitiatingChat] = useState(false);
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
   const [selectedPostIndex, setSelectedPostIndex] = useState<number | null>(null);
+  const [isProfilePictureModalOpen, setIsProfilePictureModalOpen] = useState(false);
 
   const [imageSrcForCropper, setImageSrcForCropper] = useState<string | null>(null);
   const [crop, setCrop] = useState<Crop>();
@@ -675,317 +952,319 @@ export default function UserProfilePage() {
             <div className="flex-1"></div>
         </header>
 
-        {/* Enhanced Profile Header */}
-        <div className="relative bg-gradient-to-br from-background via-background/95 to-muted/20 border-b border-border/30">
-          <div className="px-6 pt-8 pb-6">
-            <div className="flex items-start gap-6">
-              <div className="relative group">
-                <Avatar className={cn("h-20 w-20 sm:h-24 sm:w-24 text-xl sm:text-2xl ring-2 ring-border/40 shadow-lg flex-shrink-0 transition-all duration-300 group-hover:ring-primary/50 group-hover:shadow-xl", avatarPreviewUrl && "ring-2 ring-offset-2 ring-offset-background ring-primary")}
-                  key={avatarPreviewUrl || userProfile.avatarUrl || 'default'}>
-                  <AvatarImage 
-                    src={avatarPreviewUrl || userProfile.avatarUrl || undefined} 
-                    alt={userProfile.username || userProfile.name || "User Avatar"} 
-                    data-ai-hint="person portrait"
-                  />
-                  <AvatarFallback className="bg-gradient-to-br from-muted to-muted/80 text-muted-foreground font-semibold">{userInitial}</AvatarFallback>
-                </Avatar>
-                <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-gradient-to-br from-green-400 to-green-500 rounded-full border-2 border-background shadow-sm"></div>
-                {isOwnProfile && !avatarPreviewUrl && (
-                  <button
-                    onClick={() => avatarFileInputRef.current?.click()}
-                    className="absolute bottom-0 right-0 bg-card p-1.5 rounded-full shadow-md hover:bg-secondary transition-colors cursor-pointer border border-border/50 opacity-80 group-hover:opacity-100"
-                    aria-label="Change profile picture"
-                    disabled={isUploadingAvatar || isCropperModalOpen}
-                  >
-                    <Camera className="h-4 w-4 text-primary" />
-                  </button>
-                )}
-                <input type="file" accept="image/png, image/jpeg, image/gif, image/webp, image/*" ref={avatarFileInputRef} onChange={handleAvatarFileSelect} className="hidden" />
-              </div>
+        {/* Sleek Mobile Profile Header */}
+        <div className="relative bg-gradient-to-br from-gray-900 via-black/90 to-black text-white rounded-b-3xl md:rounded-t-3xl">
 
-              <div className="flex-1 min-w-0 space-y-3">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">@{userProfile.username || "user"}</h1>
-                    <VerificationBadgeInline role={userProfile.role} isVerified={userProfile.isVerified} />
-                  </div>
-                  <div className="flex gap-2 flex-wrap">
-                    {isOwnProfile ? (
-                      <Button size="sm" variant="outline" className="h-8 px-3 text-xs font-medium rounded-lg border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all duration-200" asChild>
-                        <Link href="/users/edit-profile">
-                          <Edit3 className="h-3.5 w-3.5 mr-1.5" />
-                          Edit Profile
-                        </Link>
-                      </Button>
-                    ) : (
-                      <>
-                        {/* Chat Button */}
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          className="h-8 px-3 text-xs font-medium rounded-lg border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all duration-200" 
-                          onClick={handleInitiateChat}
-                          disabled={actionLoading || isInitiatingChat}
-                        >
-                          {isInitiatingChat ? (
-                            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                          ) : (
-                            <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
-                          )}
-                          Chat
-                        </Button>
-                        
-                        {/* Friend Action Button */}
-                        {friendshipStatusWithViewer === 'friends' && (
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
-                            className="h-8 px-3 text-xs font-medium rounded-lg border-destructive/30 text-destructive hover:bg-destructive hover:text-destructive-foreground hover:border-destructive transition-all duration-200" 
-                            onClick={() => handleFriendRequestButtonAction('remove')}
-                            disabled={followActionLoading}
-                          >
-                            {followActionLoading ? (
-                              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                            ) : (
-                              <XIcon className="h-3.5 w-3.5 mr-1.5" />
-                            )}
-                            Remove Friend
-                          </Button>
-                        )}
-                        
-                        {friendshipStatusWithViewer === 'pending_sent' && (
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
-                            className="h-8 px-3 text-xs font-medium rounded-lg border-border/50 hover:border-destructive/50 hover:bg-destructive/5 transition-all duration-200" 
-                            onClick={() => handleFriendRequestButtonAction('cancel')}
-                            disabled={followActionLoading}
-                          >
-                            {followActionLoading ? (
-                              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                            ) : (
-                              <XIcon className="h-3.5 w-3.5 mr-1.5" />
-                            )}
-                            Cancel Request
-                          </Button>
-                        )}
-                        
-                        {friendshipStatusWithViewer === 'pending_received' && (
-                          <>
-                            <Button 
-                              size="sm" 
-                              variant="default" 
-                              className="h-8 px-3 text-xs font-medium rounded-lg bg-primary hover:bg-primary/90 transition-all duration-200 shadow-sm" 
-                              onClick={() => handleFriendRequestButtonAction('accept')}
-                              disabled={followActionLoading}
-                            >
-                              {followActionLoading ? (
-                                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                              ) : (
-                                <Check className="h-3.5 w-3.5 mr-1.5" />
-                              )}
-                              Accept
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              className="h-8 px-3 text-xs font-medium rounded-lg border-border/50 hover:border-destructive/50 hover:bg-destructive/5 transition-all duration-200" 
-                              onClick={() => handleFriendRequestButtonAction('decline')}
-                              disabled={followActionLoading}
-                            >
-                              {followActionLoading ? (
-                                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                              ) : (
-                                <XIcon className="h-3.5 w-3.5 mr-1.5" />
-                              )}
-                              Decline
-                            </Button>
-                          </>
-                        )}
-                        
-                        {friendshipStatusWithViewer !== 'friends' && friendshipStatusWithViewer !== 'pending_sent' && friendshipStatusWithViewer !== 'pending_received' && (
-                          <Button 
-                            size="sm" 
-                            variant="default" 
-                            className="h-8 px-3 text-xs font-medium rounded-lg bg-primary hover:bg-primary/90 transition-all duration-200 shadow-sm" 
-                            onClick={() => handleFriendRequestButtonAction('send')}
-                            disabled={followActionLoading}
-                          >
-                            {followActionLoading ? (
-                              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                            ) : (
-                              <UserPlus className="h-3.5 w-3.5 mr-1.5" />
-                            )}
-                            Send Friend Request
-                          </Button>
-                        )}
-                        
-                        {/* More Options Dropdown */}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="outline" className="h-8 w-8 p-0 rounded-lg border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all duration-200">
-                              <MoreVertical className="h-3.5 w-3.5" />
-                              <span className="sr-only">More options</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48 bg-background/95 backdrop-blur-sm border border-border/50 shadow-lg rounded-lg">
-                            <DropdownMenuItem onSelect={() => handleReportUser()} className="text-xs cursor-pointer text-destructive focus:text-destructive hover:bg-destructive/10 rounded-md transition-colors">
-                              Report User
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => handleBlockUser()} className="text-xs cursor-pointer text-destructive focus:text-destructive hover:bg-destructive/10 rounded-md transition-colors">
-                              Block User
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </>
-                    )}
-                  </div>
+
+          <div className="flex flex-col items-center justify-center px-6 pt-20 pb-12">
+            {/* Large Profile Picture */}
+            <div className="relative mb-6">
+              <button 
+                onClick={() => setIsProfilePictureModalOpen(true)}
+                className="group relative focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900 rounded-full"
+              >
+                {isOwnProfile && avatarPreviewUrl ? (
+                  <Avatar className="h-32 w-32 border-4 border-white/20 shadow-2xl group-hover:shadow-blue-500/25 transition-all duration-300 group-hover:scale-105">
+                    <AvatarImage src={avatarPreviewUrl} alt={userProfile.name || userProfile.username || ''} />
+                    <AvatarFallback className="text-3xl font-bold bg-gradient-to-br from-blue-500 to-purple-600 text-white">
+                      {(userProfile.name || userProfile.username)?.charAt(0)?.toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                ) : (
+                  <Avatar className="h-32 w-32 border-4 border-white/20 shadow-2xl group-hover:shadow-blue-500/25 transition-all duration-300 group-hover:scale-105">
+                    <AvatarImage src={userProfile.avatarUrl || ''} alt={userProfile.name || userProfile.username || ''} />
+                    <AvatarFallback className="text-3xl font-bold bg-gradient-to-br from-blue-500 to-purple-600 text-white">
+                      {(userProfile.name || userProfile.username)?.charAt(0)?.toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                )}
+              </button>
+              
+              {/* Verification badge */}
+              <div className="absolute bottom-2 right-2">
+                {userProfile.role === 'admin' && (
+                  <AdminIcon className="h-6 w-6 text-amber-400 fill-amber-500 shrink-0 drop-shadow-lg" aria-label="Admin" />
+                )}
+                {userProfile.role !== 'admin' && userProfile.isVerified && (
+                  <CheckCircle className="h-6 w-6 text-blue-500 fill-blue-200 shrink-0 drop-shadow-lg" aria-label="Verified" />
+                )}
               </div>
-              {userProfile.name && (
-                <h2 className="text-lg font-semibold text-foreground tracking-tight mt-4">{userProfile.name}</h2>
-              )}
-              {userProfile.bio && (
-                <p className="text-sm text-muted-foreground/90 leading-relaxed mt-3 max-w-md">
-                  {userProfile.bio}
-                </p>
+              
+              <input type="file" accept="image/png, image/jpeg, image/gif, image/webp, image/*" ref={avatarFileInputRef} onChange={handleAvatarFileSelect} className="hidden" />
+            </div>
+            
+            {/* Name and Username */}
+            <div className="text-center mb-4">
+              <h1 className="text-base font-bold text-white mb-1">
+                {userProfile.name || userProfile.username}
+              </h1>
+              <p className="text-gray-400 text-base">
+                {userProfile.bio || 'No bio available'}
+              </p>
+            </div>
+
+            {/* Stats */}
+            <div className="flex items-center gap-8 mb-6 text-center">
+              <div>
+                <span className="text-white font-semibold text-lg">{userStats?.followersCount || 0}</span>
+                <span className="text-gray-400 ml-1">Followers</span>
+              </div>
+              <div className="w-px h-8 bg-gray-600/30"></div>
+              <div>
+                <span className="text-white font-semibold text-lg">{userStats?.postCount || 0}</span>
+                <span className="text-gray-400 ml-1">Posts</span>
+              </div>
+              <div className="w-px h-8 bg-gray-600/30"></div>
+              <div>
+                <span className="text-green-400 font-semibold text-lg">{userStats?.plansCreatedCount || 0}</span>
+                <span className="text-gray-400 ml-1">Plans</span>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="w-full max-w-xs">
+              {isOwnProfile ? (
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    className="flex-1 bg-white/10 border-white/20 text-white hover:bg-white/20 transition-all duration-200"
+                    onClick={() => router.push('/users/settings')}
+                  >
+                    Edit Profile
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    className="w-10 h-10 p-0 bg-white/10 border-white/20 text-white hover:bg-white/20 transition-all duration-200"
+                    onClick={() => router.push('/users/settings')}
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  {/* Friend Request Button */}
+                  {friendshipStatusWithViewer === 'not_friends' && (
+                    <Button 
+                      variant="default" 
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={() => handleFriendRequestButtonAction('send')}
+                      disabled={actionLoading}
+                    >
+                      {actionLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <UserPlus className="h-4 w-4 mr-2" />
+                      )}
+                      Add Friend
+                    </Button>
+                  )}
+                  {friendshipStatusWithViewer === 'pending_sent' && (
+                    <Button 
+                      variant="outline" 
+                      className="flex-1 bg-white/10 border-white/20 text-white hover:bg-white/20"
+                      onClick={() => handleFriendRequestButtonAction('cancel')}
+                      disabled={actionLoading}
+                    >
+                      {actionLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <X className="h-4 w-4 mr-2" />
+                      )}
+                      Cancel Request
+                    </Button>
+                  )}
+                  {friendshipStatusWithViewer === 'pending_received' && (
+                    <>
+                      <Button 
+                        variant="default" 
+                        className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                        onClick={() => handleFriendRequestButtonAction('accept')}
+                        disabled={actionLoading}
+                      >
+                        {actionLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                          <Check className="h-4 w-4 mr-2" />
+                        )}
+                        Accept
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        className="flex-1 bg-white/10 border-white/20 text-white hover:bg-white/20"
+                        onClick={() => handleFriendRequestButtonAction('decline')}
+                        disabled={actionLoading}
+                      >
+                        {actionLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                          <X className="h-4 w-4 mr-2" />
+                        )}
+                        Decline
+                      </Button>
+                    </>
+                  )}
+                  {friendshipStatusWithViewer === 'friends' && (
+                    <Button 
+                      variant="outline" 
+                      className="flex-1 bg-white/10 border-white/20 text-white hover:bg-white/20"
+                      onClick={() => handleFriendRequestButtonAction('remove')}
+                      disabled={actionLoading}
+                    >
+                      {actionLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <UserMinus className="h-4 w-4 mr-2" />
+                      )}
+                      Remove Friend
+                    </Button>
+                  )}
+                  
+                  {/* Message Button */}
+                  <Button 
+                    variant="outline" 
+                    className="flex-1 bg-white/10 border-white/20 text-white hover:bg-white/20"
+                    onClick={handleInitiateChat}
+                    disabled={actionLoading}
+                  >
+                    {actionLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <MessageSquare className="h-4 w-4 mr-2" />
+                    )}
+                    Message
+                  </Button>
+                </div>
               )}
             </div>
           </div>
         </div>
-          
-        <div className="px-4 pb-4">
-          {avatarPreviewUrl && isOwnProfile && (
-            <div className="flex gap-2 mb-3">
-              <Button onClick={handleSaveAvatarToServer} disabled={isUploadingAvatar} className="flex-1 h-8 text-sm font-medium">
-                {isUploadingAvatar ? <Loader2 className="animate-spin mr-1.5 h-3.5 w-3.5" /> : "Save Avatar"}
-              </Button>
-              <Button variant="outline" onClick={handleCancelAvatarChangeOnProfile} disabled={isUploadingAvatar} className="flex-1 h-8 text-sm font-medium">
-                Cancel
-              </Button>
-            </div>
-          )}
-
-
-        </div>
-
-        <div className="mt-0">
-          <Tabs defaultValue="posts" className="w-full">
-            <TabsList className="w-full grid grid-cols-4 h-16 bg-transparent p-0 border-b border-border/20">
+        
+        {/* Main Content Area */}
+        <div className="bg-background rounded-t-[3rem] -mt-8 relative z-10 pt-4">
+          {/* Tabs Section */}
+          <div className="px-0">
+            <Tabs defaultValue="posts" className="w-full">
+            <TabsList className="w-full grid grid-cols-4 h-16 bg-transparent p-0">
               <TabsTrigger 
                 value="posts" 
                 className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2"
               >
-                <span className="text-lg font-bold text-foreground">{userPostsArray?.length ?? 0}</span>
-                <div className="flex items-center gap-1.5">
-                  <LayoutGrid className="h-4 w-4" />
-                  <span className="text-xs font-medium leading-tight">Posts</span>
-                </div>
+                <LayoutGrid className="h-4 w-4" />
+                <span className="text-sm font-medium">Posts</span>
               </TabsTrigger>
               <TabsTrigger 
                 value="plans" 
                 className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2"
               >
-                <span className="text-lg font-bold text-foreground">{userStats?.plansCreatedCount ?? 0}</span>
-                <div className="flex items-center gap-1.5">
-                  <Calendar className="h-4 w-4" />
-                  <span className="text-xs font-medium leading-tight">Plans</span>
-                </div>
+                <Calendar className="h-4 w-4" />
+                <span className="text-sm font-medium">Plans</span>
               </TabsTrigger>
               <TabsTrigger 
                 value="followers" 
                 className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2"
               >
-                <span className="text-lg font-bold text-foreground">{userStats?.followersCount ?? 0}</span>
-                <div className="flex items-center gap-1.5">
-                  <Users className="h-4 w-4" />
-                  <span className="text-xs font-medium leading-tight">Followers</span>
-                </div>
+                <Users className="h-4 w-4" />
+                <span className="text-sm font-medium">Followers</span>
               </TabsTrigger>
               <TabsTrigger 
                 value="following" 
                 className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2"
               >
-                <span className="text-lg font-bold text-foreground">{userStats?.followingCount ?? 0}</span>
-                <div className="flex items-center gap-1.5">
-                  <UserPlus className="h-4 w-4" />
-                  <span className="text-xs font-medium leading-tight">Following</span>
-                </div>
+                <UserPlus className="h-4 w-4" />
+                <span className="text-sm font-medium">Following</span>
               </TabsTrigger>
             </TabsList>
             
             {/* Posts Tab Content */}
             <TabsContent value="posts" className="mt-6 p-0">
-              {userPostsArray.length === 0 && !loadingProfile ? (
+              {userPostsArray.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <Camera className="mx-auto h-16 w-16 opacity-30 mb-3" />
                   <p className="font-semibold text-lg">No Posts Yet</p>
                   {isOwnProfile && <p className="text-sm">Share your first plan highlight!</p>}
                 </div>
               ) : (
-                <div className="grid grid-cols-3 gap-0.5 sm:gap-1 px-0.5 sm:px-1 pb-4">
+                <div className="columns-3 gap-0.5 sm:gap-1 px-0 pb-4 space-y-0.5 sm:space-y-1">
                   {userPostsArray.map((post, index) => (
-                    <button
-                      key={post.id}
+                    <button 
+                      key={post.id} 
                       onClick={() => openPostModal(index)}
-                      className="aspect-square relative bg-muted overflow-hidden group focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background rounded-md"
-                      aria-label={`View post: ${post.text?.substring(0, 30) || 'Image post'}`}
+                      className="relative bg-muted overflow-hidden group focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background rounded-sm w-full break-inside-avoid mb-0.5 sm:mb-1 block"
+                      aria-label={`View post: ${post.text?.substring(0,30) || 'Image post'}`}
                     >
                       {post.mediaUrl ? (
                         <Image
                           src={post.mediaUrl}
                           alt={post.text || `Post by ${userProfile.name}`}
-                          fill
-                          sizes="(max-width: 640px) 33vw, (max-width: 768px) 33vw, 250px"
-                          style={{ objectFit: 'cover' }}
-                          className="group-hover:opacity-80 transition-opacity"
+                          width={250}
+                          height={250}
+                          style={{ 
+                            width: '100%', 
+                            height: 'auto',
+                            objectFit: 'cover'
+                          }}
+                          className="group-hover:opacity-80 transition-opacity w-full h-auto"
                           data-ai-hint="user generated content"
-                          unoptimized={!post.mediaUrl?.startsWith('http') || post.mediaUrl.includes('placehold.co')}
-                          priority={index < 3}
-                          loading={index < 3 ? 'eager' : 'lazy'}
+                          sizes="(max-width: 640px) 33vw, (max-width: 768px) 33vw, 250px"
+                          unoptimized={!post.mediaUrl.startsWith('http') || post.mediaUrl.includes('placehold.co') || post.mediaUrl.includes('firebasestorage.googleapis.com')}
                         />
                       ) : (
-                           <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground p-1">No Image</div>
+                        <div className="w-full aspect-square flex items-center justify-center text-xs text-muted-foreground p-1">No Image</div>
                       )}
                     </button>
                   ))}
-                </div>
-              )}
-            </TabsContent>
-            
-            {/* Plans Tab Content */}
-            <TabsContent value="plans" className="mt-6 p-0">
-              <div className="text-center py-12 text-muted-foreground">
-                <Calendar className="mx-auto h-16 w-16 opacity-30 mb-3" />
-                <p className="font-semibold text-lg">Plans</p>
-                <p className="text-sm">Created plans will be displayed here</p>
-                <p className="text-xs mt-1">Privacy settings will control visibility</p>
-              </div>
-            </TabsContent>
-            
-            {/* Followers Tab Content */}
-            <TabsContent value="followers" className="mt-6 p-0">
-              <div className="text-center py-12 text-muted-foreground">
-                <Users className="mx-auto h-16 w-16 opacity-30 mb-3" />
-                <p className="font-semibold text-lg">Followers</p>
-                <p className="text-sm">Followers list will be displayed here</p>
-                <p className="text-xs mt-1">Privacy settings will control visibility</p>
-              </div>
-            </TabsContent>
-            
-            {/* Following Tab Content */}
-            <TabsContent value="following" className="mt-6 p-0">
-              <div className="text-center py-12 text-muted-foreground">
-                <UserPlus className="mx-auto h-16 w-16 opacity-30 mb-3" />
-                <p className="font-semibold text-lg">Following</p>
-                <p className="text-sm">Following list will be displayed here</p>
-                <p className="text-xs mt-1">Privacy settings will control visibility</p>
-              </div>
-            </TabsContent>
-          </Tabs>
+                 </div>
+               )}
+             </TabsContent>
+             
+             {/* Plans Tab Content */}
+             <TabsContent value="plans" className="mt-6 p-0">
+               <PlansTabContent profileId={userProfile.uid} isOwnProfile={isOwnProfile} currentUser={currentUser} />
+             </TabsContent>
+             
+             {/* Followers Tab Content */}
+             <TabsContent value="followers" className="mt-6 p-0">
+               <FollowersTabContent profileId={userProfile.uid} isOwnProfile={isOwnProfile} currentUser={currentUser} />
+             </TabsContent>
+             
+             {/* Following Tab Content */}
+             <TabsContent value="following" className="mt-6 p-0">
+               <FollowingTabContent profileId={userProfile.uid} isOwnProfile={isOwnProfile} currentUser={currentUser} />
+             </TabsContent>
+           </Tabs>
+         </div>
         </div>
-      </div>
 
-      {selectedPost && isPostModalOpen && userProfile && (
+        {/* Hidden file input for avatar upload */}
+        <input type="file" accept="image/png, image/jpeg, image/gif, image/webp, image/*" ref={avatarFileInputRef} onChange={handleAvatarFileSelect} className="hidden" />
+        
+        {/* Avatar Save Controls */}
+        {avatarPreviewUrl && isOwnProfile && (
+          <div className="px-6 pb-6">
+            <div className="flex gap-3 mt-6">
+              <Button 
+                 onClick={handleSaveAvatarToServer} 
+                 disabled={isUploadingAvatar} 
+                 className="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 font-medium transition-all duration-200"
+               >
+                 {isUploadingAvatar ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : "Save Avatar"}
+               </Button>
+               <Button 
+                 variant="outline" 
+                 onClick={handleCancelAvatarChangeOnProfile} 
+                 disabled={isUploadingAvatar} 
+                 className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-800 rounded-xl py-3 font-medium transition-all duration-200"
+               >
+                 Cancel
+               </Button>
+             </div>
+           </div>
+         )}
+
+
+
+        {/* Modals */}
+        {selectedPost && isPostModalOpen && userProfile && selectedPostIndex !== null && (
         <PostDetailModal
           post={selectedPost}
           authorProfile={userProfile} // Pass the fetched userProfile of the profile being viewed
@@ -998,6 +1277,49 @@ export default function UserProfilePage() {
         />
       )}
 
+      {/* Profile Picture Modal */}
+      <Dialog open={isProfilePictureModalOpen} onOpenChange={setIsProfilePictureModalOpen}>
+        <DialogContent className="sm:max-w-md p-6 bg-card border-border/50">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold">Profile Picture</DialogTitle>
+            <DialogDescription>
+              {isOwnProfile ? "View or change your profile picture" : `View ${userProfile?.name || userProfile?.username}'s profile picture`}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex flex-col items-center space-y-4">
+            <Avatar className="h-32 w-32 border-2 border-border/20 shadow-lg">
+              <AvatarImage src={userProfile?.avatarUrl || ''} alt={userProfile?.name || userProfile?.username || ''} />
+              <AvatarFallback className="text-2xl font-semibold bg-gradient-to-br from-primary/20 to-primary/10 text-primary">
+                {(userProfile?.name || userProfile?.username)?.charAt(0)?.toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+          </div>
+          
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setIsProfilePictureModalOpen(false)} className="flex-1">
+              Close
+            </Button>
+            {isOwnProfile ? (
+              <Button className="flex-1" onClick={() => {
+                setIsProfilePictureModalOpen(false);
+                avatarFileInputRef.current?.click();
+              }}>
+                <Upload className="h-4 w-4 mr-2" />
+                Change Picture
+              </Button>
+            ) : (
+              <Button variant="outline" className="flex-1" onClick={() => {
+                // TODO: Implement full-screen view
+              }}>
+                <Eye className="h-4 w-4 mr-2" />
+                View Full Size
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
       <Dialog open={isCropperModalOpen} onOpenChange={(open) => { if (!open) handleCancelCropModal(); }}>
         <DialogContent className="sm:max-w-md p-4 bg-card border-border/50">
           <DialogHeader>
@@ -1018,7 +1340,7 @@ export default function UserProfilePage() {
                 <Image
                   ref={imgRef}
                   alt="Crop me"
-                  src={imageSrcForCropper}
+                  src={imageSrcForCropper || ''}
                   width={0}
                   height={0}
                   sizes="100vw"

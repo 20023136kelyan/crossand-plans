@@ -169,14 +169,14 @@ service cloud.firestore {
         (
           // Host can mark plan as completed after event time
           resource.data.hostId == request.auth.uid &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isCompleted', 'updatedAt']) &&
-          request.resource.data.isCompleted == true &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+        request.resource.data.status == 'completed' &&
           request.resource.data.updatedAt == request.time
         ) ||
         (
           // Participants can confirm completion
           isPlanParticipant(planId, request.auth.uid) &&
-          resource.data.isCompleted == true &&
+          resource.data.status == 'completed' &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['completionConfirmedBy', 'updatedAt']) &&
           request.resource.data.completionConfirmedBy.hasAll(resource.data.completionConfirmedBy) &&
           request.resource.data.completionConfirmedBy.removeAll(resource.data.completionConfirmedBy).hasOnly([request.auth.uid]) &&

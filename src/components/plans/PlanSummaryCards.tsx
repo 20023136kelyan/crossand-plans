@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Clock, MapPin, Users, Check, X, Eye } from 'lucide-react';
+import { Clock, MapPin, Users, Check, X, Eye, CheckCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import type { Plan, RSVPStatusType } from '@/types/user';
@@ -13,6 +13,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { updateMyRSVPAction } from '@/app/actions/planActions';
+import { useBulkCompletionStatus, getCompletionDisplayText, isFullyCompleted } from '@/hooks/useCompletionStatus';
 
 interface PlanSummaryCardsProps {
   className?: string;
@@ -25,25 +26,52 @@ export function PlanSummaryCards({ className }: PlanSummaryCardsProps) {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingRsvp, setProcessingRsvp] = useState<string | null>(null);
+  
+  // Get completion status for all plans
+  const completionStatuses = useBulkCompletionStatus(plans, user?.uid || null);
 
   useEffect(() => {
     if (!user?.uid) return;
 
     const unsubscribe = getUserPlans(user.uid, (userPlans) => {
-      // Filter for upcoming plans and sort by event time
-      const upcomingPlans = userPlans
-        .filter(plan => {
-          if (!plan.eventTime) return false;
-          const eventDate = new Date(plan.eventTime);
-          return eventDate > new Date() && plan.status === 'published';
-        })
+      // Filter for upcoming and recently completed plans
+        const relevantPlans = userPlans
+          .filter(plan => {
+            if (!plan.eventTime) return false;
+            const eventDate = new Date(plan.eventTime);
+            
+            // Include upcoming published plans
+            if (eventDate > new Date() && plan.status === 'published') {
+              return true;
+            }
+            
+            // Include recently completed plans (within last 30 days)
+            // Check completion status using standardized status field
+            if (plan.status === 'completed') {
+              const thirtyDaysAgo = new Date();
+              thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+              return eventDate >= thirtyDaysAgo;
+            }
+            
+            return false;
+          })
         .sort((a, b) => {
           if (!a.eventTime || !b.eventTime) return 0;
-          return new Date(a.eventTime).getTime() - new Date(b.eventTime).getTime();
+          // Sort by event time, with upcoming plans first, then completed plans
+          const timeA = new Date(a.eventTime).getTime();
+          const timeB = new Date(b.eventTime).getTime();
+          const now = new Date().getTime();
+          
+          // If both are upcoming or both are past, sort by time
+          if ((timeA > now && timeB > now) || (timeA <= now && timeB <= now)) {
+            return timeA - timeB;
+          }
+          // Upcoming plans come before past plans
+          return timeA > now ? -1 : 1;
         })
         .slice(0, 5); // Show only next 5 plans
       
-      setPlans(upcomingPlans);
+      setPlans(relevantPlans);
       setLoading(false);
     });
 
@@ -107,7 +135,7 @@ export function PlanSummaryCards({ className }: PlanSummaryCardsProps) {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center text-muted-foreground">
           <Clock className="mr-2 h-4 w-4" />
-          Next Adventures
+          Recent & Upcoming
         </CardTitle>
         </CardHeader>
         <CardContent>
@@ -125,7 +153,7 @@ export function PlanSummaryCards({ className }: PlanSummaryCardsProps) {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center text-muted-foreground">
           <Clock className="mr-2 h-4 w-4" />
-          Next Adventures
+          Recent & Upcoming
         </CardTitle>
         </CardHeader>
         <CardContent>
@@ -150,21 +178,44 @@ export function PlanSummaryCards({ className }: PlanSummaryCardsProps) {
         {plans.map((plan) => {
           const role = getUserRole(plan);
           const requiresRsvp = needsRsvp(plan);
+          const completionStatus = completionStatuses[plan.id];
+          const isCompleted = completionStatus?.isPlanCompleted || false;
+          const isFullyDone = completionStatus ? isFullyCompleted(completionStatus) : false;
+          const displayInfo = completionStatus ? getCompletionDisplayText(completionStatus) : null;
           
           return (
             <div
               key={plan.id}
-              className="p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+              className={`p-3 rounded-lg border transition-colors ${
+                isFullyDone
+                  ? 'bg-green-50/50 border-green-200 hover:bg-green-100/50' 
+                  : isCompleted
+                  ? 'bg-yellow-50/50 border-yellow-200 hover:bg-yellow-100/50'
+                  : 'bg-card hover:bg-accent/50'
+              }`}
             >
               {/* Plan Header */}
               <div className="flex items-start justify-between mb-2">
                 <div className="flex-1 min-w-0">
                   <h4 className="text-sm font-medium truncate">{plan.name}</h4>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <Badge variant={role === 'host' ? 'default' : 'secondary'} className="text-xs">
                       {role === 'host' ? 'Host' : role === 'invited' ? 'Invited' : 'Participant'}
                     </Badge>
-                    {requiresRsvp && (
+                    {displayInfo && (
+                      <Badge 
+                        variant={displayInfo.variant} 
+                        className={`text-xs ${
+                          isFullyDone ? 'bg-green-600 hover:bg-green-700 text-white' :
+                          isCompleted ? 'bg-yellow-600 hover:bg-yellow-700 text-white' : ''
+                        }`}
+                        title={displayInfo.description}
+                      >
+                        {isFullyDone && <CheckCircle className="w-3 h-3 mr-1" />}
+                        {displayInfo.badge}
+                      </Badge>
+                    )}
+                    {requiresRsvp && !isCompleted && (
                       <Badge variant="outline" className="text-xs text-orange-600">
                         RSVP Needed
                       </Badge>
@@ -202,10 +253,10 @@ export function PlanSummaryCards({ className }: PlanSummaryCardsProps) {
                   className="flex-1 h-8 text-xs"
                 >
                   <Eye className="mr-1.5 h-3 w-3" />
-                  View
+                  {isFullyDone ? 'View Memories' : isCompleted ? 'View Details' : 'View'}
                 </Button>
                 
-                {requiresRsvp && (
+                {requiresRsvp && !isCompleted && (
                   <>
                     <Button
                       variant="outline"

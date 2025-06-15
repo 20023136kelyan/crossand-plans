@@ -1,11 +1,11 @@
 'use server';
 
-import { firestoreAdmin, authAdmin } from '@/lib/firebaseAdmin';
-import { recordPlanCompletion } from '@/services/planCompletionService.server';
-import type { Plan } from '@/types/user';
-import { revalidatePath } from 'next/cache';
+import { firestoreAdmin, authAdmin } from '../../lib/firebaseAdmin';
 
 const PLANS_COLLECTION = 'plans';
+import type { Plan } from '../../types/user';
+import { recordPlanCompletion, getCompletionStatus } from '../../services/planCompletionService.server';
+import { revalidatePath } from 'next/cache';
 
 export async function markPlanAsCompletedAction(
   planId: string,
@@ -117,7 +117,7 @@ export async function markPlanAsCompletedAction(
 
     // Prepare update data based on whether we should create a new template
     const baseUpdateData = {
-      isCompleted: true,
+      status: 'completed' as const, // Primary completion tracking field
       completedAt,
       completionConfirmedBy,
       highlightsEnabled: true,
@@ -168,6 +168,12 @@ export async function markPlanAsCompletedAction(
     }
 
     await firestoreAdmin.collection(PLANS_COLLECTION).doc(planId).update(sanitizedUpdateData);
+
+    // Verify the completion status was properly set
+    const finalStatus = await getCompletionStatus(planId, userId);
+    if (!finalStatus?.isPlanCompleted) {
+      console.warn(`[markPlanAsCompletedAction] Plan ${planId} completion status verification failed`);
+    }
 
     // Revalidate relevant paths
     revalidatePath('/plans');
@@ -232,6 +238,12 @@ export async function confirmPlanCompletionAction(
       completionConfirmedBy,
       updatedAt: new Date().toISOString()
     });
+
+    // Verify the confirmation was properly recorded
+    const finalStatus = await getCompletionStatus(planId, userId);
+    if (!finalStatus?.isUserConfirmed) {
+      console.warn(`[confirmPlanCompletionAction] User ${userId} confirmation for plan ${planId} verification failed`);
+    }
 
     // Revalidate relevant paths
     revalidatePath('/plans');

@@ -149,7 +149,7 @@ const GenerateFullPlanInputClientSchema = z.object({
   locationQuery: z.string().min(3, { message: 'Location query must be at least 3 characters.' }),
   selectedLocationLat: z.number().optional().nullable(),
   selectedLocationLng: z.number().optional().nullable(),
-  priceRange: z.enum(['$', '$$', '$$$', '$$$$', 'Free', ''] as const).optional().nullable(),
+  priceRange: z.enum(['$', '$$', '$$$', '$$$$', 'Free'] as const).optional().nullable(),
   userPrompt: z.string().min(10, { message: 'Prompt must be at least 10 characters.' }).max(500),
   searchRadius: z.number().min(0).max(50).optional().nullable(),
   planTypeHint: z.enum(['ai-decide', 'single-stop', 'multi-stop'] as const).optional().default('ai-decide'),

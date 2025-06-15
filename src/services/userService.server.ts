@@ -109,8 +109,8 @@ export const getUsersProfilesAdmin = async (uids: string[]): Promise<UserProfile
 
     for (const chunk of chunks) {
         if (chunk.length === 0) continue;
-        const userDocRefs = chunk.map(uid => firestoreAdmin.collection(USER_COLLECTION).doc(uid));
-        const userDocSnaps = await firestoreAdmin.getAll(...userDocRefs);
+        const userDocRefs = chunk.map(uid => firestoreAdmin!.collection(USER_COLLECTION).doc(uid));
+        const userDocSnaps = await firestoreAdmin!.getAll(...userDocRefs);
 
         userDocSnaps.forEach(docSnap => {
           if (docSnap.exists) {
@@ -706,7 +706,10 @@ export const getUserStatsAdmin = async (userId: string): Promise<UserStats> => {
     const plansRef = firestoreAdmin.collection(PLANS_COLLECTION);
     const feedPostsRef = firestoreAdmin.collection(FEED_POSTS_COLLECTION);
     
-    const createdQuery = plansRef.where('hostId', '==', userId);
+    // Count plans created by user (exclude drafts unless they're completed)
+    const createdQuery = plansRef
+      .where('hostId', '==', userId)
+      .where('status', 'in', ['published', 'completed']); // Only count published or completed plans
     const createdSnapshotPromise = createdQuery.count().get();
     
     const experiencedQuery = plansRef
@@ -731,10 +734,10 @@ export const getUserStatsAdmin = async (userId: string): Promise<UserStats> => {
       const planData = doc.data();
       
       // Check if plan is completed and user confirmed completion
-      if (planData.isCompleted && planData.completionConfirmedBy && 
+      if (planData.status === 'completed' && planData.completionConfirmedBy && 
           planData.completionConfirmedBy.includes(userId)) {
         plansExperiencedCount++;
-      } else if (planData.eventTime && !planData.isCompleted) {
+      } else if (planData.eventTime && planData.status !== 'completed') {
         // Fallback to old logic for plans without completion tracking
         let eventDate;
         if (planData.eventTime instanceof AdminTimestamp) {

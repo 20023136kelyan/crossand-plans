@@ -413,7 +413,7 @@ Main Plan Object Fields:
 -   'hostId': {{{hostProfile.uid}}}
 -   'invitedParticipantUserIds': [{{#if invitedFriendProfiles.length}}{{#each invitedFriendProfiles}}"{{this.uid}}"{{#unless @last}}, {{/unless}}{{/each}}{{/if}}].
 -   'itinerary': The array of itinerary item objects you constructed. Must contain at least one item.
--   'status': Set to 'draft'.
+-   'status': Set to 'published'.
 -   'planType': Determine if it's 'single-stop' or 'multi-stop' based on the itinerary you generate and user's 'planTypeHint' if it's not 'ai-decide'.
 
 Adhere strictly to the output schema. Ensure all required fields are present. Make the plan exciting and well-suited to the users!

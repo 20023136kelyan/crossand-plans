@@ -22,14 +22,18 @@ const redressed = Redressed({
 // Dynamic metadata generation
 async function generateMetadata(): Promise<Metadata> {
   try {
+    if (!firestoreAdmin) {
+      throw new Error('Firestore admin not available');
+    }
+    
     const settingsDoc = await firestoreAdmin
       .collection('settings')
       .doc('application')
       .get();
 
     const settings = settingsDoc.exists ? settingsDoc.data() : {};
-    const siteName = settings?.siteName || 'Macaroom';
-    const siteDescription = settings?.siteDescription || 'Sweeten your social planning with Macaroom';
+    const siteName = settings?.siteName || 'Crossand';
+    const siteDescription = settings?.siteDescription || 'Sweeten your social planning with Crossand';
 
     return {
       title: {
@@ -96,7 +100,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full">
-      <body className={`${geistSans.variable} ${redressed.variable} font-sans antialiased h-full flex flex-col`}>
+      <body 
+        className={`${geistSans.variable} ${redressed.variable} font-sans antialiased h-full flex flex-col`}
+        suppressHydrationWarning={true}
+      >
         <SettingsProvider>
           <AuthProvider> {/* Wrap children with AuthProvider */}
             {children}
