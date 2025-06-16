@@ -214,10 +214,10 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
   const placeholderImageUrl = `https://placehold.co/80x80.png?text=${encodeURIComponent(plan.name ? plan.name.substring(0,10) : 'Img')}&font=Montserrat`;
 
   return (
-    <Card className="group overflow-hidden bg-card border border-border/20 rounded-2xl transition-all duration-200 hover:shadow-lg hover:border-border/40">
-      <div className="flex h-32">
+    <Card className="group relative overflow-hidden bg-card border border-border/20 rounded-2xl transition-all duration-200 hover:shadow-lg hover:border-border/40">
+      <div className="flex flex-col sm:flex-row">
         {/* Image Section */}
-        <div className="relative w-32 flex-shrink-0 overflow-hidden">
+        <div className="relative w-full h-40 sm:h-auto sm:w-40 flex-shrink-0 overflow-hidden">
           {imageError ? (
             <img
               src={placeholderImageUrl}
@@ -236,18 +236,94 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
               onError={() => setImageError(true)}
             />
           )}
-          {/* Event Type Badge */}
-          {plan.eventType && (
-            <div className="absolute top-2 left-2">
+          {/* Event & Status Badges */}
+          <div className="absolute top-2 left-2 space-y-1">
+            {plan.eventType && (
               <Badge variant="secondary" className="text-xs px-2 py-1 bg-black/70 text-white border-0">
                 {plan.eventType}
               </Badge>
-            </div>
-          )}
+            )}
+            {displayStatus && (
+              <Badge variant="secondary" className="text-xs px-2 py-1 bg-black/70 text-white border-0 flex items-center">
+                <StatusIcon className="h-3 w-3 mr-1" />
+                <span className="truncate text-[10px]">{statusLabel}</span>
+              </Badge>
+            )}
+          </div>
         </div>
 
         {/* Content Section */}
-        <div className="flex-1 p-4 min-w-0">
+        <div className="relative flex-1 p-4 pt-6 sm:pt-4 min-w-0">
+          {/* More Options – mobile */}
+          <div className="absolute top-6 right-0 sm:hidden">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuItem asChild>
+                  <Link href={`/p/${plan.id}`} className="flex items-center text-xs cursor-pointer">
+                    <Eye className="mr-2 h-3.5 w-3.5" /> View Details
+                  </Link>
+                </DropdownMenuItem>
+                {isHost && (
+                  <DropdownMenuItem asChild>
+                    <Link href={`/plans/create?editId=${plan.id}`} className="flex items-center text-xs cursor-pointer">
+                      <Edit3 className="mr-2 h-3.5 w-3.5" /> Edit Plan
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {isHost && plan.eventTime && isValid(parseISO(plan.eventTime)) && isPast(parseISO(plan.eventTime)) && plan.status !== 'completed' && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleMarkAsCompleted(plan.id, plan.name);
+                      }}
+                      className="flex items-center text-xs cursor-pointer"
+                    >
+                      <CheckCircle className="mr-2 h-3.5 w-3.5" /> Mark as Completed
+                    </DropdownMenuItem>
+                  </>
+                )}
+                {!isHost && plan.status === 'completed' && plan.completionConfirmedBy && !plan.completionConfirmedBy.includes(currentUserUid || '') && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleConfirmCompletion(plan.id);
+                      }}
+                      disabled={isConfirmingCompletion}
+                      className="flex items-center text-xs cursor-pointer"
+                    >
+                      <CheckCircle className="mr-2 h-3.5 w-3.5" /> Confirm Completion
+                    </DropdownMenuItem>
+                  </>
+                )}
+                {isHost && handleDeleteRequest && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleDeleteRequest(plan.id, plan.name);
+                      }}
+                      className="flex items-center text-xs text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
+                    >
+                      <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete Plan
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
           <Link href={`/plans/${plan.id}`} className="block group-hover:text-primary transition-colors">
             <h3 className="font-semibold text-base leading-tight line-clamp-1 mb-1" title={plan.name}>
               {plan.name}
@@ -296,104 +372,114 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
         </div>
 
         {/* Date & Status Section */}
-        <div className="w-20 p-4 flex flex-col items-center justify-between">
+        <div className="w-full sm:w-24 p-3 sm:p-4 flex flex-row sm:flex-col items-center sm:items-end justify-between">
           {/* Date Display - Prominent */}
+          {/* Mobile overlay for date/template badge */}
+          {(
+            plan.isTemplate ? true : (formattedDay && formattedMonth && formattedTime)
+          ) && (
+            <div className="absolute top-2 right-2 sm:hidden">
+              {plan.isTemplate ? (
+                <div className="bg-gradient-to-br from-primary/10 to-primary/20 border border-primary/30 rounded-xl p-2 text-center min-w-[60px]">
+                  <div className="text-[10px] font-semibold text-primary leading-none">TEMPLATE</div>
+                </div>
+              ) : (
+                <div className="bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-xl p-2 text-center min-w-[60px]">
+                  <div className="text-lg font-bold text-primary leading-none">{formattedDay}</div>
+                  <div className="text-[9px] font-medium uppercase text-muted-foreground tracking-wide leading-none mt-0.5">{formattedMonth}</div>
+                  <div className="text-[9px] text-muted-foreground leading-tight mt-0.5">{formattedTime}</div>
+                </div>
+              )}
+            </div>
+          )}
+
           {plan.isTemplate ? (
-            <div className="bg-gradient-to-br from-primary/10 to-primary/20 border border-primary/30 rounded-xl p-2 text-center w-full flex flex-col justify-center items-center min-h-[64px]">
+            <div className="hidden sm:flex bg-gradient-to-br from-primary/10 to-primary/20 border border-primary/30 rounded-xl p-2 text-center w-full flex-col justify-center items-center min-h-[64px]">
               <div className="text-xs font-semibold text-primary leading-none">TEMPLATE</div>
               <div className="text-[10px] text-muted-foreground mt-1">Guide</div>
               {plan.averageRating && (
                 <div className="flex items-center text-[10px] text-amber-600 mt-1">
-                  <Star className="h-2.5 w-2.5 mr-0.5 fill-current" />
-                  {plan.averageRating.toFixed(1)}
+ <Star className="h-2.5 w-2.5 mr-0.5 fill-current" />
+ {plan.averageRating.toFixed(1)}
                 </div>
               )}
             </div>
           ) : (formattedDay && formattedMonth && formattedTime) && (
-            <div className="bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-xl p-2 text-center w-full min-h-[64px] flex flex-col justify-center">
+            <div className="hidden sm:flex bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-xl p-2 text-center w-full min-h-[64px] flex-col justify-center">
               <div className="text-2xl font-bold text-primary leading-none">{formattedDay}</div>
               <div className="text-[10px] font-medium uppercase text-muted-foreground tracking-wide leading-none mt-1">{formattedMonth}</div>
               <div className="text-[10px] text-muted-foreground leading-tight mt-1">{formattedTime}</div>
             </div>
           )}
 
-          {/* Status Badge */}
-          {displayStatus && (
-            <Badge
-              variant={statusBadgeVariant as any}
-              className="text-xs px-2 py-1 mt-2 w-full justify-center"
-            >
-              <StatusIcon className="h-3 w-3 mr-1" />
-              <span className="truncate text-[10px]">{statusLabel}</span>
-            </Badge>
-          )}
+          
 
           {/* More Options */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6 mt-1 text-muted-foreground hover:text-foreground">
+              <Button variant="ghost" size="icon" className="hidden sm:inline-flex h-6 w-6 ml-auto sm:ml-0 text-muted-foreground hover:text-foreground">
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40">
               <DropdownMenuItem asChild>
                 <Link href={`/p/${plan.id}`} className="flex items-center text-xs cursor-pointer">
-                  <Eye className="mr-2 h-3.5 w-3.5" /> View Details
+ <Eye className="mr-2 h-3.5 w-3.5" /> View Details
                 </Link>
               </DropdownMenuItem>
               {isHost && (
                 <DropdownMenuItem asChild>
-                  <Link href={`/plans/create?editId=${plan.id}`} className="flex items-center text-xs cursor-pointer">
-                    <Edit3 className="mr-2 h-3.5 w-3.5" /> Edit Plan
-                  </Link>
+ <Link href={`/plans/create?editId=${plan.id}`} className="flex items-center text-xs cursor-pointer">
+   <Edit3 className="mr-2 h-3.5 w-3.5" /> Edit Plan
+ </Link>
                 </DropdownMenuItem>
               )}
               {/* Completion options for hosts when plan is past event time */}
               {isHost && plan.eventTime && isValid(parseISO(plan.eventTime)) && isPast(parseISO(plan.eventTime)) && plan.status !== 'completed' && (
                 <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleMarkAsCompleted(plan.id, plan.name);
-                    }}
-                    className="flex items-center text-xs cursor-pointer"
-                  >
-                    <CheckCircle className="mr-2 h-3.5 w-3.5" /> Mark as Completed
-                  </DropdownMenuItem>
+ <DropdownMenuSeparator />
+ <DropdownMenuItem
+   onClick={(e) => {
+     e.preventDefault();
+     e.stopPropagation();
+     handleMarkAsCompleted(plan.id, plan.name);
+   }}
+   className="flex items-center text-xs cursor-pointer"
+ >
+   <CheckCircle className="mr-2 h-3.5 w-3.5" /> Mark as Completed
+ </DropdownMenuItem>
                 </>
               )}
               {/* Confirmation option for participants when plan is completed but not confirmed by them */}
               {!isHost && plan.status === 'completed' && plan.completionConfirmedBy && !plan.completionConfirmedBy.includes(currentUserUid || '') && (
                 <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleConfirmCompletion(plan.id);
-                    }}
-                    disabled={isConfirmingCompletion}
-                    className="flex items-center text-xs cursor-pointer"
-                  >
-                    <CheckCircle className="mr-2 h-3.5 w-3.5" /> Confirm Completion
-                  </DropdownMenuItem>
+ <DropdownMenuSeparator />
+ <DropdownMenuItem
+   onClick={(e) => {
+     e.preventDefault();
+     e.stopPropagation();
+     handleConfirmCompletion(plan.id);
+   }}
+   disabled={isConfirmingCompletion}
+   className="flex items-center text-xs cursor-pointer"
+ >
+   <CheckCircle className="mr-2 h-3.5 w-3.5" /> Confirm Completion
+ </DropdownMenuItem>
                 </>
               )}
               {isHost && handleDeleteRequest && (
                 <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleDeleteRequest(plan.id, plan.name);
-                    }}
-                    className="flex items-center text-xs text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
-                  >
-                    <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete Plan
-                  </DropdownMenuItem>
+ <DropdownMenuSeparator />
+ <DropdownMenuItem
+   onClick={(e) => {
+     e.preventDefault();
+     e.stopPropagation();
+     handleDeleteRequest(plan.id, plan.name);
+   }}
+   className="flex items-center text-xs text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
+ >
+   <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete Plan
+ </DropdownMenuItem>
                 </>
               )}
             </DropdownMenuContent>
@@ -431,9 +517,14 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
       .slice(0, 3);
   }, [plans]);
 
+  // Number of additional plans not shown when the section is collapsed (over the 3 displayed in the stack)
+  const extraCount = Math.max(0, plans.length - 3);
+  const formattedExtraCount = extraCount > 999 ? '1k' : extraCount;
+
+
   if (isLoading && (!plans || plans.length === 0)) { 
     return (
-      <div className="mt-6">
+      <div className="mt-6 mb-8">
         <div className="flex justify-between items-center mb-3 pb-1 border-b border-border">
           <h2 className="text-lg font-semibold text-foreground">{title}</h2>
         </div>
@@ -442,21 +533,21 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
             <Card key={index} className="overflow-hidden shadow-md bg-card text-card-foreground flex flex-col h-full rounded-lg animate-pulse border border-border/30">
               <div className="flex p-3 items-start gap-3 flex-grow">
                 <div className="flex flex-col items-center shrink-0 w-20">
-                  <div className="bg-muted h-20 w-20 rounded-lg"></div>
-                  <div className="bg-card border border-border/50 shadow-sm rounded-md p-1 text-center w-full mt-2 min-h-[60px]">
-                    <div className="h-6 bg-muted rounded-sm w-1/2 mx-auto mb-1"></div>
-                    <div className="h-3 bg-muted rounded-sm w-1/3 mx-auto mb-1"></div>
-                    <div className="h-3 bg-muted rounded-sm w-1/4 mx-auto"></div>
-                  </div>
+ <div className="bg-muted h-20 w-20 rounded-lg"></div>
+ <div className="bg-card border border-border/50 shadow-sm rounded-md p-1 text-center w-full mt-2 min-h-[60px]">
+   <div className="h-6 bg-muted rounded-sm w-1/2 mx-auto mb-1"></div>
+   <div className="h-3 bg-muted rounded-sm w-1/3 mx-auto mb-1"></div>
+   <div className="h-3 bg-muted rounded-sm w-1/4 mx-auto"></div>
+ </div>
                 </div>
                 <div className="flex-grow space-y-2 pt-1">
-                  <div className="h-4 bg-muted rounded w-3/4"></div>
-                  <div className="h-3 bg-muted rounded w-1/2"></div>
-                  <div className="h-3 bg-muted rounded w-full mt-1"></div>
-                  <div className="flex gap-1 mt-2">
-                      <div className="h-4 w-16 bg-muted rounded-full"></div>
-                      <div className="h-4 w-20 bg-muted rounded-full"></div>
-                  </div>
+ <div className="h-4 bg-muted rounded w-3/4"></div>
+ <div className="h-3 bg-muted rounded w-1/2"></div>
+ <div className="h-3 bg-muted rounded w-full mt-1"></div>
+ <div className="flex gap-1 mt-2">
+     <div className="h-4 w-16 bg-muted rounded-full"></div>
+     <div className="h-4 w-20 bg-muted rounded-full"></div>
+ </div>
                 </div>
               </div>
             </Card>
@@ -471,7 +562,7 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
   }
   
   return (
-    <div className="mt-6">
+    <div className="mt-6 mb-8">
        <div className="flex justify-between items-center mb-4 pb-1 border-b border-border">
         <h2 className="text-lg font-semibold text-foreground">{title} ({plans.length})</h2>
         {plans.length > 0 && (
@@ -482,8 +573,23 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
             className="h-7 p-1 text-xs text-muted-foreground hover:text-foreground"
             aria-label={isExpanded ? `Collapse ${title} section` : `View all ${plans.length} items in ${title}`}
           >
-            {isExpanded ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
-            {isExpanded ? "Collapse" : `View All`}
+            {isExpanded ? (
+              <>
+                <ChevronUp className="h-4 w-4 mr-1" />
+                Collapse
+              </>
+            ) : (
+              <>
+                <ChevronDown className="h-4 w-4 mr-1" />
+                View All
+                {extraCount > 0 && (
+                  <span className="ml-2 bg-primary/20 text-foreground px-2 rounded-full">
+                    +{formattedExtraCount} more
+                  </span>
+                )}
+              </>
+            )}
+
           </Button>
         )}
       </div>
@@ -501,7 +607,7 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
           <div
             className="relative cursor-pointer mt-3"
             onClick={onToggleExpand}
-            style={{ minHeight: `${100 + Math.min(plansToShowInStack.length > 1 ? plansToShowInStack.length - 1 : 0, 2) * 10}px` }} 
+            style={{ minHeight: `${160 + Math.min(plansToShowInStack.length > 1 ? plansToShowInStack.length - 1 : 0, 2) * 10}px` }} 
             role="button"
             tabIndex={0}
             aria-label={`View ${plans.length} items in ${title}`}
@@ -511,31 +617,24 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
               <div
                 key={plan.id}
                 className={cn(
-                  "absolute w-full transition-all duration-300 ease-out origin-top",
-                  index === 0 && "z-[3]",
-                  index === 1 && "z-[2] opacity-80",
-                  index === 2 && "z-[1] opacity-60",
+ "absolute w-full transition-all duration-300 ease-out origin-top",
+ index === 0 && "z-[3]",
+ index === 1 && "z-[2] opacity-80",
+ index === 2 && "z-[1] opacity-60",
                 )}
                 style={{
-                  transform: `translateY(${index * 10}px) scale(${1 - index * 0.02})`, 
-                  pointerEvents: index === 0 ? 'auto' : 'none', 
+ transform: `translateY(${index * 10}px) scale(${1 - index * 0.02})`, 
+ pointerEvents: index === 0 ? 'auto' : 'none', 
                 }}
               >
-                 <div 
-                    className={cn(index === 0 && "shadow-xl rounded-lg", "pointer-events-auto")}
-                    onClick={(e) => { if (index !== 0) e.stopPropagation(); else onToggleExpand(); }}
-                 >
-                    <PlanCard plan={plan} currentUserUid={currentUserUid} />
+<div 
+   className={cn(index === 0 && "shadow-xl rounded-lg", "pointer-events-auto")}
+   onClick={(e) => { if (index !== 0) e.stopPropagation(); else onToggleExpand(); }}
+>
+   <PlanCard plan={plan} currentUserUid={currentUserUid} />
                 </div>
               </div>
             ))}
-            {plans.length > 3 && ( 
-              <div className="absolute bottom-0 right-2 bg-primary/90 text-primary-foreground text-xs px-2 py-1 rounded-full shadow-lg z-[4]"
-                style={{ transform: `translateY(${Math.min(2, plansToShowInStack.length > 0 ? plansToShowInStack.length -1 : 0) * 10 + 5}px)` }}
-              >
-                +{plans.length - plansToShowInStack.length} more
-              </div>
-            )}
           </div>
         )
       )}
@@ -868,8 +967,8 @@ export default function PlansPage() {
             {plansForSelectedDate.map(plan => (
               <li key={plan.id} className="text-xs">
                 <Link href={currentUserId && (currentUserId === plan.hostId || plan.invitedParticipantUserIds?.includes(currentUserId)) ? `/plans/${plan.id}` : `/p/${plan.id}`} className="hover:underline text-primary flex items-center gap-1.5">
-                  <span className="truncate">{plan.name}</span>
-                  <Badge variant="outline" className="text-xs px-1 py-0 leading-tight">{plan.eventTime && isValid(parseISO(plan.eventTime)) ? format(parseISO(plan.eventTime), 'p') : 'No time'}</Badge>
+ <span className="truncate">{plan.name}</span>
+ <Badge variant="outline" className="text-xs px-1 py-0 leading-tight">{plan.eventTime && isValid(parseISO(plan.eventTime)) ? format(parseISO(plan.eventTime), 'p') : 'No time'}</Badge>
                 </Link>
               </li>
             ))}
@@ -1101,66 +1200,66 @@ export default function PlansPage() {
               <div className={cn("relative flex-1 min-w-0", isSearchFocused && "flex-grow")}>
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground pointer-events-none" />
                 <Input
-                  type="search"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  onFocus={() => setIsSearchFocused(true)}
-                  onBlur={() => {
-                    // Add a small delay to ensure any tap/click events are processed first
-                    setTimeout(() => setIsSearchFocused(false), 200);
-                  }}
-                  className="pl-8 sm:pl-10 bg-card border-border text-sm h-8 sm:h-9 rounded-lg focus:ring-primary focus:border-primary w-full"
-                  disabled={viewMode === 'calendar'}
-                  placeholder="Search plans..."
+ type="search"
+ value={searchTerm}
+ onChange={(e) => setSearchTerm(e.target.value)}
+ onFocus={() => setIsSearchFocused(true)}
+ onBlur={() => {
+   // Add a small delay to ensure any tap/click events are processed first
+   setTimeout(() => setIsSearchFocused(false), 200);
+ }}
+ className="pl-8 sm:pl-10 bg-card border-border text-sm h-8 sm:h-9 rounded-lg focus:ring-primary focus:border-primary w-full"
+ disabled={viewMode === 'calendar'}
+ placeholder="Search plans..."
                 />
               </div>
               
               {/* View mode buttons next to search */}
               <div className="flex items-center gap-1 ml-3">
                 <Button
-                  variant={viewMode === 'list' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setViewMode('list')}
-                  className={cn(
-                    "h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm transition-all duration-200",
-                    viewMode === 'list'
-                      ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                      : "bg-card border-border hover:bg-secondary/50"
-                  )}
+ variant={viewMode === 'list' ? 'default' : 'outline'}
+ size="sm"
+ onClick={() => setViewMode('list')}
+ className={cn(
+   "h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm transition-all duration-200",
+   viewMode === 'list'
+     ? "bg-primary text-primary-foreground hover:bg-primary/90"
+     : "bg-card border-border hover:bg-secondary/50"
+ )}
                 >
-                  <ListIconLucide className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  <span className="hidden sm:inline ml-1.5">List</span>
+ <ListIconLucide className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+ <span className="hidden sm:inline ml-1.5">List</span>
                 </Button>
                 <Button
-                  variant={viewMode === 'calendar' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setViewMode('calendar')}
-                  className={cn(
-                    "h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm transition-all duration-200",
-                    viewMode === 'calendar'
-                      ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                      : "bg-card border-border hover:bg-secondary/50"
-                  )}
+ variant={viewMode === 'calendar' ? 'default' : 'outline'}
+ size="sm"
+ onClick={() => setViewMode('calendar')}
+ className={cn(
+   "h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm transition-all duration-200",
+   viewMode === 'calendar'
+     ? "bg-primary text-primary-foreground hover:bg-primary/90"
+     : "bg-card border-border hover:bg-secondary/50"
+ )}
                 >
-                  <CalendarDays className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  <span className="hidden sm:inline ml-1.5">Calendar</span>
+ <CalendarDays className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+ <span className="hidden sm:inline ml-1.5">Calendar</span>
                 </Button>
               </div>
               
               {/* Sort button - only show when not searching on mobile */}
               {viewMode === 'list' && (
                 <Button 
-                  variant="outline" 
-                  onClick={handleSortCycle} 
-                  size="sm" 
-                  className={cn(
-                    "bg-card border-border hover:bg-secondary/50 text-xs sm:text-sm rounded-lg h-8 sm:h-9 flex-shrink-0 transition-all duration-300 ml-2",
-                    isSearchFocused && isMobile && "w-0 opacity-0 scale-x-0 invisible overflow-hidden"
-                  )}
+ variant="outline" 
+ onClick={handleSortCycle} 
+ size="sm" 
+ className={cn(
+   "bg-card border-border hover:bg-secondary/50 text-xs sm:text-sm rounded-lg h-8 sm:h-9 flex-shrink-0 transition-all duration-300 ml-2",
+   isSearchFocused && isMobile && "w-0 opacity-0 scale-x-0 invisible overflow-hidden"
+ )}
                 >
-                  <span className="hidden sm:inline">{sortConfig.key === 'date' ? 'Date' : 'Name'}</span>
-                  <ArrowUpDown className="h-3.5 w-3.5 sm:ml-1.5 sm:h-4 sm:w-4" />
-                  <span className="text-xs">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+ <span className="hidden sm:inline">{sortConfig.key === 'date' ? 'Date' : 'Name'}</span>
+ <ArrowUpDown className="h-3.5 w-3.5 sm:ml-1.5 sm:h-4 sm:w-4" />
+ <span className="text-xs">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
                 </Button>
               )}
             </div>
@@ -1169,41 +1268,41 @@ export default function PlansPage() {
             <div className="flex justify-center pb-2">
               <div className="flex items-center">
                 <button
-                  onClick={() => setActiveTab('upcoming')}
-                  className={cn(
-                    "px-4 py-2 text-sm font-medium transition-colors relative flex items-center",
-                    activeTab === 'upcoming'
-                      ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
+ onClick={() => setActiveTab('upcoming')}
+ className={cn(
+   "px-4 py-2 text-sm font-medium transition-colors relative flex items-center",
+   activeTab === 'upcoming'
+     ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
+     : "text-muted-foreground hover:text-foreground"
+ )}
                 >
-                  <CalendarDays className="h-4 w-4 mr-1.5" />
-                  Upcoming
+ <CalendarDays className="h-4 w-4 mr-1.5" />
+ Upcoming
                 </button>
                 <button
-                  onClick={() => setActiveTab('saved')}
-                  className={cn(
-                    "px-4 py-2 text-sm font-medium transition-colors relative flex items-center",
-                    activeTab === 'saved'
-                      ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
+ onClick={() => setActiveTab('saved')}
+ className={cn(
+   "px-4 py-2 text-sm font-medium transition-colors relative flex items-center",
+   activeTab === 'saved'
+     ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
+     : "text-muted-foreground hover:text-foreground"
+ )}
                 >
-                  <Star className="h-4 w-4 mr-1.5" />
-                  <span className="hidden sm:inline">Saved Templates</span>
-                  <span className="sm:hidden">Saved</span>
+ <Star className="h-4 w-4 mr-1.5" />
+ <span className="hidden sm:inline">Saved Templates</span>
+ <span className="sm:hidden">Saved</span>
                 </button>
                 <button
-                  onClick={() => setActiveTab('past')}
-                  className={cn(
-                    "px-4 py-2 text-sm font-medium transition-colors relative flex items-center",
-                    activeTab === 'past'
-                      ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
+ onClick={() => setActiveTab('past')}
+ className={cn(
+   "px-4 py-2 text-sm font-medium transition-colors relative flex items-center",
+   activeTab === 'past'
+     ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
+     : "text-muted-foreground hover:text-foreground"
+ )}
                 >
-                  <History className="h-4 w-4 mr-1.5" />
-                  Past
+ <History className="h-4 w-4 mr-1.5" />
+ Past
                 </button>
               </div>
             </div>
@@ -1213,194 +1312,194 @@ export default function PlansPage() {
             {viewMode === 'list' ? (
                 <>
                 <TabsContent value="upcoming" className="mt-0">
-                    {loadingPlans && !upcomingPlansExist && (
-                        <div className="flex justify-center items-center py-10 min-h-[300px]">
-                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                        </div>
-                    )}
-                    {!loadingPlans && !upcomingPlansExist && searchTerm === '' && (
-                        <EmptyState title="No Upcoming Plans" message="You have no upcoming plans. Ready to create your next adventure?" />
-                    )}
-                    {!loadingPlans && !upcomingPlansExist && searchTerm !== '' && (
-                        <EmptyState title="No Plans Found" message={`Your search for "${searchTerm}" did not match any upcoming plans.`} showCreateButton={false} />
-                    )}
+   {loadingPlans && !upcomingPlansExist && (
+       <div className="flex justify-center items-center py-10 min-h-[300px]">
+       <Loader2 className="h-8 w-8 animate-spin text-primary" />
+       </div>
+   )}
+   {!loadingPlans && !upcomingPlansExist && searchTerm === '' && (
+       <EmptyState title="No Upcoming Plans" message="You have no upcoming plans. Ready to create your next adventure?" />
+   )}
+   {!loadingPlans && !upcomingPlansExist && searchTerm !== '' && (
+       <EmptyState title="No Plans Found" message={`Your search for "${searchTerm}" did not match any upcoming plans.`} showCreateButton={false} />
+   )}
 
-                    {pendingShares.length > 0 && (
-                      <PlanStackSection
-                        title="Shared With You"
-                        plans={[]} 
-                        isExpanded={expandedSections.shares}
-                        onToggleExpand={() => toggleSectionExpansion('shares')}
-                        emptyMessage="No new plans shared with you."
-                        currentUserUid={currentUserId}
-                        isLoading={loadingPlans && pendingShares.length === 0} 
-                      >
-                         {expandedSections.shares && (
-                          <div className="space-y-3 mt-3">
-                            {pendingShares.map(share => (
-                                <Card key={share.id} className="p-3 bg-card/80 border border-border/50">
-                                <div className="flex items-center gap-3">
-                                    <Avatar className="h-10 w-10">
-                                    <AvatarImage src={share.sharedByAvatarUrl || undefined} alt={share.sharedByName} data-ai-hint="person avatar"/>
-                                    <AvatarFallback className="text-sm">{share.sharedByName?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
-                                    </Avatar>
-                                    <div className="flex-grow">
-                                    <p className="text-sm font-medium text-foreground/90">
-                                        <span className="font-semibold text-primary">{share.sharedByName}</span> shared:
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">"{share.originalPlanName}"</p>
-                                    </div>
-                                    <div className="flex gap-1 flex-shrink-0">
-                                        <Button variant="ghost" size="icon" asChild className="h-7 w-7 text-muted-foreground hover:text-primary" aria-label="View Original Plan">
-                                        <Link href={`/p/${share.originalPlanId}`}><Eye className="h-3.5 w-3.5"/></Link>
-                                        </Button>
-                                        <Button size="icon" className="h-7 w-7" onClick={() => handleAcceptShareRequest(share)} disabled={isAcceptingShare && shareToAccept?.id === share.id} aria-label="Accept Plan">
-                                            {(isAcceptingShare && shareToAccept?.id === share.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <CheckCircle2 className="mr-0 h-3.5 w-3.5"/>}
-                                        </Button>
-                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => handleDeclineShareRequest(share)} disabled={isDecliningShare && shareToDecline?.id === share.id} aria-label="Decline Plan">
-                                            {(isDecliningShare && shareToDecline?.id === share.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <Trash2 className="h-3.5 w-3.5"/>}
-                                        </Button>
-                                    </div>
-                                </div>
-                                </Card>
-                            ))}
-                          </div>
-                         )}
-                      </PlanStackSection>
-                    )}
-                    
-                     {invitedToPlans.length > 0 && (
-                        <PlanStackSection
-                            title="Your Invitations"
-                            plans={invitedToPlans}
-                            isExpanded={expandedSections.invitations}
-                            onToggleExpand={() => toggleSectionExpansion('invitations')}
-                            emptyMessage="You have no pending invitations."
-                            currentUserUid={currentUserId}
-                        />
-                    )}
-                    {myDrafts.length > 0 && (
-                    <PlanStackSection
-                        title="My Drafts"
-                        plans={myDrafts}
-                        isExpanded={expandedSections.myDrafts}
-                        onToggleExpand={() => toggleSectionExpansion('myDrafts')}
-                        emptyMessage="You have no draft plans."
-                        currentUserUid={currentUserId}
-                        isLoading={loadingPlans && myDrafts.length === 0 && allUserPlans.length === 0 && pendingShares.length === 0 && invitedToPlans.length === 0}
-                    />
-                    )}
-                     {myAwaitingResponsesPlans.length > 0 && (
-                        <PlanStackSection
-                            title="Awaiting Guest Confirmations"
-                            plans={myAwaitingResponsesPlans}
-                            isExpanded={expandedSections.myAwaitingResponses}
-                            onToggleExpand={() => toggleSectionExpansion('myAwaitingResponses')}
-                            emptyMessage="All published plans have full attendance or no invitees pending."
-                            currentUserUid={currentUserId}
-                        />
-                    )}
-                    {myConfirmedReadyPlans.length > 0 && (
-                        <PlanStackSection
-                            title="Confirmed & Ready"
-                            plans={myConfirmedReadyPlans}
-                            isExpanded={expandedSections.myConfirmedReady}
-                            onToggleExpand={() => toggleSectionExpansion('myConfirmedReady')}
-                            emptyMessage="No upcoming plans are fully confirmed by all participants yet."
-                            currentUserUid={currentUserId}
-                        />
-                    )}
+   {pendingShares.length > 0 && (
+     <PlanStackSection
+       title="Shared With You"
+       plans={[]} 
+       isExpanded={expandedSections.shares}
+       onToggleExpand={() => toggleSectionExpansion('shares')}
+       emptyMessage="No new plans shared with you."
+       currentUserUid={currentUserId}
+       isLoading={loadingPlans && pendingShares.length === 0} 
+     >
+        {expandedSections.shares && (
+         <div className="space-y-3 mt-3">
+           {pendingShares.map(share => (
+               <Card key={share.id} className="p-3 bg-card/80 border border-border/50">
+               <div className="flex items-center gap-3">
+  <Avatar className="h-10 w-10">
+  <AvatarImage src={share.sharedByAvatarUrl || undefined} alt={share.sharedByName} data-ai-hint="person avatar"/>
+  <AvatarFallback className="text-sm">{share.sharedByName?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
+  </Avatar>
+  <div className="flex-grow">
+  <p className="text-sm font-medium text-foreground/90">
+      <span className="font-semibold text-primary">{share.sharedByName}</span> shared:
+  </p>
+  <p className="text-xs text-muted-foreground">"{share.originalPlanName}"</p>
+  </div>
+  <div className="flex gap-1 flex-shrink-0">
+      <Button variant="ghost" size="icon" asChild className="h-7 w-7 text-muted-foreground hover:text-primary" aria-label="View Original Plan">
+      <Link href={`/p/${share.originalPlanId}`}><Eye className="h-3.5 w-3.5"/></Link>
+      </Button>
+      <Button size="icon" className="h-7 w-7" onClick={() => handleAcceptShareRequest(share)} disabled={isAcceptingShare && shareToAccept?.id === share.id} aria-label="Accept Plan">
+          {(isAcceptingShare && shareToAccept?.id === share.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <CheckCircle2 className="mr-0 h-3.5 w-3.5"/>}
+      </Button>
+      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => handleDeclineShareRequest(share)} disabled={isDecliningShare && shareToDecline?.id === share.id} aria-label="Decline Plan">
+          {(isDecliningShare && shareToDecline?.id === share.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <Trash2 className="h-3.5 w-3.5"/>}
+      </Button>
+  </div>
+               </div>
+               </Card>
+           ))}
+         </div>
+        )}
+     </PlanStackSection>
+   )}
+   
+    {invitedToPlans.length > 0 && (
+       <PlanStackSection
+           title="Your Invitations"
+           plans={invitedToPlans}
+           isExpanded={expandedSections.invitations}
+           onToggleExpand={() => toggleSectionExpansion('invitations')}
+           emptyMessage="You have no pending invitations."
+           currentUserUid={currentUserId}
+       />
+   )}
+   {myDrafts.length > 0 && (
+   <PlanStackSection
+       title="My Drafts"
+       plans={myDrafts}
+       isExpanded={expandedSections.myDrafts}
+       onToggleExpand={() => toggleSectionExpansion('myDrafts')}
+       emptyMessage="You have no draft plans."
+       currentUserUid={currentUserId}
+       isLoading={loadingPlans && myDrafts.length === 0 && allUserPlans.length === 0 && pendingShares.length === 0 && invitedToPlans.length === 0}
+   />
+   )}
+    {myAwaitingResponsesPlans.length > 0 && (
+       <PlanStackSection
+           title="Awaiting Guest Confirmations"
+           plans={myAwaitingResponsesPlans}
+           isExpanded={expandedSections.myAwaitingResponses}
+           onToggleExpand={() => toggleSectionExpansion('myAwaitingResponses')}
+           emptyMessage="All published plans have full attendance or no invitees pending."
+           currentUserUid={currentUserId}
+       />
+   )}
+   {myConfirmedReadyPlans.length > 0 && (
+       <PlanStackSection
+           title="Confirmed & Ready"
+           plans={myConfirmedReadyPlans}
+           isExpanded={expandedSections.myConfirmedReady}
+           onToggleExpand={() => toggleSectionExpansion('myConfirmedReady')}
+           emptyMessage="No upcoming plans are fully confirmed by all participants yet."
+           currentUserUid={currentUserId}
+       />
+   )}
                 </TabsContent>
 
                 <TabsContent value="past" className="mt-0">
-                    {loadingPlans && pastPlans.length === 0 && (
-                         <div className="flex justify-center items-center py-10 min-h-[300px]">
-                           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                         </div>
-                    )}
-                    {!loadingPlans && pastPlans.length === 0 && searchTerm === '' && (
-                        <EmptyState title="No Past Plans" message="Looks like your adventure log is empty here. Completed plans will show up once they're done!" />
-                    )}
-                    {!loadingPlans && pastPlans.length === 0 && searchTerm !== '' && (
-                        <EmptyState title="No Past Plans Found" message={`Your search for "${searchTerm}" did not match any past plans.`} showCreateButton={false} />
-                    )}
-                    {!loadingPlans && pastPlans.length > 0 && (
-                    <div className="grid grid-cols-1 gap-4">
-                        {pastPlans.map(plan => (
-                        <PlanCard key={plan.id} plan={plan} currentUserUid={currentUserId} />
-                        ))}
-                    </div>
-                    )}
+   {loadingPlans && pastPlans.length === 0 && (
+        <div className="flex justify-center items-center py-10 min-h-[300px]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+   )}
+   {!loadingPlans && pastPlans.length === 0 && searchTerm === '' && (
+       <EmptyState title="No Past Plans" message="Looks like your adventure log is empty here. Completed plans will show up once they're done!" />
+   )}
+   {!loadingPlans && pastPlans.length === 0 && searchTerm !== '' && (
+       <EmptyState title="No Past Plans Found" message={`Your search for "${searchTerm}" did not match any past plans.`} showCreateButton={false} />
+   )}
+   {!loadingPlans && pastPlans.length > 0 && (
+   <div className="grid grid-cols-1 gap-4">
+       {pastPlans.map(plan => (
+       <PlanCard key={plan.id} plan={plan} currentUserUid={currentUserId} />
+       ))}
+   </div>
+   )}
                 </TabsContent>
                 
                 <TabsContent value="saved" className="mt-0">
-                    {loadingSavedPlans && savedPlans.length === 0 && (
-                        <div className="flex justify-center items-center py-10 min-h-[300px]">
-                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                        </div>
-                    )}
-                    {!loadingSavedPlans && savedPlans.length === 0 && searchTerm === '' && (
-                        <EmptyState title="No Saved Templates" message="You haven't saved any activity templates yet. Explore the discover page to find great activity ideas and save them for later!" showCreateButton={false} />
-                    )}
-                    {!loadingSavedPlans && filteredSavedPlans.length === 0 && searchTerm !== '' && (
-                        <EmptyState title="No Templates Found" message={`Your search for "${searchTerm}" did not match any saved activity templates.`} showCreateButton={false} />
-                    )}
-                    {!loadingSavedPlans && filteredSavedPlans.length > 0 && (
-                    <div className="grid grid-cols-1 gap-4">
-                        {filteredSavedPlans.map(plan => (
-                        <PlanCard key={plan.id} plan={plan} currentUserUid={currentUserId} />
-                        ))}
-                    </div>
-                    )}
+   {loadingSavedPlans && savedPlans.length === 0 && (
+       <div className="flex justify-center items-center py-10 min-h-[300px]">
+       <Loader2 className="h-8 w-8 animate-spin text-primary" />
+       </div>
+   )}
+   {!loadingSavedPlans && savedPlans.length === 0 && searchTerm === '' && (
+       <EmptyState title="No Saved Templates" message="You haven't saved any activity templates yet. Explore the discover page to find great activity ideas and save them for later!" showCreateButton={false} />
+   )}
+   {!loadingSavedPlans && filteredSavedPlans.length === 0 && searchTerm !== '' && (
+       <EmptyState title="No Templates Found" message={`Your search for "${searchTerm}" did not match any saved activity templates.`} showCreateButton={false} />
+   )}
+   {!loadingSavedPlans && filteredSavedPlans.length > 0 && (
+   <div className="grid grid-cols-1 gap-4">
+       {filteredSavedPlans.map(plan => (
+       <PlanCard key={plan.id} plan={plan} currentUserUid={currentUserId} />
+       ))}
+   </div>
+   )}
                 </TabsContent>
                 </>
             ) : ( 
                 <TabsContent value={activeTab} className="mt-0">
                 {(loadingPlans && plansForCalendar.length === 0 && !searchTerm) ? (
-                    <div className="flex justify-center items-center py-20 min-h-[300px]">
-                        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                    </div>
+   <div className="flex justify-center items-center py-20 min-h-[300px]">
+       <Loader2 className="h-10 w-10 animate-spin text-primary" />
+   </div>
                 ) : plansForCalendar.length === 0 ? (
-                    <EmptyState
-                        title={activeTab === 'upcoming' ? "No Upcoming Plans" : "No Past Plans"}
-                        message={activeTab === 'upcoming' ? "No upcoming plans to show on the calendar." : "No past plans to show on the calendar."}
-                    />
+   <EmptyState
+       title={activeTab === 'upcoming' ? "No Upcoming Plans" : "No Past Plans"}
+       message={activeTab === 'upcoming' ? "No upcoming plans to show on the calendar." : "No past plans to show on the calendar."}
+   />
                 ) : (
-                    <div className="bg-card p-2 sm:p-4 rounded-lg shadow">
-                        <CalendarComponent
-                            mode="single"
-                            selected={selectedDate}
-                            onSelect={(day) => {
-                                if (day && isValid(day)) {
-                                setSelectedDate(day);
-                                setCurrentMonth(startOfMonth(day));
-                                } else {
-                                setSelectedDate(undefined);
-                                }
-                            }}
-                            month={currentMonth}
-                            onMonthChange={setCurrentMonth}
-                            className="rounded-md [&_button[name=day]]:rounded-md"
-                            classNames={{
-                                day_selected: 'bg-primary text-primary-foreground hover:bg-primary/90 focus:bg-primary focus:text-primary-foreground',
-                                day_today: 'bg-accent text-accent-foreground',
-                                months: 'flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0 justify-center',
-                                month: 'space-y-4 w-full sm:w-auto',
-                                caption_label: 'text-lg font-medium text-foreground/90',
-                                head_cell: 'text-muted-foreground rounded-md w-full sm:w-10 font-normal text-[0.8rem]',
-                                cell: 'h-10 w-full sm:w-10 text-center text-sm p-0 relative first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20',
-                                day: 'h-10 w-10 p-0 font-normal aria-selected:opacity-100 rounded-md',
-                                nav_button: cn(
-                                buttonVariants({ variant: "outline" }),
-                                "h-8 w-8 bg-transparent p-0 opacity-70 hover:opacity-100"
-                                ),
-                            }}
-                            components={{ DayContent: DayWithDot }}
-                            footer={calendarFooter}
-                            modifiers={{ event: eventDates.filter(date => isValid(date)) as Date[] }}
-                            modifiersClassNames={{ event: 'has-event' }}
-                        />
-                    </div>
+   <div className="bg-card p-2 sm:p-4 rounded-lg shadow">
+       <CalendarComponent
+           mode="single"
+           selected={selectedDate}
+           onSelect={(day) => {
+               if (day && isValid(day)) {
+               setSelectedDate(day);
+               setCurrentMonth(startOfMonth(day));
+               } else {
+               setSelectedDate(undefined);
+               }
+           }}
+           month={currentMonth}
+           onMonthChange={setCurrentMonth}
+           className="rounded-md [&_button[name=day]]:rounded-md"
+           classNames={{
+               day_selected: 'bg-primary text-primary-foreground hover:bg-primary/90 focus:bg-primary focus:text-primary-foreground',
+               day_today: 'bg-accent text-accent-foreground',
+               months: 'flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0 justify-center',
+               month: 'space-y-4 w-full sm:w-auto',
+               caption_label: 'text-lg font-medium text-foreground/90',
+               head_cell: 'text-muted-foreground rounded-md w-full sm:w-10 font-normal text-[0.8rem]',
+               cell: 'h-10 w-full sm:w-10 text-center text-sm p-0 relative first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20',
+               day: 'h-10 w-10 p-0 font-normal aria-selected:opacity-100 rounded-md',
+               nav_button: cn(
+               buttonVariants({ variant: "outline" }),
+               "h-8 w-8 bg-transparent p-0 opacity-70 hover:opacity-100"
+               ),
+           }}
+           components={{ DayContent: DayWithDot }}
+           footer={calendarFooter}
+           modifiers={{ event: eventDates.filter(date => isValid(date)) as Date[] }}
+           modifiersClassNames={{ event: 'has-event' }}
+       />
+   </div>
                 )}
                 </TabsContent>
             )}
@@ -1418,7 +1517,7 @@ export default function PlansPage() {
             <AlertDialogFooter>
               <AlertDialogCancel onClick={() => setShareToAccept(null)} disabled={isAcceptingShare} aria-label="Cancel Share Acceptance">Cancel</AlertDialogCancel>
               <AlertDialogAction onClick={async () => {
-                  if (shareToAccept) await handleAcceptShareRequest(shareToAccept);
+ if (shareToAccept) await handleAcceptShareRequest(shareToAccept);
               }} disabled={isAcceptingShare} aria-label="Confirm Share Acceptance">
                 {(isAcceptingShare) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4"/>}
                 Accept & Add
@@ -1438,9 +1537,9 @@ export default function PlansPage() {
             <AlertDialogFooter>
               <AlertDialogCancel onClick={() => setShareToDecline(null)} disabled={isDecliningShare} aria-label="Cancel Share Decline">Cancel</AlertDialogCancel>
               <AlertDialogAction onClick={async () => {
-                  if(shareToDecline) await handleDeclineShareRequest(shareToDecline);
+ if(shareToDecline) await handleDeclineShareRequest(shareToDecline);
               }} disabled={isDecliningShare} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground" aria-label="Confirm Share Decline">
-                 {(isDecliningShare) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4"/>}
+{(isDecliningShare) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4"/>}
                 Decline
               </AlertDialogAction>
             </AlertDialogFooter>
