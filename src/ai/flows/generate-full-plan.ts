@@ -27,6 +27,7 @@ const ItineraryItemSchema = z.object({
   startTime: z.string().datetime().nullable().describe("The start date and time for this stop in ISO 8601 format."),
   endTime: z.string().datetime().nullable().describe("The end date and time for this stop in ISO 8601 format. If not specified, calculate based on startTime and durationMinutes (default 60 mins)."),
   description: z.string().nullable().describe("A brief description of this stop or activity."),
+  tagline: z.string().optional().nullable().describe("A short AI-generated summary tagline highlighting the role of this stop in the overall plan (e.g., 'Romantic sunset dinner')."),
   googlePlaceId: z.string().nullable().describe("The Google Place ID, if available from the 'fetchPlaceDetails' tool."),
   lat: z.number().nullable().describe("Latitude of the place."),
   lng: z.number().nullable().describe("Longitude of the place."),
@@ -395,7 +396,7 @@ Itinerary Instructions:
     c.  Set a default DURATION of 60 minutes ('durationMinutes': 60) for each stop unless the user's prompt or place type clearly suggests otherwise (e.g., a quick coffee vs. a museum visit).
     d.  Calculate 'endTime' based on 'startTime' and 'durationMinutes'. Ensure 'endTime' is always after 'startTime'. Times should be in ISO 8601 format.
     e.  Populate all relevant fields in the ItineraryItem schema using data from the 'fetchPlaceDetails' tool: 'placeName', 'address', 'city', 'lat', 'lng', 'googlePlaceId', 'rating', 'reviewCount', 'openingHours', 'isOperational', 'statusText', 'types', 'website', 'phoneNumber', 'priceLevel'. IMPORTANT: Do NOT set 'googlePhotoReference' - leave it null to allow the frontend auto-refresh logic to handle photos using the reliable getUrl() method and avoid 400 errors from expired photo references.
-    f.  Generate 2-3 concise 'activitySuggestions' for that stop, tailored to the participants' combined preferences and the place type.
+    f.  First, create a concise 'tagline' (no more than 80 characters) that captures the essence of this stop in the context of the full itinerary (e.g., 'Kick-off with artisanal coffee'). Then generate 2–3 concise 'activitySuggestions' tailored to the participants' combined preferences and the place type. Each suggestion should start with a relevant emoji (e.g., '☕ Try their signature cold brew', '📸 Capture the perfect Instagram shot at the rooftop', '🍰 Share a slice of their famous cheesecake').
     g.  For multi-stop plans, after the first stop, use the 'fetchDirections' tool to estimate 'transitTimeFromPreviousMinutes' from the previous stop's location to the current stop's location. Pick a sensible default 'transitMode' (usually 'driving' or 'walking' if close by, e.g. under 2km). Adjust the 'startTime' of the current stop accordingly (it should be previous stop's endTime + transitTime). Also set the 'transitMode' field for the current itinerary item.
 2.  The itinerary must be CHRONOLOGICAL. Ensure 'startTime' and 'endTime' for each stop are in valid ISO 8601 format (YYYY-MM-DDTHH:mm:ss.sssZ or YYYY-MM-DDTHH:mm).
 3.  The first itinerary item's 'startTime' should generally match the user's requested 'planDateTime'. Its 'placeName', 'address', and 'city' should be based on the 'locationQuery' and details from 'fetchPlaceDetailsTool'. Its 'transitTimeFromPreviousMinutes' should be null.

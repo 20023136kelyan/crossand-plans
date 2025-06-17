@@ -125,60 +125,63 @@ export function EnhancedPlanActions({
       </div>
 
       {/* Primary Actions */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
         <Button
           variant="outline"
+          size="sm"
           onClick={onShare}
-          className="flex-1"
           disabled={isLoading}
+          className="flex items-center gap-1 px-3"
         >
-          <Share className="h-4 w-4 mr-2" />
-          Share Plan
+          <Share className="h-4 w-4" />
+          <span className="sr-only sm:not-sr-only sm:inline">Share</span>
         </Button>
-        
-        <Button
-          variant="outline"
-          onClick={onQRCode}
-          className="flex-1"
-          disabled={isLoading}
-        >
-          <QrCode className="h-4 w-4 mr-2" />
-          QR Code
-        </Button>
-      </div>
 
-      <div className="grid grid-cols-2 gap-2">
         <Button
           variant="outline"
-          onClick={onCopyLink}
-          className="flex-1"
+          size="sm"
+          onClick={onQRCode}
           disabled={isLoading}
+          className="flex items-center gap-1 px-3"
         >
-          <Link className="h-4 w-4 mr-2" />
-          Copy Link
+          <QrCode className="h-4 w-4" />
+          <span className="sr-only sm:not-sr-only sm:inline">QR</span>
         </Button>
-        
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onCopyLink}
+          disabled={isLoading}
+          className="flex items-center gap-1 px-3"
+        >
+          <Link className="h-4 w-4" />
+          <span className="sr-only sm:not-sr-only sm:inline">Link</span>
+        </Button>
+
         {canCopy && (
           <Button
             variant="outline"
+            size="sm"
             onClick={onCopyPlan}
-            className="flex-1"
             disabled={isLoading}
+            className="flex items-center gap-1 px-3"
           >
-            <Copy className="h-4 w-4 mr-2" />
-            Copy Plan
+            <Copy className="h-4 w-4" />
+            <span className="sr-only sm:not-sr-only sm:inline">Copy</span>
           </Button>
         )}
-        
+
         {canManage && (
           <Button
             variant="outline"
+            size="sm"
             onClick={onManageParticipants}
-            className="flex-1"
             disabled={isLoading}
+            className="flex items-center gap-1 px-3"
           >
-            <Users className="h-4 w-4 mr-2" />
-            Manage
+            <Users className="h-4 w-4" />
+            <span className="sr-only sm:not-sr-only sm:inline">Manage</span>
           </Button>
         )}
       </div>

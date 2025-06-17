@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
@@ -7,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { GoogleMap, useJsApiLoader, CircleF } from '@react-google-maps/api';
 import { format } from 'date-fns';
-import { CalendarIcon, ChevronLeft, ChevronDown, ChevronRight, SearchIcon, Target, CheckCircle, MapPin, Clock, Users, DollarSign, MessageSquare, Sparkles, Loader2, X } from 'lucide-react';
+import { CalendarIcon, ChevronLeft, ChevronDown, ChevronUp, ChevronRight, SearchIcon, Target, Check, CheckCircle, MapPin, Clock, Users, DollarSign, MessageSquare, ArrowLeft, Sparkles, Loader2, X, Edit, Pencil, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -23,18 +22,23 @@ import { useTheme } from 'next-themes';
 import { generatePlanWithAIAction, createPlanAction } from '@/app/actions/planActions';
 import type { PlanFormValues } from '@/components/plans/PlanForm';
 import { PlanForm } from '@/components/plans/PlanForm';
+import { ItineraryItemPreviewCard } from '@/components/plans/ItineraryItemPreviewCard';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { PlaceAutocomplete } from '@/components/ui/place-autocomplete';
 import { FriendMultiSelectInput } from '@/components/plans/FriendMultiSelectInput';
 import { LimitGuard } from '@/components/limits/LimitGuard';
 import { type PriceRangeType, type PlanTypeType as PlanTypeHintTypeAlias } from '@/types/user';
 import { type Plan } from '@/types/plan';
+import type { UserProfile } from '@/types/user';
+import { getUsersProfiles } from '@/services/userService';
 import { z } from 'zod';
 
 // Plan Generation Form Schema
 const PlanGenerationFormSchema = z.object({
   planDateTime: z.date(),
   searchRadius: z.number().nullable(),
-  priceRange: z.enum(['$', '$$', '$$$', '$$$$', 'Free']).nullable(),
+  priceRange: z.enum(['$', '$$', '$$$', '$$$$', 'Free'] as const).nullable(),
   planTypeHint: z.enum(['ai-decide', 'single-stop', 'multi-stop']).default('ai-decide'),
   userPrompt: z.string().default(''),
   invitedParticipantUserIds: z.array(z.string()).default([]),
@@ -73,19 +77,19 @@ const AdvancedMarker = ({ position, map }: { position: { lat: number; lng: numbe
 
 // Options for form fields
 const priceRangeOptions = [
-  { value: '', label: 'Any Budget' },
+  { value: null, label: 'Any Budget' },
   { value: 'Free', label: 'Free Activities' },
   { value: '$', label: 'Budget ($)' },
   { value: '$$', label: 'Moderate ($$)' },
   { value: '$$$', label: 'Upscale ($$$)' },
   { value: '$$$$', label: 'Luxury ($$$$)' },
-];
+] as const;
 
 const planTypeHintOptions = [
-  { value: 'ai-decide', label: 'AI Decide' },
-  { value: 'single-stop', label: 'Single Stop' },
-  { value: 'multi-stop', label: 'Multi-Stop' },
-];
+  { value: 'ai-decide', label: 'AI Decide', description: 'Let AI choose based on context' },
+  { value: 'single-stop', label: 'Single Stop', description: 'One main destination' },
+  { value: 'multi-stop', label: 'Multi-Stop', description: 'Multiple destinations' },
+] as const;
 
 // Helper functions
 const isDateValid = (date: any): date is Date => {
@@ -163,6 +167,31 @@ export default function GeneratePlanPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedPlan, setGeneratedPlan] = useState<Plan | null>(null);
+  const [showAllStops, setShowAllStops] = useState(false);
+  const [visibleStopIndex, setVisibleStopIndex] = useState(0);
+  const [isFooterVisible, setIsFooterVisible] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
+  const [invitedProfiles, setInvitedProfiles] = useState<UserProfile[]>([]);
+
+  // Fetch invited participant profiles whenever a plan is generated
+  useEffect(() => {
+    async function fetchProfiles() {
+      if (!generatedPlan?.invitedParticipantUserIds?.length) {
+        setInvitedProfiles([]);
+        return;
+      }
+      try {
+        const profiles = await getUsersProfiles(generatedPlan.invitedParticipantUserIds);
+        setInvitedProfiles(profiles);
+      } catch (err) {
+        console.error('Failed to load invited participant profiles', err);
+      }
+    }
+    fetchProfiles();
+  }, [generatedPlan]);
+  const [showEditForm, setShowEditForm] = useState(false);
   const [isMapCollapsed, setIsMapCollapsed] = useState(false);
   const [isLocationSearchCollapsed, setIsLocationSearchCollapsed] = useState(true);
   const [isSearchRadiusCollapsed, setIsSearchRadiusCollapsed] = useState(true);
@@ -178,11 +207,68 @@ export default function GeneratePlanPage() {
   const locationInputRef = useRef<HTMLInputElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   // Hooks
   const router = useRouter();
   const { user } = useAuth();
   const { theme } = useTheme();
+
+  useEffect(() => {
+    if (!scrollContainerRef.current || !generatedPlan) return;
+
+    // Ensure the refs array is the correct size for the current itinerary
+    itemRefs.current = itemRefs.current.slice(0, generatedPlan.itinerary.length);
+
+    const observer = new IntersectionObserver(
+        (entries) => {
+            for (const entry of entries) {
+                if (entry.isIntersecting) {
+                    const index = itemRefs.current.findIndex(ref => ref === entry.target);
+                    if (index !== -1) {
+                        setVisibleStopIndex(index);
+                        return; // Exit after finding the first visible item from the top
+                    }
+                }
+            }
+        },
+        {
+            root: scrollContainerRef.current,
+            rootMargin: '-40% 0px -40% 0px', // Triggers when an item is in the middle 20% of the viewport
+            threshold: 0,
+        }
+    );
+
+    const currentRefs = itemRefs.current.filter(ref => ref);
+    currentRefs.forEach((ref) => {
+        if (ref) observer.observe(ref);
+    });
+
+    return () => {
+      currentRefs.forEach((ref) => {
+        if (ref) observer.unobserve(ref);
+      });
+    };
+  }, [generatedPlan, showAllStops]);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      if (scrollHeight - scrollTop - clientHeight < 50) {
+        setIsFooterVisible(true);
+      } else {
+        // On scroll up, we let the mouse leave event handle hiding
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    handleScroll(); // Initial check
+
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [generatedPlan]);
 
   // Scroll handling logic removed - map control is now only via buttons
 
@@ -218,6 +304,8 @@ export default function GeneratePlanPage() {
   const watchedSearchRadius = form.watch('searchRadius');
   const selectedLat = watchedLat;
   const selectedLng = watchedLng;
+  const invitedIds = form.watch('invitedParticipantUserIds') || [];
+  const totalParticipants = 1 + invitedIds.length;
 
   // Memoized map center
   const mapCenter = useMemo(() => {
@@ -473,7 +561,28 @@ export default function GeneratePlanPage() {
         userPrompt: data.userPrompt,
         invitedParticipantUserIds: data.invitedParticipantUserIds,
       };
-      const result = await generatePlanWithAIAction(clientInput, authToken);
+      // Generate unique identifiers and random values for this specific request
+      const sessionId = crypto.randomUUID().slice(0, 8);
+      const timestamp = Date.now();
+      const randomValue = Math.random();
+      const timeVariance = Math.floor(Math.random() * 30) * 60 * 1000; // Random minutes up to 30
+      const dietaryTime = (new Date().getHours() >= 11 && new Date().getHours() <= 14) ? 'lunch' : 
+                         (new Date().getHours() >= 17 && new Date().getHours() <= 21) ? 'dinner' : 'any';
+      
+      const result = await generatePlanWithAIAction({
+        ...clientInput,
+        // Enhance userPrompt with more context and uniqueness markers
+        userPrompt: `${clientInput.userPrompt} (Generated at ${new Date(timestamp).toISOString()}, 
+          Session: ${sessionId}, 
+          TimeContext: ${dietaryTime}, 
+          Uniqueness: HIGH_PRIORITY, 
+          Preferences: GENERATE COMPLETELY DIFFERENT AND UNIQUE PLACES from previous attempts,
+          Diversity: MAXIMIZE_VARIETY in both place types and activities)`.replace(/\s+/g, ' '),
+        // Force a new unique ID for each generation
+        
+        // Add a meaningful time offset to further differentiate requests
+        planDateTime: new Date(new Date(clientInput.planDateTime).getTime() + timeVariance).toISOString()
+      }, authToken);
       
       if (result.success && result.plan) {
         setGeneratedPlan(result.plan);
@@ -534,28 +643,359 @@ export default function GeneratePlanPage() {
 
   // Early return for generated plan view
   if (generatedPlan) {
+    // If showEditForm is true, show the edit form
+    if (showEditForm) {
+      return (
+        <div className="flex flex-col h-screen bg-background text-foreground">
+          <div className="flex-1 overflow-y-auto">
+            <LimitGuard 
+              type="plan-creation"
+              onLimitReached={() => {
+                toast({
+                  title: 'Plan Limit Reached',
+                  description: 'You have reached your maximum number of plans. Please delete some existing plans or upgrade your account.',
+                  variant: 'destructive',
+                });
+              }}
+            >
+              <PlanForm 
+                initialData={generatedPlan} 
+                onSubmit={handleSaveGeneratedPlan} 
+                isSubmitting={isGenerating} 
+                formMode="create"
+                formTitle="Customize Your AI-Generated Plan" 
+                onBackToAICriteria={() => setShowEditForm(false)}
+              />
+            </LimitGuard>
+          </div>
+        </div>
+      );
+    }
+
+    // Otherwise show the preview
     return (
       <div className="flex flex-col h-screen bg-background text-foreground">
-        <div className="flex-1 overflow-y-auto">
-          <LimitGuard 
-            type="plan-creation"
-            onLimitReached={() => {
-              toast({
-                title: 'Plan Limit Reached',
-                description: 'You have reached your maximum number of plans. Please delete some existing plans or upgrade your account.',
-                variant: 'destructive',
-              });
-            }}
-          >
-            <PlanForm 
-              initialData={generatedPlan} 
-              onSubmit={handleSaveGeneratedPlan} 
-              isSubmitting={isGenerating} 
-              formMode="create"
-              formTitle="Review & Edit Your AI Plan" 
-              onBackToAICriteria={() => setGeneratedPlan(null)}
-            />
-          </LimitGuard>
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto flex flex-col items-stretch">
+          <div className="w-full h-full flex flex-col">
+            {/* Plan Preview Card */}
+            <div
+              className="p-6 flex flex-col relative max-w-screen-sm w-full mx-auto"
+              onMouseEnter={() => setIsFooterVisible(true)}
+              onMouseLeave={() => {
+                const container = scrollContainerRef.current;
+                if (container) {
+                  const { scrollTop, scrollHeight, clientHeight } = container;
+                  if (scrollHeight - scrollTop - clientHeight >= 50) {
+                    setIsFooterVisible(false);
+                  }
+                }
+              }}
+            >
+              <div className="mb-2">
+                <span className="inline-block bg-primary/10 text-primary px-3 py-1.5 rounded-full text-base font-semibold">AI Plan Preview</span>
+              </div>
+              <h2 className="text-2xl font-bold mb-2">
+                {generatedPlan.name}
+              </h2>
+              {generatedPlan.description && (
+                <div className="mb-6 max-w-prose">
+                  <p className="text-muted-foreground text-sm">
+                    {isDescriptionExpanded ? (
+                      <>{generatedPlan.description} <button onClick={() => setIsDescriptionExpanded(false)} className="text-primary hover:underline font-medium">Read less</button></>
+                    ) : (
+                      <>
+                        {generatedPlan.description.length > 120
+                          ? `${generatedPlan.description.substring(0, 120).trim()}... `
+                          : generatedPlan.description}
+                        {generatedPlan.description.length > 120 && (
+                          <button 
+                            onClick={() => setIsDescriptionExpanded(true)}
+                            className="text-primary hover:underline font-medium"
+                          >
+                            Read more
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </p>
+                </div>
+              )}
+               {/* Participants Display */}
+               <div className="mb-1">
+                 <div className="flex items-center gap-4">
+                   <div className="flex -space-x-2">
+                     {/* Host Avatar */}
+                     <Avatar className="h-10 w-10 ring-2 ring-background">
+                       <AvatarImage src={user?.photoURL || undefined} alt={user?.displayName || 'You'} />
+                        <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+                          {user?.displayName?.charAt(0) || 'U'}
+                        </AvatarFallback>
+                      </Avatar>
+                      {/* Invited participants */}
+                      {invitedProfiles.slice(0, 2).map((participant) => (
+                        <Avatar key={participant.uid} className="h-10 w-10 ring-2 ring-primary/20">
+                          {participant.avatarUrl ? (
+                            <AvatarImage src={participant.avatarUrl} alt={participant.name || participant.username || 'User'} />
+                          ) : null}
+                          <AvatarFallback className="bg-muted text-muted-foreground">
+                            {(participant.name || participant.username || 'U').charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                      ))}
+                      {/* Additional count badge */}
+                      {invitedProfiles.length > 2 && (
+                        <Avatar className="h-10 w-10 ring-2 ring-primary/20 bg-muted">
+                          <AvatarFallback className="text-xs font-medium text-muted-foreground">
+                            +{invitedProfiles.length - 2}
+                          </AvatarFallback>
+                        </Avatar>
+                      )}
+                    </div>
+                    <div className="ml-4">
+                      <p className="font-semibold leading-none">Participants</p>
+                      <p className="text-xs text-muted-foreground">Including you</p>
+                      </div>
+                    </div>
+                 </div>
+               </div>
+              <div className="mb-4">
+                <div className="flex items-center justify-between px-4 mb-2">
+                  <div className="flex items-center gap-3">
+                    <h3 className="font-semibold">Itinerary</h3>
+                    <div className="flex items-center gap-1.5">
+                      {generatedPlan.itinerary.map((_, idx) => (
+                        <div
+                          key={`dot-${idx}`}
+                          className={cn(
+                            'h-2 rounded-full transition-all',
+                            visibleStopIndex === idx ? 'w-4 bg-primary' : 'w-2 bg-muted'
+                          )}
+                        />
+                      ))}
+                      <div className="flex items-center justify-center bg-muted/50 rounded-full px-2 py-0.5 ml-1.5">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {visibleStopIndex + 1}/{generatedPlan.itinerary.length}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div 
+                  className="relative overflow-x-auto snap-x snap-mandatory scroll-smooth pb-6 hide-scrollbar"
+                  style={{ 
+                    WebkitOverflowScrolling: 'touch',
+                    msOverflowStyle: 'none',
+                    scrollbarWidth: 'none'
+                  }}
+                  onScroll={(e) => {
+                    const container = e.currentTarget;
+                    const scrollPosition = container.scrollLeft;
+                    const itemWidth = container.scrollWidth / generatedPlan.itinerary.length;
+                    const newIndex = Math.round(scrollPosition / itemWidth);
+                    if (newIndex !== visibleStopIndex) {
+                      setVisibleStopIndex(newIndex);
+                    }
+                  }}
+                >
+                  <div className="flex w-max min-w-full">
+                    {generatedPlan.itinerary.map((item, idx) => (
+                      <div 
+                        key={item.id} 
+                        className="w-screen flex-shrink-0 px-4 snap-start"
+                        ref={el => {
+                          if (el) {
+                            itemRefs.current[idx] = el;
+                          }
+                        }}
+                      >
+                        <ItineraryItemPreviewCard 
+                          item={item} 
+                          index={idx} 
+                          expanded={true} 
+                          isActive={idx === visibleStopIndex}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {generatedPlan.itinerary.length > 1 && (
+                  <p className="text-center text-xs text-muted-foreground mt-2 px-4">
+                    Swipe left/right to see other stops
+                  </p>
+                )}
+              </div>
+
+              {/* Overlay for FAB menu */}
+              {isExpanded && (
+                <div 
+                  className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40 transition-opacity duration-300"
+                  onClick={() => setIsExpanded(false)}
+                />
+              )}
+
+              {/* Floating Action Button */}
+              <div className={cn(
+                'fixed bottom-6 right-6 flex flex-col items-end space-y-3 transition-all duration-300 z-50',
+                isFooterVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
+              )}>
+                {/* Additional Actions */}
+                <div className={cn(
+                  'flex flex-col items-end space-y-3 transition-all duration-300 origin-bottom-right',
+                  isExpanded 
+                    ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' 
+                    : 'opacity-0 scale-95 translate-y-2 pointer-events-none',
+                  'transform-gpu'
+                )}>
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    onClick={() => {
+                      setShowEditForm(true);
+                      setIsExpanded(false);
+                    }}
+                    className={cn(
+                      'h-14 w-20 rounded-full p-0 justify-center transition-all duration-300 bg-background/90 backdrop-blur-sm',
+                      'hover:bg-accent/80 hover:scale-105 hover:shadow-lg',
+                      'border-2 border-border/40 hover:border-blue-400/50',
+                      'group',
+                      'min-w-[5rem]' // Ensure minimum width
+                    )}
+                  >
+                    <>
+                      <Pencil className="h-4 w-4 text-foreground/80 group-hover:text-blue-600 transition-colors flex-shrink-0" />
+                      <span className="text-xs font-medium text-foreground/70 group-hover:text-blue-600 transition-colors">
+                        Edit
+                      </span>
+                    </>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    onClick={() => {
+                      const currentValues = form.getValues();
+                      setGeneratedPlan(null);
+                      setShowEditForm(false);
+                      const timeOffset = 1000 * 60 * (5 + Math.floor(Math.random() * 25));
+                      form.reset({
+                        ...currentValues,
+                        userPrompt: '',
+                        planTypeHint: 'ai-decide',
+                        searchRadius: currentValues.searchRadius,
+                        planDateTime: new Date(currentValues.planDateTime.getTime() + timeOffset),
+                        invitedParticipantUserIds: [],
+                        priceRange: null,
+                      });
+                      setIsExpanded(false);
+                    }}
+                    className={cn(
+                      'h-14 w-20 rounded-full p-0 justify-center transition-all duration-300 bg-background/90 backdrop-blur-sm',
+                      'hover:bg-accent/80 hover:scale-105 hover:shadow-lg',
+                      'border-2 border-border/40 hover:border-blue-400/50',
+                      'group',
+                      'min-w-[5rem]' // Ensure minimum width
+                    )}
+                  >
+                    <>
+                      <RefreshCw className="h-4 w-4 text-foreground/80 group-hover:text-blue-600 transition-colors flex-shrink-0" />
+                      <span className="text-xs font-medium text-foreground/70 group-hover:text-blue-600 transition-colors">
+                        Refresh
+                      </span>
+                    </>
+                  </Button>
+
+                  <Button
+                    size="lg"
+                    disabled={isGenerating}
+                    onClick={async () => {
+                      const firstItem = generatedPlan.itinerary[0];
+                      const avgPriceLevel = generatedPlan.itinerary.reduce((sum, itm) => sum + (itm.priceLevel ?? 0), 0) / (generatedPlan.itinerary.length || 1);
+                      const priceRange = avgPriceLevel >= 3.5 ? '$$$$' : avgPriceLevel >= 2.5 ? '$$$' : avgPriceLevel >= 1.5 ? '$$' : '$';
+
+                      const planData = {
+                        ...generatedPlan,
+                        status: 'published' as const,
+                        planType: (generatedPlan.itinerary.length > 1 ? 'multi-stop' : 'single-stop') as 'single-stop' | 'multi-stop',
+                        eventDateTime: firstItem?.startTime ? new Date(firstItem.startTime) : new Date(generatedPlan.eventTime),
+                        primaryLocation: generatedPlan.primaryLocation ?? generatedPlan.location ?? firstItem?.address ?? firstItem?.placeName ?? "",
+                        city: generatedPlan.city ?? firstItem?.city ?? "",
+                        priceRange: generatedPlan.priceRange ?? priceRange,
+                        itinerary: generatedPlan.itinerary.map(item => ({
+                          ...item,
+                          startTime: item.startTime ?? "",
+                          googlePlaceId: item.googlePlaceId,
+                          googleMapsImageUrl: item.googleMapsImageUrl,
+                          googlePhotoReference: item.googlePhotoReference,
+                          lat: item.lat,
+                          lng: item.lng,
+                          rating: item.rating,
+                          reviewCount: item.reviewCount,
+                          isOperational: item.isOperational,
+                          statusText: item.statusText,
+                          openingHours: item.openingHours || [],
+                          phoneNumber: item.phoneNumber,
+                          website: item.website,
+                          priceLevel: item.priceLevel,
+                          types: item.types || [],
+                          photoUrl: (item as any).photoUrl
+                        }))
+                      };
+
+                      await handleSaveGeneratedPlan(planData);
+                      setIsExpanded(false);
+                    }}
+                    className={cn(
+                      'h-12 w-auto px-4 rounded-full transition-all duration-300',
+                      'bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800',
+                      'hover:scale-105 hover:shadow-lg hover:shadow-blue-500/20',
+                      'group',
+                      isGenerating ? 'opacity-70' : '',
+                      'min-w-[6rem]', // Ensure minimum width
+                      'flex items-center justify-center gap-2' // Center icon and text
+                    )}
+                  >
+                    {isGenerating ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-white" />
+                    ) : (
+                      <>
+                        <Check className="h-4 w-4 text-white group-hover:scale-110 transition-transform flex-shrink-0" />
+                        <span className="text-xs font-medium text-white/90 group-hover:text-white">
+                          Publish
+                        </span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {/* Main FAB */}
+                <Button
+                  size="lg"
+                  variant={isExpanded ? 'destructive' : 'default'}
+                  className={cn(
+                    'h-14 w-14 rounded-full transition-all duration-300',
+                    'shadow-xl hover:shadow-2xl',
+                    isHovered || isExpanded ? 'scale-110' : 'scale-100',
+                    isExpanded ? 'rotate-180' : 'rotate-0',
+                    'group',
+                    'flex items-center justify-center',
+                    isExpanded ? 'bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700' : 'bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800'
+                  )}
+                  onMouseEnter={() => setIsHovered(true)}
+                  onMouseLeave={() => setIsHovered(false)}
+                  onClick={() => {
+                    setIsExpanded(!isExpanded);
+                    // Ensure hover state is reset on click
+                    setIsHovered(false);
+                  }}
+                >
+                  {isExpanded || isHovered ? (
+                    <X className="h-6 w-6 text-white transition-transform duration-300" />
+                  ) : (
+                    <Check className="h-6 w-6 text-white transition-transform duration-300" />
+                  )}
+                </Button>
+              </div>
+          </div>
         </div>
       </div>
     );
@@ -1077,7 +1517,7 @@ export default function GeneratePlanPage() {
                                     value={[currentIndex]}
                                     onValueChange={(value) => {
                                       const selectedOption = priceRangeOptions[value[0]];
-                                      field.onChange(selectedOption.value === '' ? null : selectedOption.value as PriceRangeType);
+                                      field.onChange(selectedOption.value);
                                     }}
                                     min={0}
                                     max={priceRangeOptions.length - 1}
@@ -1088,7 +1528,7 @@ export default function GeneratePlanPage() {
                                 {/* Notch Labels */}
                                 <div className="flex justify-between text-xs text-muted-foreground px-1">
                                   {priceRangeOptions.map((option, index) => {
-                                    let displayLabel = option.label;
+                                    let displayLabel: string = option.label;
                                     if (option.value === '$') displayLabel = '$';
                                     else if (option.value === '$$') displayLabel = '$$';
                                     else if (option.value === '$$$') displayLabel = '$$$';
@@ -1127,7 +1567,9 @@ export default function GeneratePlanPage() {
                         control={form.control}
                         name="planTypeHint"
                         render={({ field }) => {
-                          const typeIndex = planTypeHintOptions.findIndex(option => option.value === field.value);
+                          // Watch the value to ensure reactivity
+                          const planTypeValue = form.watch('planTypeHint');
+                          const typeIndex = planTypeHintOptions.findIndex(option => option.value === planTypeValue);
                           const currentIndex = typeIndex === -1 ? 0 : typeIndex;
                           
                           return (
@@ -1144,7 +1586,12 @@ export default function GeneratePlanPage() {
                                     value={[currentIndex]}
                                     onValueChange={(value) => {
                                       const selectedOption = planTypeHintOptions[value[0]];
-                                      field.onChange(selectedOption.value as 'ai-decide' | PlanTypeHintTypeAlias);
+                                      // Use form.setValue for controlled update
+                                      form.setValue('planTypeHint', selectedOption.value, {
+                                        shouldValidate: true,
+                                        shouldDirty: true,
+                                        shouldTouch: true,
+                                      });
                                     }}
                                     min={0}
                                     max={planTypeHintOptions.length - 1}
@@ -1167,10 +1614,13 @@ export default function GeneratePlanPage() {
                                   ))}
                                 </div>
                                 {/* Current Selection Display */}
-                                <div className="text-center">
+                                <div className="text-center space-y-1">
                                   <span className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-primary/10 text-primary border border-primary/20">
                                     {planTypeHintOptions[currentIndex].label}
                                   </span>
+                                  <p className="text-xs text-muted-foreground">
+                                    {planTypeHintOptions[currentIndex].description}
+                                  </p>
                                 </div>
                               </div>
                               <FormMessage className="text-xs" />

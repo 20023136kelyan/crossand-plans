@@ -186,6 +186,7 @@ export interface ItineraryItem {
   placeName: string;
   description: string | null;
   address: string | null;
+  tagline?: string | null;
   googlePlaceId: string | null;
   city: string | null;
   googlePhotoReference: string | null;
