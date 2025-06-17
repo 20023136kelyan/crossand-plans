@@ -170,7 +170,6 @@ const serverItineraryItemSchema = z.object({
   lng: z.number().nullable(),
   rating: z.number().min(0).max(5).nullable(),
   reviewCount: z.number().int().min(0).nullable(),
-  tagline: z.string().optional().nullable(),
   activitySuggestions: z.array(z.string()).nullable().default([]),
   isOperational: z.boolean().nullable(),
   statusText: z.string().nullable(),
