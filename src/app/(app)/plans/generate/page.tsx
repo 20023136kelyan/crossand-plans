@@ -1625,39 +1625,43 @@ function GeneratePlanPage() {
             {/* Form Fields - Only visible when map is collapsed */}
             {isMapCollapsed && (
               <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar-vertical">
-                {/* Header Section */}
-                {isGenerating ? (
-                  <div className="text-center space-y-4 py-8 px-4">
-                    <div className="w-20 h-20 mx-auto rounded-2xl bg-background p-3 flex items-center justify-center border border-border/20 mb-2">
-                      <div className="w-12 h-12 rounded-full border-2 border-primary/20 border-t-primary animate-spin flex items-center justify-center">
-                        <Sparkles className="w-6 h-6 text-primary" />
+                {/* Header Section - Only show when no popups are open */}
+                {!showFriendSelector && !showPriceRangeSelector && !isDatePickerOpen && (
+                  <>
+                    {isGenerating ? (
+                      <div className="text-center space-y-4 pt-32 pb-4 px-4">
+                        <div className="w-20 h-20 mx-auto rounded-2xl bg-background p-3 flex items-center justify-center border border-border/20 mb-2">
+                          <div className="w-12 h-12 rounded-full border-2 border-primary/20 border-t-primary animate-spin flex items-center justify-center">
+                            <Sparkles className="w-6 h-6 text-primary" />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <h2 className="text-xl font-bold text-foreground/90">Creating Your Perfect Plan</h2>
+                          <p className="text-foreground/70 text-base">
+                            {loadingMessage || 'Getting things ready...'}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="space-y-1">
-                      <h2 className="text-xl font-bold text-foreground/90">Creating Your Perfect Plan</h2>
-                      <p className="text-foreground/70 text-base">
-                        {loadingMessage || 'Getting things ready...'}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center space-y-4 pb-4 pt-8">
-                    <div className="flex flex-col items-center">
-                      <div className="w-16 h-16 rounded-2xl bg-background p-3 mb-4 flex items-center justify-center border border-border/20">
-                        <img 
-                          src="/images/crossand-logo.svg" 
-                          alt="Crossand Logo" 
-                          className="w-10 h-10"
-                        />
+                    ) : (
+                      <div className="text-center space-y-4 pt-32 pb-4">
+                        <div className="flex flex-col items-center">
+                          <div className="w-16 h-16 rounded-2xl bg-background p-3 mb-4 flex items-center justify-center border border-border/20">
+                            <img 
+                              src="/images/crossand-logo.svg" 
+                              alt="Crossand Logo" 
+                              className="w-10 h-10"
+                            />
+                          </div>
+                          <h1 className="text-3xl font-bold text-foreground/90 mb-1.5">
+                            {greeting}
+                          </h1>
+                          <p className="text-foreground/70 text-base">
+                            {welcomeMessage}
+                          </p>
+                        </div>
                       </div>
-                      <h1 className="text-3xl font-bold text-foreground/90 mb-1.5">
-                        {greeting}
-                      </h1>
-                      <p className="text-foreground/70 text-base">
-                        {welcomeMessage}
-                      </p>
-                    </div>
-                  </div>
+                    )}
+                  </>
                 )}
 
                 {/* Friends Selector */}
