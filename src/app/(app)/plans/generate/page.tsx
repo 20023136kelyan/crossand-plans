@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { GoogleMap, useJsApiLoader, CircleF } from '@react-google-maps/api';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronDown, ChevronUp, ChevronRight, SearchIcon, Target, Check, CheckCircle, MapPin, Clock, Users, DollarSign, MessageSquare, ArrowLeft, Sparkles, Loader2, X, Edit, Pencil, RefreshCw, Plus, Settings2, UserPlus } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronDown, ChevronUp, ChevronRight, SearchIcon, Target, Check, CheckCircle, MapPin, Clock, Users, DollarSign, MessageSquare, ArrowLeft, Sparkles, Loader2, X, Edit, Pencil, RefreshCw, Plus, Settings2, UserPlus, Navigation } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 
@@ -164,27 +164,26 @@ const defaultDateTime = getDefaultDateTime();
 // Google Maps libraries
 const libraries: ('places' | 'marker' | 'geocoding')[] = ['places', 'geocoding', 'marker'];
 
-// Dynamic greeting based on time of day
-const getGreeting = (name: string) => {
-  const hour = new Date().getHours();
+// Generate a random welcome message with emojis
+const WELCOME_MESSAGES = [
+  "What kind of adventure are we planning today? Share some details and we'll craft something amazing! 🚀",
+  "Ready to create some memories? Tell us what you're in the mood for and we'll handle the rest! ✨",
+  "Let's plan something special! Share your ideas and we'll make it unforgettable. 💫",
+  "What's on your mind? We're all ears and ready to plan your perfect experience! 🎯",
+  "Feeling spontaneous? Share a few details and let's create something wonderful together! 🌟"
+] as const;
+
+// Get a random welcome message (moved outside component to avoid recreation)
+const getRandomWelcomeMessage = () => {
+  return WELCOME_MESSAGES[Math.floor(Math.random() * WELCOME_MESSAGES.length)];
+};
+
+// Generate greeting based on time of day
+const getGreetingForHour = (hour: number, name: string) => {
   const firstName = name?.split(' ')[0] || 'there';
-  
   if (hour < 12) return `Good morning, ${firstName}! 🌞`;
   if (hour < 18) return `Good afternoon, ${firstName}! 🌤️`;
   return `Good evening, ${firstName}! 🌙`;
-};
-
-// Generate a random welcome message with emojis
-const getWelcomeMessage = () => {
-  const messages = [
-    "What kind of adventure are we planning today? Share some details and we'll craft something amazing! 🚀",
-    "Ready to create some memories? Tell us what you're in the mood for and we'll handle the rest! ✨",
-    "Let's plan something special! Share your ideas and we'll make it unforgettable. 💫",
-    "What's on your mind? We're all ears and ready to plan your perfect experience! 🎯",
-    "Feeling spontaneous? Share a few details and let's create something wonderful together! 🌟"
-  ];
-  
-  return messages[Math.floor(Math.random() * messages.length)];
 };
 
 function GeneratePlanPage() {
@@ -192,6 +191,16 @@ function GeneratePlanPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedPlan, setGeneratedPlan] = useState<Plan | null>(null);
+  const [loadingMessage, setLoadingMessage] = useState('');
+  const loadingMessages = [
+    'Gathering the best spots just for you... 🗺️',
+    'Checking the weather for the perfect day out... ☀️',
+    'Consulting local experts for hidden gems... 🕵️‍♂️',
+    'Finding activities that match your unique style... ✨',
+    'Adding a sprinkle of magic to your plan... ✨',
+    'Double-checking all the details for you... ✅',
+    'Almost there! Just putting the finishing touches... 🎯',
+  ];
   const [showFriendSelector, setShowFriendSelector] = useState(false);
   const [showPriceRangeSelector, setShowPriceRangeSelector] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
@@ -241,8 +250,12 @@ function GeneratePlanPage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      // Ensure we restore body scroll when component unmounts
+      document.body.style.overflow = '';
     };
   }, [showFriendSelector, showPriceRangeSelector]);
+  
+  // State declarations
   const [showAllStops, setShowAllStops] = useState(false);
   const [visibleStopIndex, setVisibleStopIndex] = useState(0);
   const [isFooterVisible, setIsFooterVisible] = useState(true);
@@ -250,6 +263,31 @@ function GeneratePlanPage() {
   const [isHovered, setIsHovered] = useState(false);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [invitedProfiles, setInvitedProfiles] = useState<UserProfile[]>([]);
+  
+  // Map related state
+  const [isMapCollapsed, setIsMapCollapsed] = useState(true); // Set to true to collapse map by default
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [isLocationSearchCollapsed, setIsLocationSearchCollapsed] = useState(true);
+  const [isSearchRadiusCollapsed, setIsSearchRadiusCollapsed] = useState(true);
+  const [isAutocompleteFocused, setIsAutocompleteFocused] = useState(false);
+  const [isRadiusFocused, setIsRadiusFocused] = useState(false);
+  const [manualMapControl, setManualMapControl] = useState(false);
+  const [mapMode, setMapMode] = useState<MapMode>('light');
+  const [isMapPopupOpen, setIsMapPopupOpen] = useState(false);
+  
+  // Other UI state
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [searchValue, setSearchValue] = useState('');
+  const [isPopupOpen, setIsPopupOpen] = useState(false);
+
+  // Handle body scroll when map is toggled
+  useEffect(() => {
+    if (isMapCollapsed) {
+      document.body.style.overflow = '';
+    } else {
+      document.body.style.overflow = 'hidden';
+    }
+  }, [isMapCollapsed]);
 
   // Fetch invited participant profiles whenever a plan is generated
   useEffect(() => {
@@ -267,17 +305,6 @@ function GeneratePlanPage() {
     }
     fetchProfiles();
   }, [generatedPlan]);
-  const [showEditForm, setShowEditForm] = useState(false);
-  const [isMapCollapsed, setIsMapCollapsed] = useState(true); // Set to true to collapse map by default
-  const [isLocationSearchCollapsed, setIsLocationSearchCollapsed] = useState(true);
-  const [isSearchRadiusCollapsed, setIsSearchRadiusCollapsed] = useState(true);
-  const [isAutocompleteFocused, setIsAutocompleteFocused] = useState(false);
-  const [isRadiusFocused, setIsRadiusFocused] = useState(false);
-  const [manualMapControl, setManualMapControl] = useState(false);
-  const [searchValue, setSearchValue] = useState('');
-  const [mapMode, setMapMode] = useState<MapMode>('light');
-  const [isPopupOpen, setIsPopupOpen] = useState(false);
-  const [isMapPopupOpen, setIsMapPopupOpen] = useState(false);
 
   // Refs
   const locationInputRef = useRef<HTMLInputElement>(null);
@@ -289,6 +316,17 @@ function GeneratePlanPage() {
   const router = useRouter();
   const { user: currentUser } = useAuth();
   const { theme } = useTheme();
+  
+  // Memoize greeting and welcome message to prevent regeneration on every render
+  const { greeting, welcomeMessage } = useMemo(() => {
+    const hour = new Date().getHours();
+    const firstName = currentUser?.displayName?.split(' ')[0] || 'there';
+    
+    return {
+      greeting: getGreetingForHour(hour, currentUser?.displayName || ''),
+      welcomeMessage: getRandomWelcomeMessage()
+    };
+  }, [currentUser?.displayName]); // Only regenerate when user's display name changes
 
   useEffect(() => {
     if (!scrollContainerRef.current || !generatedPlan) return;
@@ -500,49 +538,57 @@ function GeneratePlanPage() {
       return;
     }
 
+    setIsDetectingLocation(true);
+
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        const { latitude, longitude } = position.coords;
-        
         try {
-          const geocoder = new google.maps.Geocoder();
-          const result = await geocoder.geocode({
-            location: { lat: latitude, lng: longitude }
-          });
+          const { latitude, longitude } = position.coords;
           
-          if (result.results && result.results.length > 0) {
-            const address = result.results[0].formatted_address;
-            form.setValue('locationQuery', address);
-            setSearchValue(address);
+          try {
+            const geocoder = new google.maps.Geocoder();
+            const result = await geocoder.geocode({
+              location: { lat: latitude, lng: longitude }
+            });
+            
+            if (result.results && result.results.length > 0) {
+              const address = result.results[0].formatted_address;
+              form.setValue('locationQuery', address);
+              setSearchValue(address);
+            }
+            
+            form.setValue('latitude', latitude);
+            form.setValue('longitude', longitude);
+            
+            if (mapRef.current) {
+              mapRef.current.panTo({ lat: latitude, lng: longitude });
+            }
+            
+            toast({
+              title: 'Location detected',
+              description: 'Your current location has been set.',
+            });
+          } catch (error) {
+            console.error('Geocoding error:', error);
+            form.setValue('latitude', latitude);
+            form.setValue('longitude', longitude);
+            
+            if (mapRef.current) {
+              mapRef.current.panTo({ lat: latitude, lng: longitude });
+            }
+            
+            toast({
+              title: 'Location detected',
+              description: 'Your current location has been set.',
+            });
           }
-          
-          form.setValue('latitude', latitude);
-          form.setValue('longitude', longitude);
-          
-          if (mapRef.current) {
-            mapRef.current.panTo({ lat: latitude, lng: longitude });
-          }
-          
-          toast({
-            title: 'Location detected',
-            description: 'Your current location has been set.',
-          });
-        } catch (error) {
-          console.error('Geocoding error:', error);
-          form.setValue('latitude', latitude);
-          form.setValue('longitude', longitude);
-          
-          if (mapRef.current) {
-            mapRef.current.panTo({ lat: latitude, lng: longitude });
-          }
-          
-          toast({
-            title: 'Location detected',
-            description: 'Your current location has been set.',
-          });
+        } finally {
+          setIsDetectingLocation(false);
         }
       },
       (error) => {
+        setIsDetectingLocation(false);
+        
         let errorMessage = 'Please allow location access or search for a location manually.';
         let errorTitle = 'Location access denied';
         
@@ -654,6 +700,16 @@ function GeneratePlanPage() {
     }
 
     setIsGenerating(true);
+    setLoadingMessage(loadingMessages[0]);
+    
+    // Cycle through loading messages
+    const messageInterval = setInterval(() => {
+      setLoadingMessage(prevMessage => {
+        const currentIndex = loadingMessages.indexOf(prevMessage);
+        const nextIndex = (currentIndex + 1) % loadingMessages.length;
+        return loadingMessages[nextIndex];
+      });
+    }, 3000);
     try {
       const authToken = await currentUser.getIdToken();
       const clientInput = {
@@ -683,7 +739,7 @@ function GeneratePlanPage() {
           Session: ${sessionId}, 
           TimeContext: ${dietaryTime}, 
           Uniqueness: HIGH_PRIORITY, 
-          Preferences: GENERATE COMPLETELY DIFFERENT AND UNIQUE PLACES from previous attempts,
+          Preferences: GENERATE_COMPLETELY_DIFFERENT_AND_UNIQUE_PLACES from previous attempts,
           Diversity: MAXIMIZE_VARIETY in both place types and activities)`.replace(/\s+/g, ' '),
         // Force a new unique ID for each generation
         
@@ -924,6 +980,27 @@ function GeneratePlanPage() {
                       </div>
                     ))}
                   </div>
+                  
+                  {/* Validate Playground Button - Bottom Center */}
+                  {!isMapCollapsed && (
+                    <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-50 pointer-events-auto">
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          setIsMapCollapsed(true);
+                          document.body.style.overflow = '';
+                        }}
+                        className={cn(
+                          "bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-6 rounded-full shadow-lg",
+                          "font-medium text-base transition-all duration-300 transform hover:scale-105",
+                          "flex items-center gap-2"
+                        )}
+                      >
+                        <CheckCircle className="w-5 h-5" />
+                        Validate Playground
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 {generatedPlan.itinerary.length > 1 && (
                   <p className="text-center text-xs text-muted-foreground mt-2 px-4">
@@ -1159,9 +1236,53 @@ function GeneratePlanPage() {
             
             {/* Area Selector Section */}
             <div className={cn(
-              "relative transition-all duration-500 ease-in-out overflow-hidden border border-border/20 shadow-sm rounded-xl mx-4 md:mx-0",
-              isMapCollapsed ? "h-20" : "h-96 md:h-[500px]"
+              "relative transition-all duration-500 ease-in-out overflow-hidden border-border/20 shadow-sm",
+              isMapCollapsed ? "h-20 mx-4 md:mx-0 border rounded-xl" : "fixed inset-0 z-40 h-screen w-screen"
             )}>
+              {/* Close fullscreen button */}
+              {!isMapCollapsed && (
+                <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-4">
+                  {/* Validate Button */}
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setIsMapCollapsed(true);
+                      document.body.style.overflow = '';
+                    }}
+                    className={cn(
+                      "bg-black hover:bg-gray-900 text-white px-6 py-3 rounded-full",
+                      "font-semibold text-sm transition-all duration-300 transform hover:scale-105",
+                      "flex items-center gap-2 border border-gray-900",
+                      "dark:bg-black dark:hover:bg-gray-900 dark:text-white dark:border-gray-800",
+                      "backdrop-blur-sm shadow-[0_4px_20px_rgba(0,0,0,0.3)] hover:shadow-[0_6px_25px_rgba(0,0,0,0.4)]"
+                    )}
+                  >
+                    <div className="bg-primary/10 p-1.5 rounded-full">
+                      <Check className="w-4 h-4 text-primary" />
+                    </div>
+                    <span>Validate Selection</span>
+                  </Button>
+
+                  {/* Close Button - Compact red close button */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setIsMapCollapsed(true);
+                      document.body.style.overflow = '';
+                    }}
+                    className={cn(
+                      "h-10 w-10 rounded-full bg-red-600 hover:bg-red-700 text-white",
+                      "border border-red-700 hover:border-red-800 transition-all duration-300",
+                      "flex items-center justify-center hover:scale-105 active:scale-95",
+                      "backdrop-blur-sm shadow-[0_4px_20px_rgba(0,0,0,0.3)] hover:shadow-[0_6px_25px_rgba(0,0,0,0.4)]"
+                    )}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
               {isMapCollapsed ? (
                 /* Collapsed State - Area Info Pills */
                 <div className="h-full flex items-center justify-between p-4">
@@ -1190,6 +1311,8 @@ function GeneratePlanPage() {
                     onClick={() => {
                       setIsMapCollapsed(false);
                       setManualMapControl(true);
+                      // Prevent body scroll when map is expanded
+                      document.body.style.overflow = 'hidden';
                       setTimeout(() => setManualMapControl(false), 5000);
                     }}
                     className="h-8 px-2"
@@ -1258,14 +1381,17 @@ function GeneratePlanPage() {
                     )}
                   </div>
                   
+                  {/* Bottom Fade Effect */}
+                  <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
+                  
                   {/* Unified Floating Interface */}
                   <div className="absolute inset-2 z-20 pointer-events-none transition-opacity duration-300">
                     {/* Top Center: All Control Buttons */}
-                    <div className="absolute top-0 left-1/2 transform -translate-x-1/2 pointer-events-auto">
+                    <div className="absolute top-24 left-1/2 transform -translate-x-1/2 pointer-events-auto">
                       {/* Horizontal Button Container - Hide when popup is open */}
                       <div className={cn(
                         "flex items-center gap-3 transition-all duration-500 ease-out transform",
-                        isMapPopupOpen ? "opacity-0 pointer-events-none scale-95 -translate-y-2" : "opacity-100 scale-100 translate-y-0"
+                        isMapPopupOpen ? "opacity-0 pointer-events-none scale-95 -translate-y-10" : "opacity-100 scale-100 translate-y-0"
                       )}>
                         {/* Search Toggle Button */}
                         <Button
@@ -1299,14 +1425,19 @@ function GeneratePlanPage() {
                           variant="secondary"
                           size="icon"
                           onClick={detectUserLocation}
-                          disabled={!isLoaded}
+                          disabled={!isLoaded || isDetectingLocation}
                           className={cn(
                             "w-12 h-12 rounded-full shadow-lg border-2 transition-all duration-500 ease-out transform",
-                            "bg-background border-border hover:border-primary/50 disabled:opacity-50 hover:scale-105 hover:rotate-12 active:scale-95"
+                            "bg-background border-border hover:border-primary/50 disabled:opacity-50 hover:scale-105 hover:rotate-12 active:scale-95",
+                            isDetectingLocation && "animate-pulse"
                           )}
                           title="Detect my location"
                         >
-                          <Target className="w-5 h-5" />
+                          {isDetectingLocation ? (
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                          ) : (
+                            <Navigation className="w-5 h-5" />
+                          )}
                         </Button>
                         
                         {/* Radius Button */}
@@ -1335,11 +1466,11 @@ function GeneratePlanPage() {
                       {!isLocationSearchCollapsed && (
                         <div
                           className={cn(
-                            "absolute top-0 left-1/2 transform -translate-x-1/2",
+                            "absolute top-24 left-1/2 transform -translate-x-1/2 -translate-y-2",
                             "bg-black/80 backdrop-blur-md border border-gray-600/50 rounded-2xl shadow-2xl",
-                            "transition-all duration-500 ease-out flex items-center gap-3 p-3",
+                            "transition-all duration-300 ease-out flex items-center gap-3 p-3",
                             "w-[28rem] h-12 min-w-0 max-w-[calc(100vw-4rem)]",
-                            "animate-in slide-in-from-top-2 fade-in-0"
+                            "animate-in slide-in-from-top-10 fade-in-0"
                           )}
                           onClick={(e) => e.stopPropagation()}
                           data-search-element
@@ -1372,9 +1503,9 @@ function GeneratePlanPage() {
                       {!isSearchRadiusCollapsed && isRadiusFocused && (
                         <div 
                           className={cn(
-                            "absolute top-0 left-1/2 transform -translate-x-1/2 w-[28rem] bg-background/90 backdrop-blur-lg rounded-2xl shadow-2xl",
+                            "absolute top-24 left-1/2 transform -translate-x-1/2 -translate-y-2 w-[28rem] bg-background/90 backdrop-blur-lg rounded-2xl shadow-2xl",
                             "border border-border/50 p-4 z-30 min-w-0 max-w-[calc(100vw-4rem)]",
-                            "transition-all duration-500 ease-out animate-in slide-in-from-top-2 fade-in-0"
+                            "transition-all duration-300 ease-out animate-in slide-in-from-top-10 fade-in-0"
                           )}
                           onClick={(e) => e.stopPropagation()}
                           data-radius-element
@@ -1495,23 +1626,39 @@ function GeneratePlanPage() {
             {isMapCollapsed && (
               <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar-vertical">
                 {/* Header Section */}
-                <div className="text-center space-y-4 pb-4 pt-8">
-                  <div className="flex flex-col items-center">
-                    <div className="w-16 h-16 rounded-2xl bg-background p-3 mb-4 flex items-center justify-center border border-border/20">
-                      <img 
-                        src="/images/crossand-logo.svg" 
-                        alt="Crossand Logo" 
-                        className="w-10 h-10"
-                      />
+                {isGenerating ? (
+                  <div className="text-center space-y-4 py-8 px-4">
+                    <div className="w-20 h-20 mx-auto rounded-2xl bg-background p-3 flex items-center justify-center border border-border/20 mb-2">
+                      <div className="w-12 h-12 rounded-full border-2 border-primary/20 border-t-primary animate-spin flex items-center justify-center">
+                        <Sparkles className="w-6 h-6 text-primary" />
+                      </div>
                     </div>
-                    <h2 className="text-3xl font-bold text-foreground mb-2">
-                      {getGreeting(currentUser?.displayName || '')}
-                    </h2>
-                    <p className="text-base text-muted-foreground max-w-lg leading-relaxed">
-                      {getWelcomeMessage()}
-                    </p>
+                    <div className="space-y-1">
+                      <h2 className="text-xl font-bold text-foreground/90">Creating Your Perfect Plan</h2>
+                      <p className="text-foreground/70 text-base">
+                        {loadingMessage || 'Getting things ready...'}
+                      </p>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="text-center space-y-4 pb-4 pt-8">
+                    <div className="flex flex-col items-center">
+                      <div className="w-16 h-16 rounded-2xl bg-background p-3 mb-4 flex items-center justify-center border border-border/20">
+                        <img 
+                          src="/images/crossand-logo.svg" 
+                          alt="Crossand Logo" 
+                          className="w-10 h-10"
+                        />
+                      </div>
+                      <h1 className="text-3xl font-bold text-foreground/90 mb-1.5">
+                        {greeting}
+                      </h1>
+                      <p className="text-foreground/70 text-base">
+                        {welcomeMessage}
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Friends Selector */}
                 {showFriendSelector && (
@@ -1631,7 +1778,7 @@ function GeneratePlanPage() {
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                className="h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg"
+                                className="h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg border border-gray-600/30"
                                 onClick={() => {
                                   dateInputRef.current?.showPicker();
                                   setShowFriendSelector(false);
@@ -1647,7 +1794,7 @@ function GeneratePlanPage() {
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                className="h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg"
+                                className="h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg border border-gray-600/30"
                                 onClick={() => {
                                   setShowPriceRangeSelector(!showPriceRangeSelector);
                                   setShowFriendSelector(false);
@@ -1747,7 +1894,7 @@ function GeneratePlanPage() {
                               variant="ghost"
                               size="icon"
                               className={cn(
-                                "h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg",
+                                "h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg border border-gray-600/30",
                                 form.watch('planTypeHint') && form.watch('planTypeHint') !== 'ai-decide' && "text-amber-400"
                               )}
                               onClick={() => {
@@ -1791,7 +1938,7 @@ function GeneratePlanPage() {
                               variant="ghost"
                               size="icon"
                               className={cn(
-                                "h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg",
+                                "h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg border border-gray-600/30",
                                 showFriendSelector && "bg-gray-800/50 text-white"
                               )}
                               onClick={() => {
@@ -1815,13 +1962,27 @@ function GeneratePlanPage() {
                             </Button>
                           </div>
                           <Button 
-                            type="submit"
+                            type={isGenerating ? 'button' : 'submit'}
                             size="sm"
-                            disabled={isGenerating}
-                            className="absolute bottom-2 right-2 h-8 w-8 p-0 rounded-lg bg-gradient-to-r from-amber-400 via-orange-500 to-pink-500 hover:from-amber-300 hover:via-orange-400 hover:to-pink-400 text-white flex items-center justify-center"
+                            onClick={isGenerating ? () => {
+                              setIsGenerating(false);
+                              setLoadingMessage('');
+                              toast({
+                                title: 'Generation stopped',
+                                description: 'You can adjust your preferences and try again.',
+                              });
+                            } : undefined}
+                            className={cn(
+                              'absolute bottom-2 right-2 h-8 w-8 p-0 rounded-lg flex items-center justify-center transition-all duration-300',
+                              isGenerating 
+                                ? 'bg-destructive hover:bg-destructive/90' 
+                                : 'bg-gradient-to-r from-amber-400 via-orange-500 to-pink-500 hover:from-amber-300 hover:via-orange-400 hover:to-pink-400',
+                              'text-white'
+                            )}
+                            title={isGenerating ? 'Stop generation' : 'Generate plan'}
                           >
                             {isGenerating ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <X className="w-4 h-4" />
                             ) : (
                               <Sparkles className="w-4 h-4" />
                             )}
