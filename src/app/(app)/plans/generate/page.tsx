@@ -2,18 +2,20 @@
 
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { GoogleMap, useJsApiLoader, CircleF } from '@react-google-maps/api';
 import { format } from 'date-fns';
-import { CalendarIcon, ChevronLeft, ChevronDown, ChevronUp, ChevronRight, SearchIcon, Target, Check, CheckCircle, MapPin, Clock, Users, DollarSign, MessageSquare, ArrowLeft, Sparkles, Loader2, X, Edit, Pencil, RefreshCw } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronDown, ChevronUp, ChevronRight, SearchIcon, Target, Check, CheckCircle, MapPin, Clock, Users, DollarSign, MessageSquare, ArrowLeft, Sparkles, Loader2, X, Edit, Pencil, RefreshCw, Plus, Settings2, UserPlus } from 'lucide-react';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
-import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -162,11 +164,85 @@ const defaultDateTime = getDefaultDateTime();
 // Google Maps libraries
 const libraries: ('places' | 'marker' | 'geocoding')[] = ['places', 'geocoding', 'marker'];
 
-export default function GeneratePlanPage() {
+// Dynamic greeting based on time of day
+const getGreeting = (name: string) => {
+  const hour = new Date().getHours();
+  const firstName = name?.split(' ')[0] || 'there';
+  
+  if (hour < 12) return `Good morning, ${firstName}! 🌞`;
+  if (hour < 18) return `Good afternoon, ${firstName}! 🌤️`;
+  return `Good evening, ${firstName}! 🌙`;
+};
+
+// Generate a random welcome message with emojis
+const getWelcomeMessage = () => {
+  const messages = [
+    "What kind of adventure are we planning today? Share some details and we'll craft something amazing! 🚀",
+    "Ready to create some memories? Tell us what you're in the mood for and we'll handle the rest! ✨",
+    "Let's plan something special! Share your ideas and we'll make it unforgettable. 💫",
+    "What's on your mind? We're all ears and ready to plan your perfect experience! 🎯",
+    "Feeling spontaneous? Share a few details and let's create something wonderful together! 🌟"
+  ];
+  
+  return messages[Math.floor(Math.random() * messages.length)];
+};
+
+function GeneratePlanPage() {
   // State variables
   const [isLoading, setIsLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedPlan, setGeneratedPlan] = useState<Plan | null>(null);
+  const [showFriendSelector, setShowFriendSelector] = useState(false);
+  const [showPriceRangeSelector, setShowPriceRangeSelector] = useState(false);
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const friendSelectorRef = useRef<HTMLDivElement>(null);
+  const friendButtonRef = useRef<HTMLButtonElement>(null);
+  const priceRangeButtonRef = useRef<HTMLButtonElement>(null);
+  const priceRangeSelectorRef = useRef<HTMLDivElement>(null);
+  const dateInputRef = useRef<HTMLInputElement>(null);
+  
+  // Handle click outside for popups
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      
+      // Check if we're clicking inside the date picker
+      const isDatePickerElement = target.closest('.react-datepicker') !== null;
+      
+      // Handle friend selector
+      if (
+        showFriendSelector && 
+        friendSelectorRef.current && 
+        !friendSelectorRef.current.contains(target) &&
+        friendButtonRef.current && 
+        !friendButtonRef.current.contains(target) &&
+        !isDatePickerElement &&
+        !(priceRangeButtonRef.current?.contains(target) || priceRangeSelectorRef.current?.contains(target))
+      ) {
+        setShowFriendSelector(false);
+      }
+
+      // Handle price range selector
+      if (
+        showPriceRangeSelector &&
+        priceRangeSelectorRef.current &&
+        !priceRangeSelectorRef.current.contains(target) &&
+        priceRangeButtonRef.current &&
+        !priceRangeButtonRef.current.contains(target) &&
+        !isDatePickerElement &&
+        !(friendButtonRef.current?.contains(target) || friendSelectorRef.current?.contains(target))
+      ) {
+        setShowPriceRangeSelector(false);
+      }
+
+      // Stops selector has been removed
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showFriendSelector, showPriceRangeSelector]);
   const [showAllStops, setShowAllStops] = useState(false);
   const [visibleStopIndex, setVisibleStopIndex] = useState(0);
   const [isFooterVisible, setIsFooterVisible] = useState(true);
@@ -192,7 +268,7 @@ export default function GeneratePlanPage() {
     fetchProfiles();
   }, [generatedPlan]);
   const [showEditForm, setShowEditForm] = useState(false);
-  const [isMapCollapsed, setIsMapCollapsed] = useState(false);
+  const [isMapCollapsed, setIsMapCollapsed] = useState(true); // Set to true to collapse map by default
   const [isLocationSearchCollapsed, setIsLocationSearchCollapsed] = useState(true);
   const [isSearchRadiusCollapsed, setIsSearchRadiusCollapsed] = useState(true);
   const [isAutocompleteFocused, setIsAutocompleteFocused] = useState(false);
@@ -211,7 +287,7 @@ export default function GeneratePlanPage() {
 
   // Hooks
   const router = useRouter();
-  const { user } = useAuth();
+  const { user: currentUser } = useAuth();
   const { theme } = useTheme();
 
   useEffect(() => {
@@ -287,7 +363,7 @@ export default function GeneratePlanPage() {
     resolver: zodResolver(PlanGenerationFormSchema),
     defaultValues: {
       planDateTime: defaultDateTime,
-      searchRadius: 2,
+      searchRadius: 2, // 2km default radius
       priceRange: null,
       planTypeHint: 'ai-decide',
       userPrompt: '',
@@ -297,6 +373,37 @@ export default function GeneratePlanPage() {
       longitude: null,
     },
   });
+
+  // Get user's current location and set it as default
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          form.reset({
+            ...form.getValues(),
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            searchRadius: 2, // Set to 2km
+            locationQuery: 'Current Location',
+          });
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+          // Set default values if location access is denied
+          form.reset({
+            ...form.getValues(),
+            searchRadius: 2, // Still set to 2km
+          });
+        }
+      );
+    } else {
+      // Browser doesn't support geolocation
+      form.reset({
+        ...form.getValues(),
+        searchRadius: 2, // Still set to 2km
+      });
+    }
+  }, [form]);
 
   // Watch form values for map centering and zoom
   const watchedLat = form.watch('latitude');
@@ -537,7 +644,7 @@ export default function GeneratePlanPage() {
 
   // Form submission handlers
   const handleGeneratePlan = async (data: PlanGenerationFormData) => {
-    if (!user?.uid) {
+    if (!currentUser?.uid) {
       toast({
         title: 'Authentication required',
         description: 'Please log in to generate a plan.',
@@ -548,9 +655,9 @@ export default function GeneratePlanPage() {
 
     setIsGenerating(true);
     try {
-      const authToken = await user.getIdToken();
+      const authToken = await currentUser.getIdToken();
       const clientInput = {
-        hostUid: user.uid,
+        hostUid: currentUser.uid,
         planDateTime: data.planDateTime.toISOString(),
         locationQuery: data.locationQuery,
         selectedLocationLat: data.latitude,
@@ -606,7 +713,7 @@ export default function GeneratePlanPage() {
   };
 
   const handleSaveGeneratedPlan = async (planData: PlanFormValues) => {
-    if (!user?.uid) {
+    if (!currentUser?.uid) {
       toast({
         title: 'Authentication required',
         description: 'Please log in to save the plan.',
@@ -617,7 +724,7 @@ export default function GeneratePlanPage() {
 
     setIsGenerating(true);
     try {
-      const authToken = await user.getIdToken();
+      const authToken = await currentUser.getIdToken();
       const result = await createPlanAction(planData as PlanFormValues, authToken);
       
       if (result.success) {
@@ -726,9 +833,9 @@ export default function GeneratePlanPage() {
                    <div className="flex -space-x-2">
                      {/* Host Avatar */}
                      <Avatar className="h-10 w-10 ring-2 ring-background">
-                       <AvatarImage src={user?.photoURL || undefined} alt={user?.displayName || 'You'} />
+                       <AvatarImage src={currentUser?.photoURL || undefined} alt={currentUser?.displayName || 'You'} />
                         <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                          {user?.displayName?.charAt(0) || 'U'}
+                          {currentUser?.displayName?.charAt(0) || 'U'}
                         </AvatarFallback>
                       </Avatar>
                       {/* Invited participants */}
@@ -1003,7 +1110,7 @@ export default function GeneratePlanPage() {
 
   // Main component render
   return (
-    <div className="flex flex-col h-screen bg-background text-foreground">
+    <div className="flex flex-col h-screen bg-background text-foreground relative">
       {/* Header */}
       <header className="shrink-0 flex items-center justify-between p-4 border-b border-border/20 bg-background/70 backdrop-blur-md z-20">
         <Button variant="ghost" size="icon" onClick={() => router.back()} aria-label="Go back" className="hover:bg-accent/50">
@@ -1073,6 +1180,7 @@ export default function GeneratePlanPage() {
                       <div className="bg-secondary/50 text-secondary-foreground px-3 py-1.5 rounded-full text-sm font-medium border border-border/30">
                         {(form.watch('searchRadius') ?? 0) === 0 ? 'Broad' : `${form.watch('searchRadius')} km`}
                       </div>
+
                     </div>
                   </div>
                   <Button
@@ -1387,334 +1495,350 @@ export default function GeneratePlanPage() {
             {isMapCollapsed && (
               <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar-vertical">
                 {/* Header Section */}
-                <div className="text-center space-y-3 pb-2">
-                  <div className="w-12 h-12 bg-gradient-to-br from-primary/20 to-primary/10 rounded-2xl flex items-center justify-center mx-auto">
-                    <Sparkles className="w-6 h-6 text-primary" />
+                <div className="text-center space-y-4 pb-4 pt-8">
+                  <div className="flex flex-col items-center">
+                    <div className="w-16 h-16 rounded-2xl bg-background p-3 mb-4 flex items-center justify-center border border-border/20">
+                      <img 
+                        src="/images/crossand-logo.svg" 
+                        alt="Crossand Logo" 
+                        className="w-10 h-10"
+                      />
+                    </div>
+                    <h2 className="text-3xl font-bold text-foreground mb-2">
+                      {getGreeting(currentUser?.displayName || '')}
+                    </h2>
+                    <p className="text-base text-muted-foreground max-w-lg leading-relaxed">
+                      {getWelcomeMessage()}
+                    </p>
                   </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-foreground mb-1">Customize Your Plan</h2>
-                    <p className="text-sm text-muted-foreground">Tell us your preferences and let AI create the perfect experience</p>
-                  </div>
-                  
-                  {/* Back to Map Button */}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setIsMapCollapsed(false);
-                      setManualMapControl(false);
-                    }}
-                    className="mt-3 text-xs border-border/50 hover:border-primary/50 hover:bg-primary/5"
-                  >
-                    <MapPin className="w-3 h-3 mr-1" />
-                    Adjust Location
-                  </Button>
                 </div>
 
-                {/* Form Cards Grid */}
-                <div className="space-y-5">
-                  {/* Date & Time and Friends Row */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {/* Date & Time Card */}
-                    <div className="group bg-card/60 backdrop-blur-sm border border-border/40 rounded-2xl p-5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300">
-                      <FormField
-                        control={form.control}
-                        name="planDateTime"
-                        render={({ field }) => (
-                          <FormItem className="space-y-3">
-                            <FormLabel className="text-sm font-semibold text-foreground flex items-center gap-2.5">
-                              <div className="w-8 h-8 bg-primary/10 rounded-xl flex items-center justify-center">
-                                <Clock className="w-4 h-4 text-primary" />
-                              </div>
-                              Date & Time
-                            </FormLabel>
-                            <Popover onOpenChange={(open) => setIsPopupOpen(open)}>
-                              <PopoverTrigger asChild>
-                                <FormControl>
-                                  <Button variant={'outline'} className={cn('w-full justify-start text-left font-medium h-11 rounded-xl border-border/40 hover:border-primary/40 hover:bg-accent/50 transition-all duration-200', !field.value && 'text-muted-foreground')}>
-                                    <CalendarIcon className="mr-3 h-4 w-4 text-primary" />
-                                     {field.value && isDateValid(field.value) ? format(field.value, 'MMM d, p') : <span>Pick date & time</span>}
-                                  </Button>
-                                </FormControl>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-auto p-0 mx-auto" align="center">
-                                <Calendar 
-                                  mode="single" 
-                                  selected={field.value} 
-                                  onSelect={(date) => { 
-                                      const currentValDate = field.value && isDateValid(field.value) ? field.value : defaultDateTime;
-                                      const newDate = date || currentValDate; 
-                                      if (isDateValid(newDate)) {
-                                          newDate.setHours(currentValDate.getHours(), currentValDate.getMinutes()); 
-                                          field.onChange(newDate);
-                                      } else {
-                                          field.onChange(currentValDate);
-                                      }
-                                  }} 
-                                  disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} initialFocus />
-                                <div className="p-3 border-t border-border/30">
-                                  <Input type="time" 
-                                    defaultValue={field.value && isDateValid(field.value) ? format(field.value, 'HH:mm') : format(defaultDateTime, 'HH:mm')} 
-                                    onChange={(e) => { 
-                                        const [hours, minutes] = e.target.value.split(':').map(Number); 
-                                        const newDate = new Date(field.value && isDateValid(field.value) ? field.value : defaultDateTime); 
-                                        if (isDateValid(newDate)) { 
-                                            newDate.setHours(hours, minutes); 
-                                            field.onChange(newDate); 
-                                        } 
-                                    }} className="h-9 rounded-lg" />
-                                </div>
-                              </PopoverContent>
-                            </Popover>
-                            <FormMessage className="text-xs" />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                    
-                    {/* Friends Card */}
-                    <div className="group bg-card/60 backdrop-blur-sm border border-border/40 rounded-2xl p-5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300">
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 bg-primary/10 rounded-xl flex items-center justify-center">
-                            <Users className="w-4 h-4 text-primary" />
-                          </div>
-                          <span className="text-sm font-semibold text-foreground">Friends</span>
-                        </div>
-                        <FriendMultiSelectInput 
-                          control={form.control} 
-                          name="invitedParticipantUserIds" 
-                          label="" 
-                          description="AI will consider their preferences!" 
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Price Range and Plan Type Row */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {/* Price Range Card */}
-                    <div className="group bg-card/60 backdrop-blur-sm border border-border/40 rounded-2xl p-5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300">
-                      <FormField
-                        control={form.control}
-                        name="priceRange"
-                        render={({ field }) => {
-                          const priceIndex = priceRangeOptions.findIndex(option => option.value === field.value);
-                          const currentIndex = priceIndex === -1 ? 0 : priceIndex;
-                          
-                          return (
-                            <FormItem className="space-y-4">
-                              <FormLabel className="text-sm font-semibold text-foreground flex items-center gap-2.5">
-                                <div className="w-8 h-8 bg-primary/10 rounded-xl flex items-center justify-center">
-                                  <DollarSign className="w-4 h-4 text-primary" />
-                                </div>
-                                Price Range
-                              </FormLabel>
-                              <div className="space-y-3">
-                                <FormControl>
-                                  <Slider
-                                    value={[currentIndex]}
-                                    onValueChange={(value) => {
-                                      const selectedOption = priceRangeOptions[value[0]];
-                                      field.onChange(selectedOption.value);
-                                    }}
-                                    min={0}
-                                    max={priceRangeOptions.length - 1}
-                                    step={1}
-                                    className="[&>span:first-child]:h-3 [&>span>span]:h-3 [&>button]:h-8 [&>button]:w-8 [&>button]:border-2 [&>button]:shadow-md [&>button]:bg-primary [&>button]:border-primary [&>button]:touch-manipulation py-3"
-                                  />
-                                </FormControl>
-                                {/* Notch Labels */}
-                                <div className="flex justify-between text-xs text-muted-foreground px-1">
-                                  {priceRangeOptions.map((option, index) => {
-                                    let displayLabel: string = option.label;
-                                    if (option.value === '$') displayLabel = '$';
-                                    else if (option.value === '$$') displayLabel = '$$';
-                                    else if (option.value === '$$$') displayLabel = '$$$';
-                                    else if (option.value === '$$$$') displayLabel = '$$$$';
-                                    
-                                    return (
-                                      <span 
-                                        key={option.value} 
-                                        className={cn(
-                                          "transition-colors duration-200 text-center flex-1",
-                                          index === currentIndex ? "text-primary font-medium" : "hover:text-foreground"
-                                        )}
-                                      >
-                                        {displayLabel}
-                                      </span>
-                                    );
-                                  })}
-                                </div>
-                                {/* Current Selection Display */}
-                                <div className="text-center">
-                                  <span className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-primary/10 text-primary border border-primary/20">
-                                    {priceRangeOptions[currentIndex].label}
-                                  </span>
-                                </div>
-                              </div>
-                              <FormMessage className="text-xs" />
-                            </FormItem>
-                          );
-                        }}
-                      />
-                    </div>
-                    
-                    {/* Plan Type Card */}
-                  <div className="group bg-card/60 backdrop-blur-sm border border-border/40 rounded-2xl p-5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300">
-                      <FormField
-                        control={form.control}
-                        name="planTypeHint"
-                        render={({ field }) => {
-                          // Watch the value to ensure reactivity
-                          const planTypeValue = form.watch('planTypeHint');
-                          const typeIndex = planTypeHintOptions.findIndex(option => option.value === planTypeValue);
-                          const currentIndex = typeIndex === -1 ? 0 : typeIndex;
-                          
-                          return (
-                            <FormItem className="space-y-4">
-                              <FormLabel className="text-sm font-semibold text-foreground flex items-center gap-2.5">
-                                <div className="w-8 h-8 bg-primary/10 rounded-xl flex items-center justify-center">
-                                  <Target className="w-4 h-4 text-primary" />
-                                </div>
-                                Plan Type
-                              </FormLabel>
-                              <div className="space-y-3">
-                                <FormControl>
-                                  <Slider
-                                    value={[currentIndex]}
-                                    onValueChange={(value) => {
-                                      const selectedOption = planTypeHintOptions[value[0]];
-                                      // Use form.setValue for controlled update
-                                      form.setValue('planTypeHint', selectedOption.value, {
-                                        shouldValidate: true,
-                                        shouldDirty: true,
-                                        shouldTouch: true,
-                                      });
-                                    }}
-                                    min={0}
-                                    max={planTypeHintOptions.length - 1}
-                                    step={1}
-                                    className="[&>span:first-child]:h-3 [&>span>span]:h-3 [&>button]:h-8 [&>button]:w-8 [&>button]:border-2 [&>button]:shadow-md [&>button]:bg-primary [&>button]:border-primary [&>button]:touch-manipulation py-3"
-                                  />
-                                </FormControl>
-                                {/* Notch Labels */}
-                                <div className="flex justify-between text-xs text-muted-foreground px-1">
-                                  {planTypeHintOptions.map((option, index) => (
-                                    <span 
-                                      key={option.value} 
-                                      className={cn(
-                                        "transition-colors duration-200 text-center flex-1",
-                                        index === currentIndex ? "text-primary font-medium" : "hover:text-foreground"
-                                      )}
-                                    >
-                                      {option.label}
-                                    </span>
-                                  ))}
-                                </div>
-                                {/* Current Selection Display */}
-                                <div className="text-center space-y-1">
-                                  <span className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-primary/10 text-primary border border-primary/20">
-                                    {planTypeHintOptions[currentIndex].label}
-                                  </span>
-                                  <p className="text-xs text-muted-foreground">
-                                    {planTypeHintOptions[currentIndex].description}
-                                  </p>
-                                </div>
-                              </div>
-                              <FormMessage className="text-xs" />
-                            </FormItem>
-                          );
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Special Requests Card */}
-                <div className="group bg-card/60 backdrop-blur-sm border border-border/40 rounded-2xl p-5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300">
-                    <FormField
-                      control={form.control}
-                      name="userPrompt"
-                      render={({ field }) => (
-                        <FormItem className="space-y-3">
-                          <FormLabel className="text-sm font-semibold text-foreground flex items-center gap-2.5">
-                            <div className="w-8 h-8 bg-primary/10 rounded-xl flex items-center justify-center">
-                              <MessageSquare className="w-4 h-4 text-primary" />
-                            </div>
-                            Tell AI what you want to do (Optional)
-                          </FormLabel>
-                          <FormControl>
-                            <Textarea
-                              placeholder="e.g., I want to explore local coffee shops and art galleries, then have dinner at a romantic restaurant..."
-                              className="min-h-[100px] resize-none bg-background/40 border-border/40 focus:border-primary/50 focus:ring-2 focus:ring-primary/20 rounded-xl transition-all text-sm leading-relaxed"
-                              rows={4}
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormDescription className="text-xs text-muted-foreground leading-relaxed">
-                            Describe your ideal plan and AI will create something amazing!
-                          </FormDescription>
-                          <FormMessage className="text-xs" />
-                        </FormItem>
-                      )}
+                {/* Friends Selector */}
+                {showFriendSelector && (
+                  <div 
+                    ref={friendSelectorRef}
+                    className="pb-4 transition-all duration-300 ease-in-out"
+                  >
+                    <FriendMultiSelectInput 
+                      control={form.control} 
+                      name="invitedParticipantUserIds" 
+                      label="" 
+                      description=""
+                      autoFocus
                     />
                   </div>
-                </div>
+                )}
               </div>
             )}
 
-            {/* Submit Button - Only visible when map is collapsed */}
-            {isMapCollapsed && (
-              <div className="p-6 border-t border-border/20 bg-gradient-to-t from-background/80 to-transparent">
-                <div className="space-y-4">
-                  {/* Progress indicator */}
-                  <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-                    <div className="w-6 h-6 bg-primary/20 text-primary rounded-full flex items-center justify-center font-bold">
-                      <CheckCircle className="w-3 h-3" />
-                    </div>
-                    <span>Area Selected</span>
-                    <ChevronRight className="w-3 h-3" />
-                    <div className="w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center font-bold text-xs">
-                      2
-                    </div>
-                    <span className="font-medium text-foreground">Ready to Generate</span>
+            {/* Fixed Bottom Input Area */}
+            <div className="sticky bottom-8 left-0 right-0 bg-background/90 backdrop-blur-sm pt-2 pb-4 px-4">
+              <div className="max-w-3xl mx-auto relative">
+                {/* Selection Pills */}
+                <div className="absolute -top-10 left-0 z-40 flex items-center gap-2">
+                  {/* Date Picker */}
+                  <div className="relative">
+                    {/* Hidden date input */}
+                    <input
+                      type="datetime-local"
+                      ref={dateInputRef}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      min={new Date().toISOString().slice(0, 16)}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          form.setValue('planDateTime', new Date(e.target.value));
+                        }
+                      }}
+                    />
+                    
+                    {/* Custom button */}
+                    <button
+                      type="button"
+                      onClick={() => dateInputRef.current?.showPicker()}
+                      className="h-8 rounded-full bg-gray-800/50 text-gray-200 text-xs font-medium px-3 py-1.5 flex items-center gap-1.5 hover:bg-gray-700/50 transition-colors"
+                    >
+                      <CalendarIcon className="h-3.5 w-3.5" />
+                      <span>{format(form.watch('planDateTime'), 'MMM d, h:mm a')}</span>
+                    </button>
                   </div>
-                  
-                  <Button 
-                    type="submit" 
-                    disabled={isGenerating || (!isLoaded && !!googleMapsApiKey && !loadError) || (!form.formState.isValid && form.formState.isSubmitted)} 
-                    className="w-full h-14 text-base font-bold bg-gradient-to-r from-amber-400 via-orange-500 to-pink-500 hover:from-amber-300 hover:via-orange-400 hover:to-pink-400 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl text-white border-0 relative overflow-hidden group transform hover:scale-[1.02] active:scale-[0.98]"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-yellow-300/30 via-orange-300/30 to-pink-300/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" />
-                    <div className="relative z-10 flex items-center justify-center gap-3">
-                      {isGenerating ? (
-                        <>
-                          <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          <span>Creating your perfect plan...</span>
-                        </>
-                      ) : (
-                        <>
-                          <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center">
-                            <Sparkles className="w-5 h-5 animate-pulse" />
-                          </div>
-                          <span>Generate Plan with AI</span>
-                        </>
-                      )}
+
+                  {/* Price Range Pill */}
+                  {form.watch('priceRange') && (
+                    <div className="h-8 rounded-full bg-gray-800/50 text-gray-200 text-xs font-medium px-3 py-1.5 flex items-center gap-1.5">
+                      <DollarSign className="h-3.5 w-3.5" />
+                      <span>
+                        {form.watch('priceRange') === 'Free' 
+                          ? 'Free' 
+                          : form.watch('priceRange')}
+                      </span>
                     </div>
-                  </Button>
-                  
-                  {/* Helper text */}
-                  <p className="text-xs text-center text-muted-foreground leading-relaxed">
-                    Our AI will analyze your preferences, location, and friends' interests to create the perfect plan
-                  </p>
+                  )}
+
+                  {/* Stops Pill */}
+                  <div className="h-8 rounded-full bg-gray-800/50 text-gray-200 text-xs font-medium px-3 py-1.5 flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5" />
+                    <span>
+                      {form.watch('planTypeHint') === 'single-stop' 
+                        ? '1 Stop' 
+                        : form.watch('planTypeHint') === 'multi-stop' 
+                          ? 'Multi-Stop' 
+                          : 'AI Decides'}
+                    </span>
+                  </div>
                 </div>
+                <FormField
+                  control={form.control}
+                  name="userPrompt"
+                  render={({ field }) => (
+                    <FormItem className="space-y-0">
+                      <FormControl>
+                        <div className="relative">
+                          <Textarea
+                            placeholder="What would you like to do today?"
+                            className="min-h-[60px] max-h-[200px] overflow-y-hidden hover:overflow-y-auto textarea-scrollbar bg-gray-900/95 border-2 border-gray-700/80 focus:border-2 focus:border-primary/80 focus:ring-2 focus:ring-primary/40 rounded-xl transition-all text-sm leading-relaxed px-4 pb-16 pt-4 text-white placeholder-gray-600/85 w-full shadow-lg"
+                            style={{
+                              height: 'auto',
+                              minHeight: '60px',
+                              maxHeight: '200px',
+                              resize: 'none',
+                            }}
+                            onInput={(e) => {
+                              const target = e.target as HTMLTextAreaElement;
+                              target.style.height = 'auto';
+                              const newHeight = Math.min(target.scrollHeight, 200);
+                              target.style.height = newHeight + 'px';
+                              
+                              // Only show scrollbar when at max height
+                              if (newHeight >= 200) {
+                                target.classList.add('overflow-y-auto');
+                                target.classList.remove('overflow-y-hidden');
+                              } else {
+                                target.classList.remove('overflow-y-auto');
+                                target.classList.add('overflow-y-hidden');
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                form.handleSubmit(handleGeneratePlan)();
+                              }
+                            }}
+                            {...field}
+                          />
+                          <div className="absolute left-2 bottom-3 flex gap-2">
+                            <div className="relative">
+                              <Button 
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg"
+                                onClick={() => {
+                                  dateInputRef.current?.showPicker();
+                                  setShowFriendSelector(false);
+                                  setShowPriceRangeSelector(false);
+                                }}
+                              >
+                                <CalendarIcon className="h-4 w-4" />
+                              </Button>
+                            </div>
+                            <div className="relative">
+                              <Button 
+                                ref={priceRangeButtonRef}
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg"
+                                onClick={() => {
+                                  setShowPriceRangeSelector(!showPriceRangeSelector);
+                                  setShowFriendSelector(false);
+                                }}
+                              >
+                                <DollarSign className="h-4 w-4" />
+                              </Button>
+                              
+                              <div 
+                                ref={priceRangeSelectorRef}
+                                className={`absolute bottom-[calc(100%+9rem)] -left-10 w-96 bg-background border border-border rounded-lg shadow-lg p-4 z-50 transition-all duration-200 ease-out ${
+                                  showPriceRangeSelector 
+                                    ? 'opacity-100 translate-y-0' 
+                                    : 'opacity-0 translate-y-2 pointer-events-none'
+                                }`}
+                              >
+                                  <div className="space-y-4">
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-sm font-medium">Price Range</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => form.setValue('priceRange', null)}
+                                        className={cn(
+                                          "text-xs px-2 py-1 rounded-md transition-colors",
+                                          form.getValues('priceRange') === null
+                                            ? "bg-primary/10 text-primary" 
+                                            : "text-muted-foreground hover:bg-accent"
+                                        )}
+                                      >
+                                        Let AI decide
+                                      </button>
+                                    </div>
+                                    <div className="px-2 space-y-2">
+                                      <div className="relative w-full">
+                                        <div className="relative">
+                                          {/* Slider with transparent track */}
+                                          <Slider
+                                            value={[form.watch('priceRange') === null ? -1 : 
+                                                   form.watch('priceRange') === 'Free' ? 0 : 
+                                                   form.watch('priceRange') === '$' ? 1 :
+                                                   form.watch('priceRange') === '$$' ? 2 : 3]}
+                                            min={-1}
+                                            max={3}
+                                            step={1}
+                                            onValueChange={(value) => {
+                                              const priceMap = {
+                                                '-1': null,
+                                                '0': 'Free',
+                                                '1': '$',
+                                                '2': '$$',
+                                                '3': '$$$'
+                                              } as const;
+                                              form.setValue('priceRange', priceMap[value[0].toString() as keyof typeof priceMap], { shouldDirty: true });
+                                            }}
+                                            className="relative z-10"
+                                          />
+                                          
+                                          {/* Custom track with gradient */}
+                                          <div className="absolute top-1/2 left-0 right-0 -translate-y-1/2 h-1 pointer-events-none">
+                                            <div className="w-full h-full bg-gradient-to-r from-green-500 via-yellow-500 to-red-500 rounded-full" />
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Tick marks */}
+                                        <div className="relative h-5 mt-1">
+                                          <div className="absolute inset-0 flex justify-between items-start px-1">
+                                            {[-1, 0, 1, 2, 3].map((tick) => (
+                                              <div 
+                                                key={tick} 
+                                                className="w-px h-2 bg-foreground/20"
+                                              />
+                                            ))}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="flex justify-between text-xs text-muted-foreground px-1">
+                                        <span className={cn("text-center w-16", form.getValues('priceRange') === null && "font-bold text-foreground")}>AI Decides</span>
+                                        <span className={cn("text-center w-16", form.getValues('priceRange') === 'Free' && "font-bold text-foreground")}>Free</span>
+                                        <span className={cn("text-center w-16", form.getValues('priceRange') === '$' && "font-bold text-foreground")}>$</span>
+                                        <span className={cn("text-center w-16", form.getValues('priceRange') === '$$' && "font-bold text-foreground")}>$$</span>
+                                        <span className={cn("text-center w-16", form.getValues('priceRange') === '$$$' && "font-bold text-foreground")}>$$$</span>
+                                      </div>
+                                    </div>
+                                    {form.getValues('priceRange') !== null && (
+                                      <div className="text-xs text-muted-foreground text-center">
+                                        {form.getValues('priceRange') === 'Free' ? "Free activities only" :
+                                         form.getValues('priceRange') === '$' ? "Budget-friendly options" :
+                                         form.getValues('priceRange') === '$$' ? "Moderate pricing" :
+                                         form.getValues('priceRange') === '$$$' ? "Premium experiences" : ''}
+                                      </div>
+                                    )}
+                                  </div>
+                              </div>
+                            </div>
+                            <Button 
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className={cn(
+                                "h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg",
+                                form.watch('planTypeHint') && form.watch('planTypeHint') !== 'ai-decide' && "text-amber-400"
+                              )}
+                              onClick={() => {
+                                const currentType = form.watch('planTypeHint');
+                                let newValue;
+                                
+                                if (!currentType || currentType === 'ai-decide') {
+                                  newValue = 'single-stop';
+                                } else if (currentType === 'single-stop') {
+                                  newValue = 'multi-stop';
+                                } else {
+                                  newValue = ''; // Empty string for AI decide
+                                }
+                                
+                                form.setValue('planTypeHint', newValue as any);
+                                
+                                const toastMessage = !newValue 
+                                  ? 'AI will decide the number of stops' 
+                                  : `Plan type set to ${newValue === 'single-stop' ? 'Single Stop' : 'Multi-Stop'}`;
+                                  
+                                toast({
+                                  title: toastMessage,
+                                  variant: 'default',
+                                });
+                              }}
+                              title={form.watch('planTypeHint') === 'single-stop' 
+                                ? 'Switch to Multi-Stop' 
+                                : form.watch('planTypeHint') === 'multi-stop'
+                                  ? 'Let AI decide (clear selection)'
+                                  : 'Switch to Single Stop'}
+                            >
+                              {!form.watch('planTypeHint') || form.watch('planTypeHint') === 'ai-decide' 
+                                ? 'AI' 
+                                : form.watch('planTypeHint') === 'single-stop' 
+                                  ? '1' 
+                                  : '2+'}
+                            </Button>
+                            <Button 
+                              ref={friendButtonRef}
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className={cn(
+                                "h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg",
+                                showFriendSelector && "bg-gray-800/50 text-white"
+                              )}
+                              onClick={() => {
+                                const newState = !showFriendSelector;
+                                setShowFriendSelector(newState);
+                                
+                                if (newState) {
+                                  // Use setTimeout to ensure the DOM has updated before focusing
+                                  setTimeout(() => {
+                                    if (friendSelectorRef.current) {
+                                      friendSelectorRef.current.scrollIntoView({ 
+                                        behavior: 'smooth',
+                                        block: 'nearest'
+                                      });
+                                    }
+                                  }, 50);
+                                }
+                              }}
+                            >
+                              <UserPlus className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <Button 
+                            type="submit"
+                            size="sm"
+                            disabled={isGenerating}
+                            className="absolute bottom-2 right-2 h-8 w-8 p-0 rounded-lg bg-gradient-to-r from-amber-400 via-orange-500 to-pink-500 hover:from-amber-300 hover:via-orange-400 hover:to-pink-400 text-white flex items-center justify-center"
+                          >
+                            {isGenerating ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Sparkles className="w-4 h-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </FormControl>
+                      <FormMessage className="text-xs px-1" />
+                    </FormItem>
+                  )}
+                />
               </div>
-            )}
+            </div>
           </form>
         </Form>
       </LimitGuard>
     </div>
   );
 }
+
+export default GeneratePlanPage

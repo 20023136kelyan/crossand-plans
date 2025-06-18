@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { Control } from 'react-hook-form';
 import { FormField, FormItem, FormLabel, FormDescription, FormMessage } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@ interface FriendMultiSelectInputProps {
   name: "invitedParticipantUserIds"; // Keep specific for now, can be generic later
   label: string;
   description?: string;
+  autoFocus?: boolean;
 }
 
 export function FriendMultiSelectInput({
@@ -30,12 +31,20 @@ export function FriendMultiSelectInput({
   name,
   label,
   description,
+  autoFocus = false,
 }: FriendMultiSelectInputProps) {
   const { user, loading: authLoading } = useAuth();
   const [allFriendshipEntries, setAllFriendshipEntries] = useState<FriendEntry[]>([]);
   const [isLoadingFriends, setIsLoadingFriends] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+  const [isPopoverOpen, setIsPopoverOpen] = useState(autoFocus);
+  const popoverTriggerRef = useRef<HTMLButtonElement>(null);
+  
+  useEffect(() => {
+    if (autoFocus && popoverTriggerRef.current) {
+      popoverTriggerRef.current.click();
+    }
+  }, [autoFocus]);
   const { toast } = useToast();
   const { canAddParticipant, maxParticipantsPerPlan } = useLimits();
 
@@ -156,10 +165,14 @@ export function FriendMultiSelectInput({
             <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
               <PopoverTrigger asChild>
                 <Button
+                  ref={popoverTriggerRef}
+                  type="button"
                   variant="outline"
                   role="combobox"
-                  className="w-full justify-between text-xs h-9 px-3 py-2 text-muted-foreground"
-                  disabled={(isLoadingFriends && isPopoverOpen) || authLoading} 
+                  aria-expanded={isPopoverOpen}
+                  className="w-full justify-between text-left font-normal bg-background/50 hover:bg-background/70 transition-colors border-border/50"
+                  disabled={isLoadingFriends || authLoading}
+                  onClick={() => setIsPopoverOpen(!isPopoverOpen)}
                 >
                   <div className="flex items-center">
                   {(isLoadingFriends && isPopoverOpen) || authLoading ? (
