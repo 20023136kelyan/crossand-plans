@@ -2,12 +2,12 @@
 
 import type { Control, UseFieldArrayRemove, UseFieldArrayMove } from 'react-hook-form';
 import { useFormContext, Controller, useWatch } from 'react-hook-form';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from '@/components/ui/form';
-import { Trash2, Sparkles, CheckCircle, XCircle, ExternalLink, Clock, Car, Footprints, Bike, TramFront, Loader2, Edit3, Save, Ban, MoveUp, MoveDown, CalendarClock, Star, Info } from 'lucide-react';
+import { Trash2, Sparkles, CheckCircle, XCircle, ExternalLink, Clock, Car, Footprints, Bike, TramFront, Loader2, Edit3, Save, Ban, MoveUp, MoveDown, CalendarClock, Star, Info, ChevronDown, MapPin } from 'lucide-react';
 import type { PlanFormValues, ItineraryItemSchemaValues } from './PlanForm';
 import React, { useEffect, useRef, useState, useCallback, memo, useMemo } from 'react';
 import Image from 'next/image';
@@ -111,6 +111,31 @@ const EditableItineraryItemCardImpl = ({
   const [isCalculatingTransit, setIsCalculatingTransit] = useState(false);
   const [transitTimeDebounceTimeout, setTransitTimeDebounceTimeout] = useState<NodeJS.Timeout | null>(null);
   
+  // State to control showing advanced fields
+  const [showAdvancedFields, setShowAdvancedFields] = useState(false);
+  const [showDescription, setShowDescription] = useState(false);
+  const [showTimeEditor, setShowTimeEditor] = useState(false);
+  const [showPlaceEditor, setShowPlaceEditor] = useState(false);
+  
+  // Watch address and city to auto-show advanced fields if they have values
+  const address = watch(getFieldPath('address'));
+  const city = watch(getFieldPath('city'));
+  const description = watch(getFieldPath('description'));
+  
+  // Auto-show advanced fields if they have values
+  useEffect(() => {
+    if ((address && String(address).trim()) || (city && String(city).trim())) {
+      setShowAdvancedFields(true);
+    }
+  }, [address, city]);
+  
+  // Auto-show description if it has content
+  useEffect(() => {
+    if (description && String(description).trim()) {
+      setShowDescription(true);
+    }
+  }, [description]);
+  
   // Handle place selection from autocomplete
   const handlePlaceSelect = useCallback((place: any) => {
     console.log('=== EDITABLE ITINERARY ITEM CARD - PLACE SELECT ===');
@@ -213,6 +238,7 @@ const EditableItineraryItemCardImpl = ({
     console.log('Photo reference matches what we set:', setPhotoRef === photoReference);
     
     console.log('Updated form fields with place details, city:', city, 'googlePlaceId:', place.place_id, 'photoReference:', photoReference);
+    setShowPlaceEditor(false);
   }, [setValue, getFieldPath]);
   
   // Calculate transit time when relevant fields change
@@ -529,15 +555,90 @@ const EditableItineraryItemCardImpl = ({
     return format(date, "yyyy-MM-dd'T'HH:mm");
   };
 
+  // Helper function for human-friendly datetime display
+  const formatHumanDateTime = (isoString: string | null | undefined): string => {
+    if (!isoString || !isValid(parseISO(isoString))) return '';
+    const date = parseISO(isoString);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    
+    let dateStr = '';
+    if (dateOnly.getTime() === today.getTime()) {
+      dateStr = 'Today';
+    } else if (dateOnly.getTime() === tomorrow.getTime()) {
+      dateStr = 'Tomorrow';
+    } else {
+      // Use short format: Jan 15
+      dateStr = format(date, 'MMM d');
+    }
+    
+    // Format time as 2:30 PM
+    const timeStr = format(date, 'h:mm a');
+    return `${dateStr} ${timeStr}`;
+  };
+
   // Format times for display
   const formattedStartTime = startTime && isValid(parseISO(String(startTime))) ? format(parseISO(String(startTime)), 'p') : 'N/A';
   const formattedEndTime = endTime && isValid(parseISO(String(endTime))) ? format(parseISO(String(endTime)), 'p') : 'N/A';
 
+  // Additional pretty date + timezone strings for read-only view
+  const parsedStart = startTime && isValid(parseISO(String(startTime))) ? parseISO(String(startTime)) : null;
+  const formattedDateLine = parsedStart ? format(parsedStart, 'eeee, MMMM d') : '';
+  const tzAbbr = parsedStart ? new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' })
+    .format(parsedStart)
+    .split(' ') // last element is the TZ abbrev
+    .pop() : '';
+
+  // Dynamically adjust card layout: full-screen when editing, normal card otherwise
+  const cardClasses = cn(
+    "border border-border bg-card shadow-lg", // base
+    isEditing
+      ? "fixed inset-0 z-50 w-screen h-screen overflow-y-auto rounded-none mb-0 p-0"
+      : "mb-6 rounded-2xl overflow-hidden hover:shadow-xl transition-shadow duration-300"
+  );
+
+  const placeEditorRef = useRef<HTMLDivElement | null>(null);
+
+  // Close place editor when clicking outside
+  useEffect(() => {
+    if (!showPlaceEditor) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (placeEditorRef.current && !placeEditorRef.current.contains(e.target as Node)) {
+        setShowPlaceEditor(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showPlaceEditor]);
+
+  const timeEditorRef = useRef<HTMLDivElement | null>(null);
+
+  // Close time editor when clicking outside
+  useEffect(() => {
+    if (!showTimeEditor) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (timeEditorRef.current && !timeEditorRef.current.contains(e.target as Node)) {
+        setShowTimeEditor(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showTimeEditor]);
+
   return (
-    <Card className="mb-6 border border-border shadow-lg bg-card rounded-2xl overflow-hidden hover:shadow-xl transition-shadow duration-300">
+    <Card className={cardClasses}>
       <CardHeader className="p-0">
         {/* Header with image background */}
-        <div className="relative h-32 sm:h-40 w-full rounded-t-lg overflow-hidden">
+        <div
+          className={cn(
+            "relative w-full rounded-t-lg overflow-hidden",
+            isEditing ? "" : "h-32 sm:h-40"
+          )}
+          style={isEditing ? {height:'50vh'} : undefined}
+        >
           {!imageError ? (
             <Image
               src={String(itemPhotoUrl || '')}
@@ -563,21 +664,12 @@ const EditableItineraryItemCardImpl = ({
           
           {/* Schedule pill overlay */}
           <div className="absolute top-3 left-3 flex flex-col gap-2">
-            <div className="bg-black/80 backdrop-blur-sm rounded-full px-3 py-2 flex items-center gap-2 shadow-lg">
-              <CalendarClock className="h-4 w-4 text-white" />
-              <span className="text-white text-sm font-medium">
-                {formattedStartTime} - {formattedEndTime}
-              </span>
-            </div>
-            {index > 0 && currentItem?.transitTimeFromPreviousMinutes && (
-              <div className="bg-accent/90 backdrop-blur-sm rounded-full px-3 py-1.5 flex items-center gap-1.5 shadow-lg">
-                {transitModeOptions.find(option => option.value === transitMode)?.icon && (
-                  React.createElement(transitModeOptions.find(option => option.value === transitMode)!.icon, {
-                    className: "h-3.5 w-3.5 text-white"
-                  })
-                )}
-                <span className="text-white text-xs font-medium">
-                  {currentItem.transitTimeFromPreviousMinutes} min
+            {/* Read-only collapsed view */}
+            {!isEditing && (
+              <div className="bg-black/80 backdrop-blur-sm rounded-full px-3 py-2 flex items-center gap-2 shadow-lg text-white">
+                <CalendarClock className="h-4 w-4" />
+                <span className="text-sm font-medium">
+                  {formattedStartTime} - {formattedEndTime}
                 </span>
               </div>
             )}
@@ -633,76 +725,51 @@ const EditableItineraryItemCardImpl = ({
             </div>
           )}
 
-          {/* Action buttons overlay */}
-          <div className="absolute top-3 right-3 flex items-center gap-1">
-            {/* Move buttons */}
-            <Button 
-              type="button" 
-              variant="secondary" 
-              size="icon" 
-              onClick={() => move(index, index - 1)} 
-              disabled={isFirst}
-              className="h-8 w-8 bg-card/90 hover:bg-card text-card-foreground shadow-sm backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed border border-border/50"
-            >
-              <MoveUp className="h-4 w-4" />
-            </Button>
-            
-            <Button 
-              type="button" 
-              variant="secondary" 
-              size="icon" 
-              onClick={() => move(index, index + 1)} 
-              disabled={isLast}
-              className="h-8 w-8 bg-card/90 hover:bg-card text-card-foreground shadow-sm backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed border border-border/50"
-            >
-              <MoveDown className="h-4 w-4" />
-            </Button>
-            
-            {isEditing ? (
-              <>
-                <Button 
-                  type="button" 
-                  variant="secondary" 
-                  size="icon" 
-                  onClick={handleSave} 
-                  className="h-8 w-8 bg-gradient-primary/90 hover:bg-gradient-primary-hover text-primary-foreground shadow-sm backdrop-blur-sm"
-                >
-                  <Save className="h-4 w-4" />
-                </Button>
-                <Button 
-                  type="button" 
-                  variant="secondary" 
-                  size="icon" 
-                  onClick={handleCancel} 
-                  className="h-8 w-8 bg-muted/90 hover:bg-muted text-muted-foreground shadow-sm backdrop-blur-sm"
-                >
-                  <Ban className="h-4 w-4" />
-                </Button>
-              </>
-            ) : (
-              <Button 
-                type="button" 
-                variant="secondary" 
-                size="icon" 
-                onClick={handleEdit} 
+          {/* Action buttons overlay - only for collapsed (view) mode */}
+          {!isEditing && (
+            <div className="absolute top-3 right-3 flex items-center gap-1">
+              {/* Move buttons */}
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                onClick={() => move(index, index - 1)}
+                disabled={isFirst}
+                className="h-8 w-8 bg-card/90 hover:bg-card text-card-foreground shadow-sm backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed border border-border/50"
+              >
+                <MoveUp className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                onClick={() => move(index, index + 1)}
+                disabled={isLast}
+                className="h-8 w-8 bg-card/90 hover:bg-card text-card-foreground shadow-sm backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed border border-border/50"
+              >
+                <MoveDown className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                onClick={handleEdit}
                 className="h-8 w-8 bg-secondary/90 hover:bg-secondary text-secondary-foreground shadow-sm backdrop-blur-sm"
               >
                 <Edit3 className="h-4 w-4" />
               </Button>
-            )}
-            
-            {!isOnlyItem && (
-              <Button 
-                type="button" 
-                variant="secondary" 
-                size="icon" 
-                onClick={handleRemove} 
-                className="h-8 w-8 bg-destructive/90 hover:bg-destructive text-destructive-foreground shadow-sm backdrop-blur-sm"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
+              {!isOnlyItem && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleRemove}
+                >
+                  <Trash2 className="h-4 w-4 mr-1" /> Delete
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </CardHeader>
       
@@ -739,6 +806,7 @@ const EditableItineraryItemCardImpl = ({
                 name={getFieldPath('transitMode')}
                 render={({ field }) => (
                   <FormItem>
+                    <FormLabel className="text-sm">🚗 Travel Mode</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={String(field.value || 'driving')}>
                       <FormControl>
                         <SelectTrigger className="w-[120px] h-8 bg-background border-border">
@@ -765,101 +833,300 @@ const EditableItineraryItemCardImpl = ({
         
         {/* Form Fields */}
         {isEditing ? (
-          <div className="space-y-6">
-            {/* Place Name Field */}
-            <FormField
-              control={control}
-              name={getFieldPath('placeName')}
-              render={({ field }) => (
-                <FormItem>
-                  <FormControl>
-                    <PlaceAutocomplete
-                      value={String(field.value || '')}
-                      onPlaceSelect={handlePlaceSelect}
-                      onInputChange={(value) => {
-                        // Immediately update the form field
-                        setValue(getFieldPath('placeName'), value, { 
-                          shouldValidate: false, 
-                          shouldDirty: true 
-                        });
-                        
-                        // Clear existing timeout
-                        if (placeNameDebounceTimeoutRef.current) {
-                          clearTimeout(placeNameDebounceTimeoutRef.current);
-                        }
-                        
-                        // Set new timeout for validation
-                        placeNameDebounceTimeoutRef.current = setTimeout(() => {
-                          trigger(getFieldPath('placeName'));
-                        }, 300);
-                      }}
-                      placeholder="Place Name *"
-                      className="h-12 text-base"
-                      isGoogleMapsApiLoaded={isGoogleMapsApiLoaded}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            
-            {/* Address and City in a grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField
-                control={control}
-                name={getFieldPath('address')}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        value={String(field.value || '')}
-                        placeholder="Address"
-                        className="h-11"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
+          <div className="space-y-4">
+            {/* Essential Fields Section */}
+            <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+              {/* Place Name Field or collapsed button */}
+              <div className="md:col-span-2 space-y-1">
+                {showPlaceEditor ? (
+                  <div ref={placeEditorRef}>
+                  <FormField
+                    control={control}
+                    name={getFieldPath('placeName')}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">📍 Place</FormLabel>
+                        <FormControl>
+                          <PlaceAutocomplete
+                            value={String(field.value || '')}
+                            onPlaceSelect={handlePlaceSelect}
+                            onInputChange={(value) => {
+                              setValue(getFieldPath('placeName'), value, { shouldValidate: false, shouldDirty: true });
+                              if (placeNameDebounceTimeoutRef.current) clearTimeout(placeNameDebounceTimeoutRef.current);
+                              placeNameDebounceTimeoutRef.current = setTimeout(() => trigger(getFieldPath('placeName')), 300);
+                            }}
+                            placeholder="Place Name *"
+                            className="h-11 text-sm"
+                            isGoogleMapsApiLoaded={isGoogleMapsApiLoaded}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowPlaceEditor(true)}
+                    className="w-full bg-muted/20 hover:bg-muted/30 rounded-lg px-4 py-3 text-left transition-colors flex items-center gap-3"
+                  >
+                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                    <div className="flex-1">
+                      {typeof placeName === 'string' && placeName.trim() ? (
+                        <p className="text-sm font-medium leading-none">{placeName}</p>
+                      ) : (
+                        <p className="text-sm font-medium leading-none text-muted-foreground">Add place</p>
+                      )}
+                    </div>
+                  </button>
                 )}
-              />
-              
-              <FormField
-                control={control}
-                name={getFieldPath('city')}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        value={String(field.value || '')}
-                        placeholder="City"
-                        className="h-11"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              </div>
+
+              {/* Date / Time Display (tap to edit) */}
+              <div className="md:col-span-2">
+                <button
+                  type="button"
+                  onClick={() => setShowTimeEditor((prev) => !prev)}
+                  className="w-full bg-muted/20 hover:bg-muted/30 rounded-lg px-4 py-3 text-left transition-colors"
+                >
+                  <p className="text-sm font-medium leading-none">{formattedDateLine}</p>
+                  <p className="text-xs mt-0.5 text-muted-foreground">{formattedStartTime} — {formattedEndTime} {tzAbbr}</p>
+                </button>
+              </div>
+
+              {/* Time & Duration Fields */}
+              {showTimeEditor && (
+              <div ref={timeEditorRef} className="grid grid-cols-[1fr_110px] gap-4 pr-2 md:col-span-2">
+                <FormField
+                  control={control}
+                  name={getFieldPath('startTime')}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">🗓️ Start</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          value={formatForDatetimeLocal(String(field.value || ''))}
+                          onChange={(e) => {
+                            const datetimeLocalValue = e.target.value;
+                            if (datetimeLocalValue) {
+                              const startTime = new Date(datetimeLocalValue);
+                              field.onChange(startTime.toISOString());
+                              
+                              // Auto-calculate end time based on duration
+                              const currentEndTime = watch(getFieldPath('endTime'));
+                              if (!currentEndTime) {
+                                // Default to 1 hour duration if no end time is set
+                                const endTime = new Date(startTime.getTime() + 60 * 60 * 1000);
+                                setValue(getFieldPath('endTime'), endTime.toISOString(), { shouldValidate: true });
+                              }
+                            } else {
+                              field.onChange('');
+                            }
+                          }}
+                          type="datetime-local"
+                          className="h-11 text-sm"
+                          placeholder="When?"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={control}
+                  name={getFieldPath('endTime')}
+                  render={({ field }) => {
+                    const startTimeValue = watch(getFieldPath('startTime'));
+                    const startTime = startTimeValue ? new Date(String(startTimeValue)) : null;
+                    const endTime = field.value ? new Date(String(field.value)) : null;
+                    
+                    // Calculate duration in minutes
+                    const durationMinutes = startTime && endTime ? 
+                      Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60)) : 60;
+                    
+                    const hours = Math.floor(durationMinutes / 60);
+                    const minutes = durationMinutes % 60;
+                    
+                    return (
+                      <FormItem>
+                        <FormLabel className="text-sm">⏱️ Duration</FormLabel>
+                        <FormControl>
+                          <Select
+                            value={`${hours}:${minutes.toString().padStart(2, '0')}`}
+                            onValueChange={(duration) => {
+                              if (startTime) {
+                                const [h, m] = duration.split(':').map(Number);
+                                const totalMinutes = h * 60 + m;
+                                const newEndTime = new Date(startTime.getTime() + totalMinutes * 60 * 1000);
+                                field.onChange(newEndTime.toISOString());
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="h-11">
+                              <SelectValue placeholder="Duration" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="0:30">30min</SelectItem>
+                              <SelectItem value="1:00">1h</SelectItem>
+                              <SelectItem value="1:30">1.5h</SelectItem>
+                              <SelectItem value="2:00">2h</SelectItem>
+                              <SelectItem value="2:30">2.5h</SelectItem>
+                              <SelectItem value="3:00">3h</SelectItem>
+                              <SelectItem value="4:00">4h</SelectItem>
+                              <SelectItem value="6:00">6h</SelectItem>
+                              <SelectItem value="8:00">8h</SelectItem>
+                              <SelectItem value="10:00">10h</SelectItem>
+                              <SelectItem value="12:00">12h</SelectItem>
+                              <SelectItem value="24:00">1 day</SelectItem>
+                              <SelectItem value="48:00">2 days</SelectItem>
+                              <SelectItem value="72:00">3 days</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
+              </div>
+            )}
             </div>
-            
-            {/* Description Field */}
-            <FormField
-              control={control}
-              name={getFieldPath('description')}
-              render={({ field }) => (
-                <FormItem>
-                  <FormControl>
-                    <Textarea
-                      {...field}
-                      value={String(field.value || '')}
-                      placeholder="Describe what you'll do here, what to see, or any special notes..."
-                      className="min-h-[100px] resize-none"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+
+            {/* Advanced Fields Toggle */}
+            {!showAdvancedFields && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAdvancedFields(true)}
+                className="w-full h-8 text-muted-foreground hover:text-foreground text-xs justify-start px-3"
+              >
+                <ChevronDown className="h-3 w-3 mr-2" />
+                Advanced details
+                {((address && String(address).trim()) || (city && String(city).trim())) && (
+                  <span className="ml-1 text-xs text-primary opacity-80">(auto-filled)</span>
+                )}
+              </Button>
+            )}
+
+            {/* Advanced Fields Section */}
+            {showAdvancedFields && (
+              <div className="space-y-3 pt-2 border-t border-border/40">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Advanced Details</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowAdvancedFields(false)}
+                    className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                  >
+                    <ChevronDown className="h-3 w-3 rotate-180" />
+                  </Button>
+                </div>
+                
+                {/* Address and City in a grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <FormField
+                    control={control}
+                    name={getFieldPath('address')}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">📫 Address</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            value={String(field.value || '')}
+                            placeholder="Address (auto-filled)"
+                            className="h-9 bg-muted/20 text-sm"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={control}
+                    name={getFieldPath('city')}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">🌆 City</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            value={String(field.value || '')}
+                            placeholder="City (auto-filled)"
+                            className="h-9 bg-muted/20 text-sm"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {/* Transit Mode for non-first items */}
+                {index > 0 && (
+                  <div className="bg-muted/20 rounded-lg p-4 border border-border/40">
+                    <div className="flex flex-row items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-accent/20 rounded-lg">
+                          {transitModeOptions.find(option => option.value === transitMode)?.icon && (
+                            React.createElement(transitModeOptions.find(option => option.value === transitMode)!.icon, {
+                              className: "h-4 w-4 text-accent"
+                            })
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">Travel Method</p>
+                          {isCalculatingTransit ? (
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              <span>Calculating route...</span>
+                            </div>
+                          ) : (
+                            currentItem?.transitTimeFromPreviousMinutes && (
+                              <p className="text-xs text-muted-foreground">{currentItem.transitTimeFromPreviousMinutes} minutes</p>
+                            )
+                          )}
+                        </div>
+                      </div>
+                      
+                      <FormField
+                        control={control}
+                        name={getFieldPath('transitMode')}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-sm">🚗 Travel Mode</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={String(field.value || 'driving')}>
+                              <FormControl>
+                                <SelectTrigger className="w-[120px] h-8 bg-background border-border">
+                                  <SelectValue placeholder="Travel mode" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {transitModeOptions.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    <div className="flex items-center gap-2">
+                                      <option.icon className="h-4 w-4" />
+                                      {option.label}
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             
             {/* Activity Suggestions Display */}
             {currentItem?.activitySuggestions && currentItem.activitySuggestions.length > 0 && (
@@ -878,64 +1145,54 @@ const EditableItineraryItemCardImpl = ({
                 </div>
               </div>
             )}
-            
-            {/* Time Fields */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField
-                control={control}
-                name={getFieldPath('startTime')}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        value={formatForDatetimeLocal(String(field.value || ''))}
-                        onChange={(e) => {
-                          const datetimeLocalValue = e.target.value;
-                          if (datetimeLocalValue) {
-                            const isoString = new Date(datetimeLocalValue).toISOString();
-                            field.onChange(isoString);
-                          } else {
-                            field.onChange('');
-                          }
-                        }}
-                        type="datetime-local"
-                        className="h-11"
-                        placeholder="Start Time"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
-              <FormField
-                control={control}
-                name={getFieldPath('endTime')}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        value={formatForDatetimeLocal(String(field.value || ''))}
-                        onChange={(e) => {
-                          const datetimeLocalValue = e.target.value;
-                          if (datetimeLocalValue) {
-                            const isoString = new Date(datetimeLocalValue).toISOString();
-                            field.onChange(isoString);
-                          } else {
-                            field.onChange('');
-                          }
-                        }}
-                        type="datetime-local"
-                        className="h-11"
-                        placeholder="End Time"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+
+            {/* Description Field - Collapsible */}
+            <div className="md:col-span-2">
+              {!showDescription ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowDescription(true)}
+                  className="w-full h-8 text-muted-foreground hover:text-foreground text-xs justify-start px-3"
+                >
+                  <ChevronDown className="h-3 w-3 mr-2" />
+                  Add description <span className="opacity-60">(optional)</span>
+                </Button>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowDescription(false)}
+                      className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                    >
+                      <ChevronDown className="h-3 w-3 rotate-180" />
+                    </Button>
+                  </div>
+                  <FormField
+                    control={control}
+                    name={getFieldPath('description')}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm">📝 Description</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            {...field}
+                            value={String(field.value || '')}
+                            placeholder="What will you do here? Any special notes..."
+                            className="min-h-[60px] resize-none text-sm"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
             </div>
           </div>
         ) : (
@@ -988,6 +1245,39 @@ const EditableItineraryItemCardImpl = ({
           </div>
         )}
       </CardContent>
+
+      {isEditing && (
+        <CardFooter className="justify-end flex-wrap gap-2">
+          {!isOnlyItem && (
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={handleRemove}
+            >
+              <Trash2 className="h-4 w-4 mr-1" /> Delete
+            </Button>
+          )}
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleCancel}
+          >
+            <Ban className="h-4 w-4 mr-1" /> Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={handleSave}
+            className="bg-gradient-primary/90 hover:bg-gradient-primary-hover text-primary-foreground"
+          >
+            <Save className="h-4 w-4 mr-1" /> Save
+          </Button>
+        </CardFooter>
+      )}
     </Card>
   );
 };
