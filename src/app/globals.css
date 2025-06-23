@@ -46,95 +46,136 @@
 
 @layer base {
   :root {
-    --background: 240 15% 2%; /* Deep black with a hint of blue/purple */
-    --foreground: 0 0% 98%;
+    /* Light theme with sophisticated warm neutrals - inspired by travel apps */
+    --background: 35 15% 94%; /* Light warm beige base */
+    --foreground: 25 20% 15%; /* Rich dark brown for text */
 
-    --card: 240 10% 6%; 
-    --card-foreground: 0 0% 98%;
+    --card: 40 20% 88%; /* Warmer cream cards with subtle orange hint */
+    --card-foreground: 25 20% 15%; /* Rich dark brown for card text */
 
-    --popover: 240 10% 5%; 
-    --popover-foreground: 0 0% 98%;
+    --popover: 0 0% 98%; /* Clean off-white for popovers */
+    --popover-foreground: 25 20% 15%; /* Rich dark brown for popover text */
 
-    --primary: 43 100% 50%; /* Orange gradient start - #ffb900 */
-    --primary-foreground: 0 0% 100%; /* White text on orange gradient */
+    --primary: 25 90% 48%; /* Much darker, richer orange for visibility */
+    --primary-foreground: 0 0% 100%; /* White text on orange */
 
-    /* New orange gradient for buttons */
-    --button-primary-gradient-start: 43 100% 50%; /* #ffb900 - lighter orange */
-    --button-primary-gradient-end: 30 100% 50%;  /* #ff7e00 - darker orange */
-    --button-primary-gradient-start-hover: 43 100% 45%; /* Darker version of #ffb900 */
-    --button-primary-gradient-end-hover: 30 100% 45%; /* Darker version of #ff7e00 */
+    /* Orange gradient for buttons - darker for light backgrounds */
+    --button-primary-gradient-start: 25 90% 48%; /* Rich dark orange */
+    --button-primary-gradient-end: 15 85% 42%;  /* Even darker burnt orange */
+    --button-primary-gradient-start-hover: 25 90% 42%; /* Darker on hover */
+    --button-primary-gradient-end-hover: 15 85% 38%; /* Much darker on hover */
 
-    --secondary: 220 20% 25%; /* Darker, slightly desaturated blue - NEW */
-    --secondary-foreground: 220 15% 92%;
+    --secondary: 30 25% 90%; /* Light peachy background for variety */
+    --secondary-foreground: 25 20% 15%; /* Rich dark brown */
 
-    --muted: 240 10% 15%;
-    --muted-foreground: 240 5% 70%;
+    --muted: 45 15% 85%; /* Subtle warm gray-beige for muted areas */
+    --muted-foreground: 25 15% 45%; /* Medium warm brown for muted text */
 
-    --accent: 30 100% 50%;  /* Darker Orange - NEW */
-    --accent-foreground: 0 0% 100%;
+    --accent: 20 85% 45%; /* Darker burnt orange accent */
+    --accent-foreground: 0 0% 100%; /* White text on orange accent */
 
-    --destructive: 0 70% 50%; 
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 0 84% 60%; /* Readable red on light background */
+    --destructive-foreground: 0 0% 98%; /* Light text on red */
 
-    --border: 240 10% 12%;
-    --input: 240 10% 10%;
-    --ring: 43 100% 55%; /* Brighter orange for focus rings - NEW */
+    --border: 35 20% 78%; /* Soft warm border */
+    --input: 40 25% 92%; /* Light cream input background */
+    --ring: 25 90% 48%; /* Darker orange focus ring for visibility */
 
     --radius: 0.5rem;
 
-    --chart-1: hsl(var(--primary)); /* Lighter Orange */
-    --chart-2: hsl(var(--accent));  /* Darker Orange */
-    --chart-3: hsl(var(--secondary)); /* Dark Desaturated Blue */
-    --chart-4: 36 100% 60%; /* Another distinct orange for charts */
-    --chart-5: 300 70% 70%; /* Pink/Magenta for contrast */
+    --chart-1: hsl(var(--primary)); /* Rich dark orange */
+    --chart-2: hsl(var(--accent));  /* Burnt orange */
+    --chart-3: 35 15% 25%; /* Dark warm gray */
+    --chart-4: 30 80% 40%; /* Deep orange variant */
+    --chart-5: 300 70% 60%; /* Purple for contrast */
 
-    /* Sidebar specific variables */
-    --sidebar-background: 240 10% 4%; 
-    --sidebar-foreground: 0 0% 95%;
+    /* Sidebar specific variables - sophisticated neutral variation */
+    --sidebar-background: 30 20% 90%; /* Lighter peachy-cream for sidebar */
+    --sidebar-foreground: 25 20% 15%; /* Rich dark brown text */
     --sidebar-primary: hsl(var(--primary));
     --sidebar-primary-foreground: hsl(var(--primary-foreground));
     --sidebar-accent: hsl(var(--accent));
     --sidebar-accent-foreground: hsl(var(--accent-foreground));
-    --sidebar-border: 240 10% 8%;
+    --sidebar-border: 35 15% 82%; /* Soft warm border */
     --sidebar-ring: hsl(var(--ring));
   }
 
   html:not(.dark) {
-    /* Apply the same dark theme as default */
-    --background: 240 15% 2%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 6%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 5%;
-    --popover-foreground: 0 0% 98%;
+    /* Light theme - sophisticated warm neutrals inspired by travel apps */
+    --background: 35 15% 94%;
+    --foreground: 25 20% 15%;
+    --card: 40 20% 88%;
+    --card-foreground: 25 20% 15%;
+    --popover: 0 0% 98%;
+    --popover-foreground: 25 20% 15%;
     
-    --primary: 43 100% 50%;
+    --primary: 25 90% 48%;
     --primary-foreground: 0 0% 100%;
     
-    --button-primary-gradient-start: 43 100% 50%;
-    --button-primary-gradient-end: 30 100% 50%;
-    --button-primary-gradient-start-hover: 43 100% 45%;
-    --button-primary-gradient-end-hover: 30 100% 45%;
+    --button-primary-gradient-start: 25 90% 48%;
+    --button-primary-gradient-end: 15 85% 42%;
+    --button-primary-gradient-start-hover: 25 90% 42%;
+    --button-primary-gradient-end-hover: 15 85% 38%;
     
-    --secondary: 220 20% 25%;
-    --secondary-foreground: 220 15% 92%;
+    --secondary: 30 25% 90%;
+    --secondary-foreground: 25 20% 15%;
     
-    --muted: 240 10% 15%;
-    --muted-foreground: 240 5% 70%;
+    --muted: 45 15% 85%;
+    --muted-foreground: 25 15% 45%;
     
-    --accent: 30 100% 50%;
+    --accent: 20 85% 45%;
     --accent-foreground: 0 0% 100%;
     
-    --destructive: 0 70% 50%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
     
-    --border: 240 10% 12%;
-    --input: 240 10% 10%;
-    --ring: 43 100% 55%;
+    --border: 35 20% 78%;
+    --input: 40 25% 92%;
+    --ring: 25 90% 48%;
     
-    --sidebar-background: 240 10% 4%;
-    --sidebar-foreground: 0 0% 96%;
-    --sidebar-border: 240 10% 8%;
+    --sidebar-background: 30 20% 90%;
+    --sidebar-foreground: 25 20% 15%;
+    --sidebar-border: 35 15% 82%;
+  }
+
+  .dark {
+    /* Dark theme for users who prefer it */
+    --background: 240 15% 4%; /* Dark background */
+    --foreground: 0 0% 95%; /* Light text */
+
+    --card: 240 10% 8%; 
+    --card-foreground: 0 0% 95%;
+
+    --popover: 240 10% 6%; 
+    --popover-foreground: 0 0% 95%;
+
+    --primary: 43 100% 55%; /* Brighter orange for dark theme visibility */
+    --primary-foreground: 0 0% 100%;
+
+    --button-primary-gradient-start: 43 100% 55%;
+    --button-primary-gradient-end: 30 100% 50%;
+    --button-primary-gradient-start-hover: 43 100% 50%;
+    --button-primary-gradient-end-hover: 30 100% 45%;
+
+    --secondary: 240 10% 15%;
+    --secondary-foreground: 0 0% 90%;
+
+    --muted: 240 10% 12%;
+    --muted-foreground: 240 5% 65%;
+
+    --accent: 30 100% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 95%;
+
+    --border: 240 10% 18%;
+    --input: 240 10% 8%; /* Dark input background for dark theme */
+    --ring: 43 100% 55%;
+
+    --sidebar-background: 240 10% 6%;
+    --sidebar-foreground: 0 0% 90%;
+    --sidebar-border: 240 10% 12%;
   }
 }
 
@@ -248,6 +289,21 @@
     scrollbar-width: none;
   }
 
+  /* Card flip animation utilities */
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+  .transform-style-preserve-3d {
+    transform-style: preserve-3d;
+  }
+  .backface-hidden {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  .rotate-y-180 {
+    transform: rotateY(180deg);
+  }
+
   /* Hide webkit search input clear button */
   input[type="search"]::-webkit-search-cancel-button {
     -webkit-appearance: none;
@@ -330,7 +386,16 @@
    .font-redressed {
      font-family: var(--font-redressed), cursive;
    }
- }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
 
 /* Add to your global CSS file for better Google Places integration */
 
@@ -492,4 +557,17 @@ gmp-place-autocomplete input:focus-visible {
   box-shadow: none !important;
   background-color: transparent !important;
 }
-    
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+textarea:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}

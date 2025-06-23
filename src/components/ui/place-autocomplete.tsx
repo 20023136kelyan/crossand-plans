@@ -36,6 +36,20 @@ interface PlaceDetails {
     height: number
     width: number
   }[]
+  // Add missing fields that we request from Places API
+  rating?: number
+  price_level?: number
+  types?: string[]
+  business_status?: string
+  user_ratings_total?: number
+  formatted_phone_number?: string
+  international_phone_number?: string
+  website?: string
+  opening_hours?: {
+    weekday_text?: string[]
+    // Note: open_now is deprecated as of November 2019
+    // Use PlacesService.getDetails() with isOpen() method instead
+  }
 }
 
 interface PlaceAutocompleteProps {
@@ -173,7 +187,7 @@ export function PlaceAutocomplete({
 
     const request = {
       placeId: prediction.place_id,
-      fields: ['place_id', 'formatted_address', 'name', 'geometry', 'address_components', 'photos']
+      fields: ['place_id', 'formatted_address', 'name', 'geometry', 'address_components', 'photos', 'rating', 'price_level', 'types', 'business_status', 'user_ratings_total', 'formatted_phone_number', 'international_phone_number', 'website', 'opening_hours']
     }
 
     console.log('Making getDetails request:', request);
@@ -221,6 +235,16 @@ export function PlaceAutocomplete({
             }
           },
           address_components: place.address_components,
+          // Include all the missing fields
+          rating: place.rating,
+          price_level: place.price_level,
+          types: place.types,
+          business_status: place.business_status,
+          user_ratings_total: place.user_ratings_total,
+          formatted_phone_number: place.formatted_phone_number,
+          international_phone_number: place.international_phone_number,
+          website: place.website,
+          opening_hours: place.opening_hours,
           photos: place.photos?.map(photo => {
             console.log('Mapping photo:', photo);
             // If the photo has a getUrl function, call it to get the URL
@@ -317,7 +341,7 @@ export function PlaceAutocomplete({
             type="text"
             placeholder="Loading..."
             disabled
-            className="w-full h-full px-3 text-base bg-transparent border-none rounded-lg placeholder:text-gray-400 text-white focus:outline-none focus:ring-0 transition-all duration-200 opacity-50"
+            className="w-full h-full px-3 text-base bg-transparent border-none rounded-lg placeholder:text-muted-foreground text-foreground focus:outline-none focus:ring-0 transition-all duration-200 opacity-50"
           />
         </div>
       </div>
@@ -327,7 +351,7 @@ export function PlaceAutocomplete({
   return (
     <div ref={containerRef} className={cn("relative w-full", className)}>
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           ref={inputRef}
           type="text"
@@ -337,7 +361,7 @@ export function PlaceAutocomplete({
           onBlur={handleInputBlur}
           placeholder={placeholder}
           disabled={disabled}
-          className="w-full h-full pl-10 pr-3 text-base bg-transparent border-none rounded-lg placeholder:text-gray-400 text-white focus:outline-none focus:ring-0 transition-all duration-200"
+          className="w-full h-full pl-10 pr-3 text-base bg-transparent border-none rounded-lg placeholder:text-muted-foreground text-foreground focus:outline-none focus:ring-0 transition-all duration-200"
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault()
@@ -356,21 +380,21 @@ export function PlaceAutocomplete({
             className="absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 p-0 hover:bg-white/10 rounded-full transition-colors"
             onClick={handleClear}
           >
-            <X className="h-3 w-3 text-gray-400" />
+            <X className="h-3 w-3 text-muted-foreground" />
           </Button>
         )}
       </div>
       
       {/* Suggestions Dropdown */}
       {showSuggestions && (predictions.length > 0 || loading) && (
-        <div className="absolute top-full left-0 right-0 z-50 mt-2 bg-black/90 backdrop-blur-lg border border-gray-600/50 shadow-2xl rounded-xl overflow-hidden max-h-80">
+        <div className="absolute top-full left-0 right-0 z-50 mt-2 bg-popover backdrop-blur-lg border border-border shadow-2xl rounded-xl overflow-hidden max-h-80">
           {loading && (
-            <div className="py-6 text-center text-sm text-gray-400">
+            <div className="py-6 text-center text-sm text-muted-foreground">
               Searching...
             </div>
           )}
           {!loading && predictions.length === 0 && inputValue.trim() && (
-            <div className="py-6 text-center text-sm text-gray-400">
+            <div className="py-6 text-center text-sm text-muted-foreground">
               No places found.
             </div>
           )}
@@ -379,7 +403,7 @@ export function PlaceAutocomplete({
               {predictions.map((prediction, index) => (
                 <div
                   key={prediction.place_id}
-                  className="cursor-pointer px-4 py-3 hover:bg-white/10 transition-colors border-b border-gray-700/50 last:border-b-0 flex items-start gap-3"
+                  className="cursor-pointer px-4 py-3 hover:bg-accent/10 transition-colors border-b border-border/50 last:border-b-0 flex items-start gap-3"
                   onMouseDown={(e) => {
                     e.preventDefault(); // Prevent input blur
                     console.log('Suggestion mousedown:', prediction);
@@ -391,13 +415,13 @@ export function PlaceAutocomplete({
                     handlePlaceSelect(prediction);
                   }}
                 >
-                  <MapPin className="h-4 w-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                  <MapPin className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
                   <div className="flex flex-col min-w-0 flex-1">
-                    <span className="font-medium text-white truncate">
+                    <span className="font-medium text-foreground truncate">
                       {prediction.structured_formatting.main_text}
                     </span>
                     {prediction.structured_formatting.secondary_text && (
-                      <span className="text-sm text-gray-400 truncate">
+                      <span className="text-sm text-muted-foreground truncate">
                         {prediction.structured_formatting.secondary_text}
                       </span>
                     )}

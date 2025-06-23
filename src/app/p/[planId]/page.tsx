@@ -12,11 +12,11 @@ import { useAuth } from '@/context/AuthContext';
 import type { Plan as PlanType } from '@/types/user';
 
 // Import new components
-import { PlanHero } from '@/components/plans/PlanHero';
+import PlanHero from '@/components/plans/PlanHero';
 import { PlanItinerary } from '@/components/plans/PlanItinerary';
 import { PlanMap } from '@/components/plans/PlanMap';
 import { PlanPhotos } from '@/components/plans/PlanPhotos';
-import { PlanWeather } from '@/components/plans/PlanWeather';
+
 import { PlanChat } from '@/components/plans/PlanChat';
 import { PlanActions } from '@/components/plans/PlanActions';
 
@@ -225,7 +225,19 @@ export default function PublicPlanPage() {
           {/* Left Column - Main Content */}
           <div className="lg:col-span-2 space-y-6">
             {/* Hero Section */}
-            <PlanHero plan={plan} userRole={userRole} />
+            <PlanHero 
+              plan={plan} 
+              userRole={userRole}
+              currentUser={user}
+              isHost={userRole === 'host'}
+              copyLoading={copying}
+              onCopyToMyPlans={handleCopyPlan}
+              onSharePlanLink={() => {}}
+              onOpenQRCodeDialog={() => {}}
+              onShowFriendPicker={() => {}}
+              onShowShareToFeedDialog={() => {}}
+              onDeletePlanRequest={() => {}}
+            />
             
             {/* Quick Actions */}
             <PlanActions 
@@ -273,18 +285,7 @@ export default function PublicPlanPage() {
               />
             )}
             
-            {/* Weather Widget */}
-            {plan.location && plan.eventTime && (
-              <PlanWeather 
-                location={plan.location}
-                date={plan.eventTime}
-                showForecast={true}
-                coordinates={plan.coordinates ? {
-                  lat: plan.coordinates.latitude,
-                  lon: plan.coordinates.longitude
-                } : undefined}
-              />
-            )}
+
           </div>
         </div>
       </div>

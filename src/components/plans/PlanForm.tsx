@@ -78,6 +78,7 @@ export const itineraryItemSchema = z.object({
   placeName: z.string().min(1, { message: "Place name is required." }),
   address: z.string().optional().nullable(),
   city: z.string().optional().nullable(),
+  tagline: z.string().optional().nullable(),
   startTime: z.string().refine(val => isDateValid(parseISO(val)), { message: "Start time is required and must be a valid date." }),
   endTime: z.string().optional().nullable().refine(val => val === null || val === undefined || val === '' || isDateValid(parseISO(val)), { message: "Invalid end time format." }),
   description: z.string().optional().nullable(),

@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { useTheme } from 'next-themes';
 import { SubscriptionManager } from '@/components/plans/SubscriptionManager';
 import { ActivityScoreCard } from '@/components/plans/ActivityScoreCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -38,7 +39,7 @@ import {
   Sparkles as GamificationIcon, Wallet, MessagesSquare as SocialInteractionIcon, 
   Heart, Activity, AlertTriangle, ChefHat, UsersRound, MapPin as TravelToleranceIcon, 
   Gift, Loader2, CreditCard, Bell, Lock, Eye, EyeOff, Globe, Mail, Zap, 
-  Trash2, HelpCircle, FileText, Shield, Star
+  Trash2, HelpCircle, FileText, Shield, Star, Sun, Moon
 } from 'lucide-react';
 
 interface UserData {
@@ -96,6 +97,13 @@ export default function SettingsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = React.useState(false);
+
+  // Avoid hydration mismatch by only rendering theme-dependent content after mount
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
   const [activeTab, setActiveTab] = useState<string | null>(null);
   
   // Handle tab parameter from URL
@@ -1114,7 +1122,7 @@ const handleSaveNotifications = async () => {
                   </div>
                   <div>
                     <span className="font-medium">Planning Style</span>
-                    <p className="text-xs text-muted-foreground">Customize your planning experience</p>
+                    <p className="text-xs text-muted-foreground">Theme, preferences, and planning experience</p>
                   </div>
                 </div>
                 <ChevronLeft className="h-4 w-4 rotate-180 text-muted-foreground" />
@@ -1708,6 +1716,40 @@ const handleSaveNotifications = async () => {
               <CardDescription>Your planning preferences and style</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Theme Selection */}
+              <div className="space-y-3">
+                <Label className="text-base font-medium">App Theme</Label>
+                <div className="flex items-center justify-between p-4 rounded-lg border border-border bg-muted/30">
+                  <div className="flex items-center space-x-3">
+                    {mounted && theme === 'dark' ? (
+                      <Moon className="h-5 w-5 text-blue-500" />
+                    ) : (
+                      <Sun className="h-5 w-5 text-amber-500" />
+                    )}
+                    <div>
+                      <p className="font-medium">
+                        {mounted && theme === 'dark' ? 'Dark Mode' : 'Light Mode'}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {mounted && theme === 'dark' 
+                          ? 'Dark theme for low-light environments' 
+                          : 'Light theme for better visibility'
+                        }
+                      </p>
+                    </div>
+                  </div>
+                  {mounted && (
+                    <Switch
+                      checked={theme === 'dark'}
+                      onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
+                      className="ml-4"
+                    />
+                  )}
+                </div>
+              </div>
+              
+              <Separator />
+              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Travel Tolerance</Label>

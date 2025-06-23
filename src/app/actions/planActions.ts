@@ -26,7 +26,6 @@ import type {
   ItineraryItem,
   RSVPStatusType,
   Comment,
-  AISimpleProfile,
   FeedPostVisibility,
   PlanShareStatus,
   UserProfile,
@@ -158,29 +157,29 @@ const GenerateFullPlanInputClientSchema = z.object({
 const serverItineraryItemSchema = z.object({
   id: z.string().uuid().default(() => crypto.randomUUID()),
   placeName: z.string().min(1, { message: "Place name is required." }),
-  address: z.string().nullable(),
-  city: z.string().nullable(),
+  address: z.string().optional().nullable(),
+  city: z.string().optional().nullable(),
   startTime: z.string().refine(val => isValid(parseISO(val)), { message: "Invalid start time format." }),
-  endTime: z.string().nullable().refine(val => val === null || val === '' || isValid(parseISO(val)), { message: "Invalid end time format." }),
-  description: z.string().nullable(),
-  googlePlaceId: z.string().nullable(),
-  googleMapsImageUrl: z.string().url().nullable(),
-  googlePhotoReference: z.string().nullable(),
-  lat: z.number().nullable(),
-  lng: z.number().nullable(),
-  rating: z.number().min(0).max(5).nullable(),
-  reviewCount: z.number().int().min(0).nullable(),
-  activitySuggestions: z.array(z.string()).nullable().default([]),
-  isOperational: z.boolean().nullable(),
-  statusText: z.string().nullable(),
-  openingHours: z.array(z.string()).nullable().default([]),
-  phoneNumber: z.string().nullable(),
-  website: z.string().url().nullable(),
-  priceLevel: z.number().int().min(0).max(4).nullable(),
-  types: z.array(z.string()).nullable().default([]),
-  notes: z.string().nullable(),
-  durationMinutes: z.number().int().min(0).nullable().default(60),
-  transitMode: z.enum(['driving', 'walking', 'bicycling', 'transit'] as const).nullable().default('driving'),
+  endTime: z.string().optional().nullable().refine(val => val === null || val === undefined || val === '' || isValid(parseISO(val)), { message: "Invalid end time format." }),
+  description: z.string().optional().nullable(),
+  googlePlaceId: z.string().optional().nullable(),
+  googleMapsImageUrl: z.string().url().optional().nullable(),
+  googlePhotoReference: z.string().optional().nullable(),
+  lat: z.number().optional().nullable(),
+  lng: z.number().optional().nullable(),
+  rating: z.number().min(0).max(5).optional().nullable(),
+  reviewCount: z.number().int().min(0).optional().nullable(),
+  activitySuggestions: z.array(z.string()).optional().nullable().default([]),
+  isOperational: z.boolean().optional().nullable(),
+  statusText: z.string().optional().nullable(),
+  openingHours: z.array(z.string()).optional().nullable().default([]),
+  phoneNumber: z.string().optional().nullable(),
+  website: z.string().url().optional().nullable(),
+  priceLevel: z.number().int().min(0).max(4).optional().nullable(),
+  types: z.array(z.string()).optional().nullable().default([]),
+  notes: z.string().optional().nullable(),
+  durationMinutes: z.number().int().min(0).optional().nullable().default(60),
+  transitMode: z.enum(['driving', 'walking', 'bicycling', 'transit'] as const).optional().nullable().default('driving'),
   transitTimeFromPreviousMinutes: z.number().int().min(0).optional().nullable(),
 });
 
@@ -233,19 +232,45 @@ export async function generatePlanWithAIAction(
       console.error('[generatePlanWithAIAction] Host profile not found for UID:', validatedClientData.hostUid);
       return { success: false, error: 'Host profile not found.' };
     }
-    const hostProfileForAI: AISimpleProfile = {
+    const hostProfileForAI = {
       uid: hostProfileData.uid,
+      name: hostProfileData.name,
       preferences: hostProfileData.preferences || [],
+      generalPreferences: hostProfileData.generalPreferences || null,
+      allergies: hostProfileData.allergies || [],
+      dietaryRestrictions: hostProfileData.dietaryRestrictions || [],
+      favoriteCuisines: hostProfileData.favoriteCuisines || [],
+      activityTypePreferences: hostProfileData.activityTypePreferences || [],
+      activityTypeDislikes: hostProfileData.activityTypeDislikes || [],
+      physicalLimitations: hostProfileData.physicalLimitations || [],
+      environmentalSensitivities: hostProfileData.environmentalSensitivities || [],
+      travelTolerance: hostProfileData.travelTolerance || null,
+      budgetFlexibilityNotes: hostProfileData.budgetFlexibilityNotes || null,
+      socialPreferences: hostProfileData.socialPreferences || null,
+      availabilityNotes: hostProfileData.availabilityNotes || null,
     };
 
-    let invitedFriendProfilesForAI: AISimpleProfile[] = [];
+    let invitedFriendProfilesForAI: any[] = [];
     if (validatedClientData.invitedParticipantUserIds && validatedClientData.invitedParticipantUserIds.length > 0) {
       const friendProfilesData = await getUsersProfilesAdmin(validatedClientData.invitedParticipantUserIds);
       invitedFriendProfilesForAI = friendProfilesData
         .filter((fp): fp is UserProfile => fp !== null)
         .map(fp => ({
             uid: fp.uid,
+            name: fp.name,
             preferences: fp.preferences || [],
+            generalPreferences: fp.generalPreferences || null,
+            allergies: fp.allergies || [],
+            dietaryRestrictions: fp.dietaryRestrictions || [],
+            favoriteCuisines: fp.favoriteCuisines || [],
+            activityTypePreferences: fp.activityTypePreferences || [],
+            activityTypeDislikes: fp.activityTypeDislikes || [],
+            physicalLimitations: fp.physicalLimitations || [],
+            environmentalSensitivities: fp.environmentalSensitivities || [],
+            travelTolerance: fp.travelTolerance || null,
+            budgetFlexibilityNotes: fp.budgetFlexibilityNotes || null,
+            socialPreferences: fp.socialPreferences || null,
+            availabilityNotes: fp.availabilityNotes || null,
         }));
     }
     
@@ -375,6 +400,44 @@ export async function createPlanAction(
     return { success: false, error: e };
   }
 
+  // 🔍 DETAILED SERVER-SIDE LOGGING - Input Data
+  console.log('🚀 [createPlanAction] Received plan data:', {
+    timestamp: new Date().toISOString(),
+    hostId: hostId,
+    planName: planFormData.name,
+    planType: planFormData.planType,
+    status: planFormData.status,
+    itineraryCount: planFormData.itinerary?.length || 0,
+    inputData: {
+      ...planFormData,
+      itinerary: planFormData.itinerary?.map((item, idx) => ({
+        index: idx,
+        placeName: item.placeName,
+        address: item.address,
+        city: item.city,
+        rating: item.rating,
+        reviewCount: item.reviewCount,
+        priceLevel: item.priceLevel,
+        lat: item.lat,
+        lng: item.lng,
+        googlePlaceId: item.googlePlaceId,
+        isOperational: item.isOperational,
+        statusText: item.statusText,
+        phoneNumber: item.phoneNumber,
+        website: item.website,
+        types: item.types,
+        openingHours: item.openingHours,
+        googleMapsImageUrl: item.googleMapsImageUrl,
+        googlePhotoReference: item.googlePhotoReference,
+        activitySuggestions: item.activitySuggestions,
+        startTime: item.startTime,
+        endTime: item.endTime,
+        durationMinutes: item.durationMinutes,
+        transitMode: item.transitMode,
+      })) || []
+    }
+  });
+
   try {
     let finalItinerary: ItineraryItem[] = [];
     const eventStartTimeISO = planFormData.eventDateTime.toISOString();
@@ -434,9 +497,30 @@ export async function createPlanAction(
           googlePlaceId: item.googlePlaceId ?? null,
           googlePhotoReference: item.googlePhotoReference ?? null,
           googleMapsImageUrl: item.googleMapsImageUrl ?? null,
+          lat: item.lat ?? null,
+          lng: item.lng ?? null,
+          rating: item.rating ?? null,
+          reviewCount: item.reviewCount ?? null,
+          activitySuggestions: item.activitySuggestions ?? [],
+          isOperational: item.isOperational ?? null,
+          statusText: item.statusText ?? null,
+          openingHours: item.openingHours ?? [],
+          phoneNumber: item.phoneNumber ?? null,
+          website: item.website ?? null,
+          priceLevel: item.priceLevel ?? null,
+          types: item.types ?? [],
+          notes: item.notes ?? null,
+          transitTimeFromPreviousMinutes: item.transitTimeFromPreviousMinutes ?? null,
         };
        });
     }
+
+    // Extract coordinates from first itinerary item for weather and location services
+    const firstItineraryItem = finalItinerary[0];
+    const planCoordinates = (firstItineraryItem?.lat && firstItineraryItem?.lng) ? {
+      latitude: firstItineraryItem.lat,
+      longitude: firstItineraryItem.lng
+    } : undefined;
 
     const planDataForService: Omit<Plan, 'id' | 'createdAt' | 'updatedAt' | 'hostName' | 'hostAvatarUrl'> = {
       name: planFormData.name,
@@ -459,12 +543,62 @@ export async function createPlanAction(
       averageRating: null,
       reviewCount: 0,
       photoHighlights: [],
-      participantResponses: {}, 
+      participantResponses: {},
+      // Include coordinates from first itinerary item
+      coordinates: planCoordinates,
     };
+
+    // 🔍 DETAILED SERVER-SIDE LOGGING - Final Data to Database
+    console.log('💾 [createPlanAction] Final plan data for database:', {
+      timestamp: new Date().toISOString(),
+      planData: {
+        ...planDataForService,
+        itinerary: finalItinerary.map((item, idx) => ({
+          index: idx,
+          id: item.id,
+          placeName: item.placeName,
+          address: item.address,
+          city: item.city,
+          rating: item.rating,
+          reviewCount: item.reviewCount,
+          priceLevel: item.priceLevel,
+          lat: item.lat,
+          lng: item.lng,
+          googlePlaceId: item.googlePlaceId,
+          isOperational: item.isOperational,
+          statusText: item.statusText,
+          phoneNumber: item.phoneNumber,
+          website: item.website,
+          types: item.types,
+          openingHours: item.openingHours,
+          googleMapsImageUrl: item.googleMapsImageUrl,
+          googlePhotoReference: item.googlePhotoReference,
+          activitySuggestions: item.activitySuggestions,
+          startTime: item.startTime,
+          endTime: item.endTime,
+          durationMinutes: item.durationMinutes,
+          transitMode: item.transitMode,
+          transitTimeFromPreviousMinutes: item.transitTimeFromPreviousMinutes,
+          notes: item.notes,
+        }))
+      },
+      coordinates: planCoordinates,
+      itineraryCount: finalItinerary.length,
+    });
 
     const planId = await createPlanAdmin(planDataForService, hostId);
     revalidatePath('/plans');
     if (planId) revalidatePath(`/plans/${planId}`);
+    
+    // 🔍 SUCCESS LOGGING
+    console.log('✅ [createPlanAction] Plan created successfully:', {
+      timestamp: new Date().toISOString(),
+      planId: planId,
+      planName: planFormData.name,
+      status: planFormData.status,
+      itineraryCount: finalItinerary.length,
+    });
+    
     return { success: true, planId };
   } catch (error: any) {
     console.error('[createPlanAction] Error:', error);
@@ -555,14 +689,36 @@ export async function updatePlanAction(
                 city: item.city ?? null,
                 googlePlaceId: item.googlePlaceId ?? null,
                 googlePhotoReference: item.googlePhotoReference ?? null,
+                googleMapsImageUrl: item.googleMapsImageUrl ?? null,
                 startTime: item.startTime, 
                 endTime: item.endTime || (item.startTime && typeof item.durationMinutes === 'number' ? new Date(itemStartTimeDate.getTime() + item.durationMinutes * 60000).toISOString() : null),
                 durationMinutes: item.durationMinutes ?? 60,
                 transitMode: item.transitMode ?? 'driving',
+                lat: item.lat ?? null,
+                lng: item.lng ?? null,
+                rating: item.rating ?? null,
+                reviewCount: item.reviewCount ?? null,
+                activitySuggestions: item.activitySuggestions ?? [],
+                isOperational: item.isOperational ?? null,
+                statusText: item.statusText ?? null,
+                openingHours: item.openingHours ?? [],
+                phoneNumber: item.phoneNumber ?? null,
+                website: item.website ?? null,
+                priceLevel: item.priceLevel ?? null,
+                types: item.types ?? [],
+                notes: item.notes ?? null,
+                transitTimeFromPreviousMinutes: item.transitTimeFromPreviousMinutes ?? null,
               };
             });
         }
         
+        // Extract coordinates from first itinerary item for weather and location services
+        const firstItineraryItem = finalItinerary[0];
+        const planCoordinates = (firstItineraryItem?.lat && firstItineraryItem?.lng) ? {
+          latitude: firstItineraryItem.lat,
+          longitude: firstItineraryItem.lng
+        } : undefined;
+
         const planDataToUpdate: Partial<Omit<Plan, 'id' | 'createdAt' | 'hostId' | 'hostName' | 'hostAvatarUrl' | 'updatedAt'>> = {
             name: planFormData.name,
             description: planFormData.description || null,
@@ -581,6 +737,8 @@ export async function updatePlanAction(
             reviewCount: currentPlanData.reviewCount,
             originalPlanId: currentPlanData.originalPlanId,
             sharedByUid: currentPlanData.sharedByUid,
+            // Update coordinates from first itinerary item
+            coordinates: planCoordinates,
         };
         
         await updatePlanAdminService(planId, planDataToUpdate, currentPlanData);

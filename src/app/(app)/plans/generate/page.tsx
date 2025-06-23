@@ -544,6 +544,7 @@ function GeneratePlanPage() {
       async (position) => {
         try {
           const { latitude, longitude } = position.coords;
+          let locationName = `Location ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
           
           try {
             const geocoder = new google.maps.Geocoder();
@@ -552,24 +553,54 @@ function GeneratePlanPage() {
             });
             
             if (result.results && result.results.length > 0) {
-              const address = result.results[0].formatted_address;
-              form.setValue('locationQuery', address);
-              setSearchValue(address);
+              // Try to get the best address representation
+              const results = result.results;
+              
+              // Priority: establishment -> street_address -> neighborhood -> locality
+              const establishment = results.find(r => r.types.includes('establishment'));
+              const streetAddress = results.find(r => r.types.includes('street_address'));
+              const neighborhood = results.find(r => r.types.includes('neighborhood'));
+              const locality = results.find(r => r.types.includes('locality'));
+              
+              let bestResult = establishment || streetAddress || neighborhood || locality || results[0];
+              locationName = bestResult.formatted_address;
+              
+              // If we have a very generic result, try to enhance it
+              if (!establishment && !streetAddress) {
+                // Extract city/neighborhood components for a better fallback
+                const cityComponent = bestResult.address_components?.find(c => 
+                  c.types.includes('locality') || 
+                  c.types.includes('sublocality') ||
+                  c.types.includes('neighborhood')
+                );
+                const stateComponent = bestResult.address_components?.find(c => 
+                  c.types.includes('administrative_area_level_1')
+                );
+                
+                if (cityComponent && stateComponent) {
+                  locationName = `${cityComponent.long_name}, ${stateComponent.short_name}`;
+                } else if (cityComponent) {
+                  locationName = cityComponent.long_name;
+                }
+              }
+              
+              console.log('🗺️ Reverse geocoded location:', locationName);
+            } else {
+              console.warn('No geocoding results found, using coordinates');
             }
             
-            form.setValue('latitude', latitude);
-            form.setValue('longitude', longitude);
+            form.setValue('locationQuery', locationName);
+            setSearchValue(locationName);
             
-            if (mapRef.current) {
-              mapRef.current.panTo({ lat: latitude, lng: longitude });
-            }
-            
-            toast({
-              title: 'Location detected',
-              description: 'Your current location has been set.',
-            });
           } catch (error) {
             console.error('Geocoding error:', error);
+            // Fallback: create a descriptive location name using coordinates
+            locationName = `Latitude ${latitude.toFixed(4)}, Longitude ${longitude.toFixed(4)}`;
+            form.setValue('locationQuery', locationName);
+            setSearchValue(locationName);
+          }
+          
+          // Always set coordinates
             form.setValue('latitude', latitude);
             form.setValue('longitude', longitude);
             
@@ -579,9 +610,8 @@ function GeneratePlanPage() {
             
             toast({
               title: 'Location detected',
-              description: 'Your current location has been set.',
+            description: `Set to: ${locationName}`,
             });
-          }
         } finally {
           setIsDetectingLocation(false);
         }
@@ -724,6 +754,15 @@ function GeneratePlanPage() {
         userPrompt: data.userPrompt,
         invitedParticipantUserIds: data.invitedParticipantUserIds,
       };
+      
+      console.log('🚀 [GeneratePlan] Sending to AI:', {
+        planDateTime: data.planDateTime.toISOString(),
+        planDateTimeOriginal: data.planDateTime,
+        locationQuery: data.locationQuery,
+        userPrompt: data.userPrompt,
+        priceRange: data.priceRange,
+        planTypeHint: data.planTypeHint
+      });
       // Generate unique identifiers and random values for this specific request
       const sessionId = crypto.randomUUID().slice(0, 8);
       const timestamp = Date.now();
@@ -1190,7 +1229,7 @@ function GeneratePlanPage() {
     <div className="flex flex-col h-screen bg-background text-foreground relative">
       {/* Header */}
       <header className="shrink-0 flex items-center justify-between p-4 border-b border-border/20 bg-background/70 backdrop-blur-md z-20">
-        <Button variant="ghost" size="icon" onClick={() => router.back()} aria-label="Go back" className="hover:bg-accent/50">
+        <Button variant="ghost" size="icon" onClick={() => router.push('/plans')} aria-label="Go to My Plans" className="hover:bg-accent/50">
           <ChevronLeft className="h-5 w-5" />
         </Button>
         
@@ -1671,11 +1710,9 @@ function GeneratePlanPage() {
                     className="pb-4 transition-all duration-300 ease-in-out"
                   >
                     <FriendMultiSelectInput 
-                      control={form.control} 
-                      name="invitedParticipantUserIds" 
-                      label="" 
-                      description=""
-                      autoFocus
+                      selectedUserIds={form.watch('invitedParticipantUserIds') || []}
+                      onSelectedUserIdsChange={(ids) => form.setValue('invitedParticipantUserIds', ids)}
+                      autoOpen={true}
                     />
                   </div>
                 )}
@@ -1695,6 +1732,7 @@ function GeneratePlanPage() {
                       ref={dateInputRef}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                       min={new Date().toISOString().slice(0, 16)}
+                      value={form.watch('planDateTime') ? format(form.watch('planDateTime'), "yyyy-MM-dd'T'HH:mm") : ''}
                       onChange={(e) => {
                         if (e.target.value) {
                           form.setValue('planDateTime', new Date(e.target.value));
@@ -1746,7 +1784,7 @@ function GeneratePlanPage() {
                         <div className="relative">
                           <Textarea
                             placeholder="What would you like to do today?"
-                            className="min-h-[60px] max-h-[200px] overflow-y-hidden hover:overflow-y-auto textarea-scrollbar bg-gray-900/95 border-2 border-gray-700/80 focus:border-2 focus:border-primary/80 focus:ring-2 focus:ring-primary/40 rounded-xl transition-all text-sm leading-relaxed px-4 pb-16 pt-4 text-white placeholder-gray-600/85 w-full shadow-lg"
+                            className="min-h-[60px] max-h-[200px] overflow-y-hidden hover:overflow-y-auto textarea-scrollbar bg-input border-2 border-border focus:border-2 focus:border-primary/80 focus:ring-2 focus:ring-primary/40 rounded-xl transition-all text-sm leading-relaxed px-4 pb-16 pt-4 text-foreground placeholder:text-muted-foreground w-full shadow-lg"
                             style={{
                               height: 'auto',
                               minHeight: '60px',
@@ -1782,7 +1820,7 @@ function GeneratePlanPage() {
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                className="h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg border border-gray-600/30"
+                                className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg border border-border"
                                 onClick={() => {
                                   dateInputRef.current?.showPicker();
                                   setShowFriendSelector(false);
@@ -1798,7 +1836,7 @@ function GeneratePlanPage() {
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                className="h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg border border-gray-600/30"
+                                className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg border border-border"
                                 onClick={() => {
                                   setShowPriceRangeSelector(!showPriceRangeSelector);
                                   setShowFriendSelector(false);
@@ -1898,7 +1936,7 @@ function GeneratePlanPage() {
                               variant="ghost"
                               size="icon"
                               className={cn(
-                                "h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg border border-gray-600/30",
+                                "h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg border border-border",
                                 form.watch('planTypeHint') && form.watch('planTypeHint') !== 'ai-decide' && "text-amber-400"
                               )}
                               onClick={() => {
@@ -1942,8 +1980,8 @@ function GeneratePlanPage() {
                               variant="ghost"
                               size="icon"
                               className={cn(
-                                "h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg border border-gray-600/30",
-                                showFriendSelector && "bg-gray-800/50 text-white"
+                                "h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg border border-border",
+                                showFriendSelector && "bg-accent text-foreground"
                               )}
                               onClick={() => {
                                 const newState = !showFriendSelector;

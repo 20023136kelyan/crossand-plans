@@ -30,15 +30,16 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import {
-  PlusCircle, Edit3, Trash2, Share2, CalendarDays, MapPin, Eye, Search,
-  ArrowUpDown, Users as UsersIcon, MailQuestion, UserCheck, History, MoreVertical,
-  List as ListIconLucide, ChevronDown, ChevronUp, PackageOpen, Loader2, Star, ListChecks, CheckCircle2, CheckCircle
+  Edit3, Trash2, Share2, CalendarDays, MapPin, Eye,
+  Users as UsersIcon, MailQuestion, UserCheck, History, MoreVertical,
+  ChevronDown, ChevronUp, Loader2, Star, ListChecks, CheckCircle2, CheckCircle,
+  Mail, FileText, Clock, Users
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import React, { useState, useMemo, useEffect, useCallback, useContext } from 'react';
 import { cn } from "@/lib/utils";
-import { format, isSameDay, startOfMonth, parseISO, isFuture, isPast, isValid } from 'date-fns';
+import { format, isSameDay, startOfMonth, parseISO, isFuture, isPast, isValid, startOfDay, endOfWeek, endOfMonth, isWithinInterval, subDays } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
 import { getUserPlans, getPendingPlanSharesForUser, getPlanById } from '@/services/planService';
 import { getUserSavedPlans } from '@/services/userService';
@@ -47,9 +48,13 @@ import { deletePlanAction, acceptPlanShareAction, declinePlanShareAction } from 
 import { markPlanAsCompletedAction, confirmPlanCompletionAction } from '@/app/actions/planCompletionActions';
 import type { Plan as PlanType, PlanShare, RSVPStatusType, UserRoleType } from '@/types/user';
 import { useToast } from "@/hooks/use-toast";
-import { useIsMobile } from '@/hooks/use-is-mobile';
+
 import { useRouter } from "next/navigation";
 import { PlansPageProvider, usePlansPageContext } from '@/context/PlansPageContext';
+import { PlansPageHeader } from '@/components/plans/PlansPageHeader';
+import { PlansEmptyState } from '@/components/plans/PlansEmptyState';
+import { HorizontalPlanCards } from '@/components/plans/HorizontalPlanCards';
+import { HorizontalListPlanCard } from '@/components/plans/HorizontalListPlanCard';
 
 // Define UserPlanViewStatus enum and its configuration
 export enum UserPlanViewStatus {
@@ -505,20 +510,31 @@ interface PlanStackSectionProps {
 const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, plans, isExpanded, onToggleExpand, emptyMessage, currentUserUid, isLoading, children }) => {
   const { handleDeleteRequest } = usePlansPageContext();
   
-  const plansToShowInStack = useMemo(() => {
+  // Determine section type for ranking
+  const sectionType = title.toLowerCase().includes('invitation') ? 'invitations' :
+                     title.toLowerCase().includes('awaiting') ? 'awaitingConfirmations' :
+                     title.toLowerCase().includes('confirmed') ? 'confirmedReady' :
+                     title.toLowerCase().includes('draft') ? 'drafts' : 'upcoming';
+  
+  // Get appropriate icon for section
+  const getSectionIcon = (title: string) => {
+    if (title.toLowerCase().includes('invitation')) return Mail;
+    if (title.toLowerCase().includes('draft')) return FileText;
+    if (title.toLowerCase().includes('awaiting')) return Clock;
+    if (title.toLowerCase().includes('confirmed')) return CheckCircle2;
+    if (title.toLowerCase().includes('saved templates')) return Star;
+    return CalendarDays;
+  };
+  
+  const SectionIcon = getSectionIcon(title);
+  
+  const plansToShowHorizontally = useMemo(() => {
     if (!plans || plans.length === 0) return [];
-    // Sort by eventTime descending for the stack view, regardless of global sort
-    return [...plans]
-      .sort((a, b) => {
-        const timeA = a.eventTime && isValid(parseISO(a.eventTime)) ? parseISO(a.eventTime).getTime() : 0;
-        const timeB = b.eventTime && isValid(parseISO(b.eventTime)) ? parseISO(b.eventTime).getTime() : 0;
-        return timeB - timeA; 
-      })
-      .slice(0, 3);
-  }, [plans]);
+    return getRankedPlansForSection(plans, sectionType);
+  }, [plans, sectionType]);
 
-  // Number of additional plans not shown when the section is collapsed (over the 3 displayed in the stack)
-  const extraCount = Math.max(0, plans.length - 3);
+  // Number of additional plans not shown when the section is collapsed (over the 4 displayed horizontally)
+  const extraCount = Math.max(0, plans.length - 4);
   const formattedExtraCount = extraCount > 999 ? '1k' : extraCount;
 
 
@@ -564,13 +580,16 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
   return (
     <div className="mt-6 mb-8">
        <div className="flex justify-between items-center mb-4 pb-1 border-b border-border">
-        <h2 className="text-lg font-semibold text-foreground">{title} ({plans.length})</h2>
+        <div className="flex items-center gap-2">
+          <SectionIcon className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-semibold text-foreground">{title} ({plans.length})</h2>
+        </div>
         {plans.length > 0 && (
            <Button
             variant="ghost"
             size="sm"
             onClick={onToggleExpand}
-            className="h-7 p-1 text-xs text-muted-foreground hover:text-foreground"
+            className="h-7 p-1 text-xs text-white hover:text-primary-foreground hover:bg-primary/90 transition-colors"
             aria-label={isExpanded ? `Collapse ${title} section` : `View all ${plans.length} items in ${title}`}
           >
             {isExpanded ? (
@@ -583,7 +602,7 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
                 <ChevronDown className="h-4 w-4 mr-1" />
                 View All
                 {extraCount > 0 && (
-                  <span className="ml-2 bg-primary/20 text-foreground px-2 rounded-full">
+                  <span className="ml-2 bg-primary/20 text-white px-2 rounded-full text-[10px] font-medium">
                     +{formattedExtraCount} more
                   </span>
                 )}
@@ -594,61 +613,141 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
         )}
       </div>
 
-      {isExpanded ? (
-        plans.length === 0 ? (
-             <p className="text-sm text-muted-foreground text-center py-3">{emptyMessage}</p>
-        ) : (
-            <div className="grid grid-cols-1 gap-4 mt-3">
-              {plans.map(plan => <PlanCard key={plan.id} plan={plan} currentUserUid={currentUserUid} />)}
-            </div>
-        )
-      ) : (
-        plansToShowInStack.length > 0 && (
-          <div
-            className="relative cursor-pointer mt-3"
-            onClick={onToggleExpand}
-            style={{ minHeight: `${160 + Math.min(plansToShowInStack.length > 1 ? plansToShowInStack.length - 1 : 0, 2) * 10}px` }} 
-            role="button"
-            tabIndex={0}
-            aria-label={`View ${plans.length} items in ${title}`}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onToggleExpand();}}
-          >
-            {plansToShowInStack.map((plan, index) => (
-              <div
-                key={plan.id}
-                className={cn(
- "absolute w-full transition-all duration-300 ease-out origin-top",
- index === 0 && "z-[3]",
- index === 1 && "z-[2] opacity-80",
- index === 2 && "z-[1] opacity-60",
-                )}
-                style={{
- transform: `translateY(${index * 10}px) scale(${1 - index * 0.02})`, 
- pointerEvents: index === 0 ? 'auto' : 'none', 
-                }}
-              >
-<div 
-   className={cn(index === 0 && "shadow-xl rounded-lg", "pointer-events-auto")}
-   onClick={(e) => { if (index !== 0) e.stopPropagation(); else onToggleExpand(); }}
->
-   <PlanCard plan={plan} currentUserUid={currentUserUid} />
+      <div className="overflow-hidden">
+        <div
+          className={cn(
+            "transition-all duration-500 ease-in-out",
+            isExpanded ? "opacity-100 max-h-[2000px]" : "opacity-0 max-h-0"
+          )}
+        >
+          {plans.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-3">{emptyMessage}</p>
+          ) : (
+            <div className="space-y-3 mt-3 pb-2">
+              {plans.map((plan, index) => (
+                <div
+                  key={plan.id}
+                  className="transform transition-all duration-300 ease-out"
+                  style={{
+                    transitionDelay: `${index * 50}ms`,
+                  }}
+                >
+                  <HorizontalListPlanCard plan={plan} currentUserUid={currentUserUid} />
                 </div>
-              </div>
-            ))}
-          </div>
-        )
-      )}
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div
+          className={cn(
+            "transition-all duration-500 ease-in-out",
+            !isExpanded ? "opacity-100 max-h-[400px]" : "opacity-0 max-h-0"
+          )}
+        >
+          {plansToShowHorizontally.length > 0 && (
+            <div className="mt-3">
+              <HorizontalPlanCards 
+                plans={plansToShowHorizontally} 
+                currentUserUid={currentUserUid} 
+              />
+            </div>
+          )}
+        </div>
+      </div>
       {children}
     </div>
   );
 });
 PlanStackSection.displayName = 'PlanStackSection';
 
+// Mixed Status Priority + Hybrid Ranking Logic
+const getRankedPlansForSection = (plans: PlanType[], sectionType: string) => {
+  const now = new Date();
+  const today = startOfDay(now);
+  const endOfWeekDate = endOfWeek(now);
+  const endOfMonthDate = endOfMonth(now);
+
+  return [...plans]
+    .map(plan => ({
+      ...plan,
+      priority: calculatePriority(plan, sectionType, today, endOfWeekDate, endOfMonthDate),
+      eventDate: plan.eventTime ? parseISO(plan.eventTime) : null
+    }))
+    .sort((a, b) => {
+      // Primary: Status priority (lower number = higher priority)
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority;
+      }
+      
+      // Secondary: Date-based hybrid approach
+      return compareByDateHybrid(a, b, sectionType);
+    })
+    .slice(0, 4); // Top 4 for horizontal display
+};
+
+const calculatePriority = (plan: PlanType, sectionType: string, today: Date, endOfWeekDate: Date, endOfMonthDate: Date) => {
+  const eventDate = plan.eventTime ? parseISO(plan.eventTime) : null;
+  
+  switch(sectionType) {
+    case 'invitations':
+      if (eventDate && isSameDay(eventDate, today)) return 1;
+      if (eventDate && isWithinInterval(eventDate, {start: today, end: endOfWeekDate})) return 2;
+      return 3;
+      
+    case 'awaitingConfirmations':
+      if (eventDate && isSameDay(eventDate, today)) return 1;
+      if (eventDate && isWithinInterval(eventDate, {start: today, end: endOfWeekDate})) return 2;
+      // Note: rsvpDeadline field would need to be added to plan type for this to work
+      // if (plan.rsvpDeadline && isWithinInterval(parseISO(plan.rsvpDeadline), {start: today, end: endOfWeekDate})) return 3;
+      return 4;
+      
+    case 'confirmedReady':
+      if (eventDate && isSameDay(eventDate, today)) return 1;
+      if (eventDate && isWithinInterval(eventDate, {start: today, end: endOfWeekDate})) return 2;
+      if (eventDate && isWithinInterval(eventDate, {start: today, end: endOfMonthDate})) return 3;
+      return 4;
+      
+    case 'drafts':
+      if (eventDate && isWithinInterval(eventDate, {start: today, end: endOfWeekDate})) return 1;
+      if (plan.updatedAt && isWithinInterval(parseISO(plan.updatedAt), {start: subDays(today, 7), end: today})) return 2;
+      return 3;
+      
+    default:
+      return 1;
+  }
+};
+
+const compareByDateHybrid = (a: any, b: any, sectionType: string) => {
+  const timeA = a.eventDate ? a.eventDate.getTime() : 0;
+  const timeB = b.eventDate ? b.eventDate.getTime() : 0;
+  
+  if (sectionType === 'upcoming' || sectionType === 'invitations' || sectionType === 'awaitingConfirmations' || sectionType === 'confirmedReady') {
+    // For upcoming: soonest first (ascending)
+    if (timeA === 0 && timeB === 0) {
+      // Both have no dates, sort by updatedAt or createdAt
+      const updateA = a.updatedAt ? parseISO(a.updatedAt).getTime() : (a.createdAt ? parseISO(a.createdAt).getTime() : 0);
+      const updateB = b.updatedAt ? parseISO(b.updatedAt).getTime() : (b.createdAt ? parseISO(b.createdAt).getTime() : 0);
+      return updateB - updateA; // Most recent first
+    }
+    if (timeA === 0) return 1; // No date goes to end
+    if (timeB === 0) return -1;
+    return timeA - timeB; // Soonest first
+  } else {
+    // For past: most recent first (descending)
+    if (timeA === 0 && timeB === 0) {
+      const updateA = a.updatedAt ? parseISO(a.updatedAt).getTime() : (a.createdAt ? parseISO(a.createdAt).getTime() : 0);
+      const updateB = b.updatedAt ? parseISO(b.updatedAt).getTime() : (b.createdAt ? parseISO(b.createdAt).getTime() : 0);
+      return updateB - updateA;
+    }
+    return timeB - timeA; // Most recent first
+  }
+};
+
 export default function PlansPage() {
   const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
-  const isMobile = useIsMobile();
   const currentUserId = user?.uid;
 
   const [allUserPlans, setAllUserPlans] = useState<PlanType[]>([]);
@@ -662,25 +761,93 @@ export default function PlansPage() {
   const [shareToDecline, setShareToDecline] = useState<PlanShare | null>(null);
   const [isDecliningShare, setIsDecliningShare] = useState(false);
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const [sortConfig, setSortConfig] = useState<{ key: 'date' | 'name'; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past' | 'saved'>('upcoming');
-  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [currentMonth, setCurrentMonth] = useState<Date>(startOfMonth(new Date()));
+  const [isDateFilterActive, setIsDateFilterActive] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [expandedSections, setExpandedSections] = useState({
     shares: false,
     invitations: false,
-    myDrafts: false,
     myAwaitingResponses: false,
     myConfirmedReady: false,
+    savedDrafts: false,
+    savedTemplates: false,
   });
 
   const toggleSectionExpansion = useCallback((section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   }, []);
+
+  // Handle date selection with filtering
+  const handleDateSelect = useCallback((date: Date) => {
+    setSelectedDate(date);
+    setIsDateFilterActive(!isSameDay(date, new Date()));
+  }, []);
+
+  // Handle search query changes
+  const handleSearchChange = useCallback((query: string) => {
+    setSearchQuery(query);
+  }, []);
+
+  // Clear search function
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery('');
+  }, []);
+
+  // Clear all filters function
+  const handleClearFilters = useCallback(() => {
+    setSelectedDate(new Date());
+    setIsDateFilterActive(false);
+    setSearchQuery('');
+  }, []);
+
+  // Apply search filtering to plans
+  const applySearchFilter = useCallback((plans: PlanType[]) => {
+    if (!searchQuery.trim()) return plans;
+    
+    const query = searchQuery.toLowerCase().trim();
+    return plans.filter(plan => {
+      // Search in plan name
+      if (plan.name?.toLowerCase().includes(query)) return true;
+      
+      // Search in plan description
+      if (plan.description?.toLowerCase().includes(query)) return true;
+      
+      // Search in itinerary items
+      if (plan.itinerary?.some(item => 
+        item.placeName?.toLowerCase().includes(query) || 
+        item.description?.toLowerCase().includes(query) ||
+        item.address?.toLowerCase().includes(query)
+      )) return true;
+      
+      // Search in event type
+      if (plan.eventType?.toLowerCase().includes(query)) return true;
+      
+      return false;
+    });
+  }, [searchQuery]);
+
+  // Apply date filtering to plans
+  const applyDateFilter = useCallback((plans: PlanType[]) => {
+    if (!isDateFilterActive) return plans;
+    
+    return plans.filter(plan => {
+      if (!plan.eventTime) return false;
+      try {
+        const planDate = parseISO(plan.eventTime);
+        return isValid(planDate) && isSameDay(planDate, selectedDate);
+      } catch (e) {
+        return false;
+      }
+    });
+  }, [isDateFilterActive, selectedDate]);
+
+  // Combined filtering function
+  const applyAllFilters = useCallback((plans: PlanType[]) => {
+    return applySearchFilter(applyDateFilter(plans));
+  }, [applyDateFilter, applySearchFilter]);
   
   const onPlansUpdateCallback = useCallback((plans: PlanType[], initialLoadComplete: boolean) => {
     setAllUserPlans(plans);
@@ -784,50 +951,21 @@ export default function PlansPage() {
     fetchSavedPlans(currentUserId);
   }, [currentUserId, fetchSavedPlans]);
 
-
-  const handleSortCycle = () => {
-    setSortConfig(prevConfig => {
-      if (prevConfig.key === 'date' && prevConfig.direction === 'desc') return { key: 'date', direction: 'asc' };
-      if (prevConfig.key === 'date' && prevConfig.direction === 'asc') return { key: 'name', direction: 'asc' };
-      if (prevConfig.key === 'name' && prevConfig.direction === 'asc') return { key: 'name', direction: 'desc' };
-      return { key: 'date', direction: 'desc' };
-    });
-  };
-
-  // Memoize expensive filtering and sorting operations
-  const baseFilteredPlans = useMemo(() => {
-    if (searchTerm && viewMode === 'list') {
-      const searchTermLower = searchTerm.toLowerCase();
-      return allUserPlans.filter(plan =>
-        plan.name.toLowerCase().includes(searchTermLower) ||
-        (plan.description && plan.description.toLowerCase().includes(searchTermLower)) ||
-        plan.location.toLowerCase().includes(searchTermLower)
-      );
-    }
-    return allUserPlans;
-  }, [allUserPlans, searchTerm, viewMode]);
-
+  // Simple date-based sorting for plans (newest first)
   const sortedPlans = useMemo(() => {
-    if (viewMode !== 'list') return baseFilteredPlans;
-    
-    return [...baseFilteredPlans].sort((a, b) => {
-      if (sortConfig.key === 'name') {
-        const comparison = (a.name || '').localeCompare(b.name || '');
-        return sortConfig.direction === 'asc' ? comparison : -comparison;
-      }
-      
+    return [...allUserPlans].sort((a, b) => {
       const timeA = a.eventTime && isValid(parseISO(a.eventTime)) 
         ? parseISO(a.eventTime).getTime() 
-        : (sortConfig.direction === 'asc' ? Infinity : -Infinity);
+        : -Infinity;
       const timeB = b.eventTime && isValid(parseISO(b.eventTime)) 
         ? parseISO(b.eventTime).getTime() 
-        : (sortConfig.direction === 'asc' ? Infinity : -Infinity);
+        : -Infinity;
       
-      return sortConfig.direction === 'asc' ? timeA - timeB : timeB - timeA;
+      return timeB - timeA; // Newest first
     });
-  }, [baseFilteredPlans, sortConfig, viewMode]);
+  }, [allUserPlans]);
 
- const upcomingPlansBase = useMemo(() => {
+  const upcomingPlansBase = useMemo(() => {
     if (!currentUserId) return [];
     return sortedPlans.filter(plan => {
       if (!plan.eventTime) return false;
@@ -840,7 +978,7 @@ export default function PlansPage() {
 
   const invitedToPlans = useMemo(() => {
     if (!currentUserId) return [];
-    return upcomingPlansBase.filter(plan => {
+    const baseInvited = upcomingPlansBase.filter(plan => {
       const isInvitedUser = (plan.invitedParticipantUserIds || []).includes(currentUserId);
       const isHost = plan.hostId === currentUserId;
       if (isHost) return false; // Exclude plans hosted by the user from "Invitations"
@@ -849,17 +987,27 @@ export default function PlansPage() {
       return isInvitedUser && plan.status === 'published' &&
              (!currentUserRsvp || currentUserRsvp === 'pending' || currentUserRsvp === 'maybe');
     });
-  }, [upcomingPlansBase, currentUserId]);
+    return applyAllFilters(baseInvited);
+  }, [upcomingPlansBase, currentUserId, applyAllFilters]);
   
-  const myDrafts = useMemo(() => {
+  // Saved plans categorization
+  const savedDrafts = useMemo(() => {
     if (!currentUserId) return [];
-    return upcomingPlansBase.filter(plan => plan.hostId === currentUserId && plan.status === 'draft');
-  }, [upcomingPlansBase, currentUserId]);
+    const baseDrafts = sortedPlans.filter(plan => plan.hostId === currentUserId && plan.status === 'draft');
+    return applyAllFilters(baseDrafts);
+  }, [sortedPlans, currentUserId, applyAllFilters]);
+
+  const savedTemplates = useMemo(() => {
+    if (!currentUserId) return [];
+    const baseTemplates = savedPlans.filter(plan => plan.isTemplate || plan.hostId !== currentUserId);
+    return applyAllFilters(baseTemplates);
+  }, [savedPlans, currentUserId, applyAllFilters]);
   
   const myPublishedHostedUpcoming = useMemo(() => {
     if (!currentUserId) return [];
-    return upcomingPlansBase.filter(plan => plan.hostId === currentUserId && plan.status === 'published');
-  }, [upcomingPlansBase, currentUserId]);
+    const basePublished = upcomingPlansBase.filter(plan => plan.hostId === currentUserId && plan.status === 'published');
+    return applyAllFilters(basePublished);
+  }, [upcomingPlansBase, currentUserId, applyAllFilters]);
 
   const myAwaitingResponsesPlans = useMemo(() => {
     if (!currentUserId) return [];
@@ -872,7 +1020,7 @@ export default function PlansPage() {
   
   const myConfirmedReadyPlans = useMemo(() => {
     if (!currentUserId) return [];
-    return upcomingPlansBase.filter(plan => { // Filter from all upcoming plans the user is involved in
+    const baseConfirmed = upcomingPlansBase.filter(plan => { // Filter from all upcoming plans the user is involved in
         const isHost = plan.hostId === currentUserId;
         const isInvitedAndGoing = (plan.invitedParticipantUserIds || []).includes(currentUserId) && plan.participantResponses?.[currentUserId] === 'going';
         
@@ -883,20 +1031,20 @@ export default function PlansPage() {
         if (allRelevantUidsPlusHost.length === 0) return false; // Should not happen
         return allRelevantUidsPlusHost.every(uid => plan.participantResponses?.[uid] === 'going');
     });
-  }, [upcomingPlansBase, currentUserId]);
+    return applyAllFilters(baseConfirmed);
+  }, [upcomingPlansBase, currentUserId, applyAllFilters]);
 
   const upcomingPlansExist = useMemo(() => 
     invitedToPlans.length > 0 ||
     pendingShares.length > 0 || 
-    myDrafts.length > 0 ||
     myAwaitingResponsesPlans.length > 0 ||
     myConfirmedReadyPlans.length > 0,
-    [invitedToPlans, pendingShares, myDrafts, myAwaitingResponsesPlans, myConfirmedReadyPlans]
+    [invitedToPlans, pendingShares, myAwaitingResponsesPlans, myConfirmedReadyPlans]
   );
 
   const pastPlans = useMemo(() => {
     if (!currentUserId) return [];
-    return sortedPlans.filter(plan => {
+    const basePast = sortedPlans.filter(plan => {
       const isUserRelated = plan.hostId === currentUserId || (plan.invitedParticipantUserIds || []).includes(currentUserId);
       if (!isUserRelated || !plan.eventTime) return false;
       try {
@@ -904,99 +1052,26 @@ export default function PlansPage() {
         return isValid(planDate) && isPast(planDate);
       } catch (e) { return false; }
     });
-  }, [sortedPlans, currentUserId]);
-
-  const filteredSavedPlans = useMemo(() => {
-    let plans = [...savedPlans];
-    if (searchTerm && viewMode === 'list') {
-      plans = plans.filter(plan =>
-        plan.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (plan.description && plan.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        plan.location.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-    // Sort saved plans by event time (newest first)
-    plans.sort((a, b) => {
-      const timeA = a.eventTime && isValid(parseISO(a.eventTime)) ? parseISO(a.eventTime).getTime() : -Infinity;
-      const timeB = b.eventTime && isValid(parseISO(b.eventTime)) ? parseISO(b.eventTime).getTime() : -Infinity;
-      return timeB - timeA;
-    });
-    return plans;
-  }, [savedPlans, searchTerm, viewMode]);
-
-  const plansForCalendar = useMemo(() => {
-    const uniqueUpcomingPlans = new Map<string, PlanType>();
-    [
-      ...invitedToPlans, 
-      ...myDrafts, 
-      ...myAwaitingResponsesPlans, 
-      ...myConfirmedReadyPlans,
-    ].forEach(p => uniqueUpcomingPlans.set(p.id, p));
-    
-    return activeTab === 'upcoming' ? Array.from(uniqueUpcomingPlans.values()) : pastPlans;
-  }, [activeTab, invitedToPlans, myDrafts, myAwaitingResponsesPlans, myConfirmedReadyPlans, pastPlans]);
-
-  const eventDates = useMemo(() => {
-    const dates: Date[] = [];
-    plansForCalendar.forEach(plan => {
-      if (plan.eventTime && isValid(parseISO(plan.eventTime))) {
-        dates.push(parseISO(plan.eventTime));
-      }
-    });
-    return dates;
-  }, [plansForCalendar]);
-
-  const plansForSelectedDate = useMemo(() => {
-    if (!selectedDate || !isValid(selectedDate)) return [];
-    return plansForCalendar.filter(plan => {
-      if (!plan.eventTime) return false;
-      const planDate = parseISO(plan.eventTime);
-      return isValid(planDate) && isSameDay(planDate, selectedDate);
-    });
-  }, [selectedDate, plansForCalendar]);
-  
-  let calendarFooter = <p className="text-sm text-muted-foreground p-3 text-center">Please pick a day to see plans.</p>;
-  if (selectedDate && isValid(selectedDate)) {
-    if (plansForSelectedDate.length > 0) {
-      calendarFooter = (
-        <div className="p-3 pt-2 max-h-48 overflow-y-auto custom-scrollbar-vertical">
-          <h4 className="font-medium text-sm mb-1.5 text-foreground/80">
-            Plans for {format(selectedDate, 'PPP')}
-          </h4>
-          <ul className="space-y-1.5">
-            {plansForSelectedDate.map(plan => (
-              <li key={plan.id} className="text-xs">
-                <Link href={currentUserId && (currentUserId === plan.hostId || plan.invitedParticipantUserIds?.includes(currentUserId)) ? `/plans/${plan.id}` : `/p/${plan.id}`} className="hover:underline text-primary flex items-center gap-1.5">
- <span className="truncate">{plan.name}</span>
- <Badge variant="outline" className="text-xs px-1 py-0 leading-tight">{plan.eventTime && isValid(parseISO(plan.eventTime)) ? format(parseISO(plan.eventTime), 'p') : 'No time'}</Badge>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      );
-    } else {
-      calendarFooter = <p className="text-sm text-muted-foreground p-3 text-center">No plans for {format(selectedDate, 'PPP')}.</p>;
-    }
-  }
+    return applyAllFilters(basePast);
+  }, [sortedPlans, currentUserId, applyAllFilters]);
 
   const handleAcceptShareRequest = useCallback(async (share: PlanShare) => {
     if (!user || !currentUserId) return;
     setShareToAccept(share);
     setIsAcceptingShare(true);
+
     try {
-      await user.getIdToken(true);
       const idToken = await user.getIdToken();
-      if (!idToken) throw new Error("Authentication token is missing.");
       const result = await acceptPlanShareAction(share.id, idToken);
       if (result.success && result.newPlanId) {
         toast({ title: "Plan Accepted!", description: `"${share.originalPlanName}" added to your plans as a draft.` });
         router.push(`/plans/${result.newPlanId}`); 
       } else {
-        toast({ title: "Accept Failed", description: result.error || "Could not accept shared plan.", variant: "destructive" });
+        throw new Error(result.error || 'Failed to accept plan');
       }
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to accept share.", variant: "destructive" });
+    } catch (error) {
+      console.error('Error accepting plan share:', error);
+      toast({ title: "Error", description: "Failed to accept the plan. Please try again.", variant: "destructive" });
     } finally {
       setIsAcceptingShare(false);
       setShareToAccept(null);
@@ -1007,18 +1082,18 @@ export default function PlansPage() {
     if (!user || !currentUserId) return;
     setShareToDecline(share);
     setIsDecliningShare(true);
+
     try {
-      await user.getIdToken(true);
       const idToken = await user.getIdToken();
-      if (!idToken) throw new Error("Authentication token is missing.");
       const result = await declinePlanShareAction(share.id, idToken);
       if (result.success) {
-        toast({ title: "Share Declined", description: "The shared plan invitation has been declined." });
+        toast({ title: "Plan Declined", description: "You have declined the shared plan." });
       } else {
-        toast({ title: "Decline Failed", description: result.error || "Could not decline share.", variant: "destructive" });
+        throw new Error(result.error || 'Failed to decline plan');
       }
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to decline share.", variant: "destructive" });
+    } catch (error) {
+      console.error('Error declining plan share:', error);
+      toast({ title: "Error", description: "Failed to decline the plan. Please try again.", variant: "destructive" });
     } finally {
       setIsDecliningShare(false);
       setShareToDecline(null);
@@ -1128,41 +1203,63 @@ export default function PlansPage() {
     }
   }, [user, currentUserId, toast]);
 
-  const EmptyState = ({ title, message, showCreateButton = true }: { title: string; message: string, showCreateButton?: boolean }) => (
-    <div className="text-center py-12 sm:py-16 flex flex-col items-center">
-      <PackageOpen className="h-20 w-20 sm:h-24 sm:w-24 text-muted-foreground/30 mb-6" />
-      <h2 className="text-xl sm:text-2xl font-semibold text-foreground mb-2">{title}</h2>
-      <p className="text-muted-foreground mb-6 max-w-sm text-sm sm:text-base">{message}</p>
-      {showCreateButton && (
-         <Button variant="outline" size="lg" className="border-primary/50 text-primary hover:bg-primary/10 hover:text-primary" asChild>
-            <Link href="/plans/generate" className="flex items-center gap-2">
-              <PlusCircle className="h-5 w-5" /> Create New Plan
-            </Link>
-          </Button>
-      )}
-    </div>
-  );
+  // Filtered plan categories
+  const filteredInvitedToPlans = useMemo(() => {
+    return applyAllFilters(invitedToPlans);
+  }, [invitedToPlans, applyAllFilters]);
 
-  interface DayWithDotProps { date: Date; displayMonth: Date; }
-  const DayWithDot = ({ date, displayMonth }: DayWithDotProps): React.ReactElement | null => {
-    const isCurrentDisplayMonth = isValid(date) && isValid(displayMonth) && date.getMonth() === displayMonth.getMonth();
-    const hasEvent = isValid(date) && eventDates.some(eventDateItem => isValid(eventDateItem) && isSameDay(eventDateItem, date));
-    return (
-      <div className="relative h-full w-full flex items-center justify-center">
-        {isValid(date) ? format(date, 'd') : ''}
-        {hasEvent && isCurrentDisplayMonth && selectedDate && isValid(selectedDate) && isSameDay(date, selectedDate) && (
-          <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-primary-foreground" />
-        )}
-        {hasEvent && isCurrentDisplayMonth && selectedDate && isValid(selectedDate) && !isSameDay(date, selectedDate) && (
-          <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-primary" />
-        )}
-        {hasEvent && isCurrentDisplayMonth && (!selectedDate || !isValid(selectedDate)) && (
-          <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-primary" />
-        )}
-      </div>
-    );
-  };
-  
+  const filteredSavedDrafts = useMemo(() => {
+    return applyAllFilters(savedDrafts);
+  }, [savedDrafts, applyAllFilters]);
+
+  const filteredSavedTemplates = useMemo(() => {
+    return applyAllFilters(savedTemplates);
+  }, [savedTemplates, applyAllFilters]);
+
+  const filteredMyAwaitingResponsesPlans = useMemo(() => {
+    return applyAllFilters(myAwaitingResponsesPlans);
+  }, [myAwaitingResponsesPlans, applyAllFilters]);
+
+  const filteredMyConfirmedReadyPlans = useMemo(() => {
+    return applyAllFilters(myConfirmedReadyPlans);
+  }, [myConfirmedReadyPlans, applyAllFilters]);
+
+  const filteredUpcomingPlans = useMemo(() => {
+    const plans = [
+      ...filteredInvitedToPlans,
+      ...filteredMyAwaitingResponsesPlans,
+      ...filteredMyConfirmedReadyPlans
+    ];
+    return plans;
+  }, [filteredInvitedToPlans, filteredMyAwaitingResponsesPlans, filteredMyConfirmedReadyPlans]);
+
+  const allFilteredSavedPlans = useMemo(() => {
+    return [
+      ...filteredSavedDrafts,
+      ...filteredSavedTemplates
+    ];
+  }, [filteredSavedDrafts, filteredSavedTemplates]);
+
+  const filteredPastPlans = useMemo(() => {
+    return applyAllFilters(pastPlans);
+  }, [pastPlans, applyAllFilters]);
+
+  const filteredSavedPlans = useMemo(() => {
+    // Sort saved plans by event time (newest first)
+    const plans = [...savedPlans];
+    plans.sort((a, b) => {
+      const timeA = a.eventTime && isValid(parseISO(a.eventTime)) ? parseISO(a.eventTime).getTime() : -Infinity;
+      const timeB = b.eventTime && isValid(parseISO(b.eventTime)) ? parseISO(b.eventTime).getTime() : -Infinity;
+      return timeB - timeA;
+    });
+    return applyAllFilters(plans);
+  }, [savedPlans, applyAllFilters]);
+
+  // Check if we have any results to show
+  const hasUpcomingResults = filteredUpcomingPlans.length > 0 || pendingShares.length > 0;
+  const hasPastResults = filteredPastPlans.length > 0;
+  const hasSavedResults = allFilteredSavedPlans.length > 0;
+
   if (authLoading && !currentUserId) { 
     return (
       <div className="flex flex-col h-[calc(100vh-6rem)] md:h-[calc(100vh-4rem)] items-center justify-center">
@@ -1187,324 +1284,191 @@ export default function PlansPage() {
           handleConfirmCompletion={handleConfirmCompletion}
           isConfirmingCompletion={isConfirmingCompletion}
         >
-      <div className="space-y-0"> 
-        <div className="px-4 sm:px-0 pt-4 sm:pt-6">
-            <h1 className="text-3xl sm:text-4xl font-bold text-foreground/60 opacity-60 mb-2 sm:mb-4">My Plans</h1>
-        </div>
+      <div className="flex flex-col h-screen bg-background text-foreground">
+        <PlansPageHeader
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          selectedDate={selectedDate}
+          onDateSelect={handleDateSelect}
+          userName={user?.displayName || user?.email?.split('@')[0] || 'User'}
+          plansForDate={allUserPlans}
+          searchQuery={searchQuery}
+          onSearchChange={handleSearchChange}
+        />
 
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'upcoming' | 'past')} className="w-full">
-          {/* Mobile-optimized header with reorganized layout */}
-          <div className="sticky top-0 z-30 bg-background/90 backdrop-blur-sm border-b border-border shadow-sm px-4 sm:px-0">
-            {/* Top row: Search, List/Calendar buttons, and Sort button */}
-            <div className="flex items-center justify-between gap-2 w-full py-2">
-              <div className={cn("relative flex-1 min-w-0", isSearchFocused && "flex-grow")}>
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground pointer-events-none" />
-                <Input
- type="search"
- value={searchTerm}
- onChange={(e) => setSearchTerm(e.target.value)}
- onFocus={() => setIsSearchFocused(true)}
- onBlur={() => {
-   // Add a small delay to ensure any tap/click events are processed first
-   setTimeout(() => setIsSearchFocused(false), 200);
- }}
- className="pl-8 sm:pl-10 bg-card border-border text-sm h-8 sm:h-9 rounded-lg focus:ring-primary focus:border-primary w-full"
- disabled={viewMode === 'calendar'}
- placeholder="Search plans..."
-                />
-              </div>
-              
-              {/* View mode buttons next to search */}
-              <div className="flex items-center gap-1 ml-3">
-                <Button
- variant={viewMode === 'list' ? 'default' : 'outline'}
- size="sm"
- onClick={() => setViewMode('list')}
- className={cn(
-   "h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm transition-all duration-200",
-   viewMode === 'list'
-     ? "bg-primary text-primary-foreground hover:bg-primary/90"
-     : "bg-card border-border hover:bg-secondary/50"
- )}
-                >
- <ListIconLucide className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
- <span className="hidden sm:inline ml-1.5">List</span>
-                </Button>
-                <Button
- variant={viewMode === 'calendar' ? 'default' : 'outline'}
- size="sm"
- onClick={() => setViewMode('calendar')}
- className={cn(
-   "h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm transition-all duration-200",
-   viewMode === 'calendar'
-     ? "bg-primary text-primary-foreground hover:bg-primary/90"
-     : "bg-card border-border hover:bg-secondary/50"
- )}
-                >
- <CalendarDays className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
- <span className="hidden sm:inline ml-1.5">Calendar</span>
-                </Button>
-              </div>
-              
-              {/* Sort button - only show when not searching on mobile */}
-              {viewMode === 'list' && (
-                <Button 
- variant="outline" 
- onClick={handleSortCycle} 
- size="sm" 
- className={cn(
-   "bg-card border-border hover:bg-secondary/50 text-xs sm:text-sm rounded-lg h-8 sm:h-9 flex-shrink-0 transition-all duration-300 ml-2",
-   isSearchFocused && isMobile && "w-0 opacity-0 scale-x-0 invisible overflow-hidden"
- )}
-                >
- <span className="hidden sm:inline">{sortConfig.key === 'date' ? 'Date' : 'Name'}</span>
- <ArrowUpDown className="h-3.5 w-3.5 sm:ml-1.5 sm:h-4 sm:w-4" />
- <span className="text-xs">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
-                </Button>
-              )}
-            </div>
-            
-            {/* Second row: Centered plan switcher with icons */}
-            <div className="flex justify-center pb-2">
-              <div className="flex items-center">
-                <button
- onClick={() => setActiveTab('upcoming')}
- className={cn(
-   "px-4 py-2 text-sm font-medium transition-colors relative flex items-center",
-   activeTab === 'upcoming'
-     ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
-     : "text-muted-foreground hover:text-foreground"
- )}
-                >
- <CalendarDays className="h-4 w-4 mr-1.5" />
- Upcoming
-                </button>
-                <button
- onClick={() => setActiveTab('saved')}
- className={cn(
-   "px-4 py-2 text-sm font-medium transition-colors relative flex items-center",
-   activeTab === 'saved'
-     ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
-     : "text-muted-foreground hover:text-foreground"
- )}
-                >
- <Star className="h-4 w-4 mr-1.5" />
- <span className="hidden sm:inline">Saved Templates</span>
- <span className="sm:hidden">Saved</span>
-                </button>
-                <button
- onClick={() => setActiveTab('past')}
- className={cn(
-   "px-4 py-2 text-sm font-medium transition-colors relative flex items-center",
-   activeTab === 'past'
-     ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
-     : "text-muted-foreground hover:text-foreground"
- )}
-                >
- <History className="h-4 w-4 mr-1.5" />
- Past
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-4 px-4 sm:px-0">
-            {viewMode === 'list' ? (
-                <>
-                <TabsContent value="upcoming" className="mt-0">
-   {loadingPlans && !upcomingPlansExist && (
-       <div className="flex justify-center items-center py-10 min-h-[300px]">
-       <Loader2 className="h-8 w-8 animate-spin text-primary" />
-       </div>
-   )}
-   {!loadingPlans && !upcomingPlansExist && searchTerm === '' && (
-       <EmptyState title="No Upcoming Plans" message="You have no upcoming plans. Ready to create your next adventure?" />
-   )}
-   {!loadingPlans && !upcomingPlansExist && searchTerm !== '' && (
-       <EmptyState title="No Plans Found" message={`Your search for "${searchTerm}" did not match any upcoming plans.`} showCreateButton={false} />
-   )}
-
-   {pendingShares.length > 0 && (
-     <PlanStackSection
-       title="Shared With You"
-       plans={[]} 
-       isExpanded={expandedSections.shares}
-       onToggleExpand={() => toggleSectionExpansion('shares')}
-       emptyMessage="No new plans shared with you."
-       currentUserUid={currentUserId}
-       isLoading={loadingPlans && pendingShares.length === 0} 
-     >
-        {expandedSections.shares && (
-         <div className="space-y-3 mt-3">
-           {pendingShares.map(share => (
-               <Card key={share.id} className="p-3 bg-card/80 border border-border/50">
-               <div className="flex items-center gap-3">
-  <Avatar className="h-10 w-10">
-  <AvatarImage src={share.sharedByAvatarUrl || undefined} alt={share.sharedByName} data-ai-hint="person avatar"/>
-  <AvatarFallback className="text-sm">{share.sharedByName?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
-  </Avatar>
-  <div className="flex-grow">
-  <p className="text-sm font-medium text-foreground/90">
-      <span className="font-semibold text-primary">{share.sharedByName}</span> shared:
-  </p>
-  <p className="text-xs text-muted-foreground">"{share.originalPlanName}"</p>
-  </div>
-  <div className="flex gap-1 flex-shrink-0">
-      <Button variant="ghost" size="icon" asChild className="h-7 w-7 text-muted-foreground hover:text-primary" aria-label="View Original Plan">
-      <Link href={`/p/${share.originalPlanId}`}><Eye className="h-3.5 w-3.5"/></Link>
-      </Button>
-      <Button size="icon" className="h-7 w-7" onClick={() => handleAcceptShareRequest(share)} disabled={isAcceptingShare && shareToAccept?.id === share.id} aria-label="Accept Plan">
-          {(isAcceptingShare && shareToAccept?.id === share.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <CheckCircle2 className="mr-0 h-3.5 w-3.5"/>}
-      </Button>
-      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => handleDeclineShareRequest(share)} disabled={isDecliningShare && shareToDecline?.id === share.id} aria-label="Decline Plan">
-          {(isDecliningShare && shareToDecline?.id === share.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <Trash2 className="h-3.5 w-3.5"/>}
-      </Button>
-  </div>
-               </div>
-               </Card>
-           ))}
-         </div>
-        )}
-     </PlanStackSection>
-   )}
-   
-    {invitedToPlans.length > 0 && (
-       <PlanStackSection
-           title="Your Invitations"
-           plans={invitedToPlans}
-           isExpanded={expandedSections.invitations}
-           onToggleExpand={() => toggleSectionExpansion('invitations')}
-           emptyMessage="You have no pending invitations."
-           currentUserUid={currentUserId}
-       />
-   )}
-   {myDrafts.length > 0 && (
-   <PlanStackSection
-       title="My Drafts"
-       plans={myDrafts}
-       isExpanded={expandedSections.myDrafts}
-       onToggleExpand={() => toggleSectionExpansion('myDrafts')}
-       emptyMessage="You have no draft plans."
-       currentUserUid={currentUserId}
-       isLoading={loadingPlans && myDrafts.length === 0 && allUserPlans.length === 0 && pendingShares.length === 0 && invitedToPlans.length === 0}
-   />
-   )}
-    {myAwaitingResponsesPlans.length > 0 && (
-       <PlanStackSection
-           title="Awaiting Guest Confirmations"
-           plans={myAwaitingResponsesPlans}
-           isExpanded={expandedSections.myAwaitingResponses}
-           onToggleExpand={() => toggleSectionExpansion('myAwaitingResponses')}
-           emptyMessage="All published plans have full attendance or no invitees pending."
-           currentUserUid={currentUserId}
-       />
-   )}
-   {myConfirmedReadyPlans.length > 0 && (
-       <PlanStackSection
-           title="Confirmed & Ready"
-           plans={myConfirmedReadyPlans}
-           isExpanded={expandedSections.myConfirmedReady}
-           onToggleExpand={() => toggleSectionExpansion('myConfirmedReady')}
-           emptyMessage="No upcoming plans are fully confirmed by all participants yet."
-           currentUserUid={currentUserId}
-       />
-   )}
-                </TabsContent>
-
-                <TabsContent value="past" className="mt-0">
-   {loadingPlans && pastPlans.length === 0 && (
-        <div className="flex justify-center items-center py-10 min-h-[300px]">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-   )}
-   {!loadingPlans && pastPlans.length === 0 && searchTerm === '' && (
-       <EmptyState title="No Past Plans" message="Looks like your adventure log is empty here. Completed plans will show up once they're done!" />
-   )}
-   {!loadingPlans && pastPlans.length === 0 && searchTerm !== '' && (
-       <EmptyState title="No Past Plans Found" message={`Your search for "${searchTerm}" did not match any past plans.`} showCreateButton={false} />
-   )}
-   {!loadingPlans && pastPlans.length > 0 && (
-   <div className="grid grid-cols-1 gap-4">
-       {pastPlans.map(plan => (
-       <PlanCard key={plan.id} plan={plan} currentUserUid={currentUserId} />
-       ))}
-   </div>
-   )}
-                </TabsContent>
-                
-                <TabsContent value="saved" className="mt-0">
-   {loadingSavedPlans && savedPlans.length === 0 && (
-       <div className="flex justify-center items-center py-10 min-h-[300px]">
-       <Loader2 className="h-8 w-8 animate-spin text-primary" />
-       </div>
-   )}
-   {!loadingSavedPlans && savedPlans.length === 0 && searchTerm === '' && (
-       <EmptyState title="No Saved Templates" message="You haven't saved any activity templates yet. Explore the discover page to find great activity ideas and save them for later!" showCreateButton={false} />
-   )}
-   {!loadingSavedPlans && filteredSavedPlans.length === 0 && searchTerm !== '' && (
-       <EmptyState title="No Templates Found" message={`Your search for "${searchTerm}" did not match any saved activity templates.`} showCreateButton={false} />
-   )}
-   {!loadingSavedPlans && filteredSavedPlans.length > 0 && (
-   <div className="grid grid-cols-1 gap-4">
-       {filteredSavedPlans.map(plan => (
-       <PlanCard key={plan.id} plan={plan} currentUserUid={currentUserId} />
-       ))}
-   </div>
-   )}
-                </TabsContent>
-                </>
-            ) : ( 
-                <TabsContent value={activeTab} className="mt-0">
-                {(loadingPlans && plansForCalendar.length === 0 && !searchTerm) ? (
-   <div className="flex justify-center items-center py-20 min-h-[300px]">
-       <Loader2 className="h-10 w-10 animate-spin text-primary" />
-   </div>
-                ) : plansForCalendar.length === 0 ? (
-   <EmptyState
-       title={activeTab === 'upcoming' ? "No Upcoming Plans" : "No Past Plans"}
-       message={activeTab === 'upcoming' ? "No upcoming plans to show on the calendar." : "No past plans to show on the calendar."}
-   />
-                ) : (
-   <div className="bg-card p-2 sm:p-4 rounded-lg shadow">
-       <CalendarComponent
-           mode="single"
-           selected={selectedDate}
-           onSelect={(day) => {
-               if (day && isValid(day)) {
-               setSelectedDate(day);
-               setCurrentMonth(startOfMonth(day));
-               } else {
-               setSelectedDate(undefined);
-               }
-           }}
-           month={currentMonth}
-           onMonthChange={setCurrentMonth}
-           className="rounded-md [&_button[name=day]]:rounded-md"
-           classNames={{
-               day_selected: 'bg-primary text-primary-foreground hover:bg-primary/90 focus:bg-primary focus:text-primary-foreground',
-               day_today: 'bg-accent text-accent-foreground',
-               months: 'flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0 justify-center',
-               month: 'space-y-4 w-full sm:w-auto',
-               caption_label: 'text-lg font-medium text-foreground/90',
-               head_cell: 'text-muted-foreground rounded-md w-full sm:w-10 font-normal text-[0.8rem]',
-               cell: 'h-10 w-full sm:w-10 text-center text-sm p-0 relative first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20',
-               day: 'h-10 w-10 p-0 font-normal aria-selected:opacity-100 rounded-md',
-               nav_button: cn(
-               buttonVariants({ variant: "outline" }),
-               "h-8 w-8 bg-transparent p-0 opacity-70 hover:opacity-100"
-               ),
-           }}
-           components={{ DayContent: DayWithDot }}
-           footer={calendarFooter}
-           modifiers={{ event: eventDates.filter(date => isValid(date)) as Date[] }}
-           modifiersClassNames={{ event: 'has-event' }}
-       />
-   </div>
+        {/* Main Content Area */}
+        <div className="flex-1 overflow-hidden">
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'upcoming' | 'past')} className="h-full flex flex-col">
+            <div className="flex-1 overflow-auto px-4 pt-4">
+              <TabsContent value="upcoming" className="mt-0 h-full">
+                {loadingPlans && !upcomingPlansExist && (
+                  <div className="flex justify-center items-center py-10 min-h-[300px]">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  </div>
                 )}
-                </TabsContent>
-            )}
-          </div>
-        </Tabs>
+                {!loadingPlans && !hasUpcomingResults && (
+                  <PlansEmptyState 
+                    title="No Upcoming Plans" 
+                    message="You have no upcoming plans. Ready to create your next adventure?"
+                    searchQuery={searchQuery}
+                    selectedDate={selectedDate}
+                    isSearchActive={searchQuery.trim().length > 0}
+                    isDateFilterActive={isDateFilterActive}
+                    onClearSearch={handleClearSearch}
+                    onClearFilters={handleClearFilters}
+                  />
+                )}
+
+                {pendingShares.length > 0 && (
+                  <PlanStackSection
+                    title="Shared With You"
+                    plans={[]} 
+                    isExpanded={expandedSections.shares}
+                    onToggleExpand={() => toggleSectionExpansion('shares')}
+                    emptyMessage="No new plans shared with you."
+                    currentUserUid={currentUserId}
+                    isLoading={loadingPlans && pendingShares.length === 0} 
+                  >
+                    {expandedSections.shares && (
+                      <div className="space-y-3 mt-3">
+                        {pendingShares.map(share => (
+                          <Card key={share.id} className="p-3 bg-card/80 border border-border/50">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-10 w-10">
+                                <AvatarImage src={share.sharedByAvatarUrl || undefined} alt={share.sharedByName} data-ai-hint="person avatar"/>
+                                <AvatarFallback className="text-sm">{share.sharedByName?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
+                              </Avatar>
+                              <div className="flex-grow">
+                                <p className="text-sm font-medium text-foreground/90">
+                                  <span className="font-semibold text-primary">{share.sharedByName}</span> shared:
+                                </p>
+                                <p className="text-xs text-muted-foreground">"{share.originalPlanName}"</p>
+                              </div>
+                              <div className="flex gap-1 flex-shrink-0">
+                                <Button variant="ghost" size="icon" asChild className="h-7 w-7 text-muted-foreground hover:text-primary" aria-label="View Original Plan">
+                                  <Link href={`/p/${share.originalPlanId}`}><Eye className="h-3.5 w-3.5"/></Link>
+                                </Button>
+                                <Button size="icon" className="h-7 w-7" onClick={() => handleAcceptShareRequest(share)} disabled={isAcceptingShare && shareToAccept?.id === share.id} aria-label="Accept Plan">
+                                  {(isAcceptingShare && shareToAccept?.id === share.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <CheckCircle2 className="mr-0 h-3.5 w-3.5"/>}
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => handleDeclineShareRequest(share)} disabled={isDecliningShare && shareToDecline?.id === share.id} aria-label="Decline Plan">
+                                  {(isDecliningShare && shareToDecline?.id === share.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <Trash2 className="h-3.5 w-3.5"/>}
+                                </Button>
+                              </div>
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </PlanStackSection>
+                )}
+                
+                {filteredInvitedToPlans.length > 0 && (
+                  <PlanStackSection
+                    title="Your Invitations"
+                    plans={filteredInvitedToPlans}
+                    isExpanded={expandedSections.invitations}
+                    onToggleExpand={() => toggleSectionExpansion('invitations')}
+                    emptyMessage="You have no pending invitations."
+                    currentUserUid={currentUserId}
+                  />
+                )}
+
+                {filteredMyAwaitingResponsesPlans.length > 0 && (
+                  <PlanStackSection
+                    title="Awaiting Guest Confirmations"
+                    plans={filteredMyAwaitingResponsesPlans}
+                    isExpanded={expandedSections.myAwaitingResponses}
+                    onToggleExpand={() => toggleSectionExpansion('myAwaitingResponses')}
+                    emptyMessage="All published plans have full attendance or no invitees pending."
+                    currentUserUid={currentUserId}
+                  />
+                )}
+                {filteredMyConfirmedReadyPlans.length > 0 && (
+                  <PlanStackSection
+                    title="Confirmed & Ready"
+                    plans={filteredMyConfirmedReadyPlans}
+                    isExpanded={expandedSections.myConfirmedReady}
+                    onToggleExpand={() => toggleSectionExpansion('myConfirmedReady')}
+                    emptyMessage="No confirmed plans ready to go."
+                    currentUserUid={currentUserId}
+                  />
+                )}
+              </TabsContent>
+
+              <TabsContent value="past" className="mt-0">
+                {loadingPlans && pastPlans.length === 0 && (
+                  <div className="flex justify-center items-center py-10 min-h-[300px]">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  </div>
+                )}
+                {!loadingPlans && !hasPastResults && (
+                  <PlansEmptyState 
+                    title="No Past Plans" 
+                    message="Looks like your adventure log is empty here. Completed plans will show up once they're done!"
+                    searchQuery={searchQuery}
+                    selectedDate={selectedDate}
+                    isSearchActive={searchQuery.trim().length > 0}
+                    isDateFilterActive={isDateFilterActive}
+                    onClearSearch={handleClearSearch}
+                    onClearFilters={handleClearFilters}
+                  />
+                )}
+                {!loadingPlans && hasPastResults && (
+                  <div className="grid grid-cols-1 gap-4">
+                    {filteredPastPlans.map(plan => (
+                      <PlanCard key={plan.id} plan={plan} currentUserUid={currentUserId} />
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+              
+              <TabsContent value="saved" className="mt-0">
+                {loadingSavedPlans && savedPlans.length === 0 && savedDrafts.length === 0 && (
+                  <div className="flex justify-center items-center py-10 min-h-[300px]">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  </div>
+                )}
+                {!loadingSavedPlans && !hasSavedResults && (
+                  <PlansEmptyState 
+                    title="No Saved Plans" 
+                    message="You have no drafts or saved templates. Create a plan or explore to find great activity ideas!" 
+                    showCreateButton={true}
+                    searchQuery={searchQuery}
+                    selectedDate={selectedDate}
+                    isSearchActive={searchQuery.trim().length > 0}
+                    isDateFilterActive={isDateFilterActive}
+                    onClearSearch={handleClearSearch}
+                    onClearFilters={handleClearFilters}
+                  />
+                )}
+
+                {filteredSavedDrafts.length > 0 && (
+                  <PlanStackSection
+                    title="My Drafts"
+                    plans={filteredSavedDrafts}
+                    isExpanded={expandedSections.savedDrafts}
+                    onToggleExpand={() => toggleSectionExpansion('savedDrafts')}
+                    emptyMessage="You have no draft plans."
+                    currentUserUid={currentUserId}
+                    isLoading={loadingSavedPlans && savedDrafts.length === 0}
+                  />
+                )}
+                {filteredSavedTemplates.length > 0 && (
+                  <PlanStackSection
+                    title="Saved Templates"
+                    plans={filteredSavedTemplates}
+                    isExpanded={expandedSections.savedTemplates}
+                    onToggleExpand={() => toggleSectionExpansion('savedTemplates')}
+                    emptyMessage="You have no saved templates."
+                    currentUserUid={currentUserId}
+                    isLoading={loadingSavedPlans && savedPlans.length === 0}
+                  />
+                )}
+              </TabsContent>
+            </div>
+          </Tabs>
+        </div>
         
         <AlertDialog open={!!shareToAccept} onOpenChange={(open) => { if (!open) setShareToAccept(null); }}>
           <AlertDialogContent>

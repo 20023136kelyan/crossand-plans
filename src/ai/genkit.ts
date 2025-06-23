@@ -23,5 +23,5 @@ export const ai = genkit({
   ],
   // It's generally recommended to specify the model per-flow or per-generate call
   // rather than a global default model if you plan to use different models (e.g., for image generation).
-  model: 'googleai/gemini-2.0-flash', 
+  model: 'googleai/gemini-2.5-pro', 
 });

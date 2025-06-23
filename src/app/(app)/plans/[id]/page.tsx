@@ -44,7 +44,7 @@ import ParticipantManagementDialog from '@/components/plans/ParticipantManagemen
 import { EnhancedPlanSharingDialog } from '@/components/plans/EnhancedPlanSharingDialog';
 import { PlanItinerary } from '@/components/plans/PlanItinerary';
 import { PlanMap } from '@/components/plans/PlanMap';
-import { PlanWeather } from '@/components/plans/PlanWeather';
+
 
 // Import UI components for dialogs and alerts
 import {
@@ -632,18 +632,7 @@ const [deleteLoading, setDeleteLoading] = useState(false);
               />
             )}
 
-            {/* Weather */}
-            {plan.location && (
-              <PlanWeather 
-                location={plan.location} 
-                date={plan.eventTime}
-                showForecast={true}
-                coordinates={plan.coordinates ? {
-                  lat: plan.coordinates.latitude,
-                  lon: plan.coordinates.longitude
-                } : undefined}
-              />
-            )}
+
 
             {/* Photo Highlights */}
             <PlanPhotoHighlights

@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileOverview AI-powered full plan generator.
@@ -75,15 +74,43 @@ const PlanOutputSchema = z.object({ // Renamed to PlanOutputSchema to avoid conf
   updatedAt: z.string().describe("Last update timestamp in ISO format."),
 });
 
-// Simplified profile schema for AI input, focusing on preferences
-const AISimpleProfileSchema = z.object({
+// Enhanced profile schema for AI input with detailed user preferences
+const AIEnhancedProfileSchema = z.object({
   uid: z.string(),
+  
+  // Basic info
+  name: z.string().nullable().optional(),
+  
+  // Enhanced preferences
   preferences: z.array(z.string()).optional().default([]),
+  generalPreferences: z.string().optional().nullable().describe("General likes/dislikes text from user"),
+  
+  // Food & Dining
+  allergies: z.array(z.string()).optional().default([]),
+  dietaryRestrictions: z.array(z.string()).optional().default([]),
+  favoriteCuisines: z.array(z.string()).optional().default([]),
+  
+  // Activity & Physical
+  activityTypePreferences: z.array(z.string()).optional().default([]),
+  activityTypeDislikes: z.array(z.string()).optional().default([]),
+  physicalLimitations: z.array(z.string()).optional().default([]),
+  environmentalSensitivities: z.array(z.string()).optional().default([]),
+  
+  // Social & Travel
+  travelTolerance: z.string().optional().nullable().describe("Travel tolerance like 'Up to 1 hour' or 'Any distance'"),
+  budgetFlexibilityNotes: z.string().optional().nullable().describe("Budget preferences and flexibility"),
+  socialPreferences: z.object({
+    preferredGroupSize: z.string().nullable(),
+    interactionLevel: z.string().nullable(),
+  }).optional().nullable(),
+  
+  // Availability context
+  availabilityNotes: z.string().optional().nullable(),
 });
 
 const GenerateFullPlanInputSchema = z.object({
-  hostProfile: AISimpleProfileSchema.describe("The host user's UID and preferences."),
-  invitedFriendProfiles: z.array(AISimpleProfileSchema).optional().default([]).describe("Invited friends' UIDs and preferences."),
+  hostProfile: AIEnhancedProfileSchema.describe("The host user's detailed profile including preferences, dietary needs, activity preferences, and social style."),
+  invitedFriendProfiles: z.array(AIEnhancedProfileSchema).optional().default([]).describe("Invited friends' detailed profiles including preferences, dietary needs, activity preferences, and social styles."),
   planDateTime: z.string().datetime().describe("Desired start date and time for the plan (ISO format)."),
   locationQuery: z.string().describe("User's query for the main location (e.g., 'Eiffel Tower' or 'Restaurants near Central Park')."),
   selectedLocationLat: z.number().optional().nullable().describe("Latitude of the user-selected primary location, if available."),
@@ -101,6 +128,7 @@ export type GenerateFullPlanOutput = Plan; // The flow outputs a complete Plan o
 const FetchPlaceDetailsInputSchema = z.object({
   placeNameOrId: z.string().describe("Name (e.g., 'Eiffel Tower, Paris') or Google Place ID of the location to get details for."),
   locationHint: z.object({ lat: z.number(), lng: z.number() }).optional().nullable().describe("Optional latitude/longitude to help disambiguate the place name, especially if only a name is provided."),
+  searchRadiusKm: z.number().optional().nullable().describe("Search radius in kilometers around the locationHint. Used to bias results to nearby places. Defaults to 50km if not provided."),
   fields: z.array(z.string()).optional().default(['place_id', 'name', 'formatted_address', 'address_components', 'geometry', 'photos', 'rating', 'user_ratings_total', 'opening_hours', 'international_phone_number', 'website', 'price_level', 'types', 'business_status']).describe("Specific fields to fetch for the place."),
 });
 
@@ -125,6 +153,321 @@ const FetchPlaceDetailsOutputSchema = z.object({
   error: z.string().optional().nullable(),
 });
 
+// Tool for finding places within a radius
+const FindPlacesNearbyInputSchema = z.object({
+  centerLat: z.number().describe("Latitude of the center point"),
+  centerLng: z.number().describe("Longitude of the center point"),
+  radiusKm: z.number().describe("Radius in kilometers to search within"),
+  placeType: z.string().optional().describe("Optional place type filter (e.g., 'restaurant', 'tourist_attraction', 'park')"),
+  keyword: z.string().optional().describe("Optional keyword to filter results (e.g., 'coffee', 'museum', 'outdoor')"),
+});
+
+const FindPlacesNearbyOutputSchema = z.object({
+  success: z.boolean(),
+  places: z.array(z.object({
+    name: z.string(),
+    placeId: z.string(),
+    address: z.string().optional().nullable(),
+    lat: z.number(),
+    lng: z.number(),
+    rating: z.number().optional().nullable(),
+    priceLevel: z.number().optional().nullable(),
+    types: z.array(z.string()),
+    isOpen: z.boolean().optional().nullable(),
+  })).describe("Array of places found within the radius"),
+  error: z.string().optional().nullable(),
+});
+
+const findPlacesNearbyTool = ai.defineTool(
+  {
+    name: 'findPlacesNearby',
+    description: 'Finds places within a specified radius around a center point. Use this to discover venues, restaurants, attractions, and activities within the user\'s search area. More effective than web search for finding actual places.',
+    inputSchema: FindPlacesNearbyInputSchema,
+    outputSchema: FindPlacesNearbyOutputSchema,
+  },
+  async (input) => {
+    console.log('[findPlacesNearbyTool] Called with input:', JSON.stringify(input, null, 2));
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      console.error("[findPlacesNearbyTool] API key NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is missing.");
+      return { success: false, places: [], error: "API key missing" };
+    }
+
+    // Convert radius from km to meters
+    const radiusMeters = input.radiusKm * 1000;
+    
+    // Build the nearby search URL
+    let nearbySearchUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${input.centerLat},${input.centerLng}&radius=${radiusMeters}&key=${apiKey}`;
+    
+    if (input.placeType) {
+      nearbySearchUrl += `&type=${encodeURIComponent(input.placeType)}`;
+    }
+    
+    if (input.keyword) {
+      nearbySearchUrl += `&keyword=${encodeURIComponent(input.keyword)}`;
+    }
+    
+    console.log("[findPlacesNearbyTool] Nearby Search URL:", nearbySearchUrl);
+
+    try {
+      const response = await fetch(nearbySearchUrl);
+      if (!response.ok) {
+        const errorBody = await response.text();
+        console.error(`[findPlacesNearbyTool] Nearby search API error ${response.status}: ${errorBody}`);
+        return { success: false, places: [], error: `Nearby search API error: ${response.statusText}` };
+      }
+      
+      const data = await response.json();
+      
+      if (data.status === 'REQUEST_DENIED') {
+        console.error(`[findPlacesNearbyTool] API request denied: ${data.error_message || 'Unknown reason'}`);
+        return { success: false, places: [], error: `Google Maps API request denied: ${data.error_message || 'Check API key and billing'}` };
+      }
+      if (data.status === 'OVER_QUERY_LIMIT') {
+        console.error(`[findPlacesNearbyTool] API quota exceeded`);
+        return { success: false, places: [], error: `Google Maps API quota exceeded. Please try again later.` };
+      }
+
+      if (data.results && data.results.length > 0) {
+        const places = data.results.slice(0, 10).map((place: any) => ({
+          name: place.name,
+          placeId: place.place_id,
+          address: place.vicinity || place.formatted_address,
+          lat: place.geometry.location.lat,
+          lng: place.geometry.location.lng,
+          rating: place.rating,
+          priceLevel: place.price_level,
+          types: place.types || [],
+          isOpen: place.opening_hours?.open_now,
+        }));
+        
+        console.log(`[findPlacesNearbyTool] Found ${places.length} places within ${input.radiusKm}km radius`);
+        return { success: true, places };
+      } else {
+        console.log(`[findPlacesNearbyTool] No places found within radius. Status: ${data.status}`);
+        return { success: true, places: [], error: `No places found within ${input.radiusKm}km radius. Status: ${data.status}` };
+      }
+    } catch (e: any) {
+      console.error("[findPlacesNearbyTool] API fetch/parse error:", e);
+      return { success: false, places: [], error: `Nearby search API fetch error: ${e.message}` };
+    }
+  }
+);
+
+// Web Search Tool for contextual information
+const webSearchTool = ai.defineTool(
+  {
+    name: 'webSearchTool',
+    description: 'Performs a location-aware web search to find area-specific information, current events, special activities, dress codes, historical context, or other details not available in Google Places API. Automatically incorporates location and radius into search queries.',
+    inputSchema: z.object({ 
+      query: z.string().describe('The base search query (e.g., "outdoor activities", "food scene", "events this weekend")'),
+      centerLat: z.number().describe('Latitude of the search center point'),
+      centerLng: z.number().describe('Longitude of the search center point'),
+      radiusKm: z.number().describe('Search radius in kilometers - used to determine location specificity'),
+      locationContext: z.string().optional().describe('Optional location context string (e.g., "San Francisco", "downtown Chicago") to enhance search')
+    }),
+    outputSchema: z.object({ 
+      results: z.array(z.string()).describe('Array of relevant search result snippets'),
+      searchQuery: z.string().describe('The actual search query that was used')
+    }),
+  },
+  async (input) => {
+    console.log(`[webSearchTool] Called with input:`, JSON.stringify(input, null, 2));
+    
+    // Import the location helper to get city information
+    const { getCityFromCoordinates } = await import('@/utils/locationHelpers');
+    
+    // Construct location-aware search query with precise location targeting
+    let enhancedQuery = input.query;
+    let locationSpecifier = '';
+    
+    // Create progressively more specific location targeting based on radius
+    if (input.radiusKm <= 2) {
+      // Ultra-local: use coordinates for maximum precision
+      locationSpecifier = `${input.centerLat.toFixed(4)}, ${input.centerLng.toFixed(4)}`;
+      enhancedQuery = `${input.query} near coordinates ${locationSpecifier} ${input.radiusKm}km radius`;
+    } else if (input.radiusKm <= 5) {
+      // Very local: use detailed location with coordinates as backup
+      if (input.locationContext && input.locationContext.length > 10) {
+        // Use the full location context if it's detailed enough
+        locationSpecifier = input.locationContext;
+        enhancedQuery = `${input.query} near "${locationSpecifier}" ${input.radiusKm}km radius`;
+      } else {
+        // Use coordinates for precision
+        locationSpecifier = `${input.centerLat.toFixed(3)}, ${input.centerLng.toFixed(3)}`;
+        enhancedQuery = `${input.query} near ${locationSpecifier} within ${input.radiusKm}km`;
+      }
+    } else if (input.radiusKm <= 10) {
+      // Local area: use neighborhood/district level if available
+      const identifiedCity = getCityFromCoordinates(input.centerLat, input.centerLng);
+      if (input.locationContext && input.locationContext.includes(',')) {
+        // Extract neighborhood or district from location context
+        const locationParts = input.locationContext.split(',').map(part => part.trim());
+        if (locationParts.length >= 2) {
+          locationSpecifier = `${locationParts[0]}, ${locationParts[1]}`;
+        } else {
+          locationSpecifier = locationParts[0];
+        }
+      } else if (identifiedCity) {
+        locationSpecifier = identifiedCity;
+      } else {
+        locationSpecifier = `area around ${input.centerLat.toFixed(2)}, ${input.centerLng.toFixed(2)}`;
+      }
+      enhancedQuery = `${input.query} in ${locationSpecifier} ${input.radiusKm}km area`;
+    } else {
+      // City/regional level: broader search
+      const identifiedCity = getCityFromCoordinates(input.centerLat, input.centerLng);
+      if (identifiedCity) {
+        locationSpecifier = identifiedCity.split(',')[0]; // Just city name for broader searches
+        enhancedQuery = `${input.query} ${locationSpecifier} region`;
+      } else if (input.locationContext) {
+        locationSpecifier = input.locationContext.split(',')[0];
+        enhancedQuery = `${input.query} ${locationSpecifier} area`;
+      } else {
+        locationSpecifier = `${input.centerLat.toFixed(1)}, ${input.centerLng.toFixed(1)}`;
+        enhancedQuery = `${input.query} near ${locationSpecifier} region`;
+      }
+    }
+    
+    // Add current year for more relevant results
+    const currentYear = new Date().getFullYear();
+    enhancedQuery += ` ${currentYear}`;
+    
+    console.log(`[webSearchTool] Location targeting strategy:`, {
+      radiusKm: input.radiusKm,
+      strategy: input.radiusKm <= 2 ? 'ultra-local-coordinates' : 
+               input.radiusKm <= 5 ? 'very-local-detailed' :
+               input.radiusKm <= 10 ? 'neighborhood-level' : 'city-regional',
+      originalQuery: input.query,
+      enhancedQuery,
+      locationSpecifier
+    });
+    
+    try {
+      const apiKey = process.env.GOOGLE_CUSTOM_SEARCH_API_KEY;
+      const searchEngineId = process.env.GOOGLE_CUSTOM_SEARCH_ENGINE_ID;
+      
+      if (!apiKey || !searchEngineId) {
+        console.warn('[webSearchTool] Google Custom Search API credentials not found, using fallback results');
+        return { 
+          results: [
+            `Location-aware search for "${enhancedQuery}" - API credentials not configured`,
+            'Please set GOOGLE_CUSTOM_SEARCH_API_KEY and GOOGLE_CUSTOM_SEARCH_ENGINE_ID environment variables'
+          ],
+          searchQuery: enhancedQuery
+        };
+      }
+      
+      const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${searchEngineId}&q=${encodeURIComponent(enhancedQuery)}&num=5`;
+      
+      console.log(`[webSearchTool] Making location-aware search request for: "${enhancedQuery}"`);
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[webSearchTool] Google Custom Search API error ${response.status}: ${errorText}`);
+        
+        // Handle specific error cases
+        if (response.status === 403) {
+          return { 
+            results: [`Search quota exceeded or API key invalid for: ${enhancedQuery}`],
+            searchQuery: enhancedQuery
+          };
+        }
+        if (response.status === 400) {
+          return { 
+            results: [`Invalid search query: ${enhancedQuery}`],
+            searchQuery: enhancedQuery
+          };
+        }
+        
+        return { 
+          results: [`Search API error for: ${enhancedQuery}`],
+          searchQuery: enhancedQuery
+        };
+      }
+      
+      const data = await response.json();
+      
+      if (data.items && data.items.length > 0) {
+        const searchResults = data.items.map((item: any) => {
+          // Combine title and snippet for more context
+          return item.snippet ? `${item.title}: ${item.snippet}` : item.title;
+        }).filter(Boolean);
+        
+        console.log(`[webSearchTool] Found ${searchResults.length} results for location-aware query: "${enhancedQuery}"`);
+        return { 
+          results: searchResults,
+          searchQuery: enhancedQuery
+        };
+      } else {
+        console.log(`[webSearchTool] No results found for: "${enhancedQuery}"`);
+        return { 
+          results: [`No current information found for: ${enhancedQuery}`],
+          searchQuery: enhancedQuery
+        };
+      }
+      
+    } catch (error) {
+      console.error(`[webSearchTool] Error performing search:`, error);
+      return { 
+        results: [`Unable to search for current information about: ${enhancedQuery}`],
+        searchQuery: enhancedQuery
+      };
+    }
+  }
+);
+
+/*
+PRODUCTION SEARCH API INTEGRATION EXAMPLES:
+
+// Option 1: Google Custom Search API
+async function googleCustomSearch(query: string) {
+  const apiKey = process.env.GOOGLE_CUSTOM_SEARCH_API_KEY;
+  const searchEngineId = process.env.GOOGLE_CUSTOM_SEARCH_ENGINE_ID;
+  const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${searchEngineId}&q=${encodeURIComponent(query)}&num=5`;
+  
+  const response = await fetch(url);
+  const data = await response.json();
+  return data.items?.map((item: any) => item.snippet) || [];
+}
+
+// Option 2: Tavily Search API (AI-optimized)
+async function tavilySearch(query: string) {
+  const apiKey = process.env.TAVILY_API_KEY;
+  const response = await fetch('https://api.tavily.com/search', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      query,
+      search_depth: 'basic',
+      include_answer: true,
+      max_results: 5
+    })
+  });
+  
+  const data = await response.json();
+  return data.results?.map((result: any) => result.content) || [];
+}
+
+// Option 3: SerpAPI (Google Search Results)
+async function serpApiSearch(query: string) {
+  const apiKey = process.env.SERPAPI_API_KEY;
+  const url = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(query)}&api_key=${apiKey}&num=5`;
+  
+  const response = await fetch(url);
+  const data = await response.json();
+  return data.organic_results?.map((result: any) => result.snippet) || [];
+}
+
+// To use a real search API, replace the simulatedResults with:
+// const searchResults = await googleCustomSearch(input.query);
+// return { results: searchResults };
+*/
+
 const fetchPlaceDetailsTool = ai.defineTool(
   {
     name: 'fetchPlaceDetails',
@@ -147,7 +490,9 @@ const fetchPlaceDetailsTool = ai.defineTool(
       let textSearchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(input.placeNameOrId)}&key=${apiKey}`;
       if (input.locationHint?.lat && input.locationHint?.lng) {
         // Using locationbias=circle:radius@lat,lng for better biasing
-        textSearchUrl += `&locationbias=circle:50000@${input.locationHint.lat},${input.locationHint.lng}`; // 50km radius
+        const radiusMeters = (input.searchRadiusKm || 50) * 1000; // Convert km to meters, default to 50km
+        textSearchUrl += `&locationbias=circle:${radiusMeters}@${input.locationHint.lat},${input.locationHint.lng}`;
+        console.log(`[fetchPlaceDetailsTool] Using search radius: ${input.searchRadiusKm || 50}km (${radiusMeters}m)`);
       }
       console.log("[fetchPlaceDetailsTool] Text Search URL:", textSearchUrl);
       try {
@@ -358,10 +703,16 @@ export async function generateFullPlan(input: GenerateFullPlanInput): Promise<Ge
 
 const generateFullPlanPrompt = ai.definePrompt({
   name: 'generateFullPlanPrompt',
+  model: 'googleai/gemini-2.5-pro',
   input: { schema: GenerateFullPlanInputSchema },
   output: { schema: PlanOutputSchema },
-  tools: [fetchPlaceDetailsTool, fetchDirectionsTool],
+  tools: [findPlacesNearbyTool, fetchPlaceDetailsTool, fetchDirectionsTool, webSearchTool],
   prompt: `You are an expert event planner AI. Your task is to generate a detailed event plan based on the user's request.
+
+**IMPORTANT: UUID FORMAT REQUIREMENT**
+All UUIDs must use valid hexadecimal characters (0-9, a-f) only. Format: 8-4-4-4-12 characters.
+✅ CORRECT: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+❌ INCORRECT: "c1d3e4f5-g6h7-i8j9-k0l1-m2n3o4p5q6r7" (contains invalid characters g,h,i,j,k)
 
 User's Initial Request:
 - Plan Start Date/Time: {{{planDateTime}}}
@@ -372,13 +723,34 @@ User's Initial Request:
 - Specific Instructions/Wishes: {{{userPrompt}}}
 
 Participant Information:
-- Host (UID: {{{hostProfile.uid}}}):
-  - Preferences: {{#if hostProfile.preferences.length}}{{#each hostProfile.preferences}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}None specified{{/if}}
+- Host {{#if hostProfile.name}}({{{hostProfile.name}}}){{/if}} (UID: {{{hostProfile.uid}}}):
+  - General Preferences: {{#if hostProfile.preferences.length}}{{#each hostProfile.preferences}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}None specified{{/if}}
+  {{#if hostProfile.generalPreferences}}- Personal Notes: {{{hostProfile.generalPreferences}}}{{/if}}
+  - Favorite Cuisines: {{#if hostProfile.favoriteCuisines.length}}{{#each hostProfile.favoriteCuisines}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}None specified{{/if}}
+  - Activity Preferences: {{#if hostProfile.activityTypePreferences.length}}{{#each hostProfile.activityTypePreferences}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}None specified{{/if}}
+  - Activity Dislikes: {{#if hostProfile.activityTypeDislikes.length}}{{#each hostProfile.activityTypeDislikes}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}None specified{{/if}}
+  - Dietary Restrictions: {{#if hostProfile.dietaryRestrictions.length}}{{#each hostProfile.dietaryRestrictions}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}None{{/if}}
+  - Allergies: {{#if hostProfile.allergies.length}}{{#each hostProfile.allergies}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}None{{/if}}
+  - Physical Considerations: {{#if hostProfile.physicalLimitations.length}}{{#each hostProfile.physicalLimitations}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}None{{/if}}
+  {{#if hostProfile.travelTolerance}}- Travel Tolerance: {{{hostProfile.travelTolerance}}}{{/if}}
+  {{#if hostProfile.budgetFlexibilityNotes}}- Budget Notes: {{{hostProfile.budgetFlexibilityNotes}}}{{/if}}
+  {{#if hostProfile.socialPreferences}}- Social Style: {{#if hostProfile.socialPreferences.preferredGroupSize}}Group Size: {{{hostProfile.socialPreferences.preferredGroupSize}}}{{/if}}{{#if hostProfile.socialPreferences.interactionLevel}}, Interaction: {{{hostProfile.socialPreferences.interactionLevel}}}{{/if}}{{/if}}
+  {{#if hostProfile.availabilityNotes}}- Availability Notes: {{{hostProfile.availabilityNotes}}}{{/if}}
+
 {{#if invitedFriendProfiles.length}}
 - Invited Friends:
   {{#each invitedFriendProfiles}}
-  - Friend (UID: {{this.uid}}):
-    - Preferences: {{#if this.preferences.length}}{{#each this.preferences}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}None specified{{/if}}
+  - Friend{{#if this.name}} ({{{this.name}}}){{/if}} (UID: {{this.uid}}):
+    - General Preferences: {{#if this.preferences.length}}{{#each this.preferences}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}None specified{{/if}}
+    {{#if this.generalPreferences}}- Personal Notes: {{{this.generalPreferences}}}{{/if}}
+    - Favorite Cuisines: {{#if this.favoriteCuisines.length}}{{#each this.favoriteCuisines}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}None specified{{/if}}
+    - Activity Preferences: {{#if this.activityTypePreferences.length}}{{#each this.activityTypePreferences}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}None specified{{/if}}
+    - Activity Dislikes: {{#if this.activityTypeDislikes.length}}{{#each this.activityTypeDislikes}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}None specified{{/if}}
+    - Dietary Restrictions: {{#if this.dietaryRestrictions.length}}{{#each this.dietaryRestrictions}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}None{{/if}}
+    - Allergies: {{#if this.allergies.length}}{{#each this.allergies}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}None{{/if}}
+    - Physical Considerations: {{#if this.physicalLimitations.length}}{{#each this.physicalLimitations}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}None{{/if}}
+    {{#if this.travelTolerance}}- Travel Tolerance: {{{this.travelTolerance}}}{{/if}}
+    {{#if this.socialPreferences}}- Social Style: {{#if this.socialPreferences.preferredGroupSize}}Group Size: {{{this.socialPreferences.preferredGroupSize}}}{{/if}}{{#if this.socialPreferences.interactionLevel}}, Interaction: {{{this.socialPreferences.interactionLevel}}}{{/if}}{{/if}}
   {{/each}}
 {{else}}
 - No friends invited for this plan.
@@ -390,22 +762,54 @@ Decide if the plan should be 'single-stop' or 'multi-stop' based on the user's '
 If the user prompt implies a single activity (e.g., "dinner at X"), prefer a single-stop plan. If it's more general (e.g., "day trip to Paris") and 'planTypeHint' is not 'single-stop', a multi-stop plan might be appropriate. If 'searchRadius' is provided, consider places within that radius of the 'locationQuery' or its coordinates.
 
 Itinerary Instructions:
-1.  For each potential stop in the itinerary:
-    a.  Use the 'fetchPlaceDetails' tool to get detailed information about the place (name, address, city, coordinates, photo reference, rating, opening hours, operational status, types, website, phone, price level). If the user provided a specific venue in 'locationQuery', use that as the primary or first stop. For general queries like "Paris", pick a relevant first stop. For locationHint in 'fetchPlaceDetails', use the primary location coordinates if available or the coordinates of the city if searchRadius is broad.
-    b.  Crucially, CHECK THE OPENING HOURS from the tool's output against the planned 'startTime' and 'endTime' for the stop. Ensure the place is open. If not, pick an alternative or adjust times. If a place is not operational ('isOperational': false), do not include it.
-    c.  Set a default DURATION of 60 minutes ('durationMinutes': 60) for each stop unless the user's prompt or place type clearly suggests otherwise (e.g., a quick coffee vs. a museum visit).
-    d.  Calculate 'endTime' based on 'startTime' and 'durationMinutes'. Ensure 'endTime' is always after 'startTime'. Times should be in ISO 8601 format.
-    e.  Populate all relevant fields in the ItineraryItem schema using data from the 'fetchPlaceDetails' tool: 'placeName', 'address', 'city', 'lat', 'lng', 'googlePlaceId', 'rating', 'reviewCount', 'openingHours', 'isOperational', 'statusText', 'types', 'website', 'phoneNumber', 'priceLevel'. IMPORTANT: Do NOT set 'googlePhotoReference' - leave it null to allow the frontend auto-refresh logic to handle photos using the reliable getUrl() method and avoid 400 errors from expired photo references.
-    f.  First, create a concise 'tagline' (no more than 80 characters) that captures the essence of this stop in the context of the full itinerary (e.g., 'Kick-off with artisanal coffee'). Then generate 2–3 concise 'activitySuggestions' tailored to the participants' combined preferences and the place type. Each suggestion should start with a relevant emoji (e.g., '☕ Try their signature cold brew', '📸 Capture the perfect Instagram shot at the rooftop', '🍰 Share a slice of their famous cheesecake').
-    g.  For multi-stop plans, after the first stop, use the 'fetchDirections' tool to estimate 'transitTimeFromPreviousMinutes' from the previous stop's location to the current stop's location. Pick a sensible default 'transitMode' (usually 'driving' or 'walking' if close by, e.g. under 2km). Adjust the 'startTime' of the current stop accordingly (it should be previous stop's endTime + transitTime). Also set the 'transitMode' field for the current itinerary item.
-2.  The itinerary must be CHRONOLOGICAL. Ensure 'startTime' and 'endTime' for each stop are in valid ISO 8601 format (YYYY-MM-DDTHH:mm:ss.sssZ or YYYY-MM-DDTHH:mm).
-3.  The first itinerary item's 'startTime' should generally match the user's requested 'planDateTime'. Its 'placeName', 'address', and 'city' should be based on the 'locationQuery' and details from 'fetchPlaceDetailsTool'. Its 'transitTimeFromPreviousMinutes' should be null.
-4.  Generate a unique UUID for each itinerary item's 'id' field.
+1.  **RADIUS-BASED PLACE DISCOVERY**: 
+    - **PRIMARY**: Use 'findPlacesNearby' to discover places within the user's specified radius ({{{searchRadius}}} km) around their location ({{{selectedLocationLat}}}, {{{selectedLocationLng}}})
+    - Use appropriate keywords/place types based on user's request and participants' interests:
+      - Food: keyword="restaurant", "cafe", "food" or placeType="restaurant", "meal_takeaway"
+      - Nature: keyword="park", "hiking", "nature" or placeType="park", "tourist_attraction"
+      - Culture: keyword="museum", "art", "gallery" or placeType="museum", "tourist_attraction"
+      - Entertainment: keyword="entertainment", "music" or placeType="amusement_park", "night_club"
+    - **SECONDARY**: Use 'webSearchTool' only for context/background information about the area or specific venues found
+      - ALWAYS pass centerLat: {{{selectedLocationLat}}}, centerLng: {{{selectedLocationLng}}}, radiusKm: {{{searchRadius}}} to webSearchTool
+      - Use locationContext from locationQuery if available: {{{locationQuery}}}
+    
+    **SEARCH RADIUS USAGE**: 
+    - ALWAYS use the user's searchRadius ({{{searchRadius}}} km) when calling 'findPlacesNearby'
+    - When calling 'fetchPlaceDetails', pass searchRadiusKm: {{{searchRadius}}} to bias results within the user's preferred area
+    - If searchRadius is null, default to 8km for findPlacesNearby and fetchPlaceDetails
+    
+    **LOCATION QUERY HANDLING**: 
+    - Center all searches around selectedLocationLat: {{{selectedLocationLat}}}, selectedLocationLng: {{{selectedLocationLng}}}
+    - Use these coordinates as the center point for the radius search, regardless of how locationQuery is formatted
+    - The locationQuery string is just for display - always use the precise coordinates for actual searching
+
+2.  For each itinerary stop:
+    a.  Use 'fetchPlaceDetails' with the place names/IDs from 'findPlacesNearby' to get complete details (address, hours, ratings, etc.)
+    b.  **ALWAYS pass searchRadiusKm: {{{searchRadius}}}** to 'fetchPlaceDetails' to ensure results stay within the user's preferred area
+    c.  **LIMIT ADDITIONAL SEARCHES**: Only use 'webSearchTool' for background context about venues or area-specific information
+    d.  Crucially, CHECK THE OPENING HOURS from the 'fetchPlaceDetails' tool's output against the planned 'startTime' and 'endTime' for the stop. Ensure the place is open. If not, pick an alternative or adjust times. If a place is not operational ('isOperational': false), do not include it.
+    e.  Set a default DURATION of 60 minutes ('durationMinutes': 60) for each stop unless the user's prompt or place type clearly suggests otherwise (e.g., a quick coffee vs. a museum visit).
+    f.  Calculate 'endTime' based on 'startTime' and 'durationMinutes'. Ensure 'endTime' is always after 'startTime'. Times should be in ISO 8601 format.
+    g.  Populate all relevant fields in the ItineraryItem schema using data from the 'fetchPlaceDetails' tool: 'placeName', 'address', 'city', 'lat', 'lng', 'googlePlaceId', 'rating', 'reviewCount', 'openingHours', 'isOperational', 'statusText', 'types', 'website', 'phoneNumber', 'priceLevel'. IMPORTANT: Do NOT set 'googlePhotoReference' - leave it null to allow the frontend auto-refresh logic to handle photos using the reliable getUrl() method and avoid 400 errors from expired photo references.
+    h.  First, create a concise 'tagline' (no more than 80 characters) that captures the essence of this stop in the context of the full itinerary (e.g., 'Kick-off with artisanal coffee'). Then generate 2–3 concise 'activitySuggestions' tailored to the participants' combined preferences and the place type. **CRITICAL: Use the detailed participant profile information to make highly personalized suggestions:**
+        - **Dietary Considerations**: If participants have specific dietary restrictions or allergies, mention suitable options (e.g., "🌱 Ask about their excellent vegan options" for vegetarian/vegan participants)
+        - **Activity Preferences**: Match suggestions to stated activity preferences (e.g., "📸 Perfect spot for photography" if someone likes photography)
+        - **Social Style**: Consider group dynamics and interaction preferences (e.g., quiet spots for introverted participants, interactive experiences for social ones)
+        - **Physical Limitations**: Suggest accessibility-friendly activities if participants have mobility concerns
+        - **Cuisine Preferences**: For food venues, highlight specific cuisines that match participants' favorites
+        - **Budget Consciousness**: Consider budget flexibility notes when suggesting premium vs. budget-friendly options
+        Each suggestion should start with a relevant emoji and be highly specific to both the venue AND the participants' needs.
+    i.  For multi-stop plans, after the first stop, use the 'fetchDirections' tool to estimate 'transitTimeFromPreviousMinutes' from the previous stop's location to the current stop's location. Pick a sensible default 'transitMode' (usually 'driving' or 'walking' if close by, e.g. under 2km). Adjust the 'startTime' of the current stop accordingly (it should be previous stop's endTime + transitTime). Also set the 'transitMode' field for the current itinerary item.
+3.  **IMPORTANT**: If the user provided a specific venue in 'locationQuery' (e.g., "dinner at Le Bernardin"), use that as your primary stop and search around it. If it's a general location (e.g., "Paris", "downtown Chicago"), use that as the area for your place discovery searches.
+
+4.  The itinerary must be CHRONOLOGICAL. Ensure 'startTime' and 'endTime' for each stop are in valid ISO 8601 format (YYYY-MM-DDTHH:mm:ss.sssZ or YYYY-MM-DDTHH:mm).
+5.  The first itinerary item's 'startTime' should generally match the user's requested 'planDateTime'. Its 'placeName', 'address', and 'city' should be based on the 'locationQuery' and details from 'fetchPlaceDetailsTool'. Its 'transitTimeFromPreviousMinutes' should be null.
+6.  Generate a unique UUID for each itinerary item's 'id' field. UUIDs must be valid format: 8-4-4-4-12 hexadecimal characters (0-9, a-f only). Example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890".
 
 Main Plan Object Fields:
--   'id': Generate a new unique UUID for this plan.
+-   'id': Generate a new unique UUID for this plan. Must be valid format: 8-4-4-4-12 hexadecimal characters (0-9, a-f only).
 -   'name': A catchy and relevant title for the plan (e.g., "Parisian Adventure Day", "SoHo Culinary Exploration").
--   'description': An engaging summary of the overall plan and what participants can expect.
+-   'description': An engaging summary of the overall plan and what participants can expect. **Use information from the 'webSearchTool' to enrich this description with interesting facts, current events, or special details that make the plan more appealing.**
 -   'eventTime': Should be the 'startTime' of the first itinerary item.
 -   'location': Should be the 'placeName' of the first itinerary item.
 -   'city': Should be the 'city' of the first itinerary item.
@@ -413,13 +817,56 @@ Main Plan Object Fields:
 -   'priceRange': As specified by the user, or estimate if not provided.
 -   'hostId': {{{hostProfile.uid}}}
 -   'invitedParticipantUserIds': [{{#if invitedFriendProfiles.length}}{{#each invitedFriendProfiles}}"{{this.uid}}"{{#unless @last}}, {{/unless}}{{/each}}{{/if}}].
--   'itinerary': The array of itinerary item objects you constructed. Must contain at least one item.
+-   'itinerary': The array of itinerary item objects you constructed. Must contain at least one item. **The 'description' and 'activitySuggestions' for each item should be enhanced with details discovered using the 'webSearchTool'.**
 -   'status': Set to 'published'.
 -   'planType': Determine if it's 'single-stop' or 'multi-stop' based on the itinerary you generate and user's 'planTypeHint' if it's not 'ai-decide'.
 
+**CRITICAL: TOOL USAGE LIMIT**
+You have a maximum of 6 total tool calls. Use them efficiently:
+- 1 findPlacesNearby call for radius-based place discovery
+- 1-2 fetchPlaceDetails calls for venue information (remember to pass searchRadiusKm)
+- 1 fetchDirections call (if multi-stop plan)
+- 1 webSearchTool call (only if needed for context)
+- Save remaining calls for critical needs only
+
+**PREFERENCE-DRIVEN SEARCH STRATEGY:**
+Use participant profiles to inform your search approach:
+
+1. **Cuisine-Based Searches**: If participants have favorite cuisines, use specific keywords:
+   - Italian lovers: keyword="italian restaurant", "pizza", "pasta"
+   - Asian cuisine: keyword="sushi", "ramen", "thai restaurant"
+   - Vegetarian/Vegan: keyword="vegetarian restaurant", "vegan food"
+
+2. **Activity-Based Searches**: Match to stated activity preferences:
+   - Photography enthusiasts: keyword="scenic viewpoints", "instagram spots"
+   - Fitness/Active: keyword="hiking", "bike rental", "outdoor sports"
+   - Arts/Culture: placeType="museum", keyword="art gallery", "theater"
+   - Music lovers: keyword="live music", "record store", "concert venue"
+
+3. **Social Style Considerations**:
+   - Large group preferred: Look for spacious venues, group-friendly activities
+   - Intimate settings: Focus on cozy cafes, small galleries, quiet parks
+   - High interaction: Interactive experiences, cooking classes, group activities
+   - Low interaction: Museums, scenic walks, observation experiences
+
+4. **Accessibility & Physical Considerations**:
+   - Physical limitations: Prioritize accessible venues, shorter walking distances
+   - Environmental sensitivities: Avoid loud/crowded places if mentioned
+
+5. **Budget-Conscious Searches**:
+   - Budget flexible: Include premium options (priceLevel 3-4)
+   - Budget conscious: Focus on free/low-cost activities, priceLevel 0-2
+
+**STANDARD SEARCH CATEGORIES:**
+- **Food/Dining**: findPlacesNearby(keyword="restaurant"), webSearchTool("food scene", "hidden gems cuisine")
+- **Culture/Arts**: findPlacesNearby(placeType="museum"), webSearchTool("art galleries", "cultural events")
+- **Music/Nightlife**: findPlacesNearby(keyword="music"), webSearchTool("live music venues", "nightlife")
+- **Adventure/Outdoor**: findPlacesNearby(placeType="park"), webSearchTool("hiking trails", "outdoor activities")
+- **Shopping**: findPlacesNearby(keyword="shopping"), webSearchTool("local boutiques", "markets")
+
 Adhere strictly to the output schema. Ensure all required fields are present. Make the plan exciting and well-suited to the users!
-If the user's location query is very general (e.g., "Paris"), pick a specific, interesting starting point for the first itinerary item using 'fetchPlaceDetailsTool'.
-Prioritize user preferences (host and friends) when selecting places and activities.
+If the user's location query is very general (e.g., "Paris"), use web search to discover interesting starting points before using 'fetchPlaceDetailsTool'.
+**CRITICALLY IMPORTANT**: Prioritize venues discovered through web search that match user preferences (host and friends) over generic Google Places results.
 If the user asks for a specific number of stops, try to adhere to it. If not specified, 1-3 stops for a multi-stop plan is reasonable unless 'planTypeHint' is 'single-stop'.
 For each itinerary item, use the 'name' from 'fetchPlaceDetailsTool' for the 'placeName' field of the itinerary item.
 The 'lat' and 'lng' for each itinerary item should come from the 'fetchPlaceDetailsTool'.

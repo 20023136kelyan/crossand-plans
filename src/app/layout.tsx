@@ -5,6 +5,7 @@ import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/context/AuthContext'; // Import AuthProvider
 import { SettingsProvider } from '@/context/SettingsContext'; // Import SettingsProvider
+import { ThemeProvider } from '@/components/theme-provider';
 import Script from 'next/script';
 import { firestoreAdmin } from '@/lib/firebaseAdmin';
 
@@ -99,17 +100,24 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full">
+    <html lang="en" className="h-full" suppressHydrationWarning>
       <body 
         className={`${geistSans.variable} ${redressed.variable} font-sans antialiased h-full flex flex-col`}
         suppressHydrationWarning={true}
       >
-        <SettingsProvider>
-          <AuthProvider> {/* Wrap children with AuthProvider */}
-            {children}
-            <Toaster />
-          </AuthProvider>
-        </SettingsProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="light"
+          enableSystem={false}
+          disableTransitionOnChange={false}
+        >
+          <SettingsProvider>
+            <AuthProvider> {/* Wrap children with AuthProvider */}
+              {children}
+              <Toaster />
+            </AuthProvider>
+          </SettingsProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

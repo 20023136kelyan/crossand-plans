@@ -10,13 +10,13 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-gradient-primary text-primary-foreground hover:bg-gradient-primary-hover border border-gray-600/50 backdrop-blur-sm shadow-lg ring-1 ring-gray-600/30",
+          "bg-gradient-primary text-primary-foreground hover:bg-gradient-primary-hover border border-border backdrop-blur-sm shadow-lg ring-1 ring-border/30",
         destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90 border border-gray-600/50 backdrop-blur-sm shadow-lg ring-1 ring-gray-600/30",
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90 border border-border backdrop-blur-sm shadow-lg ring-1 ring-border/30",
         outline:
-          "border border-gray-600/60 bg-gray-900/80 hover:bg-gray-800/90 hover:text-accent-foreground backdrop-blur-md shadow-md ring-1 ring-gray-600/40",
+          "border border-border bg-background/80 hover:bg-accent hover:text-accent-foreground backdrop-blur-md shadow-md ring-1 ring-border/40",
         secondary:
-          "bg-gray-900/80 text-secondary-foreground hover:bg-gray-800/90 border border-gray-600/50 backdrop-blur-sm shadow-lg ring-1 ring-gray-600/30",
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border backdrop-blur-sm shadow-lg ring-1 ring-border/30",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-gradient-primary underline-offset-4 hover:underline",
       },

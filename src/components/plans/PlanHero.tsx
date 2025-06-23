@@ -94,7 +94,7 @@ const PlanHero = memo(function PlanHero({
     }
     
     // Fallback image
-    return '/images/plan-placeholder.jpg';
+    return '/images/crossand-logo.svg';
   }, [plan.photoHighlights, plan.itinerary]);
 
   const planStatus = useMemo(() => {
