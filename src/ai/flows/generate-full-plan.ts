@@ -140,7 +140,8 @@ const FetchPlaceDetailsOutputSchema = z.object({
   city: z.string().optional().nullable(),
   lat: z.number().optional().nullable(),
   lng: z.number().optional().nullable(),
-  photoReference: z.string().optional().nullable().describe("A direct Google Places Photo URL, if available from the 'fetchPlaceDetails' tool. This is a ready-to-use image URL."),
+  googlePhotoReference: z.string().optional().nullable().describe("A direct Google Places Photo URL, if available from the 'fetchPlaceDetails' tool. This is a ready-to-use image URL."),
+  googleMapsImageUrl: z.string().optional().nullable().describe("A Google Maps static image URL for this place, if available."),
   rating: z.number().optional().nullable(),
   reviewCount: z.number().optional().nullable(),
   openingHours: z.array(z.string()).optional().nullable().describe("e.g., ['Monday: 9:00 AM – 5:00 PM', ...]"),
@@ -571,12 +572,22 @@ const fetchPlaceDetailsTool = ai.defineTool(
         
         // Generate photo URL if photo reference is available
         let photoUrl = null;
+        let staticMapUrl = null;
+        
         if (place.photos?.[0]?.photo_reference) {
-          const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+          
           if (apiKey) {
             photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${encodeURIComponent(place.photos[0].photo_reference)}&key=${apiKey}`;
             console.log('[fetchPlaceDetailsTool] Generated photo URL for:', place.name);
           }
+        }
+        
+        // Generate static map URL if coordinates are available (as fallback or additional option)
+        if (place.geometry?.location?.lat && place.geometry?.location?.lng && apiKey) {
+          const lat = place.geometry.location.lat;
+          const lng = place.geometry.location.lng;
+          staticMapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=15&size=400x300&markers=color:red%7C${lat},${lng}&key=${apiKey}`;
+          console.log('[fetchPlaceDetailsTool] Generated static map URL for:', place.name);
         }
 
         const output: z.infer<typeof FetchPlaceDetailsOutputSchema> = {
@@ -587,7 +598,8 @@ const fetchPlaceDetailsTool = ai.defineTool(
           city,
           lat: place.geometry?.location?.lat,
           lng: place.geometry?.location?.lng,
-          photoReference: photoUrl, // Now stores the direct URL
+          googlePhotoReference: photoUrl, // Direct photo URL from Google Places
+          googleMapsImageUrl: staticMapUrl, // Static map URL as fallback
           rating: place.rating,
           reviewCount: place.user_ratings_total,
           openingHours: place.opening_hours?.weekday_text,
@@ -790,7 +802,7 @@ Itinerary Instructions:
     d.  Crucially, CHECK THE OPENING HOURS from the 'fetchPlaceDetails' tool's output against the planned 'startTime' and 'endTime' for the stop. Ensure the place is open. If not, pick an alternative or adjust times. If a place is not operational ('isOperational': false), do not include it.
     e.  Set a default DURATION of 60 minutes ('durationMinutes': 60) for each stop unless the user's prompt or place type clearly suggests otherwise (e.g., a quick coffee vs. a museum visit).
     f.  Calculate 'endTime' based on 'startTime' and 'durationMinutes'. Ensure 'endTime' is always after 'startTime'. Times should be in ISO 8601 format.
-    g.  Populate all relevant fields in the ItineraryItem schema using data from the 'fetchPlaceDetails' tool: 'placeName', 'address', 'city', 'lat', 'lng', 'googlePlaceId', 'rating', 'reviewCount', 'openingHours', 'isOperational', 'statusText', 'types', 'website', 'phoneNumber', 'priceLevel'. IMPORTANT: Do NOT set 'googlePhotoReference' - leave it null to allow the frontend auto-refresh logic to handle photos using the reliable getUrl() method and avoid 400 errors from expired photo references.
+    g.  Populate all relevant fields in the ItineraryItem schema using data from the 'fetchPlaceDetails' tool: 'placeName', 'address', 'city', 'lat', 'lng', 'googlePlaceId', 'googlePhotoReference', 'googleMapsImageUrl', 'rating', 'reviewCount', 'openingHours', 'isOperational', 'statusText', 'types', 'website', 'phoneNumber', 'priceLevel'. Ensure both photo reference and static map URLs are properly set to provide images for the frontend.
     h.  First, create a concise 'tagline' (no more than 80 characters) that captures the essence of this stop in the context of the full itinerary (e.g., 'Kick-off with artisanal coffee'). Then generate 2–3 concise 'activitySuggestions' tailored to the participants' combined preferences and the place type. **CRITICAL: Use the detailed participant profile information to make highly personalized suggestions:**
         - **Dietary Considerations**: If participants have specific dietary restrictions or allergies, mention suitable options (e.g., "🌱 Ask about their excellent vegan options" for vegetarian/vegan participants)
         - **Activity Preferences**: Match suggestions to stated activity preferences (e.g., "📸 Perfect spot for photography" if someone likes photography)

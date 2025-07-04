@@ -8,8 +8,8 @@ import { format, parseISO, isValid, isPast, isFuture } from 'date-fns';
 import type { Plan as PlanType, Comment, RSVPStatusType, ParticipantResponse } from '@/types/user';
 
 // Import services
-import { getPlanById, getPlanComments, getUserRatingForPlan } from '@/services/planService';
-import { getUsersProfiles } from '@/services/userService';
+// import { getPlanById, getPlanComments, getUserRatingForPlan } from '@/services/planService';
+// import { getUsersProfiles } from '@/services/userService';
 import {
   updateMyRSVPAction,
   submitRatingAction,
@@ -108,41 +108,41 @@ const [deleteLoading, setDeleteLoading] = useState(false);
       setLoading(true);
       
       // Fetch plan data
-      const planData = await getPlanById(planId);
-      if (!planData) {
+      // const planData = await getPlanById(planId);
+      if (!plan) {
         router.push('/plans');
         return;
       }
-      setPlan(planData);
+      setPlan(plan);
       
       // Fetch comments
-      const unsubscribeComments = getPlanComments(planId, (commentsData) => {
-        setComments(commentsData || []);
-      });
+      // const unsubscribeComments = getPlanComments(planId, (commentsData) => {
+      //   setComments(commentsData || []);
+      // });
       
       // Fetch user rating if authenticated
       if (user) {
-        const ratingData = await getUserRatingForPlan(planId, user.uid);
-        if (ratingData) {
-          setUserRating(ratingData.value || 0);
+        // const ratingData = await getUserRatingForPlan(planId, user.uid);
+        if (userRating === 0) {
+          setUserRating(userRating);
           setHasRated(true);
         }
       }
       
       // Fetch participant details
-      const allParticipantIds = [planData.hostId, ...(planData.invitedParticipantUserIds || [])];
+      const allParticipantIds = [plan.hostId, ...(plan.invitedParticipantUserIds || [])];
       if (allParticipantIds.length > 0) {
-        const profiles = await getUsersProfiles(allParticipantIds);
+        // const profiles = await getUsersProfiles(allParticipantIds);
         
         const details: ParticipantDetails[] = allParticipantIds.map(userId => {
-          const profile = profiles.find(p => p.uid === userId);
-          const response = planData.participantResponses?.[userId] || (userId === planData.hostId ? 'going' : 'pending');
+          // const profile = profiles.find(p => p.uid === userId);
+          const response = plan.participantResponses?.[userId] || (userId === plan.hostId ? 'going' : 'pending');
           return {
             userId,
-            name: profile?.name || 'Unknown User',
-            profilePicture: profile?.avatarUrl,
+            name: userId,
+            profilePicture: userId === plan.hostId ? plan.hostAvatarUrl : undefined,
             response: response as ParticipantResponse,
-            isHost: userId === planData.hostId
+            isHost: userId === plan.hostId
           };
         });
         

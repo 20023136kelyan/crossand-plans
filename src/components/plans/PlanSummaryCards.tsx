@@ -8,7 +8,7 @@ import { Clock, MapPin, Users, Check, X, Eye, CheckCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import type { Plan, RSVPStatusType } from '@/types/user';
-import { getUserPlans } from '@/services/planService';
+import { getUserPlansSubscription } from '@/services/clientServices';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
@@ -33,8 +33,10 @@ export function PlanSummaryCards({ className }: PlanSummaryCardsProps) {
   useEffect(() => {
     if (!user?.uid) return;
 
-    const unsubscribe = getUserPlans(user.uid, (userPlans) => {
-      // Filter for upcoming and recently completed plans
+    const unsubscribe = getUserPlansSubscription(
+      user.uid,
+      (userPlans) => {
+        // Filter for upcoming and recently completed plans
         const relevantPlans = userPlans
           .filter(plan => {
             if (!plan.eventTime) return false;
@@ -55,25 +57,30 @@ export function PlanSummaryCards({ className }: PlanSummaryCardsProps) {
             
             return false;
           })
-        .sort((a, b) => {
-          if (!a.eventTime || !b.eventTime) return 0;
-          // Sort by event time, with upcoming plans first, then completed plans
-          const timeA = new Date(a.eventTime).getTime();
-          const timeB = new Date(b.eventTime).getTime();
-          const now = new Date().getTime();
-          
-          // If both are upcoming or both are past, sort by time
-          if ((timeA > now && timeB > now) || (timeA <= now && timeB <= now)) {
-            return timeA - timeB;
-          }
-          // Upcoming plans come before past plans
-          return timeA > now ? -1 : 1;
-        })
-        .slice(0, 5); // Show only next 5 plans
-      
-      setPlans(relevantPlans);
-      setLoading(false);
-    });
+          .sort((a, b) => {
+            if (!a.eventTime || !b.eventTime) return 0;
+            // Sort by event time, with upcoming plans first, then completed plans
+            const timeA = new Date(a.eventTime).getTime();
+            const timeB = new Date(b.eventTime).getTime();
+            const now = new Date().getTime();
+            
+            // If both are upcoming or both are past, sort by time
+            if ((timeA > now && timeB > now) || (timeA <= now && timeB <= now)) {
+              return timeA - timeB;
+            }
+            // Upcoming plans come before past plans
+            return timeA > now ? -1 : 1;
+          })
+          .slice(0, 5); // Show only next 5 plans
+        
+        setPlans(relevantPlans);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Error fetching plans for summary cards:', error);
+        setLoading(false);
+      }
+    );
 
     return unsubscribe;
   }, [user?.uid]);

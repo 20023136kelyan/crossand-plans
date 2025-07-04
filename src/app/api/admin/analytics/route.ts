@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { authAdmin as auth, firestoreAdmin as db } from '@/lib/firebaseAdmin';
+import { firestoreAdmin as db } from '@/lib/firebaseAdmin';
+import { createAdminHandler, getQueryParams } from '@/lib/api/middleware';
 
 async function generateChartData(from: Date, to: Date, interval: string) {
   // Generate user growth data
@@ -29,7 +30,7 @@ async function generateUserGrowthData(from: Date, to: Date, interval: string) {
   
   for (let i = 0; i <= daysDiff; i += step) {
     const date = new Date(from.getTime() + i * 24 * 60 * 60 * 1000);
-    const usersSnapshot = await db
+    const usersSnapshot = await db!
       .collection('users')
       .where('createdAt', '<=', date.toISOString())
       .get();
@@ -44,9 +45,9 @@ async function generateUserGrowthData(from: Date, to: Date, interval: string) {
 }
 
 async function generatePlanDistributionData() {
-  const plansSnapshot = await db.collection('plans').get();
+  const plansSnapshot = await db!.collection('plans').get();
   const categories: { [key: string]: number } = {};
-  
+
   plansSnapshot.docs.forEach(doc => {
     const data = doc.data();
     const category = data.eventType || 'Uncategorized';
@@ -106,31 +107,31 @@ async function generatePlanDistributionData() {
 }
 
 async function generateEngagementData(from: Date, to: Date) {
-  // Get daily active users (users who created plans or messages in the period)
-  const activeUsersSnapshot = await db
+    // Get daily active users (users who created plans or messages in the period)
+  const activeUsersSnapshot = await db!
     .collection('plans')
     .where('createdAt', '>=', from.toISOString())
     .where('createdAt', '<=', to.toISOString())
     .get();
-  
+
   const uniqueUsers = new Set();
   activeUsersSnapshot.docs.forEach(doc => {
     const data = doc.data();
     if (data.userId) uniqueUsers.add(data.userId);
   });
-  
+
   // Get plans created in period
   const plansCreated = activeUsersSnapshot.size;
-  
+
   // Get messages/comments in period
-  const messagesSnapshot = await db
+  const messagesSnapshot = await db!
     .collection('messages')
     .where('createdAt', '>=', from.toISOString())
     .where('createdAt', '<=', to.toISOString())
     .get();
-  
+
   // Get likes (assuming they're stored in a likes collection or as part of plans)
-  const likesSnapshot = await db
+  const likesSnapshot = await db!
     .collection('likes')
     .where('createdAt', '>=', from.toISOString())
     .where('createdAt', '<=', to.toISOString())
@@ -158,7 +159,7 @@ async function generateRevenueData() {
     const startOfMonth = new Date(year, adjustedMonth, 1);
     const endOfMonth = new Date(year, adjustedMonth + 1, 0);
     
-    const subscriptionsSnapshot = await db
+    const subscriptionsSnapshot = await db!
       .collection('subscriptions')
       .where('createdAt', '>=', startOfMonth.toISOString())
       .where('createdAt', '<=', endOfMonth.toISOString())
@@ -182,37 +183,19 @@ async function generateRevenueData() {
   return data;
 }
 
-export async function GET(request: Request) {
-  if (!auth || !db) {
-    console.error('Firebase Admin services not initialized');
-    return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
-  }
+export const GET = createAdminHandler(
+  async ({ request, authResult }) => {
+    // Get query parameters with validation
+    const { params, error } = getQueryParams(request, {
+      from: { required: false },
+      to: { required: false },
+      interval: { required: false, defaultValue: 'daily' }
+    });
+    if (error) return error;
 
-  try {
-    // Verify authentication and admin status
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const userId = decodedToken.uid;
-
-    // Check if user is admin
-    const userDoc = await db.collection('users').doc(userId).get();
-    if (!userDoc.exists || !userDoc.data()?.isAdmin) {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
-
-    // Get query parameters
-    const url = new URL(request.url);
-    const fromDate = url.searchParams.get('from');
-    const toDate = url.searchParams.get('to');
-    const interval = url.searchParams.get('interval') || 'daily';
-
-    const from = fromDate ? new Date(fromDate) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const to = toDate ? new Date(toDate) : new Date();
+    const from = params.from ? new Date(params.from) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const to = params.to ? new Date(params.to) : new Date();
+    const interval = params.interval!;
 
     // Calculate previous period for comparison
     const periodLength = to.getTime() - from.getTime();
@@ -220,11 +203,11 @@ export async function GET(request: Request) {
     const previousTo = new Date(from.getTime());
 
     // Get total users
-    const usersSnapshot = await db.collection('users').get();
+    const usersSnapshot = await db!.collection('users').get();
     const totalUsers = usersSnapshot.size;
 
     // Get users from previous period for comparison
-    const previousUsersSnapshot = await db
+    const previousUsersSnapshot = await db!
       .collection('users')
       .where('createdAt', '<=', previousTo.toISOString())
       .get();
@@ -237,14 +220,14 @@ export async function GET(request: Request) {
     const userGrowthChange = `${userGrowth.startsWith('-') ? '' : '+'}${userGrowth}%`;
 
     // Get active plans
-    const plansSnapshot = await db
+    const plansSnapshot = await db!
       .collection('plans')
       .where('status', '==', 'published')
       .get();
     const activePlans = plansSnapshot.size;
 
     // Get plans from previous period
-    const previousPlansSnapshot = await db
+    const previousPlansSnapshot = await db!
       .collection('plans')
       .where('status', '==', 'published')
       .where('createdAt', '<=', previousTo.toISOString())
@@ -258,7 +241,7 @@ export async function GET(request: Request) {
     const activePlansChange = `${plansGrowth.startsWith('-') ? '' : '+'}${plansGrowth}%`;
 
     // Get ratings for average calculation
-    const ratingsSnapshot = await db.collection('ratings').get();
+    const ratingsSnapshot = await db!.collection('ratings').get();
     let totalRating = 0;
     let ratingCount = 0;
     
@@ -273,7 +256,7 @@ export async function GET(request: Request) {
     const averageRating = ratingCount > 0 ? totalRating / ratingCount : 4.5;
 
     // Get previous period ratings
-    const previousRatingsSnapshot = await db
+    const previousRatingsSnapshot = await db!
       .collection('ratings')
       .where('createdAt', '<=', previousTo.toISOString())
       .get();
@@ -293,7 +276,7 @@ export async function GET(request: Request) {
     const ratingChange = `${averageRating >= previousAverageRating ? '+' : ''}${(averageRating - previousAverageRating).toFixed(1)}`;
 
     // Get revenue data from subscriptions
-    const subscriptionsSnapshot = await db
+    const subscriptionsSnapshot = await db!
       .collection('subscriptions')
       .where('status', '==', 'active')
       .get();
@@ -307,7 +290,7 @@ export async function GET(request: Request) {
     });
 
     // Get previous period revenue
-    const previousSubscriptionsSnapshot = await db
+    const previousSubscriptionsSnapshot = await db!
       .collection('subscriptions')
       .where('status', '==', 'active')
       .where('createdAt', '<=', previousTo.toISOString())
@@ -343,9 +326,6 @@ export async function GET(request: Request) {
     };
 
     return NextResponse.json(analytics);
-
-  } catch (error) {
-    console.error('Error fetching analytics:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
+  },
+  { defaultError: 'Failed to fetch analytics data' }
+);

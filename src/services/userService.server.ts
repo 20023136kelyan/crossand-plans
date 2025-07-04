@@ -5,11 +5,13 @@ import type { UserProfile, OnboardingProfileData, FriendEntry, SearchedUser, Use
 import { Timestamp as AdminTimestamp, FieldValue, DocumentSnapshot, QueryDocumentSnapshot, Firestore } from 'firebase-admin/firestore';
 import admin from 'firebase-admin'; // For FieldPath.documentId()
 import { updateUserAvatarInFeedAdmin } from './feedService.server';
+import { FirebaseQueryBuilder, COLLECTIONS, SUBCOLLECTIONS } from '@/lib/data/core/QueryBuilder';
 
-const USER_COLLECTION = 'users';
-const FRIENDSHIPS_SUBCOLLECTION = 'friendships';
-const PLANS_COLLECTION = 'plans'; // For plan counts
-const FEED_POSTS_COLLECTION = 'feedPosts'; // For post counts
+// Legacy constants for backward compatibility
+const USER_COLLECTION = COLLECTIONS.USERS;
+const FRIENDSHIPS_SUBCOLLECTION = SUBCOLLECTIONS.FRIENDSHIPS;
+const PLANS_COLLECTION = COLLECTIONS.PLANS; // For plan counts
+const FEED_POSTS_COLLECTION = COLLECTIONS.FEED_POSTS; // For post counts
 
 // Helper to convert Admin Timestamps to JS Date or null for UserProfile
 const convertAdminProfileTimestamps = (data: any): Pick<UserProfile, 'birthDate' | 'createdAt' | 'updatedAt'> => {
@@ -44,16 +46,12 @@ const convertAdminProfileTimestamps = (data: any): Pick<UserProfile, 'birthDate'
 
 
 export const getUserProfileAdmin = async (uid: string): Promise<UserProfile | null> => {
-  if (!firestoreAdmin) {
-    console.error("[getUserProfileAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
-    throw new Error("Server configuration error: Database service not available.");
-  }
   if (!uid) {
     console.warn("[getUserProfileAdmin] UID not provided.");
     return null;
   }
   try {
-    const userDocRef = firestoreAdmin.collection(USER_COLLECTION).doc(uid);
+    const userDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, uid);
     const userDocSnap = await userDocRef.get();
 
     if (userDocSnap.exists) {
@@ -90,10 +88,6 @@ export const getUserProfileAdmin = async (uid: string): Promise<UserProfile | nu
 };
 
 export const getUsersProfilesAdmin = async (uids: string[]): Promise<UserProfile[]> => {
-  if (!firestoreAdmin) {
-    console.error("[getUsersProfilesAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
-    throw new Error("Server configuration error: Database service not available.");
-  }
   if (!uids || uids.length === 0) {
     return [];
   }
@@ -109,7 +103,7 @@ export const getUsersProfilesAdmin = async (uids: string[]): Promise<UserProfile
 
     for (const chunk of chunks) {
         if (chunk.length === 0) continue;
-        const userDocRefs = chunk.map(uid => firestoreAdmin!.collection(USER_COLLECTION).doc(uid));
+        const userDocRefs = chunk.map(uid => FirebaseQueryBuilder.doc(COLLECTIONS.USERS, uid));
         const userDocSnaps = await firestoreAdmin!.getAll(...userDocRefs);
 
         userDocSnaps.forEach(docSnap => {
@@ -156,12 +150,8 @@ export const createUserProfileAdmin = async (
     avatarUrl: string | null;
   }
 ): Promise<void> => {
-  if (!firestoreAdmin) {
-    console.error("[createUserProfileAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
-    throw new Error("Server configuration error: Database service not available.");
-  }
   try {
-    const userDocRef = firestoreAdmin.collection(USER_COLLECTION).doc(uid);
+    const userDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, uid);
     const now = FieldValue.serverTimestamp();
     
     // Check if user already exists to avoid overwriting data
@@ -220,12 +210,8 @@ export const createUserProfileAdmin = async (
 };
 
 export const updateUserProfileAvatarAdmin = async (userId: string, newAvatarUrl: string): Promise<void> => {
-  if (!firestoreAdmin) {
-    console.error("[updateUserProfileAvatarAdmin] Firestore Admin SDK is not initialized.");
-    throw new Error("Server configuration error: Database service not available.");
-  }
   try {
-    const userRef = firestoreAdmin.collection(USER_COLLECTION).doc(userId);
+    const userRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, userId);
     await userRef.update({
       avatarUrl: newAvatarUrl,
       updatedAt: AdminTimestamp.now()
@@ -248,11 +234,6 @@ export const updateUserProfileAvatarAdmin = async (userId: string, newAvatarUrl:
  * @returns Promise<void>
  */
 export const updateUserProfileAdmin = async (userId: string, profileData: Partial<UserProfile>): Promise<void> => {
-  if (!firestoreAdmin) {
-    console.error("[updateUserProfileAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
-    throw new Error("Server configuration error: Database service not available.");
-  }
-
   if (!userId) {
     console.error("[updateUserProfileAdmin] Invalid user ID provided");
     throw new Error("Invalid user ID");
@@ -263,7 +244,7 @@ export const updateUserProfileAdmin = async (userId: string, profileData: Partia
       fieldsToUpdate: Object.keys(profileData)
     });
     
-    const userRef = firestoreAdmin.collection(USER_COLLECTION).doc(userId);
+    const userRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, userId);
     
     // Always update the updatedAt timestamp
     const dataToUpdate = {
@@ -349,10 +330,6 @@ const exactMatch = (text: string | null, searchTerm: string): boolean => {
 };
 
 export const searchUsersAdmin = async (searchTerm: string, currentUserId: string): Promise<SearchedUser[]> => {
-  if (!firestoreAdmin) {
-    console.error("[searchUsersAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
-    throw new Error("Server configuration error: Database service not available.");
-  }
 
   const db = firestoreAdmin as Firestore;
   const trimmedSearchTerm = searchTerm.trim();
@@ -524,7 +501,7 @@ export const sendFriendRequestAdmin = async (
   const batch = firestoreAdmin.batch();
   const now = FieldValue.serverTimestamp();
 
-  const senderRef = firestoreAdmin.collection(USER_COLLECTION).doc(fromUserProfile.uid).collection(FRIENDSHIPS_SUBCOLLECTION).doc(toUserProfile.uid);
+  const senderRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, fromUserProfile.uid, SUBCOLLECTIONS.FRIENDSHIPS).doc(toUserProfile.uid);
   const senderEntry: Omit<FriendEntry, 'friendUid' | 'requestedAt' | 'friendsSince'> & { requestedAt: FieldValue } = {
     status: 'pending_sent',
     name: toUserProfile.name,
@@ -535,7 +512,7 @@ export const sendFriendRequestAdmin = async (
   };
   batch.set(senderRef, senderEntry);
 
-  const receiverRef = firestoreAdmin.collection(USER_COLLECTION).doc(toUserProfile.uid).collection(FRIENDSHIPS_SUBCOLLECTION).doc(fromUserProfile.uid);
+  const receiverRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, toUserProfile.uid, SUBCOLLECTIONS.FRIENDSHIPS).doc(fromUserProfile.uid);
   const receiverEntry: Omit<FriendEntry, 'friendUid' | 'requestedAt' | 'friendsSince'> & { requestedAt: FieldValue } = {
     status: 'pending_received',
     name: fromUserProfile.name,
@@ -566,7 +543,7 @@ export const acceptFriendRequestAdmin = async (
   const requesterUid = requesterProfile.uid;
 
   // Update friendship entries to 'friends'
-  const currentUserFriendshipRef = firestoreAdmin.collection(USER_COLLECTION).doc(currentUserUid).collection(FRIENDSHIPS_SUBCOLLECTION).doc(requesterUid);
+  const currentUserFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, currentUserUid, SUBCOLLECTIONS.FRIENDSHIPS).doc(requesterUid);
   batch.set(currentUserFriendshipRef, { // Use set with merge to update or create if it was somehow missing
     status: 'friends' as FriendStatus,
     friendsSince: now,
@@ -577,7 +554,7 @@ export const acceptFriendRequestAdmin = async (
     requestedAt: now, // or keep existing requestedAt if needed
   }, { merge: true });
 
-  const requesterFriendshipRef = firestoreAdmin.collection(USER_COLLECTION).doc(requesterUid).collection(FRIENDSHIPS_SUBCOLLECTION).doc(currentUserUid);
+  const requesterFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, requesterUid, SUBCOLLECTIONS.FRIENDSHIPS).doc(currentUserUid);
   batch.set(requesterFriendshipRef, { // Use set with merge
     status: 'friends' as FriendStatus,
     friendsSince: now,
@@ -589,8 +566,8 @@ export const acceptFriendRequestAdmin = async (
   }, { merge: true });
 
   // Update followers/following arrays for mutual follow
-  const currentUserDocRef = firestoreAdmin.collection(USER_COLLECTION).doc(currentUserUid);
-  const requesterDocRef = firestoreAdmin.collection(USER_COLLECTION).doc(requesterUid);
+  const currentUserDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, currentUserUid);
+  const requesterDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, requesterUid);
 
   batch.update(currentUserDocRef, {
     following: FieldValue.arrayUnion(requesterUid),
@@ -615,10 +592,10 @@ export const declineOrCancelFriendRequestAdmin = async (currentUserUid: string, 
   if (!firestoreAdmin) throw new Error("Server configuration error: Database service not available.");
   const batch = firestoreAdmin.batch();
 
-  const currentUserFriendshipRef = firestoreAdmin.collection(USER_COLLECTION).doc(currentUserUid).collection(FRIENDSHIPS_SUBCOLLECTION).doc(otherUserUid);
+  const currentUserFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, currentUserUid, SUBCOLLECTIONS.FRIENDSHIPS).doc(otherUserUid);
   batch.delete(currentUserFriendshipRef);
 
-  const otherUserFriendshipRef = firestoreAdmin.collection(USER_COLLECTION).doc(otherUserUid).collection(FRIENDSHIPS_SUBCOLLECTION).doc(currentUserUid);
+  const otherUserFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, otherUserUid, SUBCOLLECTIONS.FRIENDSHIPS).doc(currentUserUid);
   batch.delete(otherUserFriendshipRef);
 
   // Note: This action does NOT automatically unfollow. 
@@ -639,14 +616,14 @@ export const removeFriendAdmin = async (currentUserUid: string, friendUid: strin
   const now = FieldValue.serverTimestamp();
 
   // Delete friendship entries
-  const currentUserFriendshipRef = firestoreAdmin.collection(USER_COLLECTION).doc(currentUserUid).collection(FRIENDSHIPS_SUBCOLLECTION).doc(friendUid);
+  const currentUserFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, currentUserUid, SUBCOLLECTIONS.FRIENDSHIPS).doc(friendUid);
   batch.delete(currentUserFriendshipRef);
-  const friendFriendshipRef = firestoreAdmin.collection(USER_COLLECTION).doc(friendUid).collection(FRIENDSHIPS_SUBCOLLECTION).doc(currentUserUid);
+  const friendFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, friendUid, SUBCOLLECTIONS.FRIENDSHIPS).doc(currentUserUid);
   batch.delete(friendFriendshipRef);
 
   // Unfollow each other
-  const currentUserDocRef = firestoreAdmin.collection(USER_COLLECTION).doc(currentUserUid);
-  const friendDocRef = firestoreAdmin.collection(USER_COLLECTION).doc(friendUid);
+  const currentUserDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, currentUserUid);
+  const friendDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, friendUid);
 
   batch.update(currentUserDocRef, {
     following: FieldValue.arrayRemove(friendUid),
@@ -671,12 +648,8 @@ export const removeFriendAdmin = async (currentUserUid: string, friendUid: strin
 };
 
 export const getFriendUidsAdmin = async (userId: string): Promise<string[]> => {
-  if (!firestoreAdmin) {
-    console.error("[getFriendUidsAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
-    throw new Error("Server configuration error: Database service not available.");
-  }
   try {
-    const friendshipsRef = firestoreAdmin.collection(USER_COLLECTION).doc(userId).collection(FRIENDSHIPS_SUBCOLLECTION);
+    const friendshipsRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, userId, SUBCOLLECTIONS.FRIENDSHIPS);
     const snapshot = await friendshipsRef.where('status', '==', 'friends').get();
 
     if (snapshot.empty) {
@@ -692,10 +665,6 @@ export const getFriendUidsAdmin = async (userId: string): Promise<string[]> => {
 
 
 export const getUserStatsAdmin = async (userId: string): Promise<UserStats> => {
-  if (!firestoreAdmin) {
-    console.error("[getUserStatsAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
-    throw new Error("Server configuration error: Database service not available.");
-  }
   try {
     const userProfile = await getUserProfileAdmin(userId); // Fetches full profile including followers/following arrays
     if (!userProfile) {
@@ -703,8 +672,8 @@ export const getUserStatsAdmin = async (userId: string): Promise<UserStats> => {
       return { postCount: 0, plansCreatedCount: 0, plansSharedOrExperiencedCount: 0, followersCount: 0, followingCount: 0 };
     }
 
-    const plansRef = firestoreAdmin.collection(PLANS_COLLECTION);
-    const feedPostsRef = firestoreAdmin.collection(FEED_POSTS_COLLECTION);
+    const plansRef = FirebaseQueryBuilder.collection(COLLECTIONS.PLANS);
+    const feedPostsRef = FirebaseQueryBuilder.collection(COLLECTIONS.FEED_POSTS);
     
     // Count plans created by user (exclude drafts unless they're completed)
     const createdQuery = plansRef
@@ -775,16 +744,12 @@ export const getUserStatsAdmin = async (userId: string): Promise<UserStats> => {
 };
 
 export const followUserAdmin = async (currentUserId: string, targetUserId: string): Promise<void> => {
-  if (!firestoreAdmin) {
-    console.error("[followUserAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
-    throw new Error("Server configuration error: Database service not available.");
-  }
   if (currentUserId === targetUserId) throw new Error("Cannot follow yourself.");
 
-  const currentUserDocRef = firestoreAdmin.collection(USER_COLLECTION).doc(currentUserId);
-  const targetUserDocRef = firestoreAdmin.collection(USER_COLLECTION).doc(targetUserId);
+  const currentUserDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, currentUserId);
+  const targetUserDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, targetUserId);
   const now = FieldValue.serverTimestamp();
-  const batch = firestoreAdmin.batch();
+  const batch = firestoreAdmin!.batch();
 
   batch.update(currentUserDocRef, { following: FieldValue.arrayUnion(targetUserId), updatedAt: now });
   batch.update(targetUserDocRef, { followers: FieldValue.arrayUnion(currentUserId), updatedAt: now });
@@ -807,7 +772,7 @@ export const followUserAdmin = async (currentUserId: string, targetUserId: strin
         const targetIsFollowingCurrentUser = (targetUserProfile.following || []).includes(currentUserId);
         
         if (targetIsFollowingCurrentUser) { // This follow by current user makes it mutual
-            const currentUserFriendshipRef = currentUserDocRef.collection(FRIENDSHIPS_SUBCOLLECTION).doc(targetUserId);
+            const currentUserFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, currentUserId, SUBCOLLECTIONS.FRIENDSHIPS).doc(targetUserId);
             batch.set(currentUserFriendshipRef, {
                 status: 'friends' as FriendStatus,
                 friendsSince: now,
@@ -817,7 +782,7 @@ export const followUserAdmin = async (currentUserId: string, targetUserId: strin
                 isVerified: targetUserProfile.isVerified,
             }, { merge: true });
 
-            const targetUserFriendshipRef = targetUserDocRef.collection(FRIENDSHIPS_SUBCOLLECTION).doc(currentUserId);
+            const targetUserFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, targetUserId, SUBCOLLECTIONS.FRIENDSHIPS).doc(currentUserId);
             batch.set(targetUserFriendshipRef, {
                 status: 'friends' as FriendStatus,
                 friendsSince: now,
@@ -840,23 +805,18 @@ export const followUserAdmin = async (currentUserId: string, targetUserId: strin
 };
 
 export const unfollowUserAdmin = async (currentUserId: string, targetUserId: string): Promise<void> => {
-  if (!firestoreAdmin) {
-    console.error("[unfollowUserAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
-    throw new Error("Server configuration error: Database service not available.");
-  }
-
-  const currentUserDocRef = firestoreAdmin.collection(USER_COLLECTION).doc(currentUserId);
-  const targetUserDocRef = firestoreAdmin.collection(USER_COLLECTION).doc(targetUserId);
+  const currentUserDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, currentUserId);
+  const targetUserDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, targetUserId);
   const now = FieldValue.serverTimestamp();
-  const batch = firestoreAdmin.batch();
+  const batch = firestoreAdmin!.batch();
 
   batch.update(currentUserDocRef, { following: FieldValue.arrayRemove(targetUserId), updatedAt: now });
   batch.update(targetUserDocRef, { followers: FieldValue.arrayRemove(currentUserId), updatedAt: now });
 
   // Unfollowing breaks any "friends" status, so delete friendship entries.
-  const currentUserFriendshipRef = currentUserDocRef.collection(FRIENDSHIPS_SUBCOLLECTION).doc(targetUserId);
+  const currentUserFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, currentUserId, SUBCOLLECTIONS.FRIENDSHIPS).doc(targetUserId);
   batch.delete(currentUserFriendshipRef);
-  const targetUserFriendshipRef = targetUserDocRef.collection(FRIENDSHIPS_SUBCOLLECTION).doc(currentUserId);
+  const targetUserFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, targetUserId, SUBCOLLECTIONS.FRIENDSHIPS).doc(currentUserId);
   batch.delete(targetUserFriendshipRef);
   console.log(`[unfollowUserAdmin] Friendship entries between ${currentUserId} and ${targetUserId} marked for deletion.`);
 
@@ -865,5 +825,58 @@ export const unfollowUserAdmin = async (currentUserId: string, targetUserId: str
   } catch (error) {
     console.error(`Error in unfollowUserAdmin (${currentUserId} -> ${targetUserId}):`, error);
     throw error;
+  }
+};
+
+// === Premium Status and Activity Score Functions ===
+// Moved from userService.admin.ts during consolidation
+
+export const calculateUserPremiumStatus = async (userId: string): Promise<boolean> => {
+  try {
+    // Get user's subscription data from a subscriptions collection
+    const subscriptionDoc = await FirebaseQueryBuilder
+      .getFilteredQuery(COLLECTIONS.SUBSCRIPTIONS, [
+        ['userId', '==', userId],
+        ['status', '==', 'active']
+      ])
+      .orderBy('createdAt', 'desc')
+      .limit(1)
+      .get();
+
+    return !subscriptionDoc.empty;
+  } catch (error) {
+    console.error('[calculateUserPremiumStatus] Error checking premium status:', error);
+    return false;
+  }
+};
+
+export const calculateUserActivityScore = async (userId: string): Promise<number> => {
+  try {
+    const userStats = await getUserStatsAdmin(userId);
+    const userProfile = await getUserProfileAdmin(userId);
+
+    if (!userStats || !userProfile) {
+      return 0;
+    }
+
+    // Base score calculation
+    let activityScore = 0;
+
+    // Plans contribution (40% of total score)
+    const plansScore = (userStats.plansCreatedCount * 2) + userStats.plansSharedOrExperiencedCount;
+    activityScore += Math.min(40, (plansScore / 10) * 40); // Cap at 40 points
+
+    // Social engagement (30% of total score)
+    const socialScore = userStats.postCount + (userStats.followersCount * 0.5) + (userStats.followingCount * 0.5);
+    activityScore += Math.min(30, (socialScore / 20) * 30); // Cap at 30 points
+
+    // Event attendance (30% of total score)
+    const attendanceScore = userProfile.eventAttendanceScore;
+    activityScore += Math.min(30, (attendanceScore / 100) * 30); // Cap at 30 points
+
+    return Math.round(activityScore);
+  } catch (error) {
+    console.error('[calculateUserActivityScore] Error calculating activity score:', error);
+    return 0;
   }
 };

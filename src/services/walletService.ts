@@ -1,4 +1,6 @@
+import 'server-only';
 import { firestoreAdmin } from '@/lib/firebaseAdmin';
+import { FirebaseQueryBuilder, COLLECTIONS } from '@/lib/data/core/QueryBuilder';
 import type { Firestore } from 'firebase-admin/firestore';
 
 export interface Transaction {
@@ -29,6 +31,9 @@ export interface Reward {
   metadata?: Record<string, any>;
 }
 
+// Add missing collections to QueryBuilder constants
+const WALLETS_COLLECTION = 'wallets';
+
 /**
  * Get user's wallet data including balance, credits, reward points, and transaction history
  */
@@ -39,8 +44,8 @@ export async function getUserWalletData(userId: string): Promise<WalletData> {
 
   const db = firestoreAdmin as Firestore;
 
-  // Get user's wallet data
-  const walletDoc = await db.collection('wallets').doc(userId).get();
+  // Get user's wallet data using QueryBuilder
+  const walletDoc = await FirebaseQueryBuilder.doc(WALLETS_COLLECTION, userId).get();
   let walletData = {
     balance: 0,
     credits: 0,
@@ -64,22 +69,18 @@ export async function getUserWalletData(userId: string): Promise<WalletData> {
       updatedAt: new Date()
     };
     
-    await db.collection('wallets').doc(userId).set(newWalletData);
+    await FirebaseQueryBuilder.doc(WALLETS_COLLECTION, userId).set(newWalletData);
     walletData = newWalletData;
 
     // Create welcome transactions
     await createWelcomeTransactions(userId);
   }
 
-  // Get transaction history
-  const transactionsQuery = await db
-    .collection('transactions')
-    .where('userId', '==', userId)
-    .orderBy('createdAt', 'desc')
-    .limit(50)
-    .get();
+  // Get transaction history using QueryBuilder
+  const transactionsQuery = FirebaseQueryBuilder.getUserTransactionsQuery(userId, { limit: 50 });
+  const transactionsSnapshot = await transactionsQuery.get();
 
-  const transactions = transactionsQuery.docs.map(doc => {
+  const transactions = transactionsSnapshot.docs.map(doc => {
     const data = doc.data();
     return {
       id: doc.id,
@@ -92,14 +93,15 @@ export async function getUserWalletData(userId: string): Promise<WalletData> {
     };
   });
 
-  // Get available rewards
-  const rewardsQuery = await db
-    .collection('rewards')
-    .where('available', '==', true)
-    .orderBy('cost', 'asc')
-    .get();
+  // Get available rewards using QueryBuilder
+  const rewardsQuery = FirebaseQueryBuilder.getFilteredQuery(
+    COLLECTIONS.REWARDS,
+    { available: true },
+    { timeField: 'cost' }
+  );
+  const rewardsSnapshot = await rewardsQuery.orderBy('cost', 'asc').get();
 
-  const rewards = rewardsQuery.docs.map(doc => ({
+  const rewards = rewardsSnapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data(),
     available: true
@@ -122,12 +124,11 @@ async function createWelcomeTransactions(userId: string): Promise<void> {
     throw new Error('Firestore not initialized');
   }
 
-  const db = firestoreAdmin as Firestore;
-  const batch = db.batch();
+  const batch = FirebaseQueryBuilder.createBatch();
   const now = new Date();
 
   // Welcome bonus transaction
-  const welcomeBonusRef = db.collection('transactions').doc();
+  const welcomeBonusRef = FirebaseQueryBuilder.collection(COLLECTIONS.TRANSACTIONS).doc();
   batch.set(welcomeBonusRef, {
     userId,
     type: 'credit',
@@ -143,7 +144,7 @@ async function createWelcomeTransactions(userId: string): Promise<void> {
   });
 
   // Welcome reward points transaction
-  const rewardPointsRef = db.collection('transactions').doc();
+  const rewardPointsRef = FirebaseQueryBuilder.collection(COLLECTIONS.TRANSACTIONS).doc();
   batch.set(rewardPointsRef, {
     userId,
     type: 'reward',
@@ -175,12 +176,11 @@ export async function addTransaction(
     throw new Error('Firestore not initialized');
   }
 
-  const db = firestoreAdmin as Firestore;
-  const batch = db.batch();
+  const batch = FirebaseQueryBuilder.createBatch();
   const now = new Date();
 
-  // Create transaction record
-  const transactionRef = db.collection('transactions').doc();
+  // Create transaction record using QueryBuilder
+  const transactionRef = FirebaseQueryBuilder.collection(COLLECTIONS.TRANSACTIONS).doc();
   batch.set(transactionRef, {
     userId,
     type,
@@ -192,30 +192,22 @@ export async function addTransaction(
     metadata: metadata || {}
   });
 
-  // Update wallet balance
-  const walletRef = db.collection('wallets').doc(userId);
+  // Update wallet balance using QueryBuilder
+  const walletRef = FirebaseQueryBuilder.doc(WALLETS_COLLECTION, userId);
   const walletDoc = await walletRef.get();
   
   if (walletDoc.exists) {
     const currentData = walletDoc.data();
-    const updates: any = { updatedAt: now };
-
-    switch (type) {
-      case 'credit':
-        updates.balance = (currentData?.balance || 0) + amount;
-        break;
-      case 'debit':
-        updates.balance = (currentData?.balance || 0) - amount;
-        break;
-      case 'reward':
-        updates.rewardPoints = (currentData?.rewardPoints || 0) + amount;
-        break;
-      case 'redemption':
-        updates.rewardPoints = (currentData?.rewardPoints || 0) - amount;
-        break;
-    }
-
-    batch.update(walletRef, updates);
+    const newBalance = (currentData?.balance || 0) + (type === 'credit' ? amount : -amount);
+    const newCredits = type === 'credit' ? (currentData?.credits || 0) + amount : currentData?.credits || 0;
+    const newRewardPoints = type === 'reward' ? (currentData?.rewardPoints || 0) + amount : currentData?.rewardPoints || 0;
+    
+    batch.update(walletRef, {
+      balance: Math.max(0, newBalance),
+      credits: Math.max(0, newCredits),
+      rewardPoints: Math.max(0, newRewardPoints),
+      updatedAt: now
+    });
   }
 
   await batch.commit();
@@ -223,7 +215,7 @@ export async function addTransaction(
 }
 
 /**
- * Redeem reward points for credits or features
+ * Redeem a reward using reward points
  */
 export async function redeemReward(
   userId: string,
@@ -234,84 +226,73 @@ export async function redeemReward(
     throw new Error('Firestore not initialized');
   }
 
-  const db = firestoreAdmin as Firestore;
-
-  // Get user's current wallet data
-  const walletDoc = await db.collection('wallets').doc(userId).get();
+  // Get user's current wallet data using QueryBuilder
+  const walletDoc = await FirebaseQueryBuilder.doc(WALLETS_COLLECTION, userId).get();
+  
   if (!walletDoc.exists) {
     return { success: false, message: 'Wallet not found' };
   }
 
   const walletData = walletDoc.data();
-  const currentRewardPoints = walletData?.rewardPoints || 0;
+  const currentPoints = walletData?.rewardPoints || 0;
 
-  if (currentRewardPoints < pointsCost) {
-    return { success: false, message: 'Insufficient reward points' };
+  if (currentPoints < pointsCost) {
+    return { 
+      success: false, 
+      message: `Insufficient reward points. You have ${currentPoints}, but need ${pointsCost}.` 
+    };
   }
 
-  // Get reward details
-  const rewardDoc = await db.collection('rewards').doc(rewardId).get();
+  // Get reward details using QueryBuilder
+  const rewardDoc = await FirebaseQueryBuilder.doc(COLLECTIONS.REWARDS, rewardId).get();
+  
   if (!rewardDoc.exists) {
     return { success: false, message: 'Reward not found' };
   }
 
-  const reward = rewardDoc.data();
-  if (!reward?.available) {
-    return { success: false, message: 'Reward not available' };
+  const rewardData = rewardDoc.data();
+  if (!rewardData?.available) {
+    return { success: false, message: 'Reward is no longer available' };
   }
 
-  // Process redemption
-  const batch = db.batch();
+  const batch = FirebaseQueryBuilder.createBatch();
   const now = new Date();
 
-  // Deduct reward points
-  const walletRef = db.collection('wallets').doc(userId);
+  // Update wallet to deduct points
+  const walletRef = FirebaseQueryBuilder.doc(WALLETS_COLLECTION, userId);
   batch.update(walletRef, {
-    rewardPoints: currentRewardPoints - pointsCost,
+    rewardPoints: currentPoints - pointsCost,
     updatedAt: now
   });
 
-  // Add redemption transaction
-  const transactionRef = db.collection('transactions').doc();
+  // Create redemption transaction
+  const transactionRef = FirebaseQueryBuilder.collection(COLLECTIONS.TRANSACTIONS).doc();
   batch.set(transactionRef, {
     userId,
     type: 'redemption',
     amount: pointsCost,
-    description: `Redeemed: ${reward.name}`,
+    description: `Redeemed: ${rewardData.name}`,
     status: 'completed',
     createdAt: now,
     updatedAt: now,
     metadata: {
       rewardId,
-      rewardType: reward.type,
-      rewardName: reward.name
+      rewardType: rewardData.type,
+      automated: false
     }
   });
 
-  // Apply reward benefits based on type
-  if (reward.type === 'credits') {
-    const creditsToAdd = reward.metadata?.creditsAmount || 100;
-    batch.update(walletRef, {
-      credits: (walletData?.credits || 0) + creditsToAdd
-    });
-
-    // Add credit transaction
-    const creditTransactionRef = db.collection('transactions').doc();
-    batch.set(creditTransactionRef, {
-      userId,
-      type: 'credit',
-      amount: creditsToAdd,
-      description: `Credits from reward: ${reward.name}`,
-      status: 'completed',
-      createdAt: now,
-      updatedAt: now,
-      metadata: {
-        source: 'reward_redemption',
-        rewardId
-      }
-    });
+  try {
+    await batch.commit();
+    return { 
+      success: true, 
+      message: `Successfully redeemed ${rewardData.name}!` 
+    };
+  } catch (error) {
+    console.error('Error redeeming reward:', error);
+    return { 
+      success: false, 
+      message: 'Failed to redeem reward. Please try again.' 
+    };
   }
-
-  await batch.commit();
-  return { success: true, message: 'Reward redeemed successfully' };
 }

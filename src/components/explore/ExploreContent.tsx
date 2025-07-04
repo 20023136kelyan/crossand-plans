@@ -1,4 +1,3 @@
-
 'use client';
 
 import Link from 'next/link';
@@ -10,7 +9,7 @@ import React, { useEffect, useState, useMemo, useRef, useCallback, startTransiti
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { fetchExplorePageDataAction, searchCollectionsAction } from '@/app/actions/exploreActions';
 import { getUserLocationAction, searchUsersAction } from '@/app/actions/userActions';
-import { getUserProfile, savePlanToUser } from '@/services/userService';
+import { getUserProfile } from '@/services/clientServices';
 import { useToast } from '@/hooks/use-toast';
 import { Plan, Profile, Category, City, SearchedUser, Influencer, PlanCollection } from '@/types/user';
 import { useAuth } from '@/context/AuthContext';

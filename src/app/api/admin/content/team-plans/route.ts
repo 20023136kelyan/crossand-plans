@@ -61,14 +61,12 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date();
-    // For admin-created plans, use a far future date to ensure they don't get filtered out
-    // but mark them as template plans that don't require specific scheduling
-    const templateEventTime = new Date('2099-12-31T23:59:59.999Z');
+    // ✅ Templates don't need event times - they are reusable patterns, not scheduled events
     
     const planData = {
       name: name.trim(),
       description: description?.trim() || '',
-      eventTime: templateEventTime.toISOString(),
+      eventTime: null, // ✅ Templates have no specific date/time
       eventType: eventType.trim(),
       eventTypeLowercase: eventType.trim().toLowerCase(),
       city: city.trim(),
@@ -79,8 +77,9 @@ export async function POST(request: NextRequest) {
       // Team plan specific fields
       hostId: 'crossand-team',
       hostName: 'Crossand Team',
-      creatorId: 'crossand-team',
       creatorName: 'Crossand Team',
+      creatorAvatarUrl: null, // ✅ Crossand Team doesn't need avatar (can be handled in UI)
+      creatorIsVerified: true, // ✅ Crossand Team is always verified
       isTeamPlan: true,
       isTemplate: true, // Mark as template plan
       

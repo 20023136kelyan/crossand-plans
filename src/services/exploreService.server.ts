@@ -4,9 +4,10 @@
 import { firestoreAdmin } from '@/lib/firebaseAdmin';
 import type { Influencer, PlanCollection, UserProfile, UserRoleType, AppTimestamp } from '@/types/user';
 import { Timestamp as AdminTimestamp } from 'firebase-admin/firestore';
+import { FirebaseQueryBuilder, COLLECTIONS } from '@/lib/data/core/QueryBuilder';
 
 const PLAN_COLLECTIONS = 'planCollections';
-const USERS_COLLECTION = 'users';
+const USERS_COLLECTION = COLLECTIONS.USERS;
 
 const convertAdminCollectionTimestampsToISO = (data: any): Pick<PlanCollection, 'createdAt' | 'updatedAt'> => {
   const convert = (ts: any): string => { // Changed: ensure it always returns a string or handle undefined elsewhere
@@ -32,18 +33,13 @@ export const getFeaturedCreatorsAdmin = async (
   limit?: number, 
   lastVisibleName?: string
 ): Promise<{ creators: Influencer[], hasMore: boolean, newLastVisibleName?: string }> => {
-  if (!firestoreAdmin) {
-    console.error("[getFeaturedCreatorsAdmin] Firestore Admin SDK is not initialized.");
-    return { creators: [], hasMore: false };
-  }
   try {
     const creatorsMap = new Map<string, Influencer>();
     const pageSize = limit || 10; // Default page size if limit is for "featured" display
     const fetchLimit = pageSize + 1; // Fetch one extra to check if there's more
 
     // Query for influencers
-    let influencerQuery = firestoreAdmin
-      .collection(USERS_COLLECTION)
+    let influencerQuery = FirebaseQueryBuilder.collection(USERS_COLLECTION)
       .where('role', '==', 'influencer' as UserRoleType)
       .where('isVerified', '==', true)
       .orderBy('name', 'asc');
@@ -68,8 +64,7 @@ export const getFeaturedCreatorsAdmin = async (
     });
 
     // Query for admins (if still needed for this "featured" list, or adjust logic)
-    let adminUserQuery = firestoreAdmin
-      .collection(USERS_COLLECTION)
+    let adminUserQuery = FirebaseQueryBuilder.collection(USERS_COLLECTION)
       .where('role', '==', 'admin' as UserRoleType)
       .where('isVerified', '==', true)
       .orderBy('name', 'asc');
@@ -118,15 +113,11 @@ export const getFeaturedPlanCollectionsAdmin = async (
   limit?: number,
   lastVisibleTitle?: string
 ): Promise<{ collections: PlanCollection[], hasMore: boolean, newLastVisibleTitle?: string }> => {
-  if (!firestoreAdmin) {
-    console.error("[getFeaturedPlanCollectionsAdmin] Firestore Admin SDK is not initialized.");
-    return { collections: [], hasMore: false };
-  }
   try {
     const pageSize = limit || 10;
     const fetchLimit = pageSize + 1;
 
-    let query = firestoreAdmin.collection(PLAN_COLLECTIONS)
+    let query = FirebaseQueryBuilder.collection(PLAN_COLLECTIONS)
       .where('isFeatured', '==', true)
       .orderBy('title', 'asc');
     
@@ -174,12 +165,8 @@ export const getFeaturedPlanCollectionsAdmin = async (
 
 
 export const getNavigationCollectionsAdmin = async (): Promise<PlanCollection[]> => {
-  if (!firestoreAdmin) {
-    console.error("[getNavigationCollectionsAdmin] Firestore Admin SDK is not initialized.");
-    return [];
-  }
   try {
-    const collectionsSnapshot = await firestoreAdmin.collection(PLAN_COLLECTIONS)
+    const collectionsSnapshot = await FirebaseQueryBuilder.collection(PLAN_COLLECTIONS)
       .where('navigationCard', '==', true)
       .orderBy('sortOrder', 'asc')
       .get();
@@ -218,12 +205,8 @@ export const getNavigationCollectionsAdmin = async (): Promise<PlanCollection[]>
 };
 
 export const getCollectionByIdAdmin = async (collectionId: string): Promise<PlanCollection | null> => {
-  if (!firestoreAdmin) {
-    console.error("[getCollectionByIdAdmin] Firestore Admin SDK is not initialized.");
-    return null;
-  }
   try {
-    const collectionDoc = await firestoreAdmin.collection(PLAN_COLLECTIONS).doc(collectionId).get();
+    const collectionDoc = await FirebaseQueryBuilder.collection(PLAN_COLLECTIONS).doc(collectionId).get();
     if (!collectionDoc.exists) {
       return null;
     }

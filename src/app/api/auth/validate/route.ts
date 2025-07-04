@@ -1,20 +1,15 @@
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { createPublicHandler } from '@/lib/api/middleware';
 import { auth } from "@/lib/auth";
+import { NextResponse } from "next/server";
 
-export async function GET() {
-  try {
+export const GET = createPublicHandler(
+  async () => {
     const session = await auth();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     return NextResponse.json({ valid: true });
-  } catch (error) {
-    console.error("[/api/auth/validate] Error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
-} 
+  },
+  { defaultError: 'Failed to validate session' }
+); 

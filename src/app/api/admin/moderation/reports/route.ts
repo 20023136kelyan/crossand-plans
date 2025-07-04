@@ -1,73 +1,142 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdminAuth } from '@/lib/auth/adminAuth';
-import { getModerationReports, getModerationStats } from '@/services/moderationService.admin';
+import { firestoreAdmin } from '@/lib/firebaseAdmin';
+import { createAdminHandler, parseRequestBody, getQueryParams } from '@/lib/api/middleware';
 
-export async function GET(request: NextRequest) {
-  try {
-    // Verify admin authentication
-    const authResult = await verifyAdminAuth(request);
-    if (!authResult.success) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+// GET /api/admin/moderation/reports - Get all reports
+export const GET = createAdminHandler(
+  async ({ request, authResult }) => {
+    // Get query parameters with validation
+    const { params, error } = getQueryParams(request, {
+      status: { required: false },
+      type: { required: false },
+      page: { required: false, defaultValue: '1' },
+      limit: { required: false, defaultValue: '20' }
+    });
+    if (error) return error;
+
+    const status = params.status;
+    const type = params.type;
+    const page = parseInt(params.page!) || 1;
+    const limit = Math.min(parseInt(params.limit!) || 20, 50); // Cap at 50
+
+    let query: any = firestoreAdmin!.collection('reports');
+
+    // Apply filters
+    if (status) {
+      query = query.where('status', '==', status);
+    }
+    if (type) {
+      query = query.where('contentType', '==', type);
     }
 
-    // Get query parameters for filtering
-    const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status') || undefined;
-    const type = searchParams.get('type') || undefined;
-    const priority = searchParams.get('priority') || undefined;
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const startAfter = searchParams.get('startAfter') || undefined;
+    // Apply sorting and pagination
+    query = query.orderBy('createdAt', 'desc');
+    
+    const offset = (page - 1) * limit;
+    if (offset > 0) {
+      const offsetSnapshot = await query.limit(offset).get();
+      if (!offsetSnapshot.empty) {
+        const lastDoc = offsetSnapshot.docs[offsetSnapshot.docs.length - 1];
+        query = query.startAfter(lastDoc);
+      }
+    }
 
-    // Get moderation reports using the service
-    const reports = await getModerationReports(
-      { status: status as any, type: type as any, priority: priority as any },
-      limit,
-      startAfter
-    );
+    const reportsSnapshot = await query.limit(limit).get();
 
-    // Get summary statistics
-    const stats = await getModerationStats();
+    const reports: any[] = [];
+    reportsSnapshot.forEach((doc: any) => {
+      const data = doc.data();
+      reports.push({
+        id: doc.id,
+        contentType: data.contentType,
+        contentId: data.contentId,
+        reportedUserId: data.reportedUserId,
+        reportingUserId: data.reportingUserId,
+        reason: data.reason,
+        description: data.description,
+        status: data.status,
+        moderatorId: data.moderatorId,
+        moderatorNotes: data.moderatorNotes,
+        createdAt: data.createdAt?.toDate() || new Date(),
+        updatedAt: data.updatedAt?.toDate() || new Date(),
+        resolvedAt: data.resolvedAt?.toDate() || null,
+        metadata: data.metadata || {}
+      });
+    });
+
+    // Get total count (expensive operation)
+    const totalSnapshot = await firestoreAdmin!.collection('reports').get();
+    const totalReports = totalSnapshot.size;
+    const totalPages = Math.ceil(totalReports / limit);
 
     return NextResponse.json({
       reports,
-      stats
+      pagination: {
+        page,
+        limit,
+        totalReports,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1
+      }
     });
+  },
+  { defaultError: 'Failed to fetch reports' }
+);
 
-  } catch (error) {
-    console.error('Error fetching reports:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
+// PUT /api/admin/moderation/reports - Update report status
+export const PUT = createAdminHandler(
+  async ({ request, authResult }) => {
+    const { data: body, error } = await parseRequestBody(request);
+    if (error) return error;
 
-export async function PUT(request: NextRequest) {
-  try {
-    // Verify admin authentication
-    const authResult = await verifyAdminAuth(request);
-    if (!authResult.success) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    const { reportId, status, moderatorNotes } = body;
+
+    if (!reportId || !status) {
+      return NextResponse.json(
+        { error: 'Report ID and status are required' },
+        { status: 400 }
+      );
     }
 
-    const { reportId, action, status, assignedTo } = await request.json();
-
-    if (!reportId || !action) {
-      return NextResponse.json({ error: 'Report ID and action are required' }, { status: 400 });
+    const validStatuses = ['pending', 'reviewing', 'resolved', 'dismissed'];
+    if (!validStatuses.includes(status)) {
+      return NextResponse.json(
+        { error: 'Invalid status' },
+        { status: 400 }
+      );
     }
 
-    // Import the moderation service functions
-    const { updateModerationReportStatus, assignModerationReport } = await import('@/services/moderationService.admin');
+    const reportRef = firestoreAdmin!.collection('reports').doc(reportId);
+    const reportDoc = await reportRef.get();
 
-    // Handle different actions
-    if (action === 'updateStatus' && status) {
-      await updateModerationReportStatus(reportId, status, authResult.user.uid);
-    } else if (action === 'assign' && assignedTo) {
-      await assignModerationReport(reportId, assignedTo, authResult.user.uid);
-    } else {
-      return NextResponse.json({ error: 'Invalid action or missing parameters' }, { status: 400 });
+    if (!reportDoc.exists) {
+      return NextResponse.json(
+        { error: 'Report not found' },
+        { status: 404 }
+      );
     }
 
-    return NextResponse.json({ success: true, message: 'Report updated successfully' });
-  } catch (error) {
-    console.error('Error updating moderation report:', error);
-    return NextResponse.json({ error: 'Failed to update report' }, { status: 500 });
-  }
-}
+    const updateData: any = {
+      status,
+      moderatorId: authResult.userId,
+      updatedAt: new Date()
+    };
+
+    if (moderatorNotes) {
+      updateData.moderatorNotes = moderatorNotes;
+    }
+
+    if (status === 'resolved' || status === 'dismissed') {
+      updateData.resolvedAt = new Date();
+    }
+
+    await reportRef.update(updateData);
+
+    return NextResponse.json({
+      success: true,
+      message: 'Report updated successfully'
+    });
+  },
+  { defaultError: 'Failed to update report' }
+);

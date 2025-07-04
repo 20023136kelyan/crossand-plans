@@ -1,123 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authAdmin } from '@/lib/firebaseAdmin';
-import Stripe from 'stripe';
+import { firestoreAdmin as db } from '@/lib/firebaseAdmin';
+import { createAuthenticatedHandler, parseRequestBody } from '@/lib/api/middleware';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-05-28.basil',
-});
+export const POST = createAuthenticatedHandler(
+  async ({ request, authResult }) => {
+    const { data: body, error } = await parseRequestBody(request);
+    if (error) return error;
 
-export async function POST(request: NextRequest) {
-  try {
-    // Get the authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { paymentMethodId, isDefault } = body;
 
-    const token = authHeader.split('Bearer ')[1];
-    
-    // Verify the Firebase token
-    let decodedToken;
-    try {
-      decodedToken = await authAdmin!.verifyIdToken(token);
-    } catch (error) {
-      console.error('Token verification failed:', error);
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-    }
-
-    const userId = decodedToken.uid;
-    
-    if (!userId) {
-      return NextResponse.json({ error: 'User ID not found' }, { status: 400 });
-    }
-
-    try {
-      // Get the request body
-      const body = await request.json();
-      const { returnUrl } = body;
-
-      // Validate return URL (optional)
-      const validReturnUrl = returnUrl || `${process.env.NEXT_PUBLIC_APP_URL}/users/settings`;
-
-      // Get or create Stripe customer
-      let customerId: string;
-      
-      // First, try to find existing customer by Firebase UID
-      const existingCustomers = await stripe.customers.list({
-        limit: 100
-      });
-      
-      const existingCustomer = existingCustomers.data.find(
-        customer => customer.metadata?.firebase_uid === userId
-      );
-
-      if (existingCustomer) {
-        customerId = existingCustomer.id;
-      } else {
-        // Create new customer if not found
-        const customer = await stripe.customers.create({
-          metadata: {
-            firebase_uid: userId
-          }
-        });
-        customerId = customer.id;
-      }
-
-      // Create a setup intent for updating payment method
-      const setupIntent = await stripe.setupIntents.create({
-        customer: customerId,
-        usage: 'off_session',
-        payment_method_types: ['card'],
-        metadata: {
-          firebase_uid: userId,
-          purpose: 'payment_method_update'
-        }
-      });
-
-      // Create a Stripe Checkout session for payment method update
-      const session = await stripe.checkout.sessions.create({
-        mode: 'setup',
-        customer: customerId,
-        setup_intent_data: {
-          metadata: {
-            firebase_uid: userId,
-            purpose: 'payment_method_update'
-          }
-        },
-        success_url: `${validReturnUrl}?payment_update=success`,
-        cancel_url: `${validReturnUrl}?payment_update=cancelled`,
-        payment_method_types: ['card']
-      });
-
-      if (!session.url) {
-        throw new Error('Failed to create checkout session URL');
-      }
-
-      return NextResponse.json({
-        success: true,
-        url: session.url,
-        sessionId: session.id
-      });
-
-    } catch (stripeError: any) {
-      console.error('Stripe error:', stripeError);
+    if (!paymentMethodId) {
       return NextResponse.json(
-        { 
-          error: 'Payment service error', 
-          details: stripeError.message 
-        },
-        { status: 500 }
+        { error: 'Payment method ID is required' },
+        { status: 400 }
       );
     }
 
-  } catch (error: any) {
-    console.error('Payment update API error:', error);
-    return NextResponse.json(
-      { 
-        error: 'Failed to initiate payment method update',
-        details: error.message 
+    // Update user's payment method
+    const userRef = db!.collection('users').doc(authResult.userId);
+    const updateData: any = {
+      paymentMethods: {
+        [paymentMethodId]: {
+          id: paymentMethodId,
+          isDefault: isDefault || false,
+          updatedAt: new Date()
+        }
       },
-      { status: 500 }
-    );
-  }
-}
+      updatedAt: new Date()
+    };
+
+    if (isDefault) {
+      updateData.defaultPaymentMethod = paymentMethodId;
+    }
+
+    await userRef.update(updateData);
+
+    return NextResponse.json({
+      success: true,
+      message: 'Payment method updated successfully'
+    });
+  },
+  { defaultError: 'Failed to update payment method' }
+);

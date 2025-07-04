@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getActiveSubscription } from "@/services/subscriptionService.admin";
-import { getUserStatsAdmin, getUserProfileAdmin } from "@/services/userService.admin";
+import { getUserStatsAdmin, getUserProfileAdmin } from "@/services/userService.server";
 import { cookies } from "next/headers";
 import { authAdmin, firestoreAdmin } from "@/lib/firebaseAdmin";
 
@@ -77,25 +77,8 @@ export async function GET() {
       userProfile = await getUserProfileAdmin(userId);
     } catch (error) {
       console.warn(`[/api/subscriptions/user-data] Error getting user profile for user ${userId}:`, error);
-      // Create basic profile from auth claims for new users (without Google avatar URL)
-      // Extract additional Google user information for better onboarding experience
-      const firstName = decodedClaims.given_name || "";
-      const lastName = decodedClaims.family_name || "";
-      const fullName = decodedClaims.name || (firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName || "User");
-      
-      userProfile = {
-        name: fullName,
-        email: decodedClaims.email || "",
-        avatarUrl: null, // Don't use Google's picture URL to avoid external requests
-        eventAttendanceScore: 0,
-        // Store additional Google user data for onboarding pre-fill
-        googleUserData: {
-          given_name: firstName,
-          family_name: lastName,
-          locale: decodedClaims.locale || null,
-          email_verified: decodedClaims.email_verified || false
-        }
-      };
+      // Set to null if user profile doesn't exist
+      userProfile = null;
     }
     
     // Ensure userStats is not null and has all required fields for calculateActivityScore

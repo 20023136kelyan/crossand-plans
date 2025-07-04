@@ -1,22 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { createAuthenticatedHandler, getQueryParams } from '@/lib/api/middleware';
 import { getPersonalizedRecommendations } from '@/services/recommendationService.admin';
 import { getUserPreferencesAction } from '@/app/actions/userActions';
-import { auth } from '@/lib/auth';
+import { NextResponse } from 'next/server';
 
-export async function GET(request: NextRequest) {
-  try {
-    const session = await auth();
-    
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+export const GET = createAuthenticatedHandler(
+  async ({ request, authResult }) => {
+    const { params, error } = getQueryParams(request, {
+      limit: { required: false, defaultValue: '20' }
+    });
+    if (error) return error;
 
-    const { searchParams } = new URL(request.url);
-    const limitParam = searchParams.get('limit');
-    const limit = limitParam ? parseInt(limitParam, 10) : 20;
+    const limit = parseInt(params.limit!) || 20;
 
     // Validate limit
     if (isNaN(limit) || limit < 1 || limit > 50) {
@@ -27,21 +21,16 @@ export async function GET(request: NextRequest) {
     }
 
     // Get user preferences
-    const userPreferences = await getUserPreferencesAction(session.user.id);
+    const userPreferences = await getUserPreferencesAction(authResult.userId);
 
     // Get personalized recommendations
     const recommendations = await getPersonalizedRecommendations(
-      session.user.id,
-      userPreferences,
+      authResult.userId,
+      userPreferences || undefined,
       limit
     );
 
     return NextResponse.json(recommendations);
-  } catch (error) {
-    console.error('[GET /api/recommendations] Error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
+  },
+  { defaultError: 'Failed to get recommendations' }
+);

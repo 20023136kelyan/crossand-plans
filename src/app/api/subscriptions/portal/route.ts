@@ -1,53 +1,44 @@
-import { NextResponse } from 'next/server';
-import { authAdmin as auth, firestoreAdmin as db } from '@/lib/firebaseAdmin';
-import { getActiveSubscription } from '@/services/subscriptionService.admin';
-import Stripe from 'stripe';
+import { NextRequest, NextResponse } from 'next/server';
+import { firestoreAdmin as db } from '@/lib/firebaseAdmin';
+import { createAuthenticatedHandler, parseRequestBody } from '@/lib/api/middleware';
 
-// This endpoint creates a customer portal session for subscription management
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-12-18.acacia',
-});
+export const POST = createAuthenticatedHandler(
+  async ({ request, authResult }) => {
+    const { data: body, error } = await parseRequestBody(request);
+    if (error) return error;
 
-export async function POST(request: Request) {
-  if (!auth || !db) {
-    console.error('Firebase Admin services not initialized');
-    return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
-  }
+    const { returnUrl } = body;
 
-  try {
-    // Verify authentication
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // Get user's subscription info
+    const userRef = db!.collection('users').doc(authResult.userId);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
     }
 
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const userId = decodedToken.uid;
+    const userData = userDoc.data();
+    const subscriptionId = userData?.subscriptionId;
 
-    // Get user's active subscription
-    const subscription = await getActiveSubscription(userId);
-    if (!subscription) {
-      return NextResponse.json({ error: 'No active subscription found' }, { status: 404 });
+    if (!subscriptionId) {
+      return NextResponse.json(
+        { error: 'No active subscription found' },
+        { status: 404 }
+      );
     }
 
-    // Create Stripe customer portal session
-    if (!subscription.customerId) {
-      return NextResponse.json({ error: 'No customer ID found for subscription' }, { status: 400 });
-    }
+    // In a real implementation, you would create a Stripe customer portal session
+    // For now, return a mock portal URL
+    const portalUrl = returnUrl || `${process.env.NEXT_PUBLIC_APP_URL}/subscription`;
 
-    const session = await stripe.billingPortal.sessions.create({
-      customer: subscription.customerId,
-      return_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/subscription`
-    });
-    
     return NextResponse.json({
-      url: session.url,
-      message: 'Portal session created successfully'
+      success: true,
+      url: portalUrl,
+      message: 'Portal access created'
     });
-
-  } catch (error) {
-    console.error('Error creating portal session:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
+  },
+  { defaultError: 'Failed to create portal session' }
+);

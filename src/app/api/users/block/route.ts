@@ -1,34 +1,28 @@
 // src/app/api/users/block/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/firebaseAdmin';
-import { db } from '@/lib/firebaseAdmin';
+import { firestoreAdmin as db } from '@/lib/firebaseAdmin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { createAuthenticatedHandler, parseRequestBody } from '@/lib/api/middleware';
 
-export async function POST(request: NextRequest) {
-  try {
-    // Get the authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+// POST /api/users/block - Block a user
+export const POST = createAuthenticatedHandler(
+  async ({ request, authResult }) => {
+    const { data: body, error } = await parseRequestBody(request);
+    if (error) return error;
 
-    const idToken = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(idToken);
-    const currentUserId = decodedToken.uid;
-
-    const { userId } = await request.json();
+    const { userId } = body;
 
     if (!userId) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
     }
 
     // Prevent self-blocking
-    if (userId === currentUserId) {
+    if (userId === authResult.userId) {
       return NextResponse.json({ error: 'You cannot block yourself' }, { status: 400 });
     }
 
     // Check if the user exists
-    const userRef = db.collection('users').doc(userId);
+    const userRef = db!.collection('users').doc(userId);
     const userDoc = await userRef.get();
     
     if (!userDoc.exists) {
@@ -36,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if already blocked
-    const currentUserRef = db.collection('users').doc(currentUserId);
+    const currentUserRef = db!.collection('users').doc(authResult.userId);
     const currentUserDoc = await currentUserRef.get();
     const currentUserData = currentUserDoc.data();
     const blockedUsers = currentUserData?.blockedUsers || [];
@@ -46,7 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Use a batch to update both users
-    const batch = db.batch();
+    const batch = db!.batch();
     
     // Add to current user's blocked list
     batch.update(currentUserRef, {
@@ -55,8 +49,8 @@ export async function POST(request: NextRequest) {
     });
     
     // Remove from following/followers if they exist
-    const followingRef = db.collection('following').doc(currentUserId);
-    const followersRef = db.collection('followers').doc(userId);
+    const followingRef = db!.collection('following').doc(authResult.userId);
+    const followersRef = db!.collection('followers').doc(userId);
     
     batch.update(followingRef, {
       users: FieldValue.arrayRemove(userId),
@@ -64,16 +58,16 @@ export async function POST(request: NextRequest) {
     });
     
     batch.update(followersRef, {
-      users: FieldValue.arrayRemove(currentUserId),
+      users: FieldValue.arrayRemove(authResult.userId),
       updatedAt: FieldValue.serverTimestamp()
     });
     
     // Also remove the reverse relationship
-    const reverseFollowingRef = db.collection('following').doc(userId);
-    const reverseFollowersRef = db.collection('followers').doc(currentUserId);
+    const reverseFollowingRef = db!.collection('following').doc(userId);
+    const reverseFollowersRef = db!.collection('followers').doc(authResult.userId);
     
     batch.update(reverseFollowingRef, {
-      users: FieldValue.arrayRemove(currentUserId),
+      users: FieldValue.arrayRemove(authResult.userId),
       updatedAt: FieldValue.serverTimestamp()
     });
     
@@ -87,36 +81,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ 
       message: 'User blocked successfully'
     });
+  },
+  { defaultError: 'Failed to block user' }
+);
 
-  } catch (error) {
-    console.error('Error blocking user:', error);
-    return NextResponse.json(
-      { error: 'Failed to block user' },
-      { status: 500 }
-    );
-  }
-}
+// DELETE /api/users/block - Unblock a user
+export const DELETE = createAuthenticatedHandler(
+  async ({ request, authResult }) => {
+    const { data: body, error } = await parseRequestBody(request);
+    if (error) return error;
 
-export async function DELETE(request: NextRequest) {
-  try {
-    // Get the authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const idToken = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(idToken);
-    const currentUserId = decodedToken.uid;
-
-    const { userId } = await request.json();
+    const { userId } = body;
 
     if (!userId) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
     }
 
     // Remove from current user's blocked list
-    const currentUserRef = db.collection('users').doc(currentUserId);
+    const currentUserRef = db!.collection('users').doc(authResult.userId);
     await currentUserRef.update({
       blockedUsers: FieldValue.arrayRemove(userId),
       updatedAt: FieldValue.serverTimestamp()
@@ -125,12 +107,6 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ 
       message: 'User unblocked successfully'
     });
-
-  } catch (error) {
-    console.error('Error unblocking user:', error);
-    return NextResponse.json(
-      { error: 'Failed to unblock user' },
-      { status: 500 }
-    );
-  }
-}
+  },
+  { defaultError: 'Failed to unblock user' }
+);

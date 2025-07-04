@@ -14,7 +14,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState, useCallback } from "react";
-import { getUserProfile, getFriendships } from "@/services/userService"; 
+import { getUserProfile, getFriendships } from "@/services/clientServices"; 
 import type { UserProfile, FriendEntry, UserRoleType, FriendStatus } from "@/types/user";
 import { format } from 'date-fns'; 
 import { Badge } from "@/components/ui/badge";

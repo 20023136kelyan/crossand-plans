@@ -39,7 +39,7 @@ import { FileValidators } from '@/lib/fileValidation';
 import { PostDetailModal } from '@/components/feed/PostDetailModal';
 import ReactCrop, { type Crop, type PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
-import { getFriendships } from '@/services/userService';
+import { getFriendships } from '@/services/clientServices';
 import type { User } from 'firebase/auth';
 
 const VerificationBadgeInline = ({ role, isVerified }: { role: UserProfile['role'], isVerified: UserProfile['isVerified'] }) => {

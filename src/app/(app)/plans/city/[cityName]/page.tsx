@@ -146,8 +146,9 @@ export default function CityPlansPage() {
 
   const upcomingPlans = useMemo(() => {
     return sortedPlans.filter(plan => {
-      // Template plans (admin-created) should always appear in upcoming
-      if (plan.isTemplate) return true;
+      // ✅ FIXED: Templates don't belong in scheduled plan views
+      // Templates are timeless patterns, not scheduled events
+      if (plan.isTemplate) return false;
       
       if (!plan.eventTime) return false;
       const planDate = parseISO(plan.eventTime);
@@ -173,7 +174,8 @@ export default function CityPlansPage() {
   const eventDates = useMemo(() => {
     const dates: Date[] = [];
     plansForCalendar.forEach(plan => {
-      if (plan.eventTime && isValid(parseISO(plan.eventTime))) {
+      // ✅ Exclude templates from calendar - they don't have meaningful event dates
+      if (!plan.isTemplate && plan.eventTime && isValid(parseISO(plan.eventTime))) {
         dates.push(parseISO(plan.eventTime));
       }
     });
@@ -183,7 +185,8 @@ export default function CityPlansPage() {
   const plansForSelectedDate = useMemo(() => {
     if (!selectedDate) return [];
     return plansForCalendar.filter(plan => {
-      if (!plan.eventTime) return false;
+      // ✅ Exclude templates from calendar view
+      if (plan.isTemplate || !plan.eventTime) return false;
       const planDate = parseISO(plan.eventTime);
       return isValid(planDate) && isSameDay(planDate, selectedDate);
     });
@@ -281,114 +284,41 @@ export default function CityPlansPage() {
         <span className="text-primary">{decodedCityName}</span>
       </h1>
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'upcoming' | 'past')} className="w-full">
-        <div className="sticky top-0 z-20 bg-background flex items-center justify-between gap-3 w-full py-2 border-b border-border shadow-sm mb-6 group">
-           <Button 
-            variant="outline" 
-            size="icon" 
-            aria-label={viewMode === 'list' ? "Switch to Calendar View" : "Switch to List View"}
-            onClick={() => setViewMode(prev => prev === 'list' ? 'calendar' : 'list')}
-            className="bg-card border-border hover:bg-secondary/50 rounded-lg h-9 w-9 flex-shrink-0" 
-          >
-            {viewMode === 'list' ? <CalendarDays className="h-4 w-4" /> : <List className="h-4 w-4" />}
-          </Button>
-          
+      {/* ✅ FIXED: Simple template browser for city-specific templates */}
+      <div className="w-full">
+        <div className="sticky top-0 z-20 bg-background flex items-center justify-between gap-3 w-full py-2 border-b border-border shadow-sm mb-6">
           <div className="relative flex-1 min-w-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
             <Input
               type="search"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder={`Search templates in ${decodedCityName}...`}
               className="pl-10 bg-card border-border text-sm h-9 rounded-lg focus:ring-primary focus:border-primary w-full"
-              disabled={viewMode === 'calendar'}
             />
           </div>
           
-          <div className={cn(
-            "flex items-center gap-2 flex-shrink-0 origin-right transition-all duration-300 ease-in-out",
-             viewMode === 'calendar' ? "w-0 opacity-0 scale-x-0 invisible overflow-hidden" : "w-auto opacity-100 scale-x-100 visible",
-             "group-focus-within:w-0 group-focus-within:opacity-0 group-focus-within:scale-x-0 group-focus-within:invisible group-focus-within:overflow-hidden"
-            )}
-          >
-             {viewMode === 'list' && (
-                <Button variant="outline" onClick={handleSortCycle} size="sm" className="bg-card border-border hover:bg-secondary/50 text-sm rounded-lg h-9 whitespace-nowrap">
-                {sortConfig.key === 'date' ? 'Date' : 'Name'}
-                <ArrowUpDown className="ml-1.5 h-4 w-4" />
-                {sortConfig.direction === 'asc' ? '↑' : '↓'}
-                </Button>
-            )}
-            <div className="whitespace-nowrap">
-              <TabsList className="bg-muted p-1 rounded-lg inline-flex h-9">
-                <TabsTrigger value="upcoming" className="px-2.5 py-1 text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded data-[state=active]:shadow-sm">Upcoming ({upcomingPlans.length})</TabsTrigger>
-                <TabsTrigger value="past" className="px-2.5 py-1 text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded data-[state=active]:shadow-sm">Past ({pastPlans.length})</TabsTrigger>
-              </TabsList>
-            </div>
-          </div>
+          <Button variant="outline" onClick={handleSortCycle} size="sm" className="bg-card border-border hover:bg-secondary/50 text-sm rounded-lg h-9 whitespace-nowrap">
+            {sortConfig.key === 'date' ? 'Created' : 'Name'}
+            <ArrowUpDown className="ml-1.5 h-4 w-4" />
+            {sortConfig.direction === 'asc' ? '↑' : '↓'}
+          </Button>
         </div>
         
-        {viewMode === 'list' ? (
-            <>
-                <TabsContent value="upcoming" className="mt-0">
-                {upcomingPlans.length === 0 ? (
-                    <EmptyState 
-                        title={`No Upcoming Plans in ${decodedCityName}`} 
-                        message={searchTerm ? `Your search for "${searchTerm}" did not match any upcoming plans in ${decodedCityName}.` : `There are no upcoming plans listed under "${decodedCityName}".`}
-                    />
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {upcomingPlans.map(plan => (
-                        <ExploreCard key={plan.id} plan={plan} />
-                    ))}
-                    </div>
-                )}
-                </TabsContent>
-
-                <TabsContent value="past" className="mt-0">
-                {pastPlans.length === 0 ? (
-                    <EmptyState 
-                        title={`No Past Plans in ${decodedCityName}`} 
-                        message={searchTerm ? `Your search for "${searchTerm}" did not match any past plans in ${decodedCityName}.` : `There are no past plans listed under "${decodedCityName}".`}
-                    />
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {pastPlans.map(plan => (
-                        <ExploreCard key={plan.id} plan={plan} />
-                    ))}
-                    </div>
-                )}
-                </TabsContent>
-            </>
-        ) : ( // Calendar View
-             <TabsContent value={activeTab} className="mt-0">
-                {plansForCalendar.length === 0 && !loading ? (
-                    <EmptyState
-                        title={activeTab === 'upcoming' ? `No Upcoming Plans in ${decodedCityName}` : `No Past Plans in ${decodedCityName}`}
-                        message={`There are no ${activeTab} plans in ${decodedCityName} to display on the calendar.`}
-                    />
-                ) : (
-                    <div className="flex flex-col space-y-4">
-                        <CalendarComponent
-                        mode="single"
-                        selected={selectedDate}
-                        onSelect={(date) => setSelectedDate(date || undefined)}
-                        month={currentMonth}
-                        onMonthChange={setCurrentMonth}
-                        className="rounded-md border shadow"
-                        classNames={{
-                          day_selected: 'bg-primary text-primary-foreground hover:bg-primary/90 focus:bg-primary focus:text-primary-foreground',
-                          day_today: 'bg-accent text-accent-foreground',
-                        }}
-                        components={{
-                          DayContent: renderCalendarDay
-                        }}
-                        modifiers={{ hasEvent: eventDates }}
-                        />
-                        {calendarFooter}
-                    </div>
-                )}
-            </TabsContent>
+        {/* Template grid */}
+        {sortedPlans.length === 0 ? (
+          <EmptyState 
+            title={`No Templates in ${decodedCityName}`} 
+            message={searchTerm ? `Your search for "${searchTerm}" did not match any templates in ${decodedCityName}.` : `There are no templates available for "${decodedCityName}" yet.`}
+          />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {sortedPlans.map((plan: PlanType) => (
+              <ExploreCard key={plan.id} plan={plan} />
+            ))}
+          </div>
         )}
-      </Tabs>
+      </div>
     </div>
   );
 }

@@ -1,104 +1,88 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authAdmin, firestoreAdmin } from '@/lib/firebaseAdmin';
-import { City } from '@/types/user';
+import { firestoreAdmin } from '@/lib/firebaseAdmin';
+import { createAdminHandler, parseRequestBody } from '@/lib/api/middleware';
 
-// GET /api/admin/content/cities - Get all featured cities
-export async function GET(request: NextRequest) {
-  try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await authAdmin!.verifyIdToken(token);
-    
-    if (!decodedToken.admin) {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
-
+// GET /api/admin/content/cities - Get all cities
+export const GET = createAdminHandler(
+  async ({ request, authResult }) => {
     const citiesSnapshot = await firestoreAdmin!
-      .collection('featuredCities')
-      .orderBy('date', 'desc')
+      .collection('cities')
+      .orderBy('name', 'asc')
       .get();
 
-    const cities: City[] = [];
+    const cities: any[] = [];
     citiesSnapshot.forEach(doc => {
       const data = doc.data();
       cities.push({
         id: doc.id,
         name: data.name,
-        location: data.location,
-        date: data.date,
-        imageUrl: data.imageUrl
+        country: data.country,
+        state: data.state,
+        coordinates: data.coordinates,
+        timezone: data.timezone,
+        planCount: data.planCount || 0,
+        isActive: data.isActive,
+        createdAt: data.createdAt?.toDate() || new Date(),
+        updatedAt: data.updatedAt?.toDate() || new Date()
       });
     });
 
     return NextResponse.json({ cities });
-  } catch (error) {
-    console.error('Error fetching cities:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch cities' },
-      { status: 500 }
-    );
-  }
-}
+  },
+  { defaultError: 'Failed to fetch cities' }
+);
 
-// POST /api/admin/content/cities - Add new featured city
-export async function POST(request: NextRequest) {
-  try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+// POST /api/admin/content/cities - Create new city
+export const POST = createAdminHandler(
+  async ({ request, authResult }) => {
+    const { data: body, error } = await parseRequestBody(request);
+    if (error) return error;
 
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await authAdmin!.verifyIdToken(token);
-    
-    if (!decodedToken.admin) {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
+    const { name, country, state, coordinates, timezone, isActive } = body;
 
-    const body = await request.json();
-    const { name, location, date, imageUrl } = body;
-
-    if (!name?.trim()) {
+    if (!name?.trim() || !country?.trim()) {
       return NextResponse.json(
-        { error: 'City name is required' },
+        { error: 'City name and country are required' },
         { status: 400 }
       );
     }
 
-    if (!location?.trim()) {
+    // Check if city already exists
+    const existingCity = await firestoreAdmin!
+      .collection('cities')
+      .where('name', '==', name.trim())
+      .where('country', '==', country.trim())
+      .limit(1)
+      .get();
+
+    if (!existingCity.empty) {
       return NextResponse.json(
-        { error: 'Location is required' },
-        { status: 400 }
+        { error: 'City already exists in this country' },
+        { status: 409 }
       );
     }
 
     const now = new Date();
     const cityData = {
       name: name.trim(),
-      location: location.trim(),
-      date: date || now.toISOString().split('T')[0], // Default to today if no date provided
-      imageUrl: imageUrl?.trim() || '',
+      country: country.trim(),
+      state: state?.trim() || '',
+      coordinates: coordinates || { lat: 0, lng: 0 },
+      timezone: timezone || 'UTC',
+      planCount: 0,
+      isActive: isActive !== false,
       createdAt: now,
       updatedAt: now,
-      createdBy: decodedToken.uid
+      createdBy: authResult.userId
     };
 
-    const docRef = await firestoreAdmin!.collection('featuredCities').add(cityData);
+    const docRef = await firestoreAdmin!.collection('cities').add(cityData);
 
     return NextResponse.json({
       success: true,
       cityId: docRef.id,
-      message: 'Featured city added successfully'
+      message: 'City created successfully'
     });
-  } catch (error) {
-    console.error('Error adding featured city:', error);
-    return NextResponse.json(
-      { error: 'Failed to add featured city' },
-      { status: 500 }
-    );
-  }
-}
+  },
+  { defaultError: 'Failed to create city' }
+);

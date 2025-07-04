@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { authAdmin as adminAuth, firestoreAdmin as adminDb } from '@/lib/firebaseAdmin';
+import { createAuthenticatedHandler, parseRequestBody } from '@/lib/api/middleware';
+import { firestoreAdmin as adminDb } from '@/lib/firebaseAdmin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { NextResponse } from 'next/server';
 
 interface PrivacySettings {
   plansVisibility: 'public' | 'friends' | 'followers' | 'private';
@@ -8,29 +9,13 @@ interface PrivacySettings {
   followingVisibility: 'public' | 'friends' | 'followers' | 'private';
 }
 
-export async function GET(request: NextRequest) {
-  try {
-    // Get the authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const idToken = authHeader.split('Bearer ')[1];
-    
-    if (!adminAuth) {
-      return NextResponse.json({ error: 'Authentication service unavailable' }, { status: 500 });
-    }
-    
-    const decodedToken = await adminAuth.verifyIdToken(idToken);
-    const userId = decodedToken.uid;
-
+export const GET = createAuthenticatedHandler(
+  async ({ authResult }) => {
     if (!adminDb) {
       return NextResponse.json({ error: 'Database service unavailable' }, { status: 500 });
     }
 
-    // Get user's privacy settings
-    const userDoc = await adminDb.collection('users').doc(userId).get();
+    const userDoc = await adminDb.collection('users').doc(authResult.userId).get();
     
     if (!userDoc.exists) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
@@ -44,31 +29,19 @@ export async function GET(request: NextRequest) {
     };
 
     return NextResponse.json({ privacySettings });
-  } catch (error) {
-    console.error('Error fetching privacy settings:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
+  },
+  { defaultError: 'Failed to fetch privacy settings' }
+);
 
-export async function POST(request: NextRequest) {
-  try {
-    // Get the authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+export const POST = createAuthenticatedHandler(
+  async ({ request, authResult }) => {
+    if (!adminDb) {
+      return NextResponse.json({ error: 'Database service unavailable' }, { status: 500 });
     }
 
-    const idToken = authHeader.split('Bearer ')[1];
-    
-    if (!adminAuth) {
-      return NextResponse.json({ error: 'Authentication service unavailable' }, { status: 500 });
-    }
-    
-    const decodedToken = await adminAuth.verifyIdToken(idToken);
-    const userId = decodedToken.uid;
+    const { data: body, error } = await parseRequestBody(request);
+    if (error) return error;
 
-    // Parse the request body
-    const body = await request.json();
     const { privacySettings }: { privacySettings: PrivacySettings } = body;
 
     // Validate privacy settings
@@ -86,12 +59,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid following visibility setting' }, { status: 400 });
     }
 
-    if (!adminDb) {
-      return NextResponse.json({ error: 'Database service unavailable' }, { status: 500 });
-    }
-
     // Update user's privacy settings
-    await adminDb.collection('users').doc(userId).update({
+    await adminDb.collection('users').doc(authResult.userId).update({
       privacySettings,
       updatedAt: FieldValue.serverTimestamp()
     });
@@ -100,8 +69,6 @@ export async function POST(request: NextRequest) {
       message: 'Privacy settings updated successfully',
       privacySettings 
     });
-  } catch (error) {
-    console.error('Error updating privacy settings:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
+  },
+  { defaultError: 'Failed to update privacy settings' }
+);

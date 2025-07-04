@@ -40,15 +40,11 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from '@/context/AuthContext';
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'; // Added useMemo
-import { getFriendships } from '@/services/userService';
-import { getUserCompletedPlans, getPendingPlanSharesForUser, getPendingPlanInvitationsCount } from '@/services/planService';
-import { getUserChats } from '@/services/chatService';
 import type { Chat, Plan, UserProfile, AppTimestamp, FeedPostVisibility, FeedPost, UserRoleType } from '@/types/user';
 import { isValid, parseISO } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { addPhotoHighlightAction } from '@/app/actions/planActions';
 import { FileValidators } from '@/lib/fileValidation';
-import { UpcomingPlansCalendar } from '@/components/plans/UpcomingPlansCalendar';
 import { PlanSummaryCards } from '@/components/plans/PlanSummaryCards';
 import { createFeedPostAction } from '@/app/actions/feedActions';
 import { cn, commonImageExtensions } from '@/lib/utils';
@@ -67,6 +63,10 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { GoogleMapsProvider } from '@/context/GoogleMapsContext';
+import { getFriendUidsAdmin } from '@/services/userService.server';
+import { getUserCompletedPlansAdmin, getPendingPlanSharesForUserAdmin, getPendingPlanInvitationsCountAdmin } from '@/services/planService.server';
+import { getUserChatsAdmin } from '@/services/chatService.server';
+import { UpcomingPlansCalendar } from '@/components/plans/UpcomingPlansCalendar';
 
 async function canvasPreview(
   image: HTMLImageElement,
@@ -165,6 +165,10 @@ export default function AppLayout({
       setProfileNotificationCount(0);
       return () => {};
     }
+    
+    // TODO: Replace with equivalent client-side functions or server actions
+    // Temporarily commented out due to removed service files
+    /*
     let unsubFriendRequests: (() => void) | undefined;
     let unsubPlanShares: (() => void) | undefined;
     let unsubPlanInvitations: (() => void) | undefined;
@@ -226,10 +230,18 @@ export default function AppLayout({
       if (unsubPlanInvitations) unsubPlanInvitations();
       if (unsubChats) unsubChats();
     };
+    */
+    
+    // Temporarily set all notifications to 0
+    setPlansNotificationCount(0);
+    setMessagesNotificationCount(0);
+    setProfileNotificationCount(0);
+    
+    return () => {};
   }, [currentUserId, profileExists, authLoading, user?.uid]);
 
   useEffect(() => {
-    if (authLoading) return; 
+    if (authLoading) return;
     const publicPaths = ['/login', '/signup', '/'];
     const isOnboardingRelated = pathname === '/onboarding';
     const isPublicDynamicRoute = pathname.startsWith('/p/') || pathname.startsWith('/u/'); 

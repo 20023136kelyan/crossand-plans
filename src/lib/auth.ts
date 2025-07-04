@@ -3,7 +3,7 @@ import { auth as firebaseAuth } from './firebase';
 import { cookies } from 'next/headers';
 import { authAdmin } from './firebaseAdmin';
 import type { Auth } from 'firebase-admin/auth';
-import { calculateUserPremiumStatus, calculateUserActivityScore } from '@/services/userService.admin';
+import { calculateUserPremiumStatus, calculateUserActivityScore } from '@/services/userService.server';
 
 export const auth = async () => {
   try {

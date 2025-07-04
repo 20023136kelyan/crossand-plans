@@ -7,6 +7,27 @@ import type { Plan } from '../../types/user';
 import { recordPlanCompletion, getCompletionStatus } from '../../services/planCompletionService.server';
 import { revalidatePath } from 'next/cache';
 
+// 🔤 Helper function for string similarity comparison
+function calculateStringSimilarity(str1: string, str2: string): number {
+  if (!str1 || !str2) return 0;
+  if (str1 === str2) return 1;
+  
+  // Convert to lowercase and split into words
+  const words1 = str1.toLowerCase().split(/\s+/).filter(Boolean);
+  const words2 = str2.toLowerCase().split(/\s+/).filter(Boolean);
+  
+  if (words1.length === 0 || words2.length === 0) return 0;
+  
+  // Calculate Jaccard similarity (intersection over union)
+  const set1 = new Set(words1);
+  const set2 = new Set(words2);
+  
+  const intersection = new Set([...set1].filter(x => set2.has(x)));
+  const union = new Set([...set1, ...set2]);
+  
+  return intersection.size / union.size;
+}
+
 export async function markPlanAsCompletedAction(
   planId: string,
   idToken: string
@@ -73,7 +94,7 @@ export async function markPlanAsCompletedAction(
       completionConfirmedBy.push(userId);
     }
 
-    // Check if this plan was copied from a template and if it has been modified
+    // 🧠 Enhanced smart duplicate detection for template creation
     let shouldCreateNewTemplate = true;
     
     if (planData.originalPlanId) {
@@ -83,35 +104,79 @@ export async function markPlanAsCompletedAction(
         if (originalPlanDoc.exists) {
           const originalPlan = originalPlanDoc.data() as Plan;
           
-          // Compare key template fields to see if this plan is essentially the same
-          const isUnmodified = (
-            planData.name === originalPlan.name &&
-            planData.description === originalPlan.description &&
-            planData.location === originalPlan.location &&
-            planData.city === originalPlan.city &&
+          // 🔍 Enhanced comparison logic with normalized data
+          const normalizeItineraryForComparison = (itinerary: any[]) => {
+            return itinerary.map(item => ({
+              placeName: item.placeName?.trim(),
+              description: item.description?.trim(),
+              address: item.address?.trim(),
+              googlePlaceId: item.googlePlaceId,
+              // Include activity type but ignore time-specific data
+              activityType: item.activityType,
+              estimatedDuration: item.estimatedDuration
+            })).filter(item => item.placeName); // Remove empty items
+          };
+
+          const isContentUnmodified = (
+            planData.name?.trim() === originalPlan.name?.trim() &&
+            planData.description?.trim() === originalPlan.description?.trim() &&
+            planData.location?.trim() === originalPlan.location?.trim() &&
+            planData.city?.trim() === originalPlan.city?.trim() &&
             planData.eventType === originalPlan.eventType &&
             planData.priceRange === originalPlan.priceRange &&
-            JSON.stringify(planData.itinerary.map(item => ({
-              placeName: item.placeName,
-              description: item.description,
-              address: item.address,
-              googlePlaceId: item.googlePlaceId
-            }))) === JSON.stringify(originalPlan.itinerary.map(item => ({
-              placeName: item.placeName,
-              description: item.description,
-              address: item.address,
-              googlePlaceId: item.googlePlaceId
-            })))
+            JSON.stringify(normalizeItineraryForComparison(planData.itinerary || [])) === 
+            JSON.stringify(normalizeItineraryForComparison(originalPlan.itinerary || []))
           );
           
-          if (isUnmodified && originalPlan.isTemplate) {
-            // Plan is unmodified from original template - don't create a new template
+          // 🎯 Smart logic: Don't create template if:
+          // 1. Content is unmodified AND original is already a template
+          // 2. OR if original was created by Crossand Team (admin templates)
+          if (isContentUnmodified && (
+            originalPlan.isTemplate || 
+            originalPlan.hostId === 'crossand-team' ||
+            originalPlan.creatorName === 'Crossand Team'
+          )) {
             shouldCreateNewTemplate = false;
+            console.log(`[markPlanAsCompletedAction] Skipping template creation - plan ${planId} is unmodified from original template/admin plan ${planData.originalPlanId}`);
           }
         }
       } catch (error) {
         console.warn('[markPlanAsCompletedAction] Could not check original plan for modifications:', error);
-        // If we can't check, err on the side of creating a template
+        // If we can't check, err on the side of creating a template to avoid losing potential value
+      }
+    }
+    
+    // 🔄 Additional check: Look for similar existing templates to prevent near-duplicates
+    if (shouldCreateNewTemplate) {
+      try {
+        const similarTemplatesQuery = await firestoreAdmin.collection(PLANS_COLLECTION)
+          .where('isTemplate', '==', true)
+          .where('city', '==', planData.city)
+          .where('eventType', '==', planData.eventType)
+          .where('status', '==', 'published')
+          .limit(50)
+          .get();
+
+        const similarTemplates = similarTemplatesQuery.docs.map(doc => doc.data() as Plan);
+        
+        // Check for very similar templates by name similarity
+        const currentName = planData.name?.toLowerCase().trim();
+        const hasSimilarTemplate = similarTemplates.some(template => {
+          const templateName = template.name?.toLowerCase().trim();
+          if (!templateName || !currentName) return false;
+          
+          // Check for high similarity (>80% similar or same words)
+          const similarity = calculateStringSimilarity(currentName, templateName);
+          return similarity > 0.8;
+        });
+        
+        if (hasSimilarTemplate) {
+          shouldCreateNewTemplate = false;
+          console.log(`[markPlanAsCompletedAction] Skipping template creation - similar template already exists for "${planData.name}" in ${planData.city}`);
+        }
+      } catch (error) {
+        console.warn('[markPlanAsCompletedAction] Could not check for similar templates:', error);
+        // Continue with template creation if similarity check fails
       }
     }
 
@@ -130,6 +195,7 @@ export async function markPlanAsCompletedAction(
       // Create a new template from this completed plan
       sanitizedUpdateData = {
         ...baseUpdateData,
+        status: 'published' as const, // ✅ CRITICAL FIX: Templates need 'published' status to be discoverable
         isTemplate: true, // Make completed plans available as templates
         // Clear personal data for template use
         participantUserIds: [],
@@ -138,6 +204,11 @@ export async function markPlanAsCompletedAction(
         // Keep original creator info for attribution (not host, as templates have no hosts)
         templateOriginalHostId: planData.hostId,
         templateOriginalHostName: planData.hostName,
+        // Ensure proper user attribution for user-generated templates
+        creatorName: planData.hostName, // Credit the original host as the creator
+        creatorAvatarUrl: planData.hostAvatarUrl, // ✅ Preserve original host avatar
+        creatorIsVerified: false, // ✅ User templates are not verified by default
+        authorId: planData.hostId, // New field for explicit author linkage
         // Clear waitlist and other personal data
         waitlistUserIds: [],
         privateNotes: null,
@@ -160,7 +231,9 @@ export async function markPlanAsCompletedAction(
         photoHighlights: planData.photoHighlights || [],
         // Preserve ratings and comments for templates
         averageRating: planData.averageRating,
-        reviewCount: planData.reviewCount
+        reviewCount: planData.reviewCount,
+        // New field for lineage
+        parentTemplateId: planData.originalPlanId || null,
       };
     } else {
       // Just mark as completed without converting to template

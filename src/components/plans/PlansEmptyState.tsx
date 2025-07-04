@@ -1,9 +1,9 @@
 'use client';
 
 import Link from "next/link";
-import { PackageOpen, Sparkles, Search, Calendar, X } from "lucide-react";
+import { PackageOpen, Search, Calendar, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { format } from "date-fns";
+import { format, isFuture } from "date-fns";
 
 interface PlansEmptyStateProps {
   title: string;
@@ -15,6 +15,7 @@ interface PlansEmptyStateProps {
   isDateFilterActive?: boolean;
   onClearSearch?: () => void;
   onClearFilters?: () => void;
+  activeTab?: 'upcoming' | 'past' | 'saved';
 }
 
 export function PlansEmptyState({ 
@@ -26,7 +27,8 @@ export function PlansEmptyState({
   isSearchActive = false,
   isDateFilterActive = false,
   onClearSearch,
-  onClearFilters
+  onClearFilters,
+  activeTab
 }: PlansEmptyStateProps) {
   
   // Determine the appropriate icon and styling based on context
@@ -34,8 +36,8 @@ export function PlansEmptyState({
     if (isSearchActive && searchQuery?.trim()) {
       return {
         icon: Search,
-        title: "No Results Found",
-        message: `No plans match "${searchQuery}"${isDateFilterActive && selectedDate ? ` for ${format(selectedDate, 'MMMM d, yyyy')}` : ''}`,
+        title: "🔍 Oops! Nothing Found",
+        message: `No magical plans match "${searchQuery}"${isDateFilterActive && selectedDate ? ` for ${format(selectedDate, 'MMMM d, yyyy')}` : ''}. But hey, that's an opportunity to create something amazing! ✨`,
         showCreate: false,
         actions: (
           <div className="flex flex-col sm:flex-row gap-3">
@@ -62,22 +64,42 @@ export function PlansEmptyState({
       };
     }
     
-    if (isDateFilterActive && selectedDate) {
+    if (isDateFilterActive && selectedDate && isFuture(selectedDate) && activeTab !== 'past') {
       return {
         icon: Calendar,
-        title: "No Plans on This Date",
-        message: `You don't have any plans scheduled for ${format(selectedDate, 'EEEE, MMMM d, yyyy')}`,
+        title: "📅 Free Day Ahead!",
+        message: `${format(selectedDate, 'EEEE, MMMM d, yyyy')} is completely open! Perfect time to plan something exciting and spontaneous! 🎉`,
         showCreate: true,
         actions: (
           <div className="flex flex-col sm:flex-row gap-3">
             {showCreateButton && (
-              <Button asChild size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium">
+              <Button asChild size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
                 <Link href="/plans/generate">
-                  <Sparkles className="w-5 h-5 mr-2" />
-                  Create New Plan
+                  ✨ Create Magic!
                 </Link>
               </Button>
             )}
+            <Button 
+              variant="outline" 
+              onClick={onClearFilters}
+              className="flex items-center gap-2"
+            >
+              <Calendar className="w-4 h-4" />
+              Show All Dates
+            </Button>
+          </div>
+        )
+      };
+    }
+    
+    if (isDateFilterActive && selectedDate && activeTab === 'past') {
+      return {
+        icon: Calendar,
+        title: "📚 No Past Plans",
+        message: `No completed plans found for ${format(selectedDate, 'EEEE, MMMM d, yyyy')}. Your adventure history for this date is empty.`,
+        showCreate: false,
+        actions: (
+          <div className="flex flex-col sm:flex-row gap-3">
             <Button 
               variant="outline" 
               onClick={onClearFilters}
@@ -98,10 +120,9 @@ export function PlansEmptyState({
       message,
       showCreate: showCreateButton,
       actions: showCreateButton ? (
-        <Button asChild size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium">
+        <Button asChild size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
           <Link href="/plans/generate">
-            <Sparkles className="w-5 h-5 mr-2" />
-            Create New Plan
+            🌟 Start Planning!
           </Link>
         </Button>
       ) : null

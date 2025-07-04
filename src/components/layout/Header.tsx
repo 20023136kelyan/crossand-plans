@@ -1,4 +1,3 @@
-
 'use client';
 
 import Link from 'next/link';
@@ -10,8 +9,8 @@ import { Bell, X } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useSettings } from '@/context/SettingsContext';
-import { getFriendships } from '@/services/userService';
-import { getPendingPlanSharesForUser, getPendingPlanInvitationsCount, getCompletedPlansForParticipant } from '@/services/planService';
+import { getFriendships, getPendingPlanSharesForUser, getPendingPlanInvitationsCount, getCompletedPlansForParticipant } from '@/services/clientServices';
+
 import {
   DropdownMenu,
   DropdownMenuContent,

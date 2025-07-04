@@ -1,15 +1,18 @@
 
 // src/services/chatService.server.ts
 import { firestoreAdmin } from '@/lib/firebaseAdmin';
-import type { Chat, ChatMessage, ChatParticipantInfo, ChatType, UserProfile, UserRoleType } from '@/types/user';
+import type { Chat, ChatMessage, ChatMessageCreate, ChatParticipantInfo, ChatType, UserProfile, UserRoleType } from '@/types/user';
 import { FieldValue, Timestamp as AdminTimestamp } from 'firebase-admin/firestore';
+import { FirebaseQueryBuilder, COLLECTIONS, SUBCOLLECTIONS } from '@/lib/data/core/QueryBuilder';
 
-const CHATS_COLLECTION = 'chats';
-const MESSAGES_SUBCOLLECTION = 'messages';
+// Legacy constants for backward compatibility
+const CHATS_COLLECTION = COLLECTIONS.CHATS;
+const MESSAGES_SUBCOLLECTION = SUBCOLLECTIONS.MESSAGES;
 
 interface ProcessedBasicUserInfoForChat {
   uid: string;
   name: string; 
+  username?: string; // Added to match ChatParticipantInfo interface
   avatarUrl: string | null;
   role: UserRoleType | null;
   isVerified: boolean;
@@ -31,14 +34,16 @@ export const createDirectChatAdmin = async (
   const participantInfo: ChatParticipantInfo[] = [
     { 
       uid: currentUserProcessedInfo.uid, 
-      name: currentUserProcessedInfo.name, 
+      name: currentUserProcessedInfo.name,
+      username: currentUserProcessedInfo.username || '',
       avatarUrl: currentUserProcessedInfo.avatarUrl,
       role: currentUserProcessedInfo.role,
       isVerified: currentUserProcessedInfo.isVerified
     },
     { 
       uid: friendProcessedInfo.uid, 
-      name: friendProcessedInfo.name, 
+      name: friendProcessedInfo.name,
+      username: friendProcessedInfo.username || '',
       avatarUrl: friendProcessedInfo.avatarUrl,
       role: friendProcessedInfo.role,
       isVerified: friendProcessedInfo.isVerified
@@ -48,7 +53,7 @@ export const createDirectChatAdmin = async (
   const initialReadTimestamps: { [userId: string]: AdminTimestamp } = {};
 
   try {
-    const newChatDocRef = await firestoreAdmin.collection(CHATS_COLLECTION).add({
+    const newChatDocRef = await FirebaseQueryBuilder.collection(COLLECTIONS.CHATS).add({
       participants: participantsArray,
       participantInfo,
       type: 'direct' as ChatType,
@@ -71,17 +76,13 @@ export const getExistingDirectChatIdAdmin = async (
   currentUserUid: string,
   friendUid: string
 ): Promise<string | null> => {
-  if (!firestoreAdmin) {
-    console.error("[getExistingDirectChatIdAdmin] Firestore Admin SDK is not initialized.");
-    throw new Error("Firestore Admin SDK not available");
-  }
+
   console.log(`[getExistingDirectChatIdAdmin] Checking for existing chat between ${currentUserUid} and ${friendUid}`);
   const participantsArray = [currentUserUid, friendUid].sort();
-  const chatsRef = firestoreAdmin.collection(CHATS_COLLECTION);
-  const q = chatsRef
-    .where('type', '==', 'direct' as ChatType)
-    .where('participants', '==', participantsArray)
-    .limit(1);
+  const q = FirebaseQueryBuilder.getFilteredQuery(COLLECTIONS.CHATS, {
+    type: 'direct' as ChatType,
+    participants: participantsArray
+  }, { limit: 1 });
   try {
     const querySnapshot = await q.get();
     if (!querySnapshot.empty) {
@@ -97,12 +98,8 @@ export const getExistingDirectChatIdAdmin = async (
 };
 
 export const deleteChatAdmin = async (chatId: string, requestingUserId: string): Promise<void> => {
-  if (!firestoreAdmin) {
-    console.error("[deleteChatAdmin] Firestore Admin SDK is not initialized.");
-    throw new Error("Firestore Admin SDK not available");
-  }
   console.log(`[deleteChatAdmin] Attempting to delete chat ${chatId} by user ${requestingUserId}`);
-  const chatDocRef = firestoreAdmin.collection(CHATS_COLLECTION).doc(chatId);
+  const chatDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.CHATS, chatId);
   try {
     const chatDocSnap = await chatDocRef.get();
     if (!chatDocSnap.exists) {
@@ -117,14 +114,14 @@ export const deleteChatAdmin = async (chatId: string, requestingUserId: string):
 
     const messagesCollectionRef = chatDocRef.collection(MESSAGES_SUBCOLLECTION);
     const messagesSnapshot = await messagesCollectionRef.limit(500).get(); 
-    let batch = firestoreAdmin.batch();
+    let batch = firestoreAdmin!.batch();
     let count = 0;
     for (const doc of messagesSnapshot.docs) {
         batch.delete(doc.ref);
         count++;
         if (count >= 499) { 
             await batch.commit();
-            batch = firestoreAdmin.batch();
+            batch = firestoreAdmin!.batch();
             count = 0;
         }
     }
@@ -147,10 +144,6 @@ export const sendMessageAdmin = async (
   mediaUrl?: string | null,
   mediaContentType?: string | null 
 ): Promise<void> => {
-  if (!firestoreAdmin) {
-    console.error("[sendMessageAdmin] Firestore Admin SDK is not initialized.");
-    throw new Error("Firestore Admin SDK not available");
-  }
    if ((!text || !text.trim()) && !mediaUrl) {
     console.error("[sendMessageAdmin] Message text or mediaUrl must be provided.");
     throw new Error("Message text or mediaUrl must be provided.");
@@ -158,13 +151,14 @@ export const sendMessageAdmin = async (
   console.log(`[sendMessageAdmin] Received parameters: chatId=${chatId}, senderId=${senderId}, text=${text ? text.substring(0,20)+"..." : 'N/A'}, mediaUrl=${mediaUrl}, mediaContentType=${mediaContentType}`);
 
   try {
-    const chatDocRef = firestoreAdmin.collection(CHATS_COLLECTION).doc(chatId);
-    const messagesSubCollectionRef = chatDocRef.collection(MESSAGES_SUBCOLLECTION);
+    const chatDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.CHATS, chatId);
+    const messagesSubCollectionRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.CHATS, chatId, SUBCOLLECTIONS.MESSAGES);
     const nowServerTimestamp = FieldValue.serverTimestamp();
 
-    const batch = firestoreAdmin.batch();
+    const batch = firestoreAdmin!.batch();
 
-    const messagePayload: Partial<ChatMessage> & { timestamp: FirebaseFirestore.FieldValue } = {
+    // Create message payload with server timestamp
+    const messagePayload: ChatMessageCreate = {
       senderId,
       timestamp: nowServerTimestamp,
       hiddenBy: [], // Initialize hiddenBy as empty array
@@ -209,13 +203,9 @@ export const markChatAsFullyReadAdmin = async (
   chatId: string,
   userId: string
 ): Promise<void> => {
-  if (!firestoreAdmin) {
-    console.error("[markChatAsFullyReadAdmin] Firestore Admin SDK is not initialized.");
-    throw new Error("Firestore Admin SDK not available");
-  }
   console.log(`[markChatAsFullyReadAdmin] Marking chat ${chatId} as read for user ${userId}.`);
   try {
-    const chatDocRef = firestoreAdmin.collection(CHATS_COLLECTION).doc(chatId);
+    const chatDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.CHATS, chatId);
     const now = FieldValue.serverTimestamp(); 
     await chatDocRef.update({
       [`participantReadTimestamps.${userId}`]: now,
@@ -229,13 +219,9 @@ export const markChatAsFullyReadAdmin = async (
 };
 
 export const hideMessageForUserAdmin = async (chatId: string, messageId: string, userId: string): Promise<void> => {
-  if (!firestoreAdmin) {
-    console.error("[hideMessageForUserAdmin] Firestore Admin SDK is not initialized.");
-    throw new Error("Firestore Admin SDK not available");
-  }
   console.log(`[hideMessageForUserAdmin] User ${userId} hiding message ${messageId} in chat ${chatId}.`);
   try {
-    const messageDocRef = firestoreAdmin.collection(CHATS_COLLECTION).doc(chatId).collection(MESSAGES_SUBCOLLECTION).doc(messageId);
+    const messageDocRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.CHATS, chatId, SUBCOLLECTIONS.MESSAGES).doc(messageId);
     
     // Atomically add the userId to the 'hiddenBy' array.
     // If 'hiddenBy' doesn't exist, it will be created.

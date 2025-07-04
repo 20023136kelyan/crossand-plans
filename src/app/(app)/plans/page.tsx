@@ -30,20 +30,20 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import {
-  Edit3, Trash2, Share2, CalendarDays, MapPin, Eye,
+  Edit3, Trash2, Share2, MapPin, Eye,
   Users as UsersIcon, MailQuestion, UserCheck, History, MoreVertical,
-  ChevronDown, ChevronUp, Loader2, Star, ListChecks, CheckCircle2, CheckCircle,
-  Mail, FileText, Clock, Users
+  ChevronDown, ChevronUp, Loader2, ListChecks, CheckCircle,
+  Users, Sparkles
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
-import React, { useState, useMemo, useEffect, useCallback, useContext } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useContext, useRef } from 'react';
 import { cn } from "@/lib/utils";
-import { format, isSameDay, startOfMonth, parseISO, isFuture, isPast, isValid, startOfDay, endOfWeek, endOfMonth, isWithinInterval, subDays } from 'date-fns';
+import { format, isSameDay, startOfMonth, parseISO, isFuture, isPast, isValid, startOfDay, endOfWeek, endOfMonth, isWithinInterval, subDays, differenceInHours } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
-import { getUserPlans, getPendingPlanSharesForUser, getPlanById } from '@/services/planService';
-import { getUserSavedPlans } from '@/services/userService';
-import { getGooglePlacePhotoUrl } from '@/utils/googleMapsHelpers';
+import { getUserPlans, getPendingPlanSharesForUser, getPlanById } from '@/services/clientServices';
+// getUserSavedPlans moved to server actions
+import { PlanImageLoader } from '@/components/plans/PlanImageLoader';
 import { deletePlanAction, acceptPlanShareAction, declinePlanShareAction } from '@/app/actions/planActions';
 import { markPlanAsCompletedAction, confirmPlanCompletionAction } from '@/app/actions/planCompletionActions';
 import type { Plan as PlanType, PlanShare, RSVPStatusType, UserRoleType } from '@/types/user';
@@ -55,6 +55,8 @@ import { PlansPageHeader } from '@/components/plans/PlansPageHeader';
 import { PlansEmptyState } from '@/components/plans/PlansEmptyState';
 import { HorizontalPlanCards } from '@/components/plans/HorizontalPlanCards';
 import { HorizontalListPlanCard } from '@/components/plans/HorizontalListPlanCard';
+import { getPostComments, getUserProfile, getUserPlansSubscription, getUserSavedPlans } from '@/services/clientServices';
+import { FriendPickerDialog } from '@/components/messages/FriendPickerDialog';
 
 // Define UserPlanViewStatus enum and its configuration
 export enum UserPlanViewStatus {
@@ -69,7 +71,7 @@ export const userPlanViewStatusConfig: Record<UserPlanViewStatus, { label: strin
   [UserPlanViewStatus.INVITED_TO_PLAN]: { label: 'Invitation', icon: MailQuestion, badgeVariant: 'primary' },
   [UserPlanViewStatus.MY_DRAFT_UPCOMING]: { label: 'Draft', icon: Edit3, badgeVariant: 'outline' },
   [UserPlanViewStatus.MY_AWAITING_RESPONSES]: { label: 'Awaiting Confirmations', icon: UsersIcon, badgeVariant: 'secondary' },
-  [UserPlanViewStatus.MY_CONFIRMED_READY]: { label: 'Confirmed & Ready', icon: CheckCircle2, badgeVariant: 'default' },
+  [UserPlanViewStatus.MY_CONFIRMED_READY]: { label: 'Confirmed & Ready', icon: CheckCircle, badgeVariant: 'default' },
   [UserPlanViewStatus.COMPLETED]: { label: 'Completed', icon: History, badgeVariant: 'outline' },
 };
 
@@ -87,7 +89,9 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
   const [displayStatus, setDisplayStatus] = useState<UserPlanViewStatus | null>(null);
   const [isClient, setIsClient] = useState(false);
   const [itineraryBrief, setItineraryBrief] = useState<string | null>(null);
-  const [imageError, setImageError] = useState(false);
+
+  const [timeUrgency, setTimeUrgency] = useState<'urgent' | 'soon' | 'normal'>('normal');
+  const [completionPercentage, setCompletionPercentage] = useState<number>(0);
 
   const isHost = plan.hostId === currentUserUid;
   const isInvited = (plan.invitedParticipantUserIds || []).includes(currentUserUid || '');
@@ -156,6 +160,30 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
     }
     setItineraryBrief(brief);
 
+    // Calculate time urgency for upcoming plans
+    if (planEventDate && isFuture(planEventDate)) {
+      const hoursToEvent = differenceInHours(planEventDate, new Date());
+      if (hoursToEvent <= 2) {
+        setTimeUrgency('urgent');
+      } else if (hoursToEvent <= 24) {
+        setTimeUrgency('soon');
+      } else {
+        setTimeUrgency('normal');
+      }
+    }
+
+    // Calculate completion percentage for drafts
+    if (plan.status === 'draft') {
+      let score = 0;
+      if (plan.name) score += 20;
+      if (plan.description) score += 15;
+      if (plan.eventTime) score += 20;
+      if (plan.location) score += 15;
+      if (plan.itinerary?.length > 0) score += 20;
+      if (plan.invitedParticipantUserIds?.length > 0) score += 10;
+      setCompletionPercentage(score);
+    }
+
   }, [plan, currentUserUid]);
 
   if (!isClient) {
@@ -184,63 +212,25 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
     );
   }
 
-  const StatusIcon = displayStatus ? userPlanViewStatusConfig[displayStatus]?.icon : CalendarDays;
+  const StatusIcon = displayStatus ? userPlanViewStatusConfig[displayStatus]?.icon : CheckCircle;
   const statusBadgeVariant = displayStatus ? userPlanViewStatusConfig[displayStatus]?.badgeVariant : 'outline';
   const statusLabel = displayStatus ? userPlanViewStatusConfig[displayStatus]?.label : (plan.status ? (plan.status.charAt(0).toUpperCase() + plan.status.slice(1)) : "Status Unknown");
 
-  const staticMapApiKeyConst = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-  let planImageSrc = `https://placehold.co/80x80.png?text=${encodeURIComponent(plan.name ? plan.name.substring(0, 10) : 'Plan')}&font=Montserrat`;
-  let imageHint = plan.eventType || 'event';
-
-  if (plan.photoHighlights && plan.photoHighlights.length > 0 && plan.photoHighlights[0]) {
-    planImageSrc = plan.photoHighlights[0];
-    imageHint = 'plan highlight';
-  } else {
-    const firstItineraryItemWithImage = plan.itinerary?.find(item => item.googlePhotoReference || item.googleMapsImageUrl);
-    if (firstItineraryItemWithImage?.googlePhotoReference && typeof firstItineraryItemWithImage.googlePhotoReference === 'string' && firstItineraryItemWithImage.googlePhotoReference.trim() !== '') {
-      if (staticMapApiKeyConst) {
-          // Check if it's already a direct URL (from place-autocomplete)
-          if (firstItineraryItemWithImage.googlePhotoReference.startsWith('http://') || firstItineraryItemWithImage.googlePhotoReference.startsWith('https://')) {
-            planImageSrc = firstItineraryItemWithImage.googlePhotoReference;
-          } else {
-            // Use Google Place photo reference
-            planImageSrc = getGooglePlacePhotoUrl(firstItineraryItemWithImage.googlePhotoReference, 160, undefined, staticMapApiKeyConst);
-          }
-          imageHint = firstItineraryItemWithImage.types?.[0] || imageHint;
-        } else {
-          if (isClient) console.warn(`[PlanCard] NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is missing for Google Place Photo. Plan: ${plan.name}`);
-        }
-    } else if (firstItineraryItemWithImage?.googleMapsImageUrl) {
-        planImageSrc = firstItineraryItemWithImage.googleMapsImageUrl;
-        imageHint = 'map location';
-    }
-  }
   const hostInitial = plan.hostName ? plan.hostName.charAt(0).toUpperCase() : (plan.hostId ? plan.hostId.charAt(0).toUpperCase() : '?');
-  const placeholderImageUrl = `https://placehold.co/80x80.png?text=${encodeURIComponent(plan.name ? plan.name.substring(0,10) : 'Img')}&font=Montserrat`;
 
   return (
-    <Card className="group relative overflow-hidden bg-card border border-border/20 rounded-2xl transition-all duration-200 hover:shadow-lg hover:border-border/40">
+    <Card className="group relative overflow-hidden bg-card border border-border/20 rounded-2xl transition-all duration-300 hover:shadow-xl hover:border-primary/30 hover:scale-[1.01] cursor-pointer">
       <div className="flex flex-col sm:flex-row">
         {/* Image Section */}
         <div className="relative w-full h-40 sm:h-auto sm:w-40 flex-shrink-0 overflow-hidden">
-          {imageError ? (
-            <img
-              src={placeholderImageUrl}
-              alt={plan.name || 'Placeholder image'}
-              className="h-full w-full object-cover"
-              data-ai-hint="placeholder fallback"
-            />
-          ) : (
-            <Image
-              src={planImageSrc}
-              alt={plan.name || 'Plan image'}
-              fill
-              className="object-cover transition-transform duration-200 group-hover:scale-105"
-              data-ai-hint={imageHint}
-              unoptimized={planImageSrc.includes('maps.googleapis.com')}
-              onError={() => setImageError(true)}
-            />
-          )}
+          <PlanImageLoader
+            plan={plan}
+            width={160}
+            height={160}
+            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+            altText={plan.name || 'Plan image'}
+            priority={false}
+          />
           {/* Event & Status Badges */}
           <div className="absolute top-2 left-2 space-y-1">
             {plan.eventType && (
@@ -254,7 +244,29 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
                 <span className="truncate text-[10px]">{statusLabel}</span>
               </Badge>
             )}
+            {/* Time urgency indicator */}
+            {timeUrgency === 'urgent' && (
+              <Badge variant="destructive" className="text-xs px-2 py-1 border-0 animate-bounce shadow-lg">
+                🚀 Starting Soon!
+              </Badge>
+            )}
+            {timeUrgency === 'soon' && (
+              <Badge className="text-xs px-2 py-1 bg-accent text-accent-foreground border-0 shadow-md animate-pulse">
+                ⭐ Today's Fun!
+              </Badge>
+            )}
           </div>
+          
+          {/* Participant count indicator */}
+          {(plan.invitedParticipantUserIds?.length > 0 || plan.participantUserIds?.length > 1) && (
+            <div className="absolute top-2 right-2">
+              <Badge className="text-xs px-2 py-1 bg-secondary text-secondary-foreground border-0 flex items-center shadow-md hover:shadow-lg transition-all duration-200 hover:scale-105">
+                <Users className="h-3 w-3 mr-1" />
+                {(plan.invitedParticipantUserIds?.length || 0) + 1}
+                {(plan.invitedParticipantUserIds?.length || 0) + 1 > 3 && <span className="ml-1">🎉</span>}
+              </Badge>
+            </div>
+          )}
         </div>
 
         {/* Content Section */}
@@ -355,10 +367,10 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
           </div>
 
           {/* Rating or Brief */}
-          <div className="flex items-start text-sm text-muted-foreground">
+          <div className="flex items-start text-sm text-muted-foreground mb-2">
             {(plan.averageRating !== undefined && plan.averageRating !== null && typeof plan.averageRating === 'number') ? (
               <div className="flex items-center">
-                <Star className="h-4 w-4 mr-1 text-amber-400 fill-amber-400 flex-shrink-0" />
+                <span className="text-amber-400 mr-1">⭐</span>
                 <span>{plan.averageRating.toFixed(1)} ({plan.reviewCount || 0})</span>
               </div>
             ) : itineraryBrief ? (
@@ -369,11 +381,71 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
             ) : (
               plan.eventTime && isValid(parseISO(plan.eventTime)) && isPast(parseISO(plan.eventTime)) && 
               <div className="flex items-center">
-                <Star className="h-4 w-4 mr-2 text-muted-foreground/50"/> 
+                <span className="text-muted-foreground/50 mr-2">⭐</span> 
                 <span>No reviews yet</span>
               </div>
             )}
           </div>
+
+          {/* Draft completion progress */}
+          {plan.status === 'draft' && completionPercentage > 0 && (
+            <div className="mb-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                <span className="flex items-center gap-1">
+                  ✨ Plan progress 
+                  {completionPercentage >= 80 && <span>🎯</span>}
+                  {completionPercentage >= 50 && completionPercentage < 80 && <span>📝</span>}
+                  {completionPercentage < 50 && <span>🌱</span>}
+                </span>
+                <span className="font-medium">{completionPercentage}%</span>
+              </div>
+              <div className="w-full bg-muted rounded-full h-2 shadow-inner">
+                <div 
+                  className={cn(
+                    "h-2 rounded-full transition-all duration-500 relative overflow-hidden shadow-sm",
+                    completionPercentage >= 80 ? "bg-green-600 dark:bg-green-500" :
+                    completionPercentage >= 50 ? "bg-yellow-500 dark:bg-yellow-400" : 
+                    "bg-primary"
+                  )}
+                  style={{ width: `${completionPercentage}%` }}
+                >
+                  {completionPercentage > 20 && (
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* RSVP Status for published plans */}
+          {plan.status === 'published' && plan.invitedParticipantUserIds?.length > 0 && (
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">RSVP Status:</span>
+              <div className="flex gap-1">
+                {(() => {
+                  const responses = plan.participantResponses || {};
+                  const allParticipants = [plan.hostId, ...(plan.invitedParticipantUserIds || [])];
+                  const going = allParticipants.filter(uid => responses[uid] === 'going' || uid === plan.hostId).length;
+                  const pending = allParticipants.filter(uid => !responses[uid] || responses[uid] === 'pending').length;
+                  
+                  return (
+                    <>
+                      {going > 0 && (
+                        <Badge className="h-4 px-1 text-[10px] bg-green-600 dark:bg-green-500 text-white shadow-sm">
+                          🎉 {going}
+                        </Badge>
+                      )}
+                      {pending > 0 && (
+                        <Badge className="h-4 px-1 text-[10px] bg-yellow-500 text-white shadow-sm animate-pulse">
+                          ⏳ {pending}
+                        </Badge>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Date & Status Section */}
@@ -404,8 +476,8 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
               <div className="text-[10px] text-muted-foreground mt-1">Guide</div>
               {plan.averageRating && (
                 <div className="flex items-center text-[10px] text-amber-600 mt-1">
- <Star className="h-2.5 w-2.5 mr-0.5 fill-current" />
- {plan.averageRating.toFixed(1)}
+                  <span className="text-amber-600 mr-0.5">⭐</span>
+                  {plan.averageRating.toFixed(1)}
                 </div>
               )}
             </div>
@@ -516,17 +588,108 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
                      title.toLowerCase().includes('confirmed') ? 'confirmedReady' :
                      title.toLowerCase().includes('draft') ? 'drafts' : 'upcoming';
   
-  // Get appropriate icon for section
-  const getSectionIcon = (title: string) => {
-    if (title.toLowerCase().includes('invitation')) return Mail;
-    if (title.toLowerCase().includes('draft')) return FileText;
-    if (title.toLowerCase().includes('awaiting')) return Clock;
-    if (title.toLowerCase().includes('confirmed')) return CheckCircle2;
-    if (title.toLowerCase().includes('saved templates')) return Star;
-    return CalendarDays;
+  // Generate personalized end-of-section message
+  const getEndOfSectionMessage = (title: string, planCount: number) => {
+    const titleLower = title.toLowerCase();
+    
+    // Upcoming tab sections
+    if (titleLower.includes('shared with you')) {
+      return `🎁 That's all the plans shared with you right now! Keep exploring to discover new adventures.`;
+    }
+    if (titleLower.includes('invitation')) {
+      return `📮 You're all caught up on invitations! Time to RSVP and start planning some fun.`;
+    }
+    if (titleLower.includes('awaiting')) {
+      return `⏳ All your plans awaiting responses are shown above. Your guests will love these ideas!`;
+    }
+    if (titleLower.includes('confirmed')) {
+      return `🎉 These are all your confirmed plans! Get excited - great times are ahead.`;
+    }
+    
+    // Past tab sections  
+    if (titleLower.includes('completed today')) {
+      return `✨ What a productive day! You've completed ${planCount} plan${planCount !== 1 ? 's' : ''} today.`;
+    }
+    if (titleLower.includes('this week')) {
+      return `🌟 Amazing week of adventures! You've been quite busy making memories.`;
+    }
+    if (titleLower.includes('this month')) {
+      return `📅 Look at all those completed plans from this month! You're creating quite the adventure story.`;
+    }
+    if (titleLower.includes('earlier')) {
+      return `📚 These are your earlier adventures - what a journey you've been on! Each plan tells a story.`;
+    }
+    
+    // Saved tab sections
+    if (titleLower.includes('recent drafts')) {
+      return `📝 You're up to date with your recent drafts! Ready to turn these ideas into reality?`;
+    }
+    if (titleLower.includes('ready to publish')) {
+      return `🚀 These drafts are polished and ready! Time to hit publish and make them happen.`;
+    }
+    if (titleLower.includes('in progress')) {
+      return `⚡ Keep up the great work on these plans! Each detail brings you closer to an amazing experience.`;
+    }
+    if (titleLower.includes('ideas & concepts')) {
+      return `💡 Every great plan starts with a spark! These ideas have potential - nurture them when inspiration strikes.`;
+    }
+    if (titleLower.includes('recently saved')) {
+      return `⭐ These are your latest discoveries! Great taste in saving quality plans for future adventures.`;
+    }
+    if (titleLower.includes('top rated')) {
+      return `🌟 You've got excellent taste! These highly-rated templates are proven crowd-pleasers.`;
+    }
+    if (titleLower.includes('food & dining')) {
+      return `🍽️ Bon appétit! You've got all the best culinary adventures saved up for delicious times ahead.`;
+    }
+    if (titleLower.includes('adventure & outdoors')) {
+      return `🏞️ Adventure awaits! These outdoor plans will fuel your wanderlust and create unforgettable memories.`;
+    }
+    if (titleLower.includes('arts & culture')) {
+      return `🎨 How cultured! These artistic experiences will feed your soul and broaden your horizons.`;
+    }
+    if (titleLower.includes('nightlife')) {
+      return `🌙 Ready to paint the town! These nightlife plans promise unforgettable evenings out.`;
+    }
+    if (titleLower.includes('shopping')) {
+      return `🛍️ Shop 'til you drop! These retail therapy sessions are perfectly curated for your next spree.`;
+    }
+    if (titleLower.includes('other templates')) {
+      return `📋 You've explored every corner of your saved templates! Quite the diverse collection of experiences.`;
+    }
+    
+    // Default fallback
+    return `✨ You've reached the end of this section! Great job staying organized with your plans.`;
   };
   
-  const SectionIcon = getSectionIcon(title);
+  // Get appropriate emoji for section
+  const getSectionEmoji = (title: string) => {
+    // Check if title already starts with an emoji - if so, return empty string to avoid duplicates
+    const emojiRegex = /^[\u{1F600}-\u{1F64F}]|^[\u{1F300}-\u{1F5FF}]|^[\u{1F680}-\u{1F6FF}]|^[\u{1F1E0}-\u{1F1FF}]|^[\u{2600}-\u{26FF}]|^[\u{2700}-\u{27BF}]|^[\u{2B00}-\u{2BFF}]|^[\u{3000}-\u{303F}]|^[\u{1F900}-\u{1F9FF}]/u;
+    if (emojiRegex.test(title)) return '';
+    
+    if (title.toLowerCase().includes('invitation')) return '💌';
+    if (title.toLowerCase().includes('draft')) return '📝';
+    if (title.toLowerCase().includes('awaiting')) return '⏳';
+    if (title.toLowerCase().includes('confirmed')) return '✅';
+    if (title.toLowerCase().includes('saved templates')) return '⭐';
+    if (title.toLowerCase().includes('shared')) return '🤝';
+    if (title.toLowerCase().includes('this week')) return '📅';
+    if (title.toLowerCase().includes('today')) return '🎯';
+    if (title.toLowerCase().includes('tomorrow')) return '⏰';
+    if (title.toLowerCase().includes('month')) return '📆';
+    if (title.toLowerCase().includes('earlier')) return '📜';
+    if (title.toLowerCase().includes('recent')) return '✨';
+    if (title.toLowerCase().includes('template')) return '🌟';
+    if (title.toLowerCase().includes('food') || title.toLowerCase().includes('dining')) return '🍽️';
+    if (title.toLowerCase().includes('adventure')) return '🏔️';
+    if (title.toLowerCase().includes('culture')) return '🎭';
+    if (title.toLowerCase().includes('nightlife')) return '🌙';
+    if (title.toLowerCase().includes('shopping')) return '🛍️';
+    return '📋';
+  };
+  
+  const sectionEmoji = getSectionEmoji(title);
   
   const plansToShowHorizontally = useMemo(() => {
     if (!plans || plans.length === 0) return [];
@@ -541,8 +704,14 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
   if (isLoading && (!plans || plans.length === 0)) { 
     return (
       <div className="mt-6 mb-8">
-        <div className="flex justify-between items-center mb-3 pb-1 border-b border-border">
-          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+        <div className="flex justify-between items-center mb-3">
+          <div className="flex items-center gap-2 bg-primary/10 rounded-full px-3 py-1.5">
+            <span className="text-base opacity-50 animate-pulse">📋</span>
+            <h2 className="text-base font-medium text-foreground">{title}</h2>
+            <span className="bg-muted text-muted-foreground px-2.5 py-0.5 rounded-full text-xs font-medium animate-pulse">
+              ...
+            </span>
+          </div>
         </div>
         <div className="relative mt-3 space-y-3">
           {[...Array(1)].map((_, index) => ( // Show one skeleton card for loading
@@ -579,31 +748,34 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
   
   return (
     <div className="mt-6 mb-8">
-       <div className="flex justify-between items-center mb-4 pb-1 border-b border-border">
-        <div className="flex items-center gap-2">
-          <SectionIcon className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold text-foreground">{title} ({plans.length})</h2>
+       <div className="flex justify-between items-center mb-3">
+        <div className="flex items-center gap-2 bg-primary/10 rounded-full px-3 py-1.5 shadow-sm hover:shadow-md transition-all duration-300 hover:scale-[1.02] hover:bg-primary/15">
+          <span className="text-base">{sectionEmoji}</span>
+          <h2 className="text-base font-medium text-foreground">{title}</h2>
+          <span className="bg-primary text-primary-foreground px-2.5 py-0.5 rounded-full text-xs font-medium shadow-sm hover:shadow-md transition-all duration-200 hover:scale-105">
+            {plans.length}
+          </span>
         </div>
         {plans.length > 0 && (
            <Button
             variant="ghost"
             size="sm"
             onClick={onToggleExpand}
-            className="h-7 p-1 text-xs text-white hover:text-primary-foreground hover:bg-primary/90 transition-colors"
+            className="h-8 px-3 text-xs text-primary hover:text-primary-foreground hover:bg-primary transition-all duration-300 rounded-full shadow-sm hover:shadow-md hover:scale-105 font-medium"
             aria-label={isExpanded ? `Collapse ${title} section` : `View all ${plans.length} items in ${title}`}
           >
             {isExpanded ? (
               <>
                 <ChevronUp className="h-4 w-4 mr-1" />
-                Collapse
+                Show Less
               </>
             ) : (
               <>
                 <ChevronDown className="h-4 w-4 mr-1" />
                 View All
                 {extraCount > 0 && (
-                  <span className="ml-2 bg-primary/20 text-white px-2 rounded-full text-[10px] font-medium">
-                    +{formattedExtraCount} more
+                  <span className="ml-2 bg-accent text-accent-foreground px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm">
+                    +{formattedExtraCount} more!
                   </span>
                 )}
               </>
@@ -623,19 +795,29 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
           {plans.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-3">{emptyMessage}</p>
           ) : (
-            <div className="space-y-3 mt-3 pb-2">
-              {plans.map((plan, index) => (
-                <div
-                  key={plan.id}
-                  className="transform transition-all duration-300 ease-out"
-                  style={{
-                    transitionDelay: `${index * 50}ms`,
-                  }}
-                >
-                  <HorizontalListPlanCard plan={plan} currentUserUid={currentUserUid} />
+            <>
+              <div className="space-y-3 mt-3 pb-2">
+                {plans.map((plan, index) => (
+                  <div
+                    key={plan.id}
+                    className="transform transition-all duration-300 ease-out"
+                    style={{
+                      transitionDelay: `${index * 50}ms`,
+                    }}
+                  >
+                    <HorizontalListPlanCard plan={plan} currentUserUid={currentUserUid} />
+                  </div>
+                ))}
+              </div>
+              {/* End of section message */}
+              {plans.length > 0 && (
+                <div className="text-center py-4 mt-2 opacity-60 transition-opacity duration-300 hover:opacity-80">
+                  <p className="text-xs text-muted-foreground italic leading-relaxed max-w-md mx-auto">
+                    {getEndOfSectionMessage(title, plans.length)}
+                  </p>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
 
@@ -661,7 +843,7 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
 });
 PlanStackSection.displayName = 'PlanStackSection';
 
-// Mixed Status Priority + Hybrid Ranking Logic
+// Enhanced Smart Ranking Logic
 const getRankedPlansForSection = (plans: PlanType[], sectionType: string) => {
   const now = new Date();
   const today = startOfDay(now);
@@ -672,9 +854,28 @@ const getRankedPlansForSection = (plans: PlanType[], sectionType: string) => {
     .map(plan => ({
       ...plan,
       priority: calculatePriority(plan, sectionType, today, endOfWeekDate, endOfMonthDate),
-      eventDate: plan.eventTime ? parseISO(plan.eventTime) : null
+      eventDate: plan.eventTime ? parseISO(plan.eventTime) : null,
+      // Add enhanced sorting metrics
+      urgencyScore: calculateUrgencyScore(plan, now),
+      completionScore: plan.status === 'draft' ? calculateCompletionScore(plan) : 100,
+      responseScore: calculateResponseScore(plan)
     }))
     .sort((a, b) => {
+      // Section-specific smart sorting
+      if (sectionType.includes('invitation') || sectionType.includes('confirmedReady') || sectionType.includes('awaiting')) {
+        // For upcoming: urgency first, then responses
+        if (a.urgencyScore !== b.urgencyScore) return b.urgencyScore - a.urgencyScore;
+        if (a.responseScore !== b.responseScore) return b.responseScore - a.responseScore;
+      } else if (sectionType.includes('draft') || sectionType.includes('Draft')) {
+        // For drafts: completion score first
+        if (a.completionScore !== b.completionScore) return b.completionScore - a.completionScore;
+      } else if (sectionType.includes('template') || sectionType.includes('Template')) {
+        // For templates: rating first
+        const aRating = a.averageRating || 0;
+        const bRating = b.averageRating || 0;
+        if (aRating !== bRating) return bRating - aRating;
+      }
+      
       // Primary: Status priority (lower number = higher priority)
       if (a.priority !== b.priority) {
         return a.priority - b.priority;
@@ -684,6 +885,52 @@ const getRankedPlansForSection = (plans: PlanType[], sectionType: string) => {
       return compareByDateHybrid(a, b, sectionType);
     })
     .slice(0, 4); // Top 4 for horizontal display
+};
+
+// Helper function to calculate urgency score
+const calculateUrgencyScore = (plan: PlanType, today: Date): number => {
+  if (!plan.eventTime || !isValid(parseISO(plan.eventTime))) return 0;
+  
+  const eventDate = parseISO(plan.eventTime);
+  if (isPast(eventDate)) return 0;
+  
+  const hoursToEvent = differenceInHours(eventDate, today);
+  
+  if (hoursToEvent <= 2) return 100; // Critical urgency
+  if (hoursToEvent <= 6) return 80;  // High urgency
+  if (hoursToEvent <= 24) return 60; // Medium urgency
+  if (hoursToEvent <= 72) return 40; // Low urgency
+  return 20; // Very low urgency
+};
+
+// Helper function to calculate completion score for drafts
+const calculateCompletionScore = (plan: PlanType): number => {
+  let score = 0;
+  if (plan.name) score += 20;
+  if (plan.description) score += 15;
+  if (plan.eventTime) score += 20;
+  if (plan.location) score += 15;
+  if (plan.itinerary?.length > 0) score += 20;
+  if (plan.invitedParticipantUserIds?.length > 0) score += 10;
+  return score;
+};
+
+// Helper function to calculate response score
+const calculateResponseScore = (plan: PlanType): number => {
+  if (!plan.invitedParticipantUserIds?.length) return 50; // No invites = neutral
+  
+  const responses = plan.participantResponses || {};
+  const allParticipants = [plan.hostId, ...(plan.invitedParticipantUserIds || [])];
+  const totalParticipants = allParticipants.length;
+  
+  const going = allParticipants.filter(uid => responses[uid] === 'going' || uid === plan.hostId).length;
+  const pending = allParticipants.filter(uid => !responses[uid] || responses[uid] === 'pending').length;
+  
+  if (going === totalParticipants) return 100; // Everyone confirmed
+  if (pending === 0) return 80; // All responses received
+  if (going > totalParticipants / 2) return 60; // Majority confirmed
+  if (going > 0) return 40; // Some confirmed
+  return 20; // No confirmations yet
 };
 
 const calculatePriority = (plan: PlanType, sectionType: string, today: Date, endOfWeekDate: Date, endOfMonthDate: Date) => {
@@ -767,6 +1014,13 @@ export default function PlansPage() {
   const [isDateFilterActive, setIsDateFilterActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // 🎯 Ref to track timeout fallback for loading state
+  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Enhanced usability features
+  const [smartSortEnabled, setSmartSortEnabled] = useState(true);
+  const [participantProfiles, setParticipantProfiles] = useState<{ [uid: string]: any }>({});
+
   const [expandedSections, setExpandedSections] = useState({
     shares: false,
     invitations: false,
@@ -774,17 +1028,84 @@ export default function PlansPage() {
     myConfirmedReady: false,
     savedDrafts: false,
     savedTemplates: false,
+    // Past plans sections
+    todayCompleted: true,     // Auto-expand most recent
+    thisWeekCompleted: false,
+    thisMonthCompleted: false,
+    earlierCompleted: false,
+    // Enhanced saved sections - Draft organization
+    recentDrafts: true,       // Auto-expand most recent
+    readyToPublishDrafts: false,
+    inProgressDrafts: false,
+    ideaDrafts: false,
+    // Enhanced saved sections - Template organization
+    recentlySavedTemplates: true,   // Auto-expand recent saves
+    favoriteTemplates: false,
+    foodDiningTemplates: false,
+    adventureTemplates: false,
+    cultureTemplates: false,
+    nightlifeTemplates: false,
+    shoppingTemplates: false,
+    otherTemplates: false,
   });
 
   const toggleSectionExpansion = useCallback((section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   }, []);
 
-  // Handle date selection with filtering
-  const handleDateSelect = useCallback((date: Date) => {
-    setSelectedDate(date);
-    setIsDateFilterActive(!isSameDay(date, new Date()));
+  // Navigation functionality (define early for use in handleDateSelect)
+  const scrollToSection = useCallback((sectionId: string) => {
+    const element = document.getElementById(`${sectionId}-section`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }, []);
+
+  const handleTabChange = useCallback((value: string) => {
+    const tab = value as 'upcoming' | 'past' | 'saved';
+    if (tab === activeTab) return; // Only act if tab is changing
+    const today = new Date();
+    const isPast = selectedDate < new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const isFuture = selectedDate > new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    if ((tab === 'past' && isFuture) || (tab === 'upcoming' && isPast)) {
+      setSelectedDate(today);
+      setIsDateFilterActive(false);
+    }
+    setActiveTab(tab);
+  }, [selectedDate, activeTab]);
+
+  const handleHeaderTabChange = useCallback((tab: 'upcoming' | 'past' | 'saved') => {
+    handleTabChange(tab);
+  }, [handleTabChange]);
+
+  const handleDateSelect = useCallback((date: Date) => {
+    const today = new Date();
+    const isPast = date < new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const isToday = isSameDay(date, today);
+    const isFuture = date > new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    if (isPast) {
+      setActiveTab('past');
+      setSelectedDate(date);
+      setIsDateFilterActive(true);
+    } else if (isToday) {
+      setSelectedDate(today);
+      setIsDateFilterActive(false);
+      // Don't change tab
+    } else if (isFuture) {
+      setActiveTab('upcoming');
+      setSelectedDate(date);
+      setIsDateFilterActive(true);
+    }
+  }, []);
+
+  // 🎯 CRITICAL FIX: Synchronize isDateFilterActive with selectedDate automatically
+  useEffect(() => {
+    const isFiltered = !isSameDay(selectedDate, new Date());
+    if (isDateFilterActive !== isFiltered) {
+      setIsDateFilterActive(isFiltered);
+    }
+  }, [selectedDate, isDateFilterActive]);
 
   // Handle search query changes
   const handleSearchChange = useCallback((query: string) => {
@@ -798,50 +1119,88 @@ export default function PlansPage() {
 
   // Clear all filters function
   const handleClearFilters = useCallback(() => {
-    setSelectedDate(new Date());
-    setIsDateFilterActive(false);
+    setSelectedDate(new Date()); // This will automatically clear isDateFilterActive via useEffect
     setSearchQuery('');
   }, []);
 
-  // Apply search filtering to plans
+  // Enhanced search filtering with context-aware matching
   const applySearchFilter = useCallback((plans: PlanType[]) => {
     if (!searchQuery.trim()) return plans;
     
     const query = searchQuery.toLowerCase().trim();
     return plans.filter(plan => {
-      // Search in plan name
+      // Enhanced search across multiple fields
       if (plan.name?.toLowerCase().includes(query)) return true;
-      
-      // Search in plan description
       if (plan.description?.toLowerCase().includes(query)) return true;
+      if (plan.location?.toLowerCase().includes(query)) return true;
+      if (plan.city?.toLowerCase().includes(query)) return true;
+      if (plan.eventType?.toLowerCase().includes(query)) return true;
+      if (plan.hostName?.toLowerCase().includes(query)) return true;
       
       // Search in itinerary items
       if (plan.itinerary?.some(item => 
-        item.placeName?.toLowerCase().includes(query) || 
+        item.placeName?.toLowerCase().includes(query) ||
         item.description?.toLowerCase().includes(query) ||
-        item.address?.toLowerCase().includes(query)
+        item.address?.toLowerCase().includes(query) ||
+        item.activitySuggestions?.some(suggestion => suggestion.toLowerCase().includes(query))
       )) return true;
       
-      // Search in event type
-      if (plan.eventType?.toLowerCase().includes(query)) return true;
+      // Search by status-specific terms
+      if (activeTab === 'upcoming') {
+        if (query.includes('urgent') || query.includes('soon')) {
+          const eventDate = plan.eventTime ? parseISO(plan.eventTime) : null;
+          if (eventDate && isFuture(eventDate)) {
+            const hoursToEvent = differenceInHours(eventDate, new Date());
+            return hoursToEvent <= 24;
+          }
+        }
+        if (query.includes('pending') || query.includes('waiting')) {
+          const responses = plan.participantResponses || {};
+          const hasPending = Object.values(responses).some(response => 
+            !response || response === 'pending'
+          );
+          return hasPending;
+        }
+      } else if (activeTab === 'saved') {
+        if (query.includes('draft') || query.includes('incomplete')) {
+          return plan.status === 'draft';
+        }
+        if (query.includes('template')) {
+          return plan.isTemplate === true;
+        }
+      }
       
       return false;
     });
-  }, [searchQuery]);
+  }, [searchQuery, activeTab]); // 🎯 CRITICAL FIX: Added activeTab dependency
 
   // Apply date filtering to plans
   const applyDateFilter = useCallback((plans: PlanType[]) => {
-    if (!isDateFilterActive) return plans;
+    if (!isDateFilterActive) {
+      console.log('🎯 Date filter NOT active, returning all plans:', plans.length);
+      return plans;
+    }
     
-    return plans.filter(plan => {
-      if (!plan.eventTime) return false;
+    console.log('🎯 Date filter ACTIVE, filtering', plans.length, 'plans for date:', selectedDate.toDateString());
+    
+    const filtered = plans.filter(plan => {
+      if (!plan.eventTime) {
+        console.log('❌ Plan has no eventTime:', plan.name);
+        return false;
+      }
       try {
         const planDate = parseISO(plan.eventTime);
-        return isValid(planDate) && isSameDay(planDate, selectedDate);
+        const isMatch = isValid(planDate) && isSameDay(planDate, selectedDate);
+        console.log(isMatch ? '✅' : '❌', 'Plan:', plan.name, 'Date:', format(planDate, 'MMM d, yyyy'), 'Matches:', isMatch);
+        return isMatch;
       } catch (e) {
+        console.log('❌ Error parsing plan date:', plan.name, e);
         return false;
       }
     });
+    
+    console.log('🎯 Date filter result:', filtered.length, 'plans match', selectedDate.toDateString());
+    return filtered;
   }, [isDateFilterActive, selectedDate]);
 
   // Combined filtering function
@@ -854,6 +1213,14 @@ export default function PlansPage() {
     if (initialLoadComplete) {
       setLoadingPlans(false);
       console.log(`[PlansPage onPlansUpdateCallback] Initial load complete. setLoadingPlans to false. Plans count: ${plans.length}`);
+      
+      // 🎯 Clear any timeout fallback since subscription fired successfully
+      const timeoutId = (window as any).plansLoadingTimeoutId;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        (window as any).plansLoadingTimeoutId = null;
+        console.log("[PlansPage] Subscription fired successfully, cleared timeout fallback");
+      }
     } else {
       console.log(`[PlansPage onPlansUpdateCallback] Incremental update. Plans count: ${plans.length}`);
     }
@@ -864,28 +1231,26 @@ export default function PlansPage() {
     setPendingShares(shares);
   }, [setPendingShares]);
 
-  // Effect for listener management based on currentUserId
+  // Effect to set up real-time listeners for user plans and shares
   useEffect(() => {
-    console.log("[PlansPage] Listener useEffect. UserID:", currentUserId);
     if (!currentUserId) {
-      console.log("[PlansPage] No user for listeners. Clearing data, setting loadingPlans false.");
       setAllUserPlans([]);
       setPendingShares([]);
-      setLoadingPlans(false); // No user, so not loading plans.
-      return () => {
-        console.log("[PlansPage] Cleanup: No user, no listeners to unsubscribe.");
-      };
+      setLoadingPlans(false);
+      return;
     }
 
-    // User is present, set up listeners
-    console.log(`[PlansPage] User identified: ${currentUserId}. Setting up listeners. Setting loadingPlans true.`);
-    setLoadingPlans(true); // Start loading state for this user's plans
-    setAllUserPlans([]);   // Clear previous data
-    setPendingShares([]);
-
-    const unsubPlans = getUserPlans(
+    console.log(`[PlansPage] Setting up real-time listeners for user: ${currentUserId}`);
+    
+    const unsubPlans = getUserPlansSubscription(
       currentUserId,
-      onPlansUpdateCallback // This callback handles setLoadingPlans(false) after initial load
+      (plans: PlanType[]) => {
+        console.log(`[PlansPage] getUserPlansSubscription callback invoked with ${plans.length} plans`);
+        onPlansUpdateCallback(plans, true);
+      },
+      (error: Error) => {
+        console.error(`[PlansPage] getUserPlansSubscription error:`, error);
+      }
     );
     const unsubShares = getPendingPlanSharesForUser(currentUserId, onPendingSharesUpdate);
 
@@ -898,7 +1263,10 @@ export default function PlansPage() {
 
   // Effect to handle visual loading state based on authLoading
   useEffect(() => {
-    console.log("[PlansPage] AuthLoading useEffect. AuthLoading:", authLoading, "UserID:", currentUserId);
+    console.log("[PlansPage] AuthLoading useEffect. AuthLoading:", authLoading, "UserID:", currentUserId, "Current loadingPlans:", loadingPlans);
+    
+    let timeoutId: NodeJS.Timeout | null = null;
+    
     if (authLoading) {
       console.log("[PlansPage] Auth is loading. Setting loadingPlans to true.");
       setLoadingPlans(true);
@@ -911,8 +1279,29 @@ export default function PlansPage() {
       if (!currentUserId) {
         console.log("[PlansPage] Auth finished, no user. Setting loadingPlans to false.");
         setLoadingPlans(false);
+      } else {
+        console.log("[PlansPage] Auth finished, user exists. NOT setting loadingPlans to false (managed by plan listeners).");
+        
+        // 🎯 CRITICAL FIX: Add timeout fallback for stuck loading state
+        // If subscription doesn't fire within 3 seconds, force loading to false
+        timeoutId = setTimeout(() => {
+          console.log("[PlansPage] TIMEOUT FALLBACK: Subscription didn't fire, forcing loadingPlans to false");
+          setLoadingPlans(false);
+          (window as any).plansLoadingTimeoutId = null;
+        }, 3000);
+        
+        // Store timeout ID so subscription callback can clear it
+        (window as any).plansLoadingTimeoutId = timeoutId;
       }
     }
+    
+    // 🎯 CRITICAL FIX: Always return cleanup function to fix React error
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        (window as any).plansLoadingTimeoutId = null;
+      }
+    };
   }, [authLoading, currentUserId]);
 
   // Memoize the saved plans fetch function to prevent unnecessary re-creation
@@ -926,11 +1315,11 @@ export default function PlansPage() {
       }
 
       // Fetch each saved plan
-      const planPromises = savedPlanIds.map(planId => getPlanById(planId));
+      const planPromises = savedPlanIds.map((planId: string) => getPlanById(planId));
       const plans = await Promise.all(planPromises);
       
       // Filter out null results and ensure we have valid plans
-      const validPlans = plans.filter((plan): plan is PlanType => plan !== null);
+      const validPlans = plans.filter((plan: PlanType | null): plan is PlanType => plan !== null);
       setSavedPlans(validPlans);
     } catch (error) {
       console.error('Error fetching saved plans:', error);
@@ -953,7 +1342,7 @@ export default function PlansPage() {
 
   // Simple date-based sorting for plans (newest first)
   const sortedPlans = useMemo(() => {
-    return [...allUserPlans].sort((a, b) => {
+    const sorted = [...allUserPlans].sort((a, b) => {
       const timeA = a.eventTime && isValid(parseISO(a.eventTime)) 
         ? parseISO(a.eventTime).getTime() 
         : -Infinity;
@@ -963,6 +1352,14 @@ export default function PlansPage() {
       
       return timeB - timeA; // Newest first
     });
+    
+    console.log('🔍 All user plans:', sorted.length, sorted.map(p => ({
+      name: p.name,
+      eventTime: p.eventTime ? format(parseISO(p.eventTime), 'MMM d, yyyy') : 'No date',
+      isPast: p.eventTime ? isPast(parseISO(p.eventTime)) : false
+    })));
+    
+    return sorted;
   }, [allUserPlans]);
 
   const upcomingPlansBase = useMemo(() => {
@@ -990,18 +1387,176 @@ export default function PlansPage() {
     return applyAllFilters(baseInvited);
   }, [upcomingPlansBase, currentUserId, applyAllFilters]);
   
-  // Saved plans categorization
+  // Saved plans categorization (reusing existing logic)
   const savedDrafts = useMemo(() => {
     if (!currentUserId) return [];
     const baseDrafts = sortedPlans.filter(plan => plan.hostId === currentUserId && plan.status === 'draft');
-    return applyAllFilters(baseDrafts);
-  }, [sortedPlans, currentUserId, applyAllFilters]);
+    return baseDrafts; // Don't apply filters here, we'll apply them to individual sections
+  }, [sortedPlans, currentUserId]);
 
   const savedTemplates = useMemo(() => {
     if (!currentUserId) return [];
-    const baseTemplates = savedPlans.filter(plan => plan.isTemplate || plan.hostId !== currentUserId);
-    return applyAllFilters(baseTemplates);
-  }, [savedPlans, currentUserId, applyAllFilters]);
+    // ✅ CRITICAL FIX: Only show actual templates, not all plans from other users
+    const baseTemplates = savedPlans.filter(plan => plan.isTemplate === true);
+    return baseTemplates; // Don't apply filters here, we'll apply them to individual sections
+  }, [savedPlans, currentUserId]);
+
+  // Enhanced draft categorization (reusing existing patterns)
+  const recentDrafts = useMemo(() => {
+    if (!currentUserId) return [];
+    const weekAgo = subDays(new Date(), 7);
+    
+    return savedDrafts.filter(plan => {
+      try {
+        const createdDate = plan.createdAt ? parseISO(plan.createdAt) : new Date();
+        return isValid(createdDate) && createdDate >= weekAgo;
+      } catch (e) { return false; }
+    });
+  }, [savedDrafts, currentUserId]);
+
+  const readyToPublishDrafts = useMemo(() => {
+    if (!currentUserId) return [];
+    
+    return savedDrafts.filter(plan => {
+      // A draft is "ready to publish" if it has complete core information
+      return plan.itinerary?.length > 0 && 
+             plan.description && 
+             plan.name && 
+             plan.eventTime &&
+             plan.location;
+    });
+  }, [savedDrafts, currentUserId]);
+
+  const inProgressDrafts = useMemo(() => {
+    if (!currentUserId) return [];
+    
+    return savedDrafts.filter(plan => {
+      // A draft is "in progress" if it has some info but isn't ready to publish
+      const hasBasicInfo = plan.name && plan.description;
+      const hasItinerary = plan.itinerary?.length > 0;
+      const isComplete = hasBasicInfo && hasItinerary && plan.eventTime && plan.location;
+      
+      return hasBasicInfo && !isComplete;
+    });
+  }, [savedDrafts, currentUserId]);
+
+  const ideaDrafts = useMemo(() => {
+    if (!currentUserId) return [];
+    
+    return savedDrafts.filter(plan => {
+      // A draft is an "idea" if it only has minimal information
+      const hasBasicInfo = plan.name && plan.description;
+      return !hasBasicInfo;
+    });
+  }, [savedDrafts, currentUserId]);
+
+  // Enhanced template categorization (reusing existing eventType logic)
+  const recentlySavedTemplates = useMemo(() => {
+    if (!currentUserId) return [];
+    const monthAgo = subDays(new Date(), 30);
+    
+    return savedTemplates.filter(plan => {
+      try {
+        // Use createdAt since savedAt doesn't exist on Plan type
+        const savedDate = plan.createdAt ? parseISO(plan.createdAt) : new Date();
+        return isValid(savedDate) && savedDate >= monthAgo;
+      } catch (e) { return false; }
+    });
+  }, [savedTemplates, currentUserId]);
+
+  const favoriteTemplates = useMemo(() => {
+    if (!currentUserId) return [];
+    
+    return savedTemplates.filter(plan => {
+      // A template is "favorite" if it has high rating
+      return (plan.averageRating && plan.averageRating >= 4.0) || 
+             (plan.reviewCount && plan.reviewCount >= 10 && plan.averageRating && plan.averageRating >= 3.5);
+    });
+  }, [savedTemplates, currentUserId]);
+
+  // Category-based template organization (reusing existing eventType classification)
+  const foodDiningTemplates = useMemo(() => {
+    if (!currentUserId) return [];
+    
+    return savedTemplates.filter(plan => 
+      plan.eventType && (
+        plan.eventType.toLowerCase().includes('food') ||
+        plan.eventType.toLowerCase().includes('dining') ||
+        plan.eventType.toLowerCase().includes('restaurant') ||
+        plan.eventType === 'Food & Dining'
+      )
+    );
+  }, [savedTemplates, currentUserId]);
+
+  const adventureTemplates = useMemo(() => {
+    if (!currentUserId) return [];
+    
+    return savedTemplates.filter(plan => 
+      plan.eventType && (
+        plan.eventType.toLowerCase().includes('outdoor') ||
+        plan.eventType.toLowerCase().includes('adventure') ||
+        plan.eventType.toLowerCase().includes('hiking') ||
+        plan.eventType.toLowerCase().includes('nature') ||
+        plan.eventType === 'Outdoor Activities'
+      )
+    );
+  }, [savedTemplates, currentUserId]);
+
+  const cultureTemplates = useMemo(() => {
+    if (!currentUserId) return [];
+    
+    return savedTemplates.filter(plan => 
+      plan.eventType && (
+        plan.eventType.toLowerCase().includes('culture') ||
+        plan.eventType.toLowerCase().includes('arts') ||
+        plan.eventType.toLowerCase().includes('museum') ||
+        plan.eventType.toLowerCase().includes('gallery') ||
+        plan.eventType === 'Arts & Culture'
+      )
+    );
+  }, [savedTemplates, currentUserId]);
+
+  const nightlifeTemplates = useMemo(() => {
+    if (!currentUserId) return [];
+    
+    return savedTemplates.filter(plan => 
+      plan.eventType && (
+        plan.eventType.toLowerCase().includes('nightlife') ||
+        plan.eventType.toLowerCase().includes('bar') ||
+        plan.eventType.toLowerCase().includes('club') ||
+        plan.eventType.toLowerCase().includes('night') ||
+        plan.eventType === 'Nightlife'
+      )
+    );
+  }, [savedTemplates, currentUserId]);
+
+  const shoppingTemplates = useMemo(() => {
+    if (!currentUserId) return [];
+    
+    return savedTemplates.filter(plan => 
+      plan.eventType && (
+        plan.eventType.toLowerCase().includes('shopping') ||
+        plan.eventType.toLowerCase().includes('market') ||
+        plan.eventType.toLowerCase().includes('mall') ||
+        plan.eventType === 'Shopping'
+      )
+    );
+  }, [savedTemplates, currentUserId]);
+
+  const otherTemplates = useMemo(() => {
+    if (!currentUserId) return [];
+    
+    // Templates that don't fit into the main categories
+    const categorizedTemplates = new Set([
+      ...foodDiningTemplates.map(p => p.id),
+      ...adventureTemplates.map(p => p.id),
+      ...cultureTemplates.map(p => p.id),
+      ...nightlifeTemplates.map(p => p.id),
+      ...shoppingTemplates.map(p => p.id),
+    ]);
+    
+    return savedTemplates.filter(plan => !categorizedTemplates.has(plan.id));
+  }, [savedTemplates, foodDiningTemplates, adventureTemplates, cultureTemplates, nightlifeTemplates, shoppingTemplates, currentUserId]);
   
   const myPublishedHostedUpcoming = useMemo(() => {
     if (!currentUserId) return [];
@@ -1049,11 +1604,94 @@ export default function PlansPage() {
       if (!isUserRelated || !plan.eventTime) return false;
       try {
         const planDate = parseISO(plan.eventTime);
-        return isValid(planDate) && isPast(planDate);
+        const isPastPlan = isValid(planDate) && isPast(planDate);
+        console.log(isPastPlan ? '📚' : '📅', 'Plan:', plan.name, 'Date:', format(planDate, 'MMM d, yyyy'), 'Is Past:', isPastPlan);
+        return isPastPlan;
       } catch (e) { return false; }
     });
-    return applyAllFilters(basePast);
-  }, [sortedPlans, currentUserId, applyAllFilters]);
+    
+    console.log('📍 Total past plans found:', basePast.length, basePast.map(p => p.name));
+    return basePast; // Don't apply filters here, we'll apply them to individual sections
+  }, [sortedPlans, currentUserId]);
+
+  // Helper function to get completion date (reuse existing pattern)
+  const getCompletionDate = useCallback((plan: PlanType) => {
+    // Use completion timestamp if available, fall back to event date for past plans
+    if (plan.completedAt) {
+      return parseISO(plan.completedAt);
+    } else if (plan.eventTime) {
+      const eventDate = parseISO(plan.eventTime);
+      // For past plans without explicit completion, use the event date as completion date
+      return isValid(eventDate) && isPast(eventDate) ? eventDate : new Date();
+    } else {
+      return new Date();
+    }
+  }, []);
+
+  // Time-based past plan categorization (reusing existing filtering patterns)
+  const todayCompletedPlans = useMemo(() => {
+    if (!currentUserId) return [];
+    const today = startOfDay(new Date());
+    const tomorrow = startOfDay(subDays(today, -1));
+    
+    const result = pastPlans.filter(plan => {
+      try {
+        const completionDate = getCompletionDate(plan);
+        return isValid(completionDate) && completionDate >= today && completionDate < tomorrow;
+      } catch (e) { return false; }
+    });
+    
+    console.log('🎉 Today completed plans:', result.length, result.map(p => p.name));
+    return result;
+  }, [pastPlans, currentUserId, getCompletionDate]);
+
+  const thisWeekCompletedPlans = useMemo(() => {
+    if (!currentUserId) return [];
+    const today = startOfDay(new Date());
+    const weekStart = startOfDay(subDays(today, 6)); // Last 7 days
+    
+    const result = pastPlans.filter(plan => {
+      try {
+        const completionDate = getCompletionDate(plan);
+        return isValid(completionDate) && completionDate >= weekStart && completionDate < today;
+      } catch (e) { return false; }
+    });
+    
+    console.log('⭐ This week completed plans:', result.length, result.map(p => p.name));
+    return result;
+  }, [pastPlans, currentUserId, getCompletionDate]);
+
+  const thisMonthCompletedPlans = useMemo(() => {
+    if (!currentUserId) return [];
+    const today = startOfDay(new Date());
+    const monthStart = startOfDay(subDays(today, 29)); // Last 30 days
+    const weekStart = startOfDay(subDays(today, 6)); // Exclude this week
+    
+    const result = pastPlans.filter(plan => {
+      try {
+        const completionDate = getCompletionDate(plan);
+        return isValid(completionDate) && completionDate >= monthStart && completionDate < weekStart;
+      } catch (e) { return false; }
+    });
+    
+    console.log('📅 This month completed plans:', result.length, result.map(p => p.name));
+    return result;
+  }, [pastPlans, currentUserId, getCompletionDate]);
+
+  const earlierCompletedPlans = useMemo(() => {
+    if (!currentUserId) return [];
+    const monthStart = startOfDay(subDays(new Date(), 29)); // Older than 30 days
+    
+    const result = pastPlans.filter(plan => {
+      try {
+        const completionDate = getCompletionDate(plan);
+        return isValid(completionDate) && completionDate < monthStart;
+      } catch (e) { return false; }
+    });
+    
+    console.log('📚 Earlier completed plans:', result.length, result.map(p => p.name));
+    return result;
+  }, [pastPlans, currentUserId, getCompletionDate]);
 
   const handleAcceptShareRequest = useCallback(async (share: PlanShare) => {
     if (!user || !currentUserId) return;
@@ -1203,6 +1841,55 @@ export default function PlansPage() {
     }
   }, [user, currentUserId, toast]);
 
+  // Enhancement handlers
+  const handleAIAssist = useCallback(async (planId: string, suggestion: string) => {
+    if (!user || !currentUserId) return;
+    
+    toast({
+      title: "AI Assistant",
+      description: `Working on: ${suggestion}`,
+    });
+    
+    // Here you would integrate with your AI service
+    // For now, just show the suggestion was received
+  }, [user, currentUserId, toast]);
+
+  const handleCollaborate = useCallback(async (planId: string) => {
+    if (!user || !currentUserId) return;
+    
+    // Navigate to plan page for collaboration
+    router.push(`/plans/${planId}?tab=collaborate`);
+  }, [user, currentUserId, router]);
+
+  const handleCreateSimilar = useCallback(async (planId: string) => {
+    if (!user || !currentUserId) return;
+    
+    try {
+      // Get the original plan data
+      const originalPlan = allUserPlans.find(p => p.id === planId);
+      if (!originalPlan) return;
+      
+      toast({
+        title: "Creating similar plan",
+        description: `Duplicating "${originalPlan.name}" as a new draft`,
+      });
+      
+      // Here you would call your duplication service
+      // For now, just navigate to create page
+      router.push('/plans/create');
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to create similar plan",
+        variant: "destructive"
+      });
+    }
+  }, [user, currentUserId, allUserPlans, router, toast]);
+
+  const handlePlanClick = useCallback((planId: string) => {
+    router.push(`/plans/${planId}`);
+  }, [router]);
+
   // Filtered plan categories
   const filteredInvitedToPlans = useMemo(() => {
     return applyAllFilters(invitedToPlans);
@@ -1240,9 +1927,108 @@ export default function PlansPage() {
     ];
   }, [filteredSavedDrafts, filteredSavedTemplates]);
 
+  // Apply filters to each time-based past plan section (reusing existing pattern)
+  const filteredTodayCompleted = useMemo(() => {
+    return applyAllFilters(todayCompletedPlans);
+  }, [todayCompletedPlans, applyAllFilters]);
+
+  const filteredThisWeekCompleted = useMemo(() => {
+    return applyAllFilters(thisWeekCompletedPlans);
+  }, [thisWeekCompletedPlans, applyAllFilters]);
+
+  const filteredThisMonthCompleted = useMemo(() => {
+    return applyAllFilters(thisMonthCompletedPlans);
+  }, [thisMonthCompletedPlans, applyAllFilters]);
+
+  const filteredEarlierCompleted = useMemo(() => {
+    return applyAllFilters(earlierCompletedPlans);
+  }, [earlierCompletedPlans, applyAllFilters]);
+
+  // Combined filtered past plans for backward compatibility
   const filteredPastPlans = useMemo(() => {
-    return applyAllFilters(pastPlans);
-  }, [pastPlans, applyAllFilters]);
+    const result = [
+      ...filteredTodayCompleted,
+      ...filteredThisWeekCompleted,
+      ...filteredThisMonthCompleted,
+      ...filteredEarlierCompleted
+    ];
+    
+    console.log('🔍 Final filtered past plans:', result.length, 'from sections:', {
+      today: filteredTodayCompleted.length,
+      week: filteredThisWeekCompleted.length, 
+      month: filteredThisMonthCompleted.length,
+      earlier: filteredEarlierCompleted.length
+    });
+    
+    return result;
+  }, [filteredTodayCompleted, filteredThisWeekCompleted, filteredThisMonthCompleted, filteredEarlierCompleted]);
+
+  // Apply filters to enhanced saved sections (reusing existing pattern)
+  const filteredRecentDrafts = useMemo(() => {
+    return applyAllFilters(recentDrafts);
+  }, [recentDrafts, applyAllFilters]);
+
+  const filteredReadyToPublishDrafts = useMemo(() => {
+    return applyAllFilters(readyToPublishDrafts);
+  }, [readyToPublishDrafts, applyAllFilters]);
+
+  const filteredInProgressDrafts = useMemo(() => {
+    return applyAllFilters(inProgressDrafts);
+  }, [inProgressDrafts, applyAllFilters]);
+
+  const filteredIdeaDrafts = useMemo(() => {
+    return applyAllFilters(ideaDrafts);
+  }, [ideaDrafts, applyAllFilters]);
+
+  const filteredRecentlySavedTemplates = useMemo(() => {
+    return applyAllFilters(recentlySavedTemplates);
+  }, [recentlySavedTemplates, applyAllFilters]);
+
+  const filteredFavoriteTemplates = useMemo(() => {
+    return applyAllFilters(favoriteTemplates);
+  }, [favoriteTemplates, applyAllFilters]);
+
+  const filteredFoodDiningTemplates = useMemo(() => {
+    return applyAllFilters(foodDiningTemplates);
+  }, [foodDiningTemplates, applyAllFilters]);
+
+  const filteredAdventureTemplates = useMemo(() => {
+    return applyAllFilters(adventureTemplates);
+  }, [adventureTemplates, applyAllFilters]);
+
+  const filteredCultureTemplates = useMemo(() => {
+    return applyAllFilters(cultureTemplates);
+  }, [cultureTemplates, applyAllFilters]);
+
+  const filteredNightlifeTemplates = useMemo(() => {
+    return applyAllFilters(nightlifeTemplates);
+  }, [nightlifeTemplates, applyAllFilters]);
+
+  const filteredShoppingTemplates = useMemo(() => {
+    return applyAllFilters(shoppingTemplates);
+  }, [shoppingTemplates, applyAllFilters]);
+
+  const filteredOtherTemplates = useMemo(() => {
+    return applyAllFilters(otherTemplates);
+  }, [otherTemplates, applyAllFilters]);
+
+  // Enhanced saved plans combination (for new sectioned UI)
+  const allFilteredEnhancedSavedPlans = useMemo(() => {
+    return [
+      ...filteredRecentDrafts,
+      ...filteredReadyToPublishDrafts,
+      ...filteredInProgressDrafts,
+      ...filteredIdeaDrafts,
+      ...filteredRecentlySavedTemplates,
+      ...filteredFavoriteTemplates,
+      ...filteredFoodDiningTemplates,
+      ...filteredAdventureTemplates,
+      ...filteredCultureTemplates,
+      ...filteredNightlifeTemplates,
+      ...filteredShoppingTemplates,
+      ...filteredOtherTemplates
+    ];
+  }, [filteredRecentDrafts, filteredReadyToPublishDrafts, filteredInProgressDrafts, filteredIdeaDrafts, filteredRecentlySavedTemplates, filteredFavoriteTemplates, filteredFoodDiningTemplates, filteredAdventureTemplates, filteredCultureTemplates, filteredNightlifeTemplates, filteredShoppingTemplates, filteredOtherTemplates]);
 
   const filteredSavedPlans = useMemo(() => {
     // Sort saved plans by event time (newest first)
@@ -1258,7 +2044,107 @@ export default function PlansPage() {
   // Check if we have any results to show
   const hasUpcomingResults = filteredUpcomingPlans.length > 0 || pendingShares.length > 0;
   const hasPastResults = filteredPastPlans.length > 0;
-  const hasSavedResults = allFilteredSavedPlans.length > 0;
+  const hasSavedResults = allFilteredEnhancedSavedPlans.length > 0;
+  
+  console.log('📊 Results status:', {
+    hasUpcomingResults,
+    hasPastResults,
+    hasSavedResults,
+    filteredPastPlansCount: filteredPastPlans.length,
+    authLoading,
+    loadingPlans
+  });
+
+  // Section counts for navigation (reusing existing pattern)
+  const sectionCounts = useMemo(() => ({
+    today: filteredTodayCompleted.length,
+    week: filteredThisWeekCompleted.length,
+    month: filteredThisMonthCompleted.length,
+    earlier: filteredEarlierCompleted.length,
+  }), [filteredTodayCompleted, filteredThisWeekCompleted, filteredThisMonthCompleted, filteredEarlierCompleted]);
+  
+  console.log('📊 Section counts for Past tab:', sectionCounts);
+  
+  // Debug Past tab conditions
+  useEffect(() => {
+    if (activeTab === 'past') {
+      console.log('🔍 Past tab conditions:', { 
+        loadingPlans, 
+        pastPlansLength: pastPlans.length, 
+        hasPastResults,
+        shouldShowLoading: loadingPlans && pastPlans.length === 0,
+        shouldShowEmpty: !loadingPlans && !hasPastResults,
+        shouldShowContent: !loadingPlans && hasPastResults
+      });
+    }
+  }, [activeTab, loadingPlans, pastPlans.length, hasPastResults]);
+
+  // 🎯 CRITICAL DEBUG: Track filter and tab state changes
+  useEffect(() => {
+    console.log('🎯 Filter/Tab State Change:', {
+      activeTab,
+      searchQuery: searchQuery.trim(),
+      isDateFilterActive,
+      selectedDate: selectedDate.toDateString(),
+      hasUpcomingResults,
+      hasPastResults,
+      hasSavedResults,
+      timestamp: new Date().toISOString()
+    });
+  }, [activeTab, searchQuery, isDateFilterActive, selectedDate, hasUpcomingResults, hasPastResults, hasSavedResults]);
+
+  // 🎯 UX FIX: Auto-clear past date filters when switching to upcoming tab
+  useEffect(() => {
+    if (activeTab === 'upcoming' && isDateFilterActive && isPast(selectedDate)) {
+      console.log('🔄 Auto-clearing past date filter for upcoming tab');
+      setSelectedDate(new Date()); // This will auto-clear isDateFilterActive via sync effect
+    }
+  }, [activeTab, isDateFilterActive, selectedDate]);
+
+  // 🎯 UX FIX: Auto-clear future date filters when switching to past tab
+  useEffect(() => {
+    console.log('🔍 Auto-clear check for past tab:', {
+      activeTab,
+      isDateFilterActive,
+      selectedDate: selectedDate.toDateString(),
+      selectedDateISO: selectedDate.toISOString(),
+      selectedDateObj: selectedDate,
+      currentDateISO: new Date().toISOString(),
+      isFutureDate: isFuture(selectedDate),
+      shouldClear: activeTab === 'past' && isDateFilterActive && isFuture(selectedDate)
+    });
+    
+    // 🔍 DETAILED DATE DEBUG
+    const now = new Date();
+    const selectedTime = selectedDate.getTime();
+    const nowTime = now.getTime();
+    console.log('🔍 Date comparison details:', {
+      selectedTime,
+      nowTime,
+      difference: selectedTime - nowTime,
+      selectedDate: {
+        year: selectedDate.getFullYear(),
+        month: selectedDate.getMonth(),
+        date: selectedDate.getDate(),
+        hours: selectedDate.getHours(),
+        minutes: selectedDate.getMinutes()
+      },
+      now: {
+        year: now.getFullYear(),
+        month: now.getMonth(),
+        date: now.getDate(),
+        hours: now.getHours(),
+        minutes: now.getMinutes()
+      }
+    });
+    
+    if (activeTab === 'past' && isDateFilterActive && isFuture(selectedDate)) {
+      console.log('🔄 Auto-clearing future date filter for past tab');
+      setSelectedDate(new Date()); // This will auto-clear isDateFilterActive via sync effect
+    }
+    
+    
+  }, [activeTab, isDateFilterActive, selectedDate]);
 
   if (authLoading && !currentUserId) { 
     return (
@@ -1287,7 +2173,7 @@ export default function PlansPage() {
       <div className="flex flex-col h-screen bg-background text-foreground">
         <PlansPageHeader
           activeTab={activeTab}
-          onTabChange={setActiveTab}
+          onTabChange={handleHeaderTabChange}
           selectedDate={selectedDate}
           onDateSelect={handleDateSelect}
           userName={user?.displayName || user?.email?.split('@')[0] || 'User'}
@@ -1298,12 +2184,17 @@ export default function PlansPage() {
 
         {/* Main Content Area */}
         <div className="flex-1 overflow-hidden">
-          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'upcoming' | 'past')} className="h-full flex flex-col">
-            <div className="flex-1 overflow-auto px-4 pt-4">
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="h-full flex flex-col">
+            <div className="flex-1 overflow-auto px-1">
+
               <TabsContent value="upcoming" className="mt-0 h-full">
                 {loadingPlans && !upcomingPlansExist && (
-                  <div className="flex justify-center items-center py-10 min-h-[300px]">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <div className="flex flex-col justify-center items-center py-10 min-h-[300px] space-y-4">
+                    <div className="relative">
+                      <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                      <div className="absolute inset-0 h-10 w-10 animate-ping rounded-full bg-primary/20"></div>
+                    </div>
+                    <p className="text-sm text-muted-foreground animate-pulse">✨ Loading your amazing plans...</p>
                   </div>
                 )}
                 {!loadingPlans && !hasUpcomingResults && (
@@ -1316,6 +2207,7 @@ export default function PlansPage() {
                     isDateFilterActive={isDateFilterActive}
                     onClearSearch={handleClearSearch}
                     onClearFilters={handleClearFilters}
+                    activeTab={activeTab}
                   />
                 )}
 
@@ -1349,7 +2241,7 @@ export default function PlansPage() {
                                   <Link href={`/p/${share.originalPlanId}`}><Eye className="h-3.5 w-3.5"/></Link>
                                 </Button>
                                 <Button size="icon" className="h-7 w-7" onClick={() => handleAcceptShareRequest(share)} disabled={isAcceptingShare && shareToAccept?.id === share.id} aria-label="Accept Plan">
-                                  {(isAcceptingShare && shareToAccept?.id === share.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <CheckCircle2 className="mr-0 h-3.5 w-3.5"/>}
+                                  {(isAcceptingShare && shareToAccept?.id === share.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <CheckCircle className="mr-0 h-3.5 w-3.5"/>}
                                 </Button>
                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => handleDeclineShareRequest(share)} disabled={isDecliningShare && shareToDecline?.id === share.id} aria-label="Decline Plan">
                                   {(isDecliningShare && shareToDecline?.id === share.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <Trash2 className="h-3.5 w-3.5"/>}
@@ -1394,6 +2286,8 @@ export default function PlansPage() {
                     currentUserUid={currentUserId}
                   />
                 )}
+
+
               </TabsContent>
 
               <TabsContent value="past" className="mt-0">
@@ -1412,15 +2306,130 @@ export default function PlansPage() {
                     isDateFilterActive={isDateFilterActive}
                     onClearSearch={handleClearSearch}
                     onClearFilters={handleClearFilters}
+                    activeTab={activeTab}
                   />
                 )}
-                {!loadingPlans && hasPastResults && (
-                  <div className="grid grid-cols-1 gap-4">
-                    {filteredPastPlans.map(plan => (
-                      <PlanCard key={plan.id} plan={plan} currentUserUid={currentUserId} />
-                    ))}
+
+                {/* Filter state indicator */}
+                {!loadingPlans && (searchQuery || isDateFilterActive) && hasPastResults && (
+                  <div className="mb-4 p-3 bg-muted/50 rounded-lg">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <span>
+                        Showing filtered results
+                        {searchQuery && ` for "${searchQuery}"`}
+                        {isDateFilterActive && ` for ${format(selectedDate, 'MMM d, yyyy')}`}
+                      </span>
+                      <Button variant="link" size="sm" onClick={handleClearFilters} className="h-auto p-0 text-primary">
+                        Clear filters
+                      </Button>
+                    </div>
                   </div>
                 )}
+
+                {/* Render content based on filter state */}
+                {!loadingPlans && hasPastResults && (
+                  <>
+                    {/* Date-filtered view - show ONLY when specific date is selected */}
+                    {isDateFilterActive ? (
+                      <PlanStackSection
+                        title="📅 Plans"
+                        plans={filteredPastPlans}
+                        isExpanded={true} // Always expanded for date-filtered results
+                        onToggleExpand={() => {}} // No toggle for simplified view
+                        emptyMessage={`No plans found for ${format(selectedDate, 'MMM d, yyyy')}.`}
+                        currentUserUid={currentUserId}
+                      />
+                    ) : (
+                      /* Time-based sections - show ONLY when date filter is NOT active */
+                      <>
+                        {/* Quick Navigation Bar - only show when multiple sections have content */}
+                        {(sectionCounts.today + sectionCounts.week + sectionCounts.month + sectionCounts.earlier) > 10 && (
+                          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm mb-4 -mx-4 px-4 py-2 border-b border-border/50">
+                            <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
+                              {sectionCounts.today > 0 && (
+                                <Button variant="ghost" size="sm" onClick={() => scrollToSection('today')} className="flex-shrink-0">
+                                  🎉 Today ({sectionCounts.today})
+                                </Button>
+                              )}
+                              {sectionCounts.week > 0 && (
+                                <Button variant="ghost" size="sm" onClick={() => scrollToSection('week')} className="flex-shrink-0">
+                                  ⭐ This Week ({sectionCounts.week})
+                                </Button>
+                              )}
+                              {sectionCounts.month > 0 && (
+                                <Button variant="ghost" size="sm" onClick={() => scrollToSection('month')} className="flex-shrink-0">
+                                  📅 This Month ({sectionCounts.month})
+                                </Button>
+                              )}
+                              {sectionCounts.earlier > 0 && (
+                                <Button variant="ghost" size="sm" onClick={() => scrollToSection('earlier')} className="flex-shrink-0">
+                                  📚 Earlier ({sectionCounts.earlier})
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Today's Completed - Auto-expanded, horizontal cards when collapsed */}
+                        {filteredTodayCompleted.length > 0 && (
+                          <div id="today-section">
+                            <PlanStackSection
+                              title="🎉 Completed Today"
+                              plans={filteredTodayCompleted}
+                              isExpanded={expandedSections.todayCompleted}
+                              onToggleExpand={() => toggleSectionExpansion('todayCompleted')}
+                              emptyMessage="No plans completed today."
+                              currentUserUid={currentUserId}
+                            />
+                          </div>
+                        )}
+
+                        {/* This Week - Compact view */}
+                        {filteredThisWeekCompleted.length > 0 && (
+                          <div id="week-section">
+                            <PlanStackSection
+                              title="⭐ This Week"
+                              plans={filteredThisWeekCompleted}
+                              isExpanded={expandedSections.thisWeekCompleted}
+                              onToggleExpand={() => toggleSectionExpansion('thisWeekCompleted')}
+                              emptyMessage="No plans completed this week."
+                              currentUserUid={currentUserId}
+                            />
+                          </div>
+                        )}
+
+                        {/* This Month - Compact view */}
+                        {filteredThisMonthCompleted.length > 0 && (
+                          <div id="month-section">
+                            <PlanStackSection
+                              title="📅 This Month"
+                              plans={filteredThisMonthCompleted}
+                              isExpanded={expandedSections.thisMonthCompleted}
+                              onToggleExpand={() => toggleSectionExpansion('thisMonthCompleted')}
+                              emptyMessage="No plans completed this month."
+                              currentUserUid={currentUserId}
+                            />
+                          </div>
+                        )}
+
+                        {/* Earlier - Always compact, show when expanded or when other sections are empty */}
+                        {filteredEarlierCompleted.length > 0 && (
+                          <div id="earlier-section">
+                            <PlanStackSection
+                              title="📚 Earlier"
+                              plans={filteredEarlierCompleted}
+                              isExpanded={expandedSections.earlierCompleted}
+                              onToggleExpand={() => toggleSectionExpansion('earlierCompleted')}
+                              emptyMessage="No earlier completed plans."
+                              currentUserUid={currentUserId}
+                            />
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+
               </TabsContent>
               
               <TabsContent value="saved" className="mt-0">
@@ -1440,112 +2449,14 @@ export default function PlansPage() {
                     isDateFilterActive={isDateFilterActive}
                     onClearSearch={handleClearSearch}
                     onClearFilters={handleClearFilters}
-                  />
-                )}
-
-                {filteredSavedDrafts.length > 0 && (
-                  <PlanStackSection
-                    title="My Drafts"
-                    plans={filteredSavedDrafts}
-                    isExpanded={expandedSections.savedDrafts}
-                    onToggleExpand={() => toggleSectionExpansion('savedDrafts')}
-                    emptyMessage="You have no draft plans."
-                    currentUserUid={currentUserId}
-                    isLoading={loadingSavedPlans && savedDrafts.length === 0}
-                  />
-                )}
-                {filteredSavedTemplates.length > 0 && (
-                  <PlanStackSection
-                    title="Saved Templates"
-                    plans={filteredSavedTemplates}
-                    isExpanded={expandedSections.savedTemplates}
-                    onToggleExpand={() => toggleSectionExpansion('savedTemplates')}
-                    emptyMessage="You have no saved templates."
-                    currentUserUid={currentUserId}
-                    isLoading={loadingSavedPlans && savedPlans.length === 0}
+                    activeTab={activeTab}
                   />
                 )}
               </TabsContent>
+
             </div>
           </Tabs>
         </div>
-        
-        <AlertDialog open={!!shareToAccept} onOpenChange={(open) => { if (!open) setShareToAccept(null); }}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Accept Shared Plan?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Accepting "{shareToAccept?.originalPlanName}" from <span className="font-semibold">{shareToAccept?.sharedByName}</span> will add it to your plans as a new draft.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setShareToAccept(null)} disabled={isAcceptingShare} aria-label="Cancel Share Acceptance">Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={async () => {
- if (shareToAccept) await handleAcceptShareRequest(shareToAccept);
-              }} disabled={isAcceptingShare} aria-label="Confirm Share Acceptance">
-                {(isAcceptingShare) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4"/>}
-                Accept & Add
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        <AlertDialog open={!!shareToDecline} onOpenChange={(open) => { if (!open) setShareToDecline(null); }}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Decline Shared Plan?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to decline the plan "{shareToDecline?.originalPlanName}" shared by <span className="font-semibold">{shareToDecline?.sharedByName}</span>?
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setShareToDecline(null)} disabled={isDecliningShare} aria-label="Cancel Share Decline">Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={async () => {
- if(shareToDecline) await handleDeclineShareRequest(shareToDecline);
-              }} disabled={isDecliningShare} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground" aria-label="Confirm Share Decline">
-{(isDecliningShare) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4"/>}
-                Decline
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        <AlertDialog open={!!planToDelete} onOpenChange={(open) => { if (!open) setPlanToDelete(null); }}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This will permanently delete the plan "{planToDelete?.name}". This action cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setPlanToDelete(null)} disabled={isDeletingPlan} aria-label="Cancel Delete">
-                Cancel
-              </AlertDialogCancel>
-              <AlertDialogAction onClick={confirmDeletePlan} disabled={isDeletingPlan} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground" aria-label="Confirm Delete">
-                {isDeletingPlan ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-                Delete
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        <AlertDialog open={!!planToComplete} onOpenChange={(open) => { if (!open) setPlanToComplete(null); }}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Mark Plan as Completed?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to mark "{planToComplete?.name}" as completed? This will make it visible in the explore section for other users to discover.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setPlanToComplete(null)} disabled={isMarkingComplete} aria-label="Cancel">Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmMarkAsCompleted} disabled={isMarkingComplete} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                {isMarkingComplete ? "Marking..." : "Mark as Completed"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </div>
     </PlansPageProvider>
   );

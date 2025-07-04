@@ -1,34 +1,27 @@
 // src/app/api/reports/user/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/firebaseAdmin';
-import { db } from '@/lib/firebaseAdmin';
+import { firestoreAdmin as db } from '@/lib/firebaseAdmin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { createAuthenticatedHandler, parseRequestBody } from '@/lib/api/middleware';
 
-export async function POST(request: NextRequest) {
-  try {
-    // Get the authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+export const POST = createAuthenticatedHandler(
+  async ({ request, authResult }) => {
+    const { data: body, error } = await parseRequestBody(request);
+    if (error) return error;
 
-    const idToken = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(idToken);
-    const reportingUserId = decodedToken.uid;
-
-    const { userId, reason, description } = await request.json();
+    const { userId, reason, description } = body;
 
     if (!userId || !reason) {
       return NextResponse.json({ error: 'User ID and reason are required' }, { status: 400 });
     }
 
     // Prevent self-reporting
-    if (userId === reportingUserId) {
+    if (userId === authResult.userId) {
       return NextResponse.json({ error: 'You cannot report yourself' }, { status: 400 });
     }
 
     // Check if the user exists
-    const userRef = db.collection('users').doc(userId);
+    const userRef = db!.collection('users').doc(userId);
     const userDoc = await userRef.get();
     
     if (!userDoc.exists) {
@@ -38,10 +31,10 @@ export async function POST(request: NextRequest) {
     const userData = userDoc.data();
     
     // Check if user has already reported this user
-    const existingReportQuery = await db.collection('reports')
+    const existingReportQuery = await db!.collection('reports')
       .where('contentType', '==', 'user')
       .where('contentId', '==', userId)
-      .where('reportingUserId', '==', reportingUserId)
+      .where('reportingUserId', '==', authResult.userId)
       .limit(1)
       .get();
 
@@ -54,23 +47,23 @@ export async function POST(request: NextRequest) {
       contentType: 'user',
       contentId: userId,
       reportedUserId: userId,
-      reportingUserId,
+      reportingUserId: authResult.userId,
       reason,
       description: description || '',
       status: 'pending',
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
       metadata: {
-        reportedUsername: userData?.username || '',
-        reportedDisplayName: userData?.displayName || ''
+        reportedUserName: userData?.firstName || 'Unknown User',
+        reportedUserEmail: userData?.email || ''
       }
     };
 
     // Use a batch to create the report and update user report count
-    const batch = db.batch();
+    const batch = db!.batch();
     
     // Add the report
-    const reportRef = db.collection('reports').doc();
+    const reportRef = db!.collection('reports').doc();
     batch.set(reportRef, reportData);
     
     // Update user report count
@@ -85,12 +78,6 @@ export async function POST(request: NextRequest) {
       message: 'User reported successfully',
       reportId: reportRef.id 
     });
-
-  } catch (error) {
-    console.error('Error reporting user:', error);
-    return NextResponse.json(
-      { error: 'Failed to report user' },
-      { status: 500 }
-    );
-  }
-}
+  },
+  { defaultError: 'Failed to report user' }
+);

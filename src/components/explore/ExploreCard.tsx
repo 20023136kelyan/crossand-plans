@@ -10,7 +10,7 @@ import { MapPin, Star, Calendar, BadgeCheck } from "lucide-react";
 import type { Plan } from '@/types/user';
 import { format, parseISO, isValid } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
-import { getGooglePlacePhotoUrl } from '@/utils/googleMapsHelpers';
+import { PlanImageLoader } from '@/components/plans/PlanImageLoader';
 
 interface ExploreCardProps {
   plan: Plan;
@@ -18,7 +18,6 @@ interface ExploreCardProps {
 
 export const ExploreCard = React.memo(({ plan }: ExploreCardProps) => {
   const { user } = useAuth();
-  const [imageError, setImageError] = useState(false);
   
   const isParticipant = user?.uid && (
     plan.hostId === user.uid || 
@@ -28,24 +27,6 @@ export const ExploreCard = React.memo(({ plan }: ExploreCardProps) => {
   const planLink = isParticipant ? `/plans/${plan.id}` : `/p/${plan.id}`;
   
   const creatorInitial = (plan.creatorUsername || plan.creatorName || '').charAt(0).toUpperCase();
-  
-  // Image source logic
-  const placeholderImageUrl = '/images/placeholder-plan.jpg';
-  let planImageSrc = placeholderImageUrl;
-  let imageHint = 'placeholder';
-  
-  if (plan.photoHighlights && plan.photoHighlights.length > 0) {
-    planImageSrc = plan.photoHighlights[0];
-    imageHint = 'photo highlight';
-  } else if (plan.itinerary?.[0]?.googlePhotoReference) {
-    // Check if it's already a direct URL (from place-autocomplete)
-    if (plan.itinerary[0].googlePhotoReference.startsWith('http://') || plan.itinerary[0].googlePhotoReference.startsWith('https://')) {
-      planImageSrc = plan.itinerary[0].googlePhotoReference;
-    } else {
-      planImageSrc = getGooglePlacePhotoUrl(plan.itinerary[0].googlePhotoReference, 400);
-    }
-    imageHint = 'Google Place photo';
-  }
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return '';
@@ -65,24 +46,14 @@ export const ExploreCard = React.memo(({ plan }: ExploreCardProps) => {
       <div className="flex h-28">
         {/* Image Section */}
         <div className="relative w-28 flex-shrink-0 overflow-hidden">
-          {imageError ? (
-            <img
-              src={placeholderImageUrl}
-              alt={plan.name || 'Placeholder image'}
-              className="h-full w-full object-cover"
-              data-ai-hint="placeholder fallback"
-            />
-          ) : (
-            <Image
-              src={planImageSrc}
-              alt={plan.name || 'Plan image'}
-              fill
-              className="object-cover transition-transform duration-200 group-hover:scale-105"
-              data-ai-hint={imageHint}
-              unoptimized={planImageSrc.includes('maps.googleapis.com')}
-              onError={() => setImageError(true)}
-            />
-          )}
+          <PlanImageLoader
+            plan={plan}
+            width={112}
+            height={112}
+            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+            altText={plan.name || 'Plan image'}
+            priority={false}
+          />
         </div>
 
         {/* Content Section */}

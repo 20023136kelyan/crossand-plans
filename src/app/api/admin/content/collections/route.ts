@@ -1,23 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authAdmin, firestoreAdmin } from '@/lib/firebaseAdmin';
+import { firestoreAdmin } from '@/lib/firebaseAdmin';
 import { PlanCollection, PlanCollectionType } from '@/types/user';
+import { createAdminHandler, parseRequestBody } from '@/lib/api/middleware';
 
 // GET /api/admin/content/collections - Get all collections
-export async function GET(request: NextRequest) {
-  try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await authAdmin.verifyIdToken(token);
-    
-    if (!decodedToken.admin) {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
-
-    const collectionsSnapshot = await firestoreAdmin
+export const GET = createAdminHandler(
+  async ({ request, authResult }) => {
+    const collectionsSnapshot = await firestoreAdmin!
       .collection('planCollections')
       .orderBy('createdAt', 'desc')
       .get();
@@ -46,31 +35,16 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json({ collections });
-  } catch (error) {
-    console.error('Error fetching collections:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch collections' },
-      { status: 500 }
-    );
-  }
-}
+  },
+  { defaultError: 'Failed to fetch collections' }
+);
 
 // POST /api/admin/content/collections - Create new collection
-export async function POST(request: NextRequest) {
-  try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+export const POST = createAdminHandler(
+  async ({ request, authResult }) => {
+    const { data: body, error } = await parseRequestBody(request);
+    if (error) return error;
 
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await authAdmin.verifyIdToken(token);
-    
-    if (!decodedToken.admin) {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-    }
-
-    const body = await request.json();
     const {
       title,
       description,
@@ -97,7 +71,7 @@ export async function POST(request: NextRequest) {
     // Validate plan IDs exist
     if (planIds && planIds.length > 0) {
       const planPromises = planIds.map((planId: string) => 
-        firestoreAdmin.collection('plans').doc(planId).get()
+        firestoreAdmin!.collection('plans').doc(planId).get()
       );
       const planDocs = await Promise.all(planPromises);
       const invalidPlanIds = planIds.filter((planId: string, index: number) => 
@@ -129,21 +103,16 @@ export async function POST(request: NextRequest) {
       sortOrder: sortOrder || 0,
       createdAt: now,
       updatedAt: now,
-      createdBy: decodedToken.uid
+      createdBy: authResult.userId
     };
 
-    const docRef = await firestoreAdmin.collection('planCollections').add(collectionData);
+    const docRef = await firestoreAdmin!.collection('planCollections').add(collectionData);
 
     return NextResponse.json({
       success: true,
       collectionId: docRef.id,
       message: 'Collection created successfully'
     });
-  } catch (error) {
-    console.error('Error creating collection:', error);
-    return NextResponse.json(
-      { error: 'Failed to create collection' },
-      { status: 500 }
-    );
-  }
-}
+  },
+  { defaultError: 'Failed to create collection' }
+);

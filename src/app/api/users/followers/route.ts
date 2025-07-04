@@ -1,71 +1,86 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { firestoreAdmin, authAdmin } from '@/lib/firebaseAdmin';
-import { getUserProfileAdmin } from '@/services/userService.server';
+import { firestoreAdmin as db } from '@/lib/firebaseAdmin';
+import { createAuthenticatedHandler, getQueryParams } from '@/lib/api/middleware';
 
-export async function GET(request: NextRequest) {
-  try {
-    // Get the authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+export const GET = createAuthenticatedHandler(
+  async ({ request, authResult }) => {
+    // Get query parameters with validation
+    const { params, error } = getQueryParams(request, {
+      userId: { required: false },
+      page: { required: false, defaultValue: '1' },
+      limit: { required: false, defaultValue: '20' }
+    });
+    if (error) return error;
+
+    const targetUserId = params.userId || authResult.userId;
+    const page = parseInt(params.page!) || 1;
+    const limit = Math.min(parseInt(params.limit!) || 20, 50); // Cap at 50
+
+    // Get followers for the target user
+    const followersRef = db!.collection('followers').doc(targetUserId);
+    const followersDoc = await followersRef.get();
+
+    if (!followersDoc.exists) {
+      return NextResponse.json({
+        followers: [],
+        pagination: {
+          page,
+          limit,
+          totalFollowers: 0,
+          totalPages: 0,
+          hasNext: false,
+          hasPrev: false
+        }
+      });
     }
 
-    const idToken = authHeader.split('Bearer ')[1];
-    if (!authAdmin) {
-      return NextResponse.json({ error: 'Authentication service unavailable' }, { status: 500 });
-    }
-    const decodedToken = await authAdmin.verifyIdToken(idToken);
-    const currentUserId = decodedToken.uid;
+    const followersData = followersDoc.data();
+    const followerIds = followersData?.users || [];
+    const totalFollowers = followerIds.length;
+    const totalPages = Math.ceil(totalFollowers / limit);
 
-    // Get the target user ID from query params
-    const { searchParams } = new URL(request.url);
-    const targetUserId = searchParams.get('userId');
-    
-    if (!targetUserId) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
-    }
+    // Apply pagination
+    const startIndex = (page - 1) * limit;
+    const paginatedFollowerIds = followerIds.slice(startIndex, startIndex + limit);
 
-    // Get the target user's profile to access followers array
-    const targetUserProfile = await getUserProfileAdmin(targetUserId);
-    if (!targetUserProfile) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
+    // Get follower user profiles
+    const followers: any[] = [];
+    if (paginatedFollowerIds.length > 0) {
+      const followerProfiles = await Promise.all(
+        paginatedFollowerIds.map((followerId: string) =>
+          db!.collection('users').doc(followerId).get()
+        )
+      );
 
-    // Check privacy settings (we'll implement this later)
-    // For now, allow viewing if user is viewing their own profile or if followers list is public
-    const isOwnProfile = currentUserId === targetUserId;
-    
-    // Get followers UIDs
-    const followerUids = targetUserProfile.followers || [];
-    
-    if (followerUids.length === 0) {
-      return NextResponse.json({ followers: [] });
-    }
-
-    // Fetch follower profiles
-    const followers = [];
-    for (const followerUid of followerUids) {
-      try {
-        const followerProfile = await getUserProfileAdmin(followerUid);
-        if (followerProfile) {
+      followerProfiles.forEach(doc => {
+        if (doc.exists) {
+          const data = doc.data();
           followers.push({
-            uid: followerProfile.uid,
-            name: followerProfile.name,
-            username: followerProfile.username,
-            avatarUrl: followerProfile.avatarUrl,
-            isVerified: followerProfile.isVerified,
-            role: followerProfile.role
+            id: doc.id,
+            firstName: data?.firstName || '',
+            lastName: data?.lastName || '',
+            email: data?.email || '',
+            avatar: data?.avatar || '',
+            isVerified: data?.isVerified || false,
+            followerCount: data?.followerCount || 0,
+            followingCount: data?.followingCount || 0,
+            planCount: data?.planCount || 0
           });
         }
-      } catch (error) {
-        console.error(`Error fetching follower profile ${followerUid}:`, error);
-        // Continue with other followers
-      }
+      });
     }
 
-    return NextResponse.json({ followers });
-  } catch (error) {
-    console.error('Error fetching followers:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
+    return NextResponse.json({
+      followers,
+      pagination: {
+        page,
+        limit,
+        totalFollowers,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1
+      }
+    });
+  },
+  { defaultError: 'Failed to fetch followers' }
+);

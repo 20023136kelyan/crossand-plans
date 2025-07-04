@@ -1,4 +1,3 @@
-
 'use client';
 
 import {
@@ -73,8 +72,8 @@ import { useToast } from '@/hooks/use-toast';
 // Removed Tabs, TabsContent, TabsList, TabsTrigger from here as they move to AppLayout
 // import { ExploreContent } from '@/components/explore/ExploreContent'; // Removed ExploreContent
 import { cn } from "@/lib/utils";
-import { getPostComments } from "@/services/feedService";
-import { getUserProfile } from "@/services/userService";
+// TEMP: getPostComments moved to clientServices for real-time updates
+import { getPostComments, getUserProfile } from '@/services/clientServices';
 import { FriendPickerDialog } from '@/components/messages/FriendPickerDialog';
 import { PostDetailModal } from '@/components/feed/PostDetailModal';
 import { useRouter, useSearchParams } from 'next/navigation';

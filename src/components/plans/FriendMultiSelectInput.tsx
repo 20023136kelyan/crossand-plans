@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Loader2, UserPlus, X, Check, ChevronsUpDown } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { getFriendships } from '@/services/userService';
+import { getFriendships } from '@/services/clientServices';
 import type { FriendEntry } from '@/types/user';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';

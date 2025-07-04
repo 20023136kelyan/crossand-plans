@@ -571,3 +571,56 @@ textarea:focus-visible {
   outline: none !important;
   box-shadow: none !important;
 }
+
+/* Joyful animations */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+@keyframes confetti {
+  0% {
+    transform: rotate(0deg) translateY(0px);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(360deg) translateY(-20px);
+    opacity: 0;
+  }
+}
+
+.animate-confetti {
+  animation: confetti 1s ease-out;
+}
+
+/* Ensure plan card images have properly rounded corners */
+.plan-card-image {
+  border-radius: inherit !important;
+  overflow: hidden !important;
+}
+
+/* Fix for Next.js Image component border radius in plan cards */
+.plan-card-image img,
+.plan-card-image > div,
+.plan-card-image > div > img {
+  border-radius: inherit !important;
+}
+
+/* Additional fixes for image border radius */
+[class*="rounded"] img {
+  border-radius: inherit;
+}
+
+/* Specific fixes for plan cards */
+.group .relative img,
+.group .relative > div > img {
+  border-radius: inherit;
+}

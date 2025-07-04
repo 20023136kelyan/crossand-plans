@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
-import { format, startOfWeek, addDays, isSameDay, isToday } from 'date-fns';
+import { format, startOfWeek, addDays, isSameDay, isToday, parseISO, isValid } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 interface HorizontalCalendarProps {
@@ -39,14 +39,25 @@ export function HorizontalCalendar({
   }, [selectedDate, days]);
 
   const getPlansForDay = (date: Date) => {
-    return plansForDate.filter(plan => {
+    const plans = plansForDate.filter(plan => {
       if (!plan.eventTime) return false;
       try {
-        return isSameDay(new Date(plan.eventTime), date);
+        const planDate = parseISO(plan.eventTime);
+        const isMatch = isValid(planDate) && isSameDay(planDate, date);
+        if (isMatch) {
+          console.log(`🗓️ HorizontalCalendar: Plan "${plan.name}" matches ${format(date, 'MMM d, yyyy')}`);
+        }
+        return isMatch;
       } catch {
         return false;
       }
     });
+    
+    if (plans.length > 0) {
+      console.log(`🗓️ HorizontalCalendar: ${format(date, 'MMM d, yyyy')} has ${plans.length} plans:`, plans.map(p => p.name));
+    }
+    
+    return plans;
   };
 
   const getDayIndicators = (date: Date) => {
@@ -77,10 +88,10 @@ export function HorizontalCalendar({
   return (
     <div className="relative -mx-4 px-4">
       {/* Left fade gradient */}
-      <div className="absolute left-0 top-0 bottom-0 w-12 bg-gradient-to-r from-background via-background/80 to-transparent z-10 pointer-events-none" />
+      <div className="absolute left-0 top-0 bottom-0 w-12 bg-gradient-to-r from-card via-card/80 to-transparent z-10 pointer-events-none" />
       
       {/* Right fade gradient */}
-      <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-background via-background/80 to-transparent z-10 pointer-events-none" />
+      <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-card via-card/80 to-transparent z-10 pointer-events-none" />
       
       <div 
         ref={scrollRef}

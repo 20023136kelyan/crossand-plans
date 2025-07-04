@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Loader2, Search, UserCircle, UserPlus } from "lucide-react"; // Added UserPlus for empty state button
 import { useAuth } from '@/context/AuthContext';
-import { getFriendships } from '@/services/userService'; // Client-side service
+import { getFriendships } from '@/services/clientServices'; // Client-side service
 import type { FriendEntry } from '@/types/user';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';

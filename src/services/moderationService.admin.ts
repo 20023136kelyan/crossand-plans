@@ -1,94 +1,83 @@
+import 'server-only';
 import { firestoreAdmin } from '@/lib/firebaseAdmin';
+import { FirebaseQueryBuilder, COLLECTIONS } from '@/lib/data/core/QueryBuilder';
 import type { Firestore } from 'firebase-admin/firestore';
 
-interface ModerationReport {
-  id?: string;
-  type: 'plan' | 'comment' | 'profile' | 'message';
-  status: 'pending' | 'flagged' | 'resolved' | 'dismissed';
-  reportCount: number;
-  reportedBy: string;
-  reportedUser: string;
-  reportedUserId: string;
-  content: string;
-  dateReported: string;
-  contentId: string;
-  reportReason: string;
-  priority: 'low' | 'medium' | 'high' | 'critical';
-  assignedTo?: string;
-  resolvedAt?: string;
-  resolvedBy?: string;
-  resolution?: string;
+export interface ModerationReport {
+  id: string;
+  reportedUserId?: string;
+  reportedPostId?: string;
+  reportedPlanId?: string;
+  reporterUserId: string;
+  reason: string;
+  description?: string;
+  status: 'pending' | 'reviewing' | 'resolved' | 'dismissed';
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  category: 'harassment' | 'spam' | 'inappropriate_content' | 'violence' | 'hate_speech' | 'other';
+  createdAt: string;
+  updatedAt: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  action?: string;
+  notes?: string;
   metadata?: Record<string, any>;
 }
 
-const MODERATION_REPORTS_COLLECTION = 'moderationReports';
+export interface ModerationStats {
+  totalReports: number;
+  pendingReports: number;
+  reviewingReports: number;
+  resolvedReports: number;
+  dismissedReports: number;
+  reportsByCategory: Record<string, number>;
+  reportsByPriority: Record<string, number>;
+  averageResolutionTime: number;
+  reportsToday: number;
+  reportsThisWeek: number;
+  reportsThisMonth: number;
+}
 
 /**
- * Create a new moderation report
+ * Submit a moderation report
  */
-export async function createModerationReport(
-  type: ModerationReport['type'],
-  reportedBy: string,
-  reportedUser: string,
-  reportedUserId: string,
-  content: string,
-  contentId: string,
-  reportReason: string,
-  options: {
-    priority?: ModerationReport['priority'];
-    metadata?: Record<string, any>;
-  } = {}
-): Promise<string | null> {
+export async function submitModerationReport(
+  reporterUserId: string,
+  reportType: 'user' | 'post' | 'plan',
+  targetId: string,
+  reason: string,
+  description?: string,
+  priority: 'low' | 'medium' | 'high' = 'medium'
+): Promise<string> {
   if (!firestoreAdmin) {
-    console.error('[createModerationReport] Firestore Admin SDK not initialized');
-    return null;
+    throw new Error('Firestore not initialized');
   }
 
-  try {
-    const db = firestoreAdmin as Firestore;
-    
-    // Check if a report already exists for this content
-    const existingReportQuery = await db
-      .collection(MODERATION_REPORTS_COLLECTION)
-      .where('contentId', '==', contentId)
-      .where('status', 'in', ['pending', 'flagged'])
-      .get();
-
-    if (!existingReportQuery.empty) {
-      // Update existing report count
-      const existingReport = existingReportQuery.docs[0];
-      const currentData = existingReport.data();
-      await existingReport.ref.update({
-        reportCount: (currentData.reportCount || 1) + 1,
-        lastReportedAt: new Date().toISOString(),
-        lastReportedBy: reportedBy
-      });
-      return existingReport.id;
+  const report: Omit<ModerationReport, 'id'> = {
+    reporterUserId,
+    reason,
+    description,
+    status: 'pending',
+    priority,
+    category: categorizeReason(reason),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    metadata: {
+      reportType,
+      userAgent: 'admin-panel'
     }
+  };
 
-    // Create new report
-    const report: ModerationReport = {
-      type,
-      status: 'pending',
-      reportCount: 1,
-      reportedBy,
-      reportedUser,
-      reportedUserId,
-      content,
-      dateReported: new Date().toISOString(),
-      contentId,
-      reportReason,
-      priority: options.priority || 'medium',
-      metadata: options.metadata
-    };
-
-    const docRef = await db.collection(MODERATION_REPORTS_COLLECTION).add(report);
-    console.log(`[createModerationReport] Report created: ${docRef.id}`);
-    return docRef.id;
-  } catch (error) {
-    console.error('[createModerationReport] Error creating moderation report:', error);
-    return null;
+  // Set target fields based on report type
+  if (reportType === 'user') {
+    report.reportedUserId = targetId;
+  } else if (reportType === 'post') {
+    report.reportedPostId = targetId;
+  } else if (reportType === 'plan') {
+    report.reportedPlanId = targetId;
   }
+
+  const docRef = await FirebaseQueryBuilder.collection(COLLECTIONS.MODERATION_REPORTS).add(report);
+  return docRef.id;
 }
 
 /**
@@ -96,186 +85,182 @@ export async function createModerationReport(
  */
 export async function getModerationReports(
   filters: {
-    status?: ModerationReport['status'];
-    type?: ModerationReport['type'];
-    priority?: ModerationReport['priority'];
-    assignedTo?: string;
+    status?: string;
+    priority?: string;
+    category?: string;
+    reportType?: string;
+    startAfter?: string;
   } = {},
-  limit: number = 50,
-  startAfter?: string
+  limit: number = 20
 ): Promise<ModerationReport[]> {
   if (!firestoreAdmin) {
-    console.error('[getModerationReports] Firestore Admin SDK not initialized');
-    return [];
+    throw new Error('Firestore not initialized');
   }
 
-  try {
-    const db = firestoreAdmin as Firestore;
-    let query = db.collection(MODERATION_REPORTS_COLLECTION)
-      .orderBy('dateReported', 'desc')
-      .limit(limit);
+  const queryFilters: { [key: string]: any } = {};
+  
+  if (filters.status) queryFilters.status = filters.status;
+  if (filters.priority) queryFilters.priority = filters.priority;
+  if (filters.category) queryFilters.category = filters.category;
 
-    // Apply filters
-    if (filters.status) {
-      query = query.where('status', '==', filters.status);
-    }
-    if (filters.type) {
-      query = query.where('type', '==', filters.type);
-    }
-    if (filters.priority) {
-      query = query.where('priority', '==', filters.priority);
-    }
-    if (filters.assignedTo) {
-      query = query.where('assignedTo', '==', filters.assignedTo);
-    }
+  let query = FirebaseQueryBuilder.getFilteredQuery(
+    COLLECTIONS.MODERATION_REPORTS,
+    queryFilters,
+    { limit }
+  );
 
-    if (startAfter) {
-      const startAfterDoc = await db.collection(MODERATION_REPORTS_COLLECTION).doc(startAfter).get();
-      if (startAfterDoc.exists) {
-        query = query.startAfter(startAfterDoc);
-      }
-    }
-
-    const snapshot = await query.get();
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })) as ModerationReport[];
-  } catch (error) {
-    console.error('[getModerationReports] Error fetching moderation reports:', error);
-    return [];
+  // Apply report type filtering
+  if (filters.reportType) {
+    const typeField = `reported${filters.reportType.charAt(0).toUpperCase() + filters.reportType.slice(1)}Id`;
+    query = query.where(typeField, '!=', null);
   }
+
+  // Apply cursor pagination if provided
+  if (filters.startAfter) {
+    const startAfterDoc = await FirebaseQueryBuilder.doc(COLLECTIONS.MODERATION_REPORTS, filters.startAfter).get();
+    if (startAfterDoc.exists) {
+      query = query.startAfter(startAfterDoc);
+    }
+  }
+
+  const snapshot = await query.get();
+  
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  } as ModerationReport));
 }
 
 /**
- * Update moderation report status
+ * Update moderation report status and add review information
  */
-export async function updateModerationReportStatus(
+export async function updateModerationReport(
   reportId: string,
-  status: ModerationReport['status'],
-  moderatorId: string,
-  resolution?: string
-): Promise<boolean> {
+  updates: {
+    status?: 'pending' | 'reviewing' | 'resolved' | 'dismissed';
+    reviewedBy?: string;
+    action?: string;
+    notes?: string;
+  }
+): Promise<void> {
   if (!firestoreAdmin) {
-    console.error('[updateModerationReportStatus] Firestore Admin SDK not initialized');
-    return false;
+    throw new Error('Firestore not initialized');
   }
 
-  try {
-    const db = firestoreAdmin as Firestore;
-    const updateData: any = {
-      status,
-      updatedAt: new Date().toISOString(),
-      updatedBy: moderatorId
-    };
+  const updateData: any = {
+    ...updates,
+    updatedAt: new Date().toISOString()
+  };
 
-    if (status === 'resolved' || status === 'dismissed') {
-      updateData.resolvedAt = new Date().toISOString();
-      updateData.resolvedBy = moderatorId;
-      if (resolution) {
-        updateData.resolution = resolution;
-      }
-    }
-
-    await db.collection(MODERATION_REPORTS_COLLECTION).doc(reportId).update(updateData);
-    return true;
-  } catch (error) {
-    console.error('[updateModerationReportStatus] Error updating report status:', error);
-    return false;
+  if (updates.status && ['resolved', 'dismissed'].includes(updates.status)) {
+    updateData.reviewedAt = new Date().toISOString();
   }
+
+  await FirebaseQueryBuilder.doc(COLLECTIONS.MODERATION_REPORTS, reportId).update(updateData);
 }
 
 /**
- * Assign moderation report to a moderator
+ * Auto-resolve a moderation report
  */
-export async function assignModerationReport(
+export async function autoResolveModerationReport(
   reportId: string,
-  moderatorId: string
-): Promise<boolean> {
-  if (!firestoreAdmin) {
-    console.error('[assignModerationReport] Firestore Admin SDK not initialized');
-    return false;
-  }
-
-  try {
-    const db = firestoreAdmin as Firestore;
-    await db.collection(MODERATION_REPORTS_COLLECTION).doc(reportId).update({
-      assignedTo: moderatorId,
-      assignedAt: new Date().toISOString()
-    });
-    return true;
-  } catch (error) {
-    console.error('[assignModerationReport] Error assigning report:', error);
-    return false;
-  }
+  action: string,
+  notes?: string
+): Promise<void> {
+  await updateModerationReport(reportId, {
+    status: 'resolved',
+    reviewedBy: 'system',
+    action,
+    notes
+  });
 }
 
 /**
  * Get moderation statistics
  */
-export async function getModerationStats(): Promise<{
-  total: number;
-  pending: number;
-  flagged: number;
-  resolved: number;
-  dismissed: number;
-  byType: Record<string, number>;
-  byPriority: Record<string, number>;
-}> {
+export async function getModerationStats(): Promise<ModerationStats> {
   if (!firestoreAdmin) {
-    console.error('[getModerationStats] Firestore Admin SDK not initialized');
-    return {
-      total: 0,
-      pending: 0,
-      flagged: 0,
-      resolved: 0,
-      dismissed: 0,
-      byType: {},
-      byPriority: {}
-    };
+    throw new Error('Firestore not initialized');
   }
 
-  try {
-    const db = firestoreAdmin as Firestore;
-    const snapshot = await db.collection(MODERATION_REPORTS_COLLECTION).get();
+  const snapshot = await FirebaseQueryBuilder.collection(COLLECTIONS.MODERATION_REPORTS).get();
+  
+  const stats: ModerationStats = {
+    totalReports: snapshot.size,
+    pendingReports: 0,
+    reviewingReports: 0,
+    resolvedReports: 0,
+    dismissedReports: 0,
+    reportsByCategory: {},
+    reportsByPriority: {},
+    averageResolutionTime: 0,
+    reportsToday: 0,
+    reportsThisWeek: 0,
+    reportsThisMonth: 0
+  };
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  let totalResolutionTime = 0;
+  let resolvedCount = 0;
+
+  snapshot.forEach(doc => {
+    const data = doc.data() as ModerationReport;
     
-    const stats = {
-      total: snapshot.size,
-      pending: 0,
-      flagged: 0,
-      resolved: 0,
-      dismissed: 0,
-      byType: {} as Record<string, number>,
-      byPriority: {} as Record<string, number>
-    };
+    // Count by status - use explicit type casting for status-based properties
+    const statusKey = `${data.status}Reports` as 'pendingReports' | 'reviewingReports' | 'resolvedReports' | 'dismissedReports';
+    if (statusKey in stats && typeof stats[statusKey] === 'number') {
+      (stats[statusKey] as number) = (stats[statusKey] as number) + 1;
+    }
+    
+    // Count by category
+    stats.reportsByCategory[data.category] = (stats.reportsByCategory[data.category] || 0) + 1;
+    
+    // Count by priority
+    stats.reportsByPriority[data.priority] = (stats.reportsByPriority[data.priority] || 0) + 1;
+    
+    // Date-based counts
+    const createdAt = new Date(data.createdAt);
+    if (createdAt >= today) stats.reportsToday++;
+    if (createdAt >= weekAgo) stats.reportsThisWeek++;
+    if (createdAt >= monthAgo) stats.reportsThisMonth++;
+    
+    // Calculate resolution time for resolved reports
+    if (data.status === 'resolved' && data.reviewedAt) {
+      const resolutionTime = new Date(data.reviewedAt).getTime() - new Date(data.createdAt).getTime();
+      totalResolutionTime += resolutionTime;
+      resolvedCount++;
+    }
+  });
 
-    snapshot.docs.forEach(doc => {
-      const data = doc.data();
-      
-      // Count by status
-      if (data.status === 'pending') stats.pending++;
-      else if (data.status === 'flagged') stats.flagged++;
-      else if (data.status === 'resolved') stats.resolved++;
-      else if (data.status === 'dismissed') stats.dismissed++;
-      
-      // Count by type
-      stats.byType[data.type] = (stats.byType[data.type] || 0) + 1;
-      
-      // Count by priority
-      stats.byPriority[data.priority] = (stats.byPriority[data.priority] || 0) + 1;
-    });
+  // Calculate average resolution time in hours
+  stats.averageResolutionTime = resolvedCount > 0 
+    ? Math.round(totalResolutionTime / resolvedCount / (1000 * 60 * 60)) 
+    : 0;
 
-    return stats;
-  } catch (error) {
-    console.error('[getModerationStats] Error fetching moderation stats:', error);
-    return {
-      total: 0,
-      pending: 0,
-      flagged: 0,
-      resolved: 0,
-      dismissed: 0,
-      byType: {},
-      byPriority: {}
-    };
+  return stats;
+}
+
+/**
+ * Helper function to categorize reasons
+ */
+function categorizeReason(reason: string): ModerationReport['category'] {
+  const lowerReason = reason.toLowerCase();
+  
+  if (lowerReason.includes('harassment') || lowerReason.includes('bullying')) {
+    return 'harassment';
+  } else if (lowerReason.includes('spam') || lowerReason.includes('fake')) {
+    return 'spam';
+  } else if (lowerReason.includes('inappropriate') || lowerReason.includes('explicit')) {
+    return 'inappropriate_content';
+  } else if (lowerReason.includes('violence') || lowerReason.includes('threat')) {
+    return 'violence';
+  } else if (lowerReason.includes('hate') || lowerReason.includes('discrimination')) {
+    return 'hate_speech';
+  } else {
+    return 'other';
   }
 }

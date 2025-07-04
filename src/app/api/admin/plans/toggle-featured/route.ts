@@ -1,32 +1,17 @@
+import { createAdminHandler, parseRequestBody } from '@/lib/api/middleware';
+import { firestoreAdmin as db } from '@/lib/firebaseAdmin';
 import { NextResponse } from 'next/server';
-import { authAdmin as auth, firestoreAdmin as db } from '@/lib/firebaseAdmin';
 
-export async function POST(request: Request) {
-  if (!auth || !db) {
-    console.error('Firebase Admin services not initialized');
-    return new Response(JSON.stringify({ error: 'Server configuration error' }), { status: 500 });
-  }
-
-  try {
-    // Verify authentication
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+export const POST = createAdminHandler(
+  async ({ request, authResult }) => {
+    if (!db) {
+      return NextResponse.json({ error: 'Database service unavailable' }, { status: 500 });
     }
 
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
+    const { data: body, error } = await parseRequestBody(request);
+    if (error) return error;
 
-    // Verify admin status
-    const userDoc = await db.collection('users').doc(decodedToken.uid).get();
-    const userData = userDoc.data();
-    
-    if (!userData?.isAdmin) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-    }
-
-    // Get request body
-    const { planId, featured } = await request.json();
+    const { planId, featured } = body;
 
     if (!planId) {
       return NextResponse.json({ error: 'Plan ID is required' }, { status: 400 });
@@ -36,15 +21,13 @@ export async function POST(request: Request) {
     await db.collection('plans').doc(planId).update({
       featured: featured,
       updatedAt: new Date().toISOString(),
-      lastModifiedBy: decodedToken.uid
+      lastModifiedBy: authResult.userId
     });
 
     return NextResponse.json({
       success: true,
       message: featured ? 'Plan marked as featured' : 'Plan removed from featured'
     });
-  } catch (error) {
-    console.error('Error toggling featured status:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-} 
+  },
+  { defaultError: 'Failed to toggle featured status' }
+); 

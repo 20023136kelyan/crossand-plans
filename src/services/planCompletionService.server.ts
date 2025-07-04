@@ -4,8 +4,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { addHours } from 'date-fns';
 import * as crypto from 'crypto';
 import { Firestore } from 'firebase-admin/firestore';
+import { FirebaseQueryBuilder, COLLECTIONS } from '../lib/data/core/QueryBuilder';
 
-const PLANS_COLLECTION = 'plans';
+// Legacy constants for backward compatibility
+const PLANS_COLLECTION = COLLECTIONS.PLANS;
 const PLAN_COMPLETIONS_COLLECTION = 'plan_completions';
 const USER_AFFINITIES_COLLECTION = 'user_affinities';
 
@@ -27,25 +29,18 @@ export async function getCompletionStatus(
   planId: string, 
   userId: string
 ): Promise<CompletionStatus | null> {
-  if (!firestoreAdmin) {
-    console.error('[getCompletionStatus] Firestore admin not initialized');
-    return null;
-  }
-
   try {
     // Get plan data
-    const planDoc = await firestoreAdmin.collection(PLANS_COLLECTION).doc(planId).get();
+    const planDoc = await FirebaseQueryBuilder.doc(COLLECTIONS.PLANS, planId).get();
     if (!planDoc.exists) return null;
     
     const plan = planDoc.data() as Plan;
     
     // Get user's individual completion record
-    const completionQuery = await firestoreAdmin!
-      .collection(PLAN_COMPLETIONS_COLLECTION)
-      .where('planId', '==', planId)
-      .where('userId', '==', userId)
-      .limit(1)
-      .get();
+    const completionQuery = await FirebaseQueryBuilder.getFilteredQuery(PLAN_COMPLETIONS_COLLECTION, {
+      planId: planId,
+      userId: userId
+    }, { limit: 1 }).get();
     
     const userCompletion = completionQuery.empty ? null : completionQuery.docs[0].data() as PlanCompletion;
     
@@ -136,15 +131,8 @@ const calculateAffinityScore = (completedCount: number, lastCompletedAt: string)
 
 // Generate QR code for venue plan verification
 export async function generateVenuePlanQR(planId: string): Promise<string | null> {
-  if (!firestoreAdmin) {
-    console.error('Firestore admin not initialized');
-    return null;
-  }
-
-  const db = firestoreAdmin as Firestore;
-
   try {
-    const plan = await db.collection('plans').doc(planId).get();
+    const plan = await FirebaseQueryBuilder.doc(COLLECTIONS.PLANS, planId).get();
     if (!plan.exists) {
       throw new Error('Plan not found');
     }
@@ -157,7 +145,7 @@ export async function generateVenuePlanQR(planId: string): Promise<string | null
     const qrData = generateQRCodeData(planId, planData.venueId);
     const expiresAt = addHours(new Date(), 24); // QR code expires in 24 hours
 
-    await db.collection('plans').doc(planId).update({
+    await FirebaseQueryBuilder.doc(COLLECTIONS.PLANS, planId).update({
       qrVerificationData: qrData,
       qrExpiresAt: expiresAt,
     });
@@ -177,21 +165,12 @@ export async function recordPlanCompletion(
   verificationMethod: 'qr_code' | 'manual' | 'auto',
   qrCodeData?: string
 ): Promise<boolean> {
-  if (!firestoreAdmin) {
-    console.error('Firestore admin not initialized');
-    return false;
-  }
-
-  const db = firestoreAdmin as Firestore;
-
   try {
     // Check if user already has a completion record for this plan
-    const existingQuery = await firestoreAdmin
-      .collection(PLAN_COMPLETIONS_COLLECTION)
-      .where('planId', '==', planId)
-      .where('userId', '==', userId)
-      .limit(1)
-      .get();
+    const existingQuery = await FirebaseQueryBuilder.getFilteredQuery(PLAN_COMPLETIONS_COLLECTION, {
+      planId: planId,
+      userId: userId
+    }, { limit: 1 }).get();
     
     if (!existingQuery.empty) {
       console.log(`[recordPlanCompletion] User ${userId} already has completion record for plan ${planId}`);
@@ -210,7 +189,7 @@ export async function recordPlanCompletion(
 
     // Verify QR code if provided
     if (verificationMethod === 'qr_code' && qrCodeData) {
-      const plan = await db.collection('plans').doc(planId).get();
+      const plan = await FirebaseQueryBuilder.doc(COLLECTIONS.PLANS, planId).get();
       if (!plan.exists) {
         throw new Error('Plan not found');
       }
@@ -228,7 +207,7 @@ export async function recordPlanCompletion(
     }
 
     // Record the completion
-    await db.collection(PLAN_COMPLETIONS_COLLECTION).doc(completion.id).set(completion);
+    await FirebaseQueryBuilder.collection(PLAN_COMPLETIONS_COLLECTION).doc(completion.id).set(completion);
 
     // Update affinity scores for all participant pairs
     const allParticipants = [...participantIds, userId];
@@ -247,20 +226,13 @@ export async function recordPlanCompletion(
 
 // Update affinity score between two users
 async function updateAffinityScore(userId1: string, userId2: string): Promise<void> {
-  if (!firestoreAdmin) {
-    console.error('Firestore admin not initialized');
-    return;
-  }
-
-  const db = firestoreAdmin as Firestore;
-
   try {
     // Ensure consistent ordering of user IDs
     const [sortedUser1, sortedUser2] = [userId1, userId2].sort();
     const affinityId = `${sortedUser1}-${sortedUser2}`;
 
     // Get all plan completions where both users participated
-    const completions = await db.collection(PLAN_COMPLETIONS_COLLECTION)
+    const completions = await FirebaseQueryBuilder.collection(PLAN_COMPLETIONS_COLLECTION)
       .where('participantIds', 'array-contains', sortedUser1)
       .get();
 
@@ -284,7 +256,7 @@ async function updateAffinityScore(userId1: string, userId2: string): Promise<vo
       lastPlanCompletedAt: sharedCompletions[0].completedAt,
     };
 
-    await db.collection(USER_AFFINITIES_COLLECTION).doc(affinityId).set(affinity);
+    await FirebaseQueryBuilder.collection(USER_AFFINITIES_COLLECTION).doc(affinityId).set(affinity);
   } catch (error) {
     console.error('Error updating affinity score:', error);
   }
@@ -292,18 +264,11 @@ async function updateAffinityScore(userId1: string, userId2: string): Promise<vo
 
 // Get affinity score between two users
 export async function getAffinityScore(userId1: string, userId2: string): Promise<number> {
-  if (!firestoreAdmin) {
-    console.error('Firestore admin not initialized');
-    return 0;
-  }
-
-  const db = firestoreAdmin as Firestore;
-
   try {
     const [sortedUser1, sortedUser2] = [userId1, userId2].sort();
     const affinityId = `${sortedUser1}-${sortedUser2}`;
 
-    const affinityDoc = await db.collection(USER_AFFINITIES_COLLECTION).doc(affinityId).get();
+    const affinityDoc = await FirebaseQueryBuilder.collection(USER_AFFINITIES_COLLECTION).doc(affinityId).get();
     if (!affinityDoc.exists) {
       return 0;
     }
@@ -318,19 +283,12 @@ export async function getAffinityScore(userId1: string, userId2: string): Promis
 
 // Get all user affinities for a user
 export async function getUserAffinities(userId: string): Promise<UserAffinity[]> {
-  if (!firestoreAdmin) {
-    console.error('Firestore admin not initialized');
-    return [];
-  }
-
-  const db = firestoreAdmin as Firestore;
-
   try {
-    const affinities1 = await db.collection(USER_AFFINITIES_COLLECTION)
+    const affinities1 = await FirebaseQueryBuilder.collection(USER_AFFINITIES_COLLECTION)
       .where('userId1', '==', userId)
       .get();
 
-    const affinities2 = await db.collection(USER_AFFINITIES_COLLECTION)
+    const affinities2 = await FirebaseQueryBuilder.collection(USER_AFFINITIES_COLLECTION)
       .where('userId2', '==', userId)
       .get();
 

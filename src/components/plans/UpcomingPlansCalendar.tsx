@@ -7,7 +7,7 @@ import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns';
 import { cn } from '@/lib/utils';
 import type { Plan } from '@/types/user';
-import { getUserPlans } from '@/services/planService';
+import { getUserPlansSubscription } from '@/services/clientServices';
 import { useAuth } from '@/context/AuthContext';
 
 interface UpcomingPlansCalendarProps {
@@ -23,16 +23,23 @@ export function UpcomingPlansCalendar({ className }: UpcomingPlansCalendarProps)
   useEffect(() => {
     if (!user?.uid) return;
 
-    const unsubscribe = getUserPlans(user.uid, (userPlans) => {
-      // Filter for upcoming plans with event times
-      const upcomingPlans = userPlans.filter(plan => {
-        if (!plan.eventTime) return false;
-        const eventDate = new Date(plan.eventTime);
-        return eventDate > new Date() && plan.status === 'published';
-      });
-      setPlans(upcomingPlans);
-      setLoading(false);
-    });
+    const unsubscribe = getUserPlansSubscription(
+      user.uid,
+      (userPlans) => {
+        // Filter for upcoming plans with event times
+        const upcomingPlans = userPlans.filter(plan => {
+          if (!plan.eventTime) return false;
+          const eventDate = new Date(plan.eventTime);
+          return eventDate > new Date() && plan.status === 'published';
+        });
+        setPlans(upcomingPlans);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Error fetching plans for calendar:', error);
+        setLoading(false);
+      }
+    );
 
     return unsubscribe;
   }, [user?.uid]);

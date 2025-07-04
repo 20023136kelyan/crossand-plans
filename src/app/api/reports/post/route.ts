@@ -1,29 +1,22 @@
 // src/app/api/reports/post/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/firebaseAdmin';
-import { db } from '@/lib/firebaseAdmin';
+import { firestoreAdmin as db } from '@/lib/firebaseAdmin';
 import { FieldValue } from 'firebase-admin/firestore';
+import { createAuthenticatedHandler, parseRequestBody } from '@/lib/api/middleware';
 
-export async function POST(request: NextRequest) {
-  try {
-    // Get the authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+export const POST = createAuthenticatedHandler(
+  async ({ request, authResult }) => {
+    const { data: body, error } = await parseRequestBody(request);
+    if (error) return error;
 
-    const idToken = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(idToken);
-    const reportingUserId = decodedToken.uid;
-
-    const { postId, reason, description } = await request.json();
+    const { postId, reason, description } = body;
 
     if (!postId || !reason) {
       return NextResponse.json({ error: 'Post ID and reason are required' }, { status: 400 });
     }
 
     // Check if the post exists
-    const postRef = db.collection('posts').doc(postId);
+    const postRef = db!.collection('posts').doc(postId);
     const postDoc = await postRef.get();
     
     if (!postDoc.exists) {
@@ -33,10 +26,10 @@ export async function POST(request: NextRequest) {
     const postData = postDoc.data();
     
     // Check if user has already reported this post
-    const existingReportQuery = await db.collection('reports')
+    const existingReportQuery = await db!.collection('reports')
       .where('contentType', '==', 'post')
       .where('contentId', '==', postId)
-      .where('reportingUserId', '==', reportingUserId)
+      .where('reportingUserId', '==', authResult.userId)
       .limit(1)
       .get();
 
@@ -49,7 +42,7 @@ export async function POST(request: NextRequest) {
       contentType: 'post',
       contentId: postId,
       reportedUserId: postData?.userId || null,
-      reportingUserId,
+      reportingUserId: authResult.userId,
       reason,
       description: description || '',
       status: 'pending',
@@ -62,10 +55,10 @@ export async function POST(request: NextRequest) {
     };
 
     // Use a batch to create the report and update post report count
-    const batch = db.batch();
+    const batch = db!.batch();
     
     // Add the report
-    const reportRef = db.collection('reports').doc();
+    const reportRef = db!.collection('reports').doc();
     batch.set(reportRef, reportData);
     
     // Update post report count
@@ -80,12 +73,6 @@ export async function POST(request: NextRequest) {
       message: 'Post reported successfully',
       reportId: reportRef.id 
     });
-
-  } catch (error) {
-    console.error('Error reporting post:', error);
-    return NextResponse.json(
-      { error: 'Failed to report post' },
-      { status: 500 }
-    );
-  }
-}
+  },
+  { defaultError: 'Failed to report post' }
+);

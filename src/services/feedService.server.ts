@@ -5,9 +5,11 @@ import type { FeedPost, FeedPostVisibility, UserRoleType, FeedComment } from '@/
 import { Timestamp as AdminTimestamp, FieldValue, type DocumentData, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { getFriendUidsAdmin } from '@/services/userService.server'; 
 import type { Firestore } from 'firebase-admin/firestore';
+import { FirebaseQueryBuilder, COLLECTIONS, SUBCOLLECTIONS } from '@/lib/data/core/QueryBuilder';
 
-const FEED_POSTS_COLLECTION = 'feedPosts';
-const COMMENTS_SUBCOLLECTION = 'comments';
+// Legacy constants for backward compatibility
+const FEED_POSTS_COLLECTION = COLLECTIONS.FEED_POSTS;
+const COMMENTS_SUBCOLLECTION = SUBCOLLECTIONS.COMMENTS;
 
 const convertAdminTimestampToISO = (ts: any): string => {
     if (!ts) return new Date(0).toISOString();
@@ -234,16 +236,10 @@ interface IncrementSharesResult extends AdminFunctionResult {
 
 
 export const toggleLikePostAdmin = async (postId: string, userId: string): Promise<ToggleLikeResult> => {
-  if (!firestoreAdmin) {
-    console.error("[toggleLikePostAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
-    // This is a server configuration issue, should ideally not happen in a stable environment.
-    return { success: false, error: "Server configuration error: Database service not available.", errorCode: "SERVER_CONFIG_ERROR" };
-  }
-  const postRef = firestoreAdmin.collection(FEED_POSTS_COLLECTION).doc(postId);
-
   try {
+    const postRef = FirebaseQueryBuilder.doc(COLLECTIONS.FEED_POSTS, postId);
     let finalUpdatedPost: FeedPost | undefined = undefined;
-    await firestoreAdmin.runTransaction(async (transaction) => {
+    await firestoreAdmin!.runTransaction(async (transaction) => {
       const postDoc = await transaction.get(postRef);
       if (!postDoc.exists) {
         // This specific error will be caught by the outer catch and handled.
@@ -348,21 +344,15 @@ export const addCommentToPostAdmin = async (
   postId: string,
   commentData: Omit<FeedComment, 'id' | 'createdAt'>
 ): Promise<AddCommentResult> => {
-  if (!firestoreAdmin) {
-    console.error("[addCommentToPostAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
-    return { success: false, error: "Server configuration error: Database service not available.", errorCode: "SERVER_CONFIG_ERROR" };
-  }
-  
-  const postRef = firestoreAdmin.collection(FEED_POSTS_COLLECTION).doc(postId);
-  const commentsRef = postRef.collection(COMMENTS_SUBCOLLECTION);
-  const serverTimestamp = FieldValue.serverTimestamp();
-
   try {
+    const postRef = FirebaseQueryBuilder.doc(COLLECTIONS.FEED_POSTS, postId);
+    const commentsRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.FEED_POSTS, postId, SUBCOLLECTIONS.COMMENTS);
+    const serverTimestamp = FieldValue.serverTimestamp();
     const newCommentRef = commentsRef.doc(); 
     let finalUpdatedPost: FeedPost | undefined = undefined;
     let finalCommentData: FeedComment | undefined = undefined;
 
-    await firestoreAdmin.runTransaction(async (transaction) => {
+    await firestoreAdmin!.runTransaction(async (transaction) => {
       const postDoc = await transaction.get(postRef);
       if (!postDoc.exists) {
         throw { customError: true, message: "Post not found to add comment.", code: "POST_NOT_FOUND_IN_TRANSACTION" };
@@ -439,15 +429,11 @@ export const addCommentToPostAdmin = async (
 };
 
 export const incrementPostSharesAdmin = async (postId: string): Promise<IncrementSharesResult> => {
-  if (!firestoreAdmin) {
-    console.error("[incrementPostSharesAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
-    return { success: false, error: "Server configuration error: Database service not available.", errorCode: "SERVER_CONFIG_ERROR" };
-  }
-  const postRef = firestoreAdmin.collection(FEED_POSTS_COLLECTION).doc(postId);
+  const postRef = FirebaseQueryBuilder.doc(COLLECTIONS.FEED_POSTS, postId);
 
   try {
     let finalUpdatedPost: FeedPost | undefined = undefined;
-    await firestoreAdmin.runTransaction(async (transaction) => {
+    await firestoreAdmin!.runTransaction(async (transaction) => {
         const postDoc = await transaction.get(postRef);
         if (!postDoc.exists) {
             throw { customError: true, message: "Post not found to increment shares.", code: "POST_NOT_FOUND_IN_TRANSACTION" };
@@ -493,11 +479,7 @@ export const incrementPostSharesAdmin = async (postId: string): Promise<Incremen
 };
 
 export const deleteFeedPostAdmin = async (postId: string, requestingUserId: string): Promise<{ success: boolean; error?: string }> => {
-  if (!firestoreAdmin) {
-    console.error("[deleteFeedPostAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
-    throw new Error("Server configuration error: Database service not available.");
-  }
-  const postRef = firestoreAdmin.collection(FEED_POSTS_COLLECTION).doc(postId);
+  const postRef = FirebaseQueryBuilder.doc(COLLECTIONS.FEED_POSTS, postId);
   try {
     const postDoc = await postRef.get();
     if (!postDoc.exists) { // Corrected
@@ -513,14 +495,14 @@ export const deleteFeedPostAdmin = async (postId: string, requestingUserId: stri
     // Delete comments subcollection
     const commentsCollectionRef = postRef.collection(COMMENTS_SUBCOLLECTION);
     const commentsSnapshot = await commentsCollectionRef.limit(500).get(); 
-    let batch = firestoreAdmin.batch();
+    let batch = firestoreAdmin!.batch();
     let count = 0;
     for (const doc of commentsSnapshot.docs) {
         batch.delete(doc.ref);
         count++;
         if (count >= 499) { 
             await batch.commit();
-            batch = firestoreAdmin.batch();
+            batch = firestoreAdmin!.batch();
             count = 0;
         }
     }
@@ -543,18 +525,12 @@ export const deleteCommentFromPostAdmin = async (
   commentId: string,
   requestingUserId: string
 ): Promise<{ success: boolean; error?: string; errorCode?: string; originalError?: string }> => {
-  if (!firestoreAdmin) {
-    console.error("[deleteCommentFromPostAdmin] CRITICAL: Firestore Admin SDK is not initialized.");
-    return { success: false, error: "Server configuration error: Database service not available.", errorCode: "SERVER_CONFIG_ERROR" };
-  }
-
-  const postRef = firestoreAdmin.collection(FEED_POSTS_COLLECTION).doc(postId);
-  const commentRef = postRef.collection(COMMENTS_SUBCOLLECTION).doc(commentId);
-
   try {
+    const postRef = FirebaseQueryBuilder.doc(COLLECTIONS.FEED_POSTS, postId);
+    const commentRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.FEED_POSTS, postId, SUBCOLLECTIONS.COMMENTS).doc(commentId);
     let finalUpdatedPost: FeedPost | undefined = undefined;
 
-    await firestoreAdmin.runTransaction(async (transaction) => {
+    await firestoreAdmin!.runTransaction(async (transaction) => {
       const [postDoc, commentDoc] = await Promise.all([
         transaction.get(postRef),
         transaction.get(commentRef)
@@ -610,16 +586,11 @@ export const deleteCommentFromPostAdmin = async (
 };
 
 export const updateUserAvatarInFeedAdmin = async (userId: string, newAvatarUrl: string): Promise<void> => {
-  if (!firestoreAdmin) {
-    console.error("[updateUserAvatarInFeedAdmin] Firestore Admin SDK is not initialized.");
-    throw new Error("Server configuration error: Database service not available.");
-  }
-
   try {
     // Execute both queries concurrently
     const [postsSnapshot, allPostsSnapshot] = await Promise.all([
-      firestoreAdmin.collection(FEED_POSTS_COLLECTION).where('userId', '==', userId).get(),
-      firestoreAdmin.collection(FEED_POSTS_COLLECTION).get()
+      FirebaseQueryBuilder.getFilteredQuery(COLLECTIONS.FEED_POSTS, [['userId', '==', userId]]).get(),
+      FirebaseQueryBuilder.collection(COLLECTIONS.FEED_POSTS).get()
     ]);
     
     const updatePromises: Promise<void>[] = [];
@@ -630,7 +601,7 @@ export const updateUserAvatarInFeedAdmin = async (userId: string, newAvatarUrl: 
         if (!firestoreAdmin) {
           throw new Error("Firestore Admin SDK not available");
         }
-        const batch = firestoreAdmin.batch();
+        const batch = firestoreAdmin!.batch();
         let operationsCount = 0;
         const MAX_BATCH_SIZE = 500;
         let currentBatch = batch;
@@ -644,7 +615,7 @@ export const updateUserAvatarInFeedAdmin = async (userId: string, newAvatarUrl: 
             if (!firestoreAdmin) {
               throw new Error("Firestore Admin SDK not available");
             }
-            currentBatch = firestoreAdmin.batch();
+            currentBatch = firestoreAdmin!.batch();
             operationsCount = 0;
           }
         }
@@ -666,7 +637,7 @@ export const updateUserAvatarInFeedAdmin = async (userId: string, newAvatarUrl: 
         if (!firestoreAdmin) {
           throw new Error("Firestore Admin SDK not available");
         }
-        const batch = firestoreAdmin.batch();
+        const batch = firestoreAdmin!.batch();
         let operationsCount = 0;
         const MAX_BATCH_SIZE = 500;
         let currentBatch = batch;
@@ -680,7 +651,7 @@ export const updateUserAvatarInFeedAdmin = async (userId: string, newAvatarUrl: 
             if (!firestoreAdmin) {
               throw new Error("Firestore Admin SDK not available");
             }
-            currentBatch = firestoreAdmin.batch();
+            currentBatch = firestoreAdmin!.batch();
             operationsCount = 0;
           }
         }

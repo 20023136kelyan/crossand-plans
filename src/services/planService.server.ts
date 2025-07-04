@@ -6,6 +6,12 @@ import { FieldValue, Timestamp as AdminTimestamp, type Firestore, type DocumentS
 import { getUserProfileAdmin } from './userService.server'; // For fetching host profile
 import admin from 'firebase-admin'; // For FieldPath.documentId()
 
+// Import centralized utilities
+import { convertTimestampToISO } from '@/lib/data/core/TimestampUtils.server';
+import { mapDocumentToPlan } from '@/lib/data/mappers/PlanMapper.server';
+import { BaseService } from '@/lib/data/core/BaseService';
+import { FirebaseQueryBuilder, COLLECTIONS, SUBCOLLECTIONS } from '@/lib/data/core/QueryBuilder';
+
 const PLANS_COLLECTION = 'plans';
 const RATINGS_SUBCOLLECTION = 'ratings';
 const COMMENTS_SUBCOLLECTION = 'comments';
@@ -124,74 +130,16 @@ export const updatePlanAdmin = async (
   }
 };
 
-const convertAdminTimestampToISO = (ts: any): string => {
-  if (!ts) return new Date(0).toISOString();
-  
-  // Handle Firestore Timestamp
-  if (ts instanceof AdminTimestamp) return ts.toDate().toISOString();
-  
-  // Handle server timestamp from Firestore
-  if (ts && typeof ts.toDate === 'function') return ts.toDate().toISOString();
-  
-  // Handle JavaScript Date
-  if (ts instanceof Date) return ts.toISOString();
-  
-  // Handle ISO string
-  if (typeof ts === 'string') {
-    const date = new Date(ts);
-    if (!isNaN(date.getTime())) return date.toISOString();
-  }
-  
-  // Handle numeric timestamp (milliseconds since epoch)
-  if (typeof ts === 'number' && !isNaN(ts)) {
-    return new Date(ts).toISOString();
-  }
-  
-  console.warn(`[convertAdminTimestampToISO] Unexpected timestamp type: ${typeof ts}, value:`, ts);
-  return new Date(0).toISOString();
-};
+// Timestamp conversion now handled by centralized utility
+const convertAdminTimestampToISO = convertTimestampToISO;
 
-const mapAdminDocToPlan = (docSnap: FirebaseFirestore.DocumentSnapshot): Plan => {
-  const data = docSnap.data()!;
-  return {
-    id: docSnap.id,
-    name: data.name,
-    description: data.description || null,
-    eventTime: convertAdminTimestampToISO(data.eventTime),
-    location: data.location,
-    city: data.city,
-    eventType: data.eventType || null,
-    priceRange: data.priceRange || null,
-    hostId: data.hostId,
-    hostName: data.hostName || null,
-    hostAvatarUrl: data.hostAvatarUrl || null,
-    invitedParticipantUserIds: data.invitedParticipantUserIds || [],
-    participantResponses: data.participantResponses || {},
-    itinerary: data.itinerary?.map((item: any) => ({
-      ...item,
-      startTime: convertAdminTimestampToISO(item.startTime),
-      endTime: item.endTime ? convertAdminTimestampToISO(item.endTime) : null,
-    })) || [],
-    status: data.status,
-    planType: data.planType,
-    originalPlanId: data.originalPlanId || null,
-    sharedByUid: data.sharedByUid || null,
-    averageRating: data.averageRating === undefined ? null : data.averageRating,
-    reviewCount: data.reviewCount === undefined ? 0 : data.reviewCount,
-    photoHighlights: data.photoHighlights || [],
-    createdAt: convertAdminTimestampToISO(data.createdAt),
-    updatedAt: convertAdminTimestampToISO(data.updatedAt),
-  } as Plan;
-};
+// Plan mapping now handled by centralized utility
+const mapAdminDocToPlan = mapDocumentToPlan;
 
 
 export const getPlanByIdAdminService = async (planId: string): Promise<Plan | null> => {
-  if (!firestoreAdmin) {
-    console.error("[getPlanByIdAdminService] Firestore Admin SDK is not initialized.");
-    return null;
-  }
   try {
-    const planDocRef = firestoreAdmin.collection(PLANS_COLLECTION).doc(planId);
+    const planDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.PLANS, planId);
     const planDocSnap = await planDocRef.get();
 
     if (planDocSnap.exists) {
@@ -206,50 +154,22 @@ export const getPlanByIdAdminService = async (planId: string): Promise<Plan | nu
 };
 
 export const getPlansByIdsAdmin = async (planIds: string[]): Promise<Plan[]> => {
-  if (!firestoreAdmin) {
-    console.error("[getPlansByIdsAdmin] Firestore Admin SDK is not initialized.");
-    return [];
-  }
-  if (!planIds || planIds.length === 0) {
-    return [];
-  }
-  const MAX_IDS_PER_QUERY = 30; 
-  const plans: Plan[] = [];
-
-  for (let i = 0; i < planIds.length; i += MAX_IDS_PER_QUERY) {
-    const chunk = planIds.slice(i, i + MAX_IDS_PER_QUERY);
-    if (chunk.length === 0) continue;
-
-    try {
-      const plansRef = firestoreAdmin.collection(PLANS_COLLECTION);
-      // Use admin.firestore.FieldPath.documentId() for querying by document ID
-      const q = plansRef.where(admin.firestore.FieldPath.documentId(), 'in', chunk);
-      const querySnapshot = await q.get();
-      
-      querySnapshot.forEach(docSnap => {
-           plans.push(mapAdminDocToPlan(docSnap));
-      });
-    } catch (error) {
-      console.error(`[getPlansByIdsAdmin] Error fetching plans chunk (Admin SDK):`, error);
-    }
-  }
-  return plans;
+  return FirebaseQueryBuilder.getItemsByIds(
+    COLLECTIONS.PLANS,
+    planIds,
+    mapAdminDocToPlan
+  );
 };
 
 
 export const getAllPublishedPlansAdmin = async (): Promise<Plan[]> => {
-  if (!firestoreAdmin) {
-    console.error("[getAllPublishedPlansAdmin] Firestore Admin SDK is not initialized.");
-    return [];
-  }
   try {
-    const plansRef = firestoreAdmin.collection(PLANS_COLLECTION);
-    const q = plansRef.where('status', '==', 'published').orderBy('eventTime', 'desc');
-    const querySnapshot = await q.get();
+    const query = FirebaseQueryBuilder.getPublishedQuery(COLLECTIONS.PLANS);
+    const querySnapshot = await query.get();
     
     const plans: Plan[] = [];
     querySnapshot.forEach(docSnap => {
-         plans.push(mapAdminDocToPlan(docSnap));
+      plans.push(mapAdminDocToPlan(docSnap));
     });
     return plans;
   } catch (error) {
@@ -259,25 +179,21 @@ export const getAllPublishedPlansAdmin = async (): Promise<Plan[]> => {
 };
 
 export const getPublishedPlansByCityAdmin = async (cityName: string): Promise<Plan[]> => {
-  if (!firestoreAdmin) {
-    console.error("[getPublishedPlansByCityAdmin] Firestore Admin SDK is not initialized.");
-    return [];
-  }
-   if (!cityName || typeof cityName !== 'string') {
+  if (!cityName || typeof cityName !== 'string') {
     console.error("[getPublishedPlansByCityAdmin] Invalid cityName provided.");
     return [];
   }
   try {
-    const plansRef = firestoreAdmin.collection(PLANS_COLLECTION);
-    const q = plansRef
-      .where('status', '==', 'published')
-      .where('city', '==', cityName)
-      .orderBy('eventTime', 'desc');
-    const querySnapshot = await q.get();
+    const query = FirebaseQueryBuilder.getFilteredQuery(
+      COLLECTIONS.PLANS,
+      { status: 'published', city: cityName },
+      { timeField: 'eventTime' }
+    );
+    const querySnapshot = await query.get();
     
     const plans: Plan[] = [];
     querySnapshot.forEach(docSnap => {
-       plans.push(mapAdminDocToPlan(docSnap));
+      plans.push(mapAdminDocToPlan(docSnap));
     });
     return plans;
   } catch (error) {
@@ -288,22 +204,18 @@ export const getPublishedPlansByCityAdmin = async (cityName: string): Promise<Pl
 
 
 export const getPublishedPlansByCategoryAdmin = async (categoryName: string): Promise<Plan[]> => {
-  if (!firestoreAdmin) {
-    console.error("[getPublishedPlansByCategoryAdmin] Firestore Admin SDK is not initialized.");
-    return [];
-  }
   if (!categoryName || typeof categoryName !== 'string') {
     console.error("[getPublishedPlansByCategoryAdmin] Invalid categoryName provided.");
     return [];
   }
   try {
     console.log(`[getPublishedPlansByCategoryAdmin] Fetching plans for category: ${categoryName}`);
-    const plansRef = firestoreAdmin.collection(PLANS_COLLECTION);
-    const q = plansRef
-      .where('status', '==', 'published')
-      .where('eventTypeLowercase', '==', categoryName.toLowerCase())
-      .orderBy('eventTime', 'desc');
-    const querySnapshot = await q.get();
+    const query = FirebaseQueryBuilder.getFilteredQuery(
+      COLLECTIONS.PLANS,
+      { status: 'published', eventTypeLowercase: categoryName.toLowerCase() },
+      { timeField: 'eventTime' }
+    );
+    const querySnapshot = await query.get();
     
     console.log(`[getPublishedPlansByCategoryAdmin] Found ${querySnapshot.size} plans`);
     const plans: Plan[] = [];
@@ -758,29 +670,32 @@ export const getCompletedPlansAdmin = async (): Promise<Plan[]> => {
 };
 
 export const getUserPlansAdmin = async (userId: string): Promise<Plan[]> => {
-  if (!firestoreAdmin) {
-    console.error("[getUserPlansAdmin] Firestore Admin SDK is not initialized.");
-    return [];
-  }
   if (!userId) {
     console.error("[getUserPlansAdmin] No userId provided.");
     return [];
   }
   
   try {
-    const plansRef = firestoreAdmin.collection(PLANS_COLLECTION);
-    
     // Get hosted plans (all statuses)
-    const hostedQuery = plansRef
-      .where('hostId', '==', userId)
-      .orderBy('eventTime', 'desc');
+    const hostedQuery = FirebaseQueryBuilder.getFilteredQuery(
+      COLLECTIONS.PLANS,
+      { hostId: userId },
+      { timeField: 'eventTime' }
+    );
     const hostedSnapshot = await hostedQuery.get();
     
     // Get invited plans (all statuses)
-    const invitedQuery = plansRef
+    const invitedQuery = FirebaseQueryBuilder.getFilteredQuery(
+      COLLECTIONS.PLANS,
+      { invitedParticipantUserIds: userId }, // Note: This will need special handling in QueryBuilder for array-contains
+      { timeField: 'eventTime' }
+    );
+    
+    // For now, use direct query for array-contains since QueryBuilder doesn't handle it yet
+    const invitedSnapshot = await FirebaseQueryBuilder.collection(COLLECTIONS.PLANS)
       .where('invitedParticipantUserIds', 'array-contains', userId)
-      .orderBy('eventTime', 'desc');
-    const invitedSnapshot = await invitedQuery.get();
+      .orderBy('eventTime', 'desc')
+      .get();
     
     const plans: Plan[] = [];
     const planIds = new Set<string>();

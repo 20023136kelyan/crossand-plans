@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -23,7 +22,7 @@ import {
   declineFriendRequestAction, 
   removeFriendAction 
 } from '@/app/actions/userActions';
-import { getFriendships } from '@/services/userService';
+import { getFriendships } from '@/services/clientServices';
 import { initiateDirectChatAction } from '@/app/actions/chatActions';
 import type { UserProfile, FeedPost, UserStats, FriendEntry, SearchedUser } from "@/types/user";
 import { cn } from "@/lib/utils";

@@ -1,84 +1,104 @@
-import { NextResponse, NextRequest } from 'next/server';
-import { cookies } from 'next/headers';
-import { authAdmin, firestoreAdmin } from '@/lib/firebaseAdmin';
+import { NextRequest, NextResponse } from 'next/server';
+import { authAdmin, firestoreAdmin as db } from '@/lib/firebaseAdmin';
+import { createAuthenticatedHandler, parseRequestBody } from '@/lib/api/middleware';
 
-const SESSION_COOKIE_NAME = 'session';
+export const POST = createAuthenticatedHandler(
+  async ({ request, authResult }) => {
+    const { data: body, error } = await parseRequestBody(request);
+    if (error) return error;
 
-export async function POST(request: NextRequest) {
-  try {
-    // Get the session cookie from the request
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+    const { password, confirmText } = body;
 
-    if (!sessionCookie) {
-      return NextResponse.json({ error: "No session cookie found" }, { status: 401 });
+    // Verify the confirmation text
+    if (confirmText !== 'DELETE MY ACCOUNT') {
+      return NextResponse.json(
+        { error: 'Please type "DELETE MY ACCOUNT" to confirm' },
+        { status: 400 }
+      );
     }
 
-    // Verify the session cookie with Firebase Admin
-    if (!authAdmin) {
-      console.error('[/api/auth/delete-account] Firebase Admin SDK not initialized');
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
-    }
+    // TODO: Verify password (would need to re-authenticate with Firebase Auth)
+    // For now, we'll rely on the fact that they have a valid token
 
-    let decodedClaims;
+    const userId = authResult.userId;
+
     try {
-      // Use the correct type for authAdmin - cast to any to avoid type errors
-      decodedClaims = await (authAdmin as any).verifySessionCookie(sessionCookie, true);
-    } catch (error) {
-      console.error('[/api/auth/delete-account] Invalid session cookie:', error);
-      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
-    }
+      // Start a batch operation for cleanup
+      const batch = db!.batch();
 
-    const userId = decodedClaims.uid;
-
-    // Delete user data from Firestore
-    if (firestoreAdmin) {
-      // Cast to any to avoid type errors - in a production app, you would use proper types
-      const db = firestoreAdmin as any;
-      
-      // Use a batch to delete multiple documents
-      const batch = db.batch();
-
-      // Delete user profile
-      const userProfileRef = db.collection('userProfiles').doc(userId);
-      batch.delete(userProfileRef);
-
-      // Delete user notification preferences
-      const userNotificationsRef = db.collection('userNotificationPreferences').doc(userId);
-      batch.delete(userNotificationsRef);
-
-      // Delete user subscriptions
-      const subscriptionsQuery = await db.collection('subscriptions')
+      // 1. Delete user's plans
+      const userPlansQuery = await db!
+        .collection('plans')
         .where('userId', '==', userId)
         .get();
-      
-      subscriptionsQuery.forEach((doc: any) => {
+
+      userPlansQuery.docs.forEach(doc => {
         batch.delete(doc.ref);
       });
 
-      // Commit the batch
+      // 2. Delete user's sessions
+      const userSessionsQuery = await db!
+        .collection('sessions')
+        .where('userId', '==', userId)
+        .get();
+
+      userSessionsQuery.docs.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+
+      // 3. Delete user's reports (as reporter)
+      const userReportsQuery = await db!
+        .collection('reports')
+        .where('reportingUserId', '==', userId)
+        .get();
+
+      userReportsQuery.docs.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+
+      // 4. Delete user's followers and following relationships
+      const followersRef = db!.collection('followers').doc(userId);
+      const followingRef = db!.collection('following').doc(userId);
+      batch.delete(followersRef);
+      batch.delete(followingRef);
+
+      // 5. Delete user profile
+      const userRef = db!.collection('users').doc(userId);
+      batch.delete(userRef);
+
+      // Commit all deletions
       await batch.commit();
+
+      // 6. Delete user from Firebase Auth
+      if (authAdmin) {
+        await authAdmin.deleteUser(userId);
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Account deleted successfully'
+      });
+
+    } catch (cleanupError) {
+      console.error('Error during account cleanup:', cleanupError);
+      
+      // Try to delete from Firebase Auth even if Firestore cleanup failed
+      try {
+        if (authAdmin) {
+          await authAdmin.deleteUser(userId);
+        }
+      } catch (authError) {
+        console.error('Error deleting user from Firebase Auth:', authError);
+      }
+
+      return NextResponse.json(
+        { 
+          error: 'Account deletion completed with some cleanup errors',
+          details: 'Your authentication has been removed, but some data cleanup may be incomplete'
+        },
+        { status: 207 } // Multi-status
+      );
     }
-
-    // Delete the user's authentication account
-    await (authAdmin as any).deleteUser(userId);
-
-    // Clear the current session cookie
-    cookieStore.set(SESSION_COOKIE_NAME, '', {
-      expires: new Date(0),
-      path: '/',
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax'
-    });
-
-    console.log(`[/api/auth/delete-account] Account deleted for user: ${userId}`);
-    return NextResponse.json({ status: 'success', message: 'Account deleted successfully' });
-  } catch (error) {
-    console.error('[/api/auth/delete-account] Error:', error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
-}
+  },
+  { defaultError: 'Failed to delete account' }
+);

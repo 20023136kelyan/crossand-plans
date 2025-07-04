@@ -14,7 +14,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import { getChatDetails, getChatMessages } from '@/services/chatService';
 import { sendMessageAction, markChatAsReadAction, hideMessageForUserAction } from '@/app/actions/chatActions';
 import type { Chat, ChatMessage, UserProfile, UserRoleType, ChatParticipantInfo } from '@/types/user';
 import { useAuth } from '@/context/AuthContext';
@@ -140,23 +139,8 @@ export default function ChatPage() {
     if (chatId && user.uid) {
       initialMarkAsReadDoneRef.current = false; 
       setLoadingChat(true);
-      getChatDetails(chatId)
-        .then(details => {
-          if (details && details.participants.includes(user.uid)) {
-            setChatDetails(details);
-          } else {
-            toast({ title: "Error", description: "Chat not found or you do not have access.", variant: "destructive" });
-            router.push('/messages');
-          }
-        })
-        .catch(error => {
-          console.error("[ChatPage] Error from getChatDetails:", error);
-          toast({ title: "Error", description: "Could not load chat details.", variant: "destructive" });
-          router.push('/messages');
-        })
-        .finally(() => {
-           setLoadingChat(false); 
-        });
+      // TODO: Replace with appropriate action calls or server functions
+      setChatDetails(null);
     } else {
       setLoadingChat(false);
     }
@@ -167,18 +151,15 @@ export default function ChatPage() {
   useEffect(() => {
     if (!chatId || !user?.uid || !chatDetails /* Ensure chatDetails is loaded first */) return () => {}; 
     
-    const unsubscribe = getChatMessages(chatId, (fetchedMessages) => {
-      const newMessagesArrived = fetchedMessages.length > messagesRef.current.length;
-      setMessages(fetchedMessages); 
+    const unsubscribe = // TODO: Replace with appropriate action calls or server functions
+    setMessages(fetchedMessages); 
 
-      if (newMessagesArrived && fetchedMessages.length > 0 && user?.uid) {
-        const lastMsg = fetchedMessages[fetchedMessages.length - 1];
-        if (lastMsg.senderId !== user.uid) { 
-          handleMarkChatAsRead(); 
-        }
+    if (newMessagesArrived && fetchedMessages.length > 0 && user?.uid) {
+      const lastMsg = fetchedMessages[fetchedMessages.length - 1];
+      if (lastMsg.senderId !== user.uid) { 
+        handleMarkChatAsRead(); 
       }
-    });
-    return () => unsubscribe();
+    }
   }, [chatId, user?.uid, chatDetails, handleMarkChatAsRead]); 
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {

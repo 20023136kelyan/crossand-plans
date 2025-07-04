@@ -1,9 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { createPublicHandler, parseRequestBody } from '@/lib/api/middleware';
 import { logSearchResultClick } from '@/services/searchAnalyticsService.admin';
+import { NextResponse } from 'next/server';
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
+export const POST = createPublicHandler(
+  async ({ request }) => {
+    const { data: body, error } = await parseRequestBody(request);
+    if (error) return error;
     
     const {
       searchTerm,
@@ -55,11 +57,6 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('[POST /api/analytics/click] Error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
+  },
+  { defaultError: 'Failed to log analytics event' }
+);

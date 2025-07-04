@@ -25,7 +25,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/components/ui/use-toast";
 import { deleteFeedCommentAction, toggleLikePostServerAction, addCommentToPostServerAction } from "@/app/actions/feedActions";
-import { getPostComments } from "@/services/feedService";
+import { getPostComments } from "@/services/clientServices";
 
 interface PostDetailModalProps {
   post: FeedPost;

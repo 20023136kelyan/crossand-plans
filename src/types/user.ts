@@ -1,6 +1,7 @@
 // src/types/user.ts
 
 import type { Timestamp as ClientTimestamp } from 'firebase/firestore'; 
+import type { FieldValue } from 'firebase-admin/firestore';
 
 // Simplified Timestamp type for use in interfaces, services will handle specific SDK types
 export type AppTimestamp = ClientTimestamp | Date | string; 
@@ -171,6 +172,16 @@ export interface ChatMessage {
   mediaUrl?: string; 
   mediaContentType?: string;
   timestamp: AppTimestamp;
+  hiddenBy?: string[]; // Array of UIDs who have hidden this message for themselves
+}
+
+// Interface for creating chat messages with server timestamps
+export interface ChatMessageCreate {
+  senderId: string;
+  text?: string; 
+  mediaUrl?: string; 
+  mediaContentType?: string;
+  timestamp: FieldValue; // FieldValue.serverTimestamp() for server-side creation
   hiddenBy?: string[]; // Array of UIDs who have hidden this message for themselves
 }
 

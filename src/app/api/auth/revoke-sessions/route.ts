@@ -1,11 +1,12 @@
-import { NextResponse, NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { authAdmin } from '@/lib/firebaseAdmin';
+import { createPublicHandler } from '@/lib/api/middleware';
 
 const SESSION_COOKIE_NAME = 'session';
 
-export async function POST(request: NextRequest) {
-  try {
+export const POST = createPublicHandler(
+  async () => {
     // Get the session cookie from the request
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
@@ -46,11 +47,6 @@ export async function POST(request: NextRequest) {
 
     console.log(`[/api/auth/revoke-sessions] All sessions revoked for user: ${userId}`);
     return NextResponse.json({ status: 'success', message: 'All sessions revoked' });
-  } catch (error) {
-    console.error('[/api/auth/revoke-sessions] Error:', error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
-}
+  },
+  { defaultError: 'Failed to revoke sessions' }
+);

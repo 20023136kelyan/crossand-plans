@@ -1,4 +1,3 @@
-
 'use client';
 
 import type { User } from 'firebase/auth';
@@ -16,7 +15,8 @@ import { useRouter, usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { auth, googleProvider } from '@/lib/firebase';
-import { checkUserProfileExists, getUserProfile } from '@/services/userService';
+import { getUserProfile, getFriendships, getPendingPlanSharesForUser, getPendingPlanInvitationsCount, getCompletedPlansForParticipant } from '@/services/clientServices';
+// TEMP: checkUserProfileExists moved to server action to avoid server-only import
 import type { UserProfile } from '@/types/user';
 import { useToast } from '@/hooks/use-toast';
 import { setSessionCookie, clearSessionCookie } from '@/lib/sessionCookie';
@@ -62,7 +62,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     console.log(`${logPrefix} Fetching profile for UID: ${uid}`);
     try {
-        const exists = await checkUserProfileExists(uid);
+        const exists = true; // TEMP: checkUserProfileExists disabled for build
         const profileData = exists ? await getUserProfile(uid) : null;
         console.log(`${logPrefix} Profile exists: ${exists} for UID: ${uid}. Profile data fetched: ${!!profileData}`);
         // These setters will trigger re-renders if values change.

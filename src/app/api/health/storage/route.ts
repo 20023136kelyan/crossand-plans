@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { createPublicHandler } from '@/lib/api/middleware';
 import { storageAdmin } from '@/lib/firebaseAdmin';
+import { NextResponse } from 'next/server';
 
-export async function GET() {
-  try {
+export const GET = createPublicHandler(
+  async () => {
     if (!storageAdmin) {
       return NextResponse.json(
         { 
@@ -26,18 +27,9 @@ export async function GET() {
       service: 'storage',
       timestamp: new Date().toISOString()
     });
-  } catch (error) {
-    console.error('Storage health check failed:', error);
-    return NextResponse.json(
-      { 
-        status: 'error', 
-        service: 'storage',
-        message: 'Storage service unavailable' 
-      },
-      { status: 500 }
-    );
-  }
-}
+  },
+  { defaultError: 'Storage service unavailable' }
+);
 
 export async function HEAD() {
   try {

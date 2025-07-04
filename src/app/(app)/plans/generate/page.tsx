@@ -33,7 +33,7 @@ import { LimitGuard } from '@/components/limits/LimitGuard';
 import { type PriceRangeType, type PlanTypeType as PlanTypeHintTypeAlias } from '@/types/user';
 import { type Plan } from '@/types/plan';
 import type { UserProfile } from '@/types/user';
-import { getUsersProfiles } from '@/services/userService';
+import { getUsersProfiles } from '@/services/clientServices';
 import { z } from 'zod';
 
 // Plan Generation Form Schema
