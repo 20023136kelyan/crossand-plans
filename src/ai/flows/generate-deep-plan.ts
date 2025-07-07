@@ -55,7 +55,7 @@ const DeepPlanSketchSchema = z.object({
       reservationRecommended: z.boolean().optional().describe('Set to true if web research indicates reservations are recommended or required.'),
       bookingLink: z.string().url().nullable().optional().describe('The direct URL for reservations or ticket booking, if found.'),
     })
-  ).describe('A sequence of 2 to 5 cohesive and non-repetitive itinerary stops that create a compelling narrative or experience.'),
+  ).describe('A sequence of 1 to 5 cohesive and non-repetitive itinerary stops that create a compelling narrative or experience. IMPORTANT: If the user specified planTypeHint as "single-stop", create EXACTLY ONE stop; if "multi-stop", create 2-5 stops.'),
 });
 
 /**
@@ -67,6 +67,34 @@ export async function generateDeepPlan(input: GenerateDeepPlanInput): Promise<Ge
 
   // Consolidate all user preferences for the AI context.
   const allProfiles = [input.userProfile, ...(input.invitedFriendProfiles || [])];
+  
+  // Determine budget/price range from user profile if not explicitly provided
+  let effectivePriceRange = input.priceRange;
+  if (!effectivePriceRange) {
+    // Check host profile for budget flexibility notes
+    const budgetFlexibilityNotes = input.userProfile.budgetFlexibilityNotes?.toLowerCase();
+    if (budgetFlexibilityNotes) {
+      // Map budget descriptions to price ranges
+      if (budgetFlexibilityNotes.includes('budget') || budgetFlexibilityNotes.includes('inexpensive') || budgetFlexibilityNotes.includes('cheap')) {
+        effectivePriceRange = '$';
+      } else if (budgetFlexibilityNotes.includes('moderate')) {
+        effectivePriceRange = '$$';
+      } else if (budgetFlexibilityNotes.includes('upscale') || budgetFlexibilityNotes.includes('fine')) {
+        effectivePriceRange = '$$$';
+      } else if (budgetFlexibilityNotes.includes('luxury') || budgetFlexibilityNotes.includes('expensive')) {
+        effectivePriceRange = '$$$$';
+      } else {
+        // Default to moderate if budget notes exist but don't match patterns
+        effectivePriceRange = '$$';
+      }
+      console.log(`[Deep Plan Agent] Derived price range '${effectivePriceRange}' from user's budget flexibility notes: "${budgetFlexibilityNotes}"`);
+    } else {
+      // Default to moderate if no budget notes
+      effectivePriceRange = '$$';
+      console.log('[Deep Plan Agent] No explicit price range or budget flexibility notes found. Defaulting to "$$" (moderate)');
+    }
+  }
+  
   const preferencesSummary = allProfiles.map(p => `
 - Name: ${p.name}
 - Preferences: ${p.preferences?.join(', ') || 'Not specified'}
@@ -76,6 +104,7 @@ export async function generateDeepPlan(input: GenerateDeepPlanInput): Promise<Ge
 - Activity Dislikes: ${p.activityTypeDislikes?.join(', ') || 'None'}
 - Physical Limitations: ${p.physicalLimitations?.join(', ') || 'None'}
 - Environmental Sensitivities: ${p.environmentalSensitivities?.join(', ') || 'None'}
+- Budget Notes: ${p.budgetFlexibilityNotes || 'Not specified'}
 `).join('\n');
 
   // Phase 1 & 2: Discovery, Research, and Itinerary Sketch
@@ -83,17 +112,27 @@ export async function generateDeepPlan(input: GenerateDeepPlanInput): Promise<Ge
   const discoveryFlow = await ai.generate({
     model: 'googleai/gemini-2.5-pro',
     tools: [deepPlaceDiscoveryTool, exaSearchTool],
-    prompt: `
+      prompt: `
       You are an expert local guide and creative event planner.
 
       **Primary Goal**: Your primary goal is to design a cohesive, compelling, and non-repetitive itinerary that tells a story and creates a memorable experience based on the user's request.
 
+      **CRITICAL: PLAN STRUCTURE REQUIREMENTS**
+      The user has specified a plan structure preference which you MUST follow:
+      - If "single-stop" is specified: Create EXACTLY ONE carefully researched stop
+      - If "multi-stop" is specified: Create 2-5 stops that form a cohesive experience
+      - If "ai-decide" is specified: Use your judgment to determine the ideal number based on the request
+      
       **CRITICAL RESEARCH TASK:** For each venue you select, you MUST use the \`exaSearchTool\` to find its official website. Search that website for information about reservations or tickets. If reservations are recommended or required, you MUST set \`reservationRecommended\` to true. If you find a direct link for booking, you MUST provide it in the \`bookingLink\` field.
 
       Your process for each itinerary stop is critical:
       1.  **Discover a Venue**: Use the \`deepPlace-discovery\` to find a potential venue that fits the user's request and profile.
+         - IMPORTANT: When evaluating venues, give significant weight to the user's price preference. If a specific price range is provided (e.g., '$', '$$', etc.), prioritize places that match this budget.
+         - If no price range is specified, default to moderately-priced options ('$$') that offer good value.
       2.  **Conduct Research**: CRITICAL STEP. Once you have a venue name, use the \`exaSearchTool\` with a precise query (e.g., "Blue Bottle Coffee menu NYC" or "special exhibits at MoMA") to find specific, real-world details about it. Look for signature dishes, current events, unique features, or what makes it special.
+         - Include price information in your research when available to verify budget alignment.
       3.  **Generate Suggestions**: Based on your research from the search tool, create 2-3 specific, creative, and actionable \`suggestedActivities\`. DO NOT use generic suggestions. Your suggestions must be directly informed by the information you found online.
+         - For activities with costs, favor those that align with the user's budget.
       4.  **Assemble the Stop**: Combine the venue name, your reasoning, the search query you used, and your research-backed suggestions into a single itinerary item.
       5.  **Repeat**: Repeat this process for 2 to 5 stops to build a full, cohesive plan.
 
@@ -101,8 +140,8 @@ export async function generateDeepPlan(input: GenerateDeepPlanInput): Promise<Ge
       - **User Prompt**: "${input.userPrompt}"
       - **Location**: "${input.locationQuery}"
       - **Date/Time**: "${input.planDateTime}" (Timezone: ${input.timezone || 'Not specified'}). This is a strict requirement. The plan MUST start at this time. All activities and the plan's name must be appropriate for this time.
-      - **Price Preference**: "${input.priceRange || 'Not specified'}"
-      - **Plan Structure**: "${input.planTypeHint}"
+      - **Price Preference**: "${input.priceRange || 'Not specified'}" - This is an important factor in your venue selections, but you can be flexible if a venue offers exceptional value or uniquely meets other user preferences.
+      - **Plan Structure**: "${input.planTypeHint}" - THIS IS CRITICAL: If this is set to "single-stop", you MUST create exactly ONE stop in your plan. If set to "multi-stop", create 2-5 stops. Only if set to "ai-decide" should you use your own judgment about the ideal number of stops.
       - **Participant Profiles**:
         ${preferencesSummary}
       `,
@@ -121,7 +160,7 @@ export async function generateDeepPlan(input: GenerateDeepPlanInput): Promise<Ge
 
   // Phase 3: Validation, Enrichment, and Self-Correction
   // The agent validates each stop and attempts to find replacements for non-operational venues.
-  const enrichedItineraryItems: ItineraryItem[] = [];
+  let enrichedItineraryItems: ItineraryItem[] = [];
   const MAX_RETRIES_PER_ITEM = 2;
 
   for (const initialItem of discoveredItinerary.itinerary) {
@@ -206,6 +245,17 @@ export async function generateDeepPlan(input: GenerateDeepPlanInput): Promise<Ge
     throw new Error("Failed to validate and enrich any itinerary stops. The plan could not be created.");
   }
 
+  // Log information about whether the AI respected the planTypeHint
+  if (input.planTypeHint && input.planTypeHint !== 'ai-decide') {
+    if (input.planTypeHint === 'single-stop' && enrichedItineraryItems.length > 1) {
+      console.warn(`[Deep Plan Agent] AI generated ${enrichedItineraryItems.length} stops despite single-stop preference.`);
+    } else if (input.planTypeHint === 'multi-stop' && enrichedItineraryItems.length < 2) {
+      console.warn(`[Deep Plan Agent] AI generated only ${enrichedItineraryItems.length} stop(s) despite multi-stop preference.`);
+    } else {
+      console.log(`[Deep Plan Agent] AI correctly respected ${input.planTypeHint} preference with ${enrichedItineraryItems.length} stop(s).`);
+    }
+  }
+
 
   // Phase 4: Final Assembly
   // Assemble the final plan object.
@@ -220,7 +270,7 @@ export async function generateDeepPlan(input: GenerateDeepPlanInput): Promise<Ge
     city: input.locationQuery.split(',')[0].trim(),
     itinerary: enrichedItineraryItems,
     priceRange: input.priceRange || 'Free',
-    planType: enrichedItineraryItems.length > 1 ? 'multi-stop' : 'single-stop',
+    planType: enrichedItineraryItems.length > 1 ? 'multi-stop' : 'single-stop', // Set based on actual number of stops after enforcement
     status: 'draft',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
