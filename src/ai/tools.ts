@@ -59,6 +59,7 @@ export const findPlacesNearbyTool = ai.defineTool(
       radiusKm: z.number().describe("Radius in kilometers to search within"),
       placeType: z.string().optional().describe("Optional place type filter (e.g., 'restaurant', 'tourist_attraction', 'park')"),
       keyword: z.string().optional().describe("Optional keyword to filter results (e.g., 'coffee', 'museum', 'outdoor')"),
+      priceRange: z.enum(['$', '$$', '$$$', '$$$$', 'Free']).optional().describe("Optional price range filter to ensure places match user's budget"),
     }),
     outputSchema: z.object({
       success: z.boolean(),
@@ -120,7 +121,27 @@ export const findPlacesNearbyTool = ai.defineTool(
       }
 
       if (data.results && data.results.length > 0) {
-        const places = data.results.slice(0, 10).map((place: any) => ({
+        // Define an interface for Google Places result items
+        interface GooglePlaceResult {
+          name: string;
+          place_id: string;
+          vicinity?: string;
+          formatted_address?: string;
+          geometry: {
+            location: {
+              lat: number;
+              lng: number;
+            }
+          };
+          rating?: number;
+          price_level?: number;
+          types?: string[];
+          opening_hours?: {
+            open_now?: boolean;
+          };
+        }
+        
+        let places = data.results.slice(0, 20).map((place: GooglePlaceResult) => ({
           name: place.name,
           placeId: place.place_id,
           address: place.vicinity || place.formatted_address,
@@ -131,6 +152,55 @@ export const findPlacesNearbyTool = ai.defineTool(
           types: place.types || [],
           isOpen: place.opening_hours?.open_now,
         }));
+        
+        // Filter by price range if specified
+        if (input.priceRange) {
+          const priceRangeMap: Record<string, number[]> = {
+            'Free': [0],
+            '$': [1],
+            '$$': [1, 2],
+            '$$$': [2, 3],
+            '$$$$': [3, 4]
+          };
+          
+          const allowedPriceLevels = priceRangeMap[input.priceRange] || [];
+          
+          // Define an interface for the place objects after mapping
+          interface MappedPlace {
+            name: string;
+            placeId: string;
+            address?: string;
+            lat: number;
+            lng: number;
+            rating?: number;
+            priceLevel?: number;
+            types: string[];
+            isOpen?: boolean;
+          }
+          
+          // Special handling for 'Free'
+          if (input.priceRange === 'Free') {
+            places = places.filter((place: MappedPlace) => place.priceLevel === 0 || place.priceLevel === undefined || place.priceLevel === null);
+          } else {
+            // Filter by allowed price levels
+            const filteredPlaces = places.filter((place: MappedPlace) => 
+              place.priceLevel !== undefined && 
+              place.priceLevel !== null && 
+              allowedPriceLevels.includes(place.priceLevel)
+            );
+            
+            // If we have enough results after filtering, use those; otherwise fall back to original results
+            if (filteredPlaces.length >= 3) {
+              places = filteredPlaces;
+              console.log(`[findPlacesNearbyTool] Filtered to ${places.length} places matching price range ${input.priceRange}`);
+            } else {
+              console.log(`[findPlacesNearbyTool] Warning: Only ${filteredPlaces.length} places match price range ${input.priceRange}, using unfiltered results`);
+            }
+          }
+        }
+        
+        // Limit to top 10 places
+        places = places.slice(0, 10);
         
         console.log(`[findPlacesNearbyTool] Found ${places.length} places within ${input.radiusKm}km radius`);
         return { success: true, places };

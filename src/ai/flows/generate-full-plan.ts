@@ -176,7 +176,10 @@ ${JSON.stringify(input.invitedFriendProfiles, null, 2)}` : ''}
 All date and time fields MUST use ISO 8601 format WITH timezone information. Example: "2025-07-07T15:30:00-07:00" not "2025-07-07T15:30:00".
 This applies to eventTime, startTime, endTime, createdAt, and updatedAt fields.
 
-**Activity Suggestions:**
+**IMPORTANT: USING THE TOOLS**
+When calling the findPlacesNearbyTool, ALWAYS pass the user's price range as the "priceRange" parameter (e.g., '$', '$$', '$$$', '$$$$' or 'Free'). This ensures all suggested places match the user's budget before being included in the plan.
+
+**ACTIVITY SUGGESTIONS:**
 For each itinerary item, include 2-3 activity suggestions in the activitySuggestions array. EACH suggestion MUST begin with a relevant emoji followed by a space, then a brief, creative activity suggestion. For example: "🍷 Sample local wines", "🤳 Take selfies with the skyline view", "🧘‍♀️ Join a meditation session".
 
 **RESPONSE FORMAT:**
