@@ -91,8 +91,10 @@ export async function generateFullPlan(input: GenerateFullPlanInput): Promise<Pl
     const hour = planDate.getHours();
     const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
     
-    // Use budget information from profile or default to moderate
-    const budget = input.hostProfile?.budgetFlexibilityNotes || 'moderate';
+    // Prioritize user-set price range, then fall back to profile budget preferences
+    const budget = input.priceRange 
+      ? input.priceRange // Use explicitly set price range if available
+      : input.hostProfile?.budgetFlexibilityNotes || 'moderate';
     
     // Use transportation preferences or default to walking
     const transportation = (input.hostProfile as any)?.preferredTransitModes?.length 
@@ -106,7 +108,8 @@ export async function generateFullPlan(input: GenerateFullPlanInput): Promise<Pl
       activityType,
       timeOfDay,
       budget,
-      transportation
+      transportation,
+      input.planTypeHint // Pass user-set plan type hint to prioritize it
     );
     
     console.log('[generateFullPlan] Using parameters:', {
@@ -117,6 +120,8 @@ export async function generateFullPlan(input: GenerateFullPlanInput): Promise<Pl
       timeOfDay,
       budget,
       transportation,
+      planTypeHint: input.planTypeHint || 'ai-decide',
+      priceRange: input.priceRange,
       recommendedStops: stopCountReasoning.recommendedStops
     });
 
@@ -213,6 +218,22 @@ You must return ONLY raw JSON without any markdown formatting. DO NOT wrap your 
     
     console.log('[generateFullPlan] Raw AI plan received, processing...');
     
+    // Ensure all required timestamps and fields are present
+    if (!planData.eventTime) {
+      planData.eventTime = formattedDateTime;
+    }
+    
+    // Ensure the planType matches user's planTypeHint if specified (and not 'ai-decide')
+    if (input.planTypeHint && input.planTypeHint !== 'ai-decide') {
+      if (input.planTypeHint === 'single-stop' && planData.planType !== 'single-stop') {
+        console.log('[generateFullPlan] Overriding AI-selected plan type to match user preference: single-stop');
+        planData.planType = 'single-stop';
+      } else if (input.planTypeHint === 'multi-stop' && planData.planType !== 'multi-stop') {
+        console.log('[generateFullPlan] Overriding AI-selected plan type to match user preference: multi-stop');
+        planData.planType = 'multi-stop';
+      }
+    }
+    
     // Ensure all itinerary items have proper UUIDs
     if (planData.itinerary && Array.isArray(planData.itinerary)) {
       planData.itinerary = planData.itinerary.map(item => ({
@@ -221,6 +242,22 @@ You must return ONLY raw JSON without any markdown formatting. DO NOT wrap your 
       }));
       
       console.log('[generateFullPlan] Assigned UUIDs to all itinerary items');
+    }
+
+    // Prioritize user-set price range if available, otherwise use AI-generated value
+    if (input.priceRange) {
+      console.log('[generateFullPlan] Using user-specified price range:', input.priceRange);
+      planData.priceRange = input.priceRange;
+    } 
+    // Otherwise, ensure the AI-generated price range is valid
+    else if (planData.priceRange && typeof planData.priceRange === 'string') {
+      // Ensure it's a valid enum value
+      if (['$', '$$', '$$$', '$$$$', 'Free'].includes(planData.priceRange)) {
+        planData.priceRange = planData.priceRange as any;
+      } else {
+        // Default to moderate if invalid
+        planData.priceRange = '$$';
+      }
     }
 
     // Create a complete UserProfile object from the hostProfile with all required fields
@@ -334,7 +371,8 @@ function calculateRecommendedStops(
   activityType: string,
   timeOfDay: string,
   budget: string,
-  transportation: string
+  transportation: string,
+  planTypeHint?: 'ai-decide' | 'single-stop' | 'multi-stop' | undefined | null
 ): { recommendedStops: number, factors: Record<string, string>, explanation: string } {
   // Initialize base values
   let baseStopCount = 3;
@@ -396,11 +434,23 @@ function calculateRecommendedStops(
     factors.transportation = 'Transportation mode has no special impact on stop count';
   }
   
+  // Explicitly honor user's plan type preference if specified
+  if (planTypeHint) {
+    if (planTypeHint === 'single-stop') {
+      baseStopCount = 1;
+      factors.userPreference = 'User explicitly requested a single-stop plan';
+    } else if (planTypeHint === 'multi-stop' && baseStopCount < 2) {
+      // Force at least 2 stops for multi-stop plans
+      baseStopCount = 2;
+      factors.userPreference = 'User explicitly requested a multi-stop plan';
+    }
+  }
+  
   // Ensure we don't go below 1 or above 7 stops
   let finalStopCount = Math.max(1, Math.min(7, baseStopCount));
   
   // Create explanation
-  const explanation = `Based on a ${duration} plan for ${groupSize} people using ${transportation} for ${activityType} activities during the ${timeOfDay}, I recommend ${finalStopCount} stops. ${Object.values(factors).join('. ')}.`;
+  const explanation = `Based on a ${duration} plan for ${groupSize} people using ${transportation} for ${activityType} activities during the ${timeOfDay}${planTypeHint && planTypeHint !== 'ai-decide' ? ` with explicit ${planTypeHint} preference` : ''}, I recommend ${finalStopCount} stops. ${Object.values(factors).join('. ')}.`;
   
   return {
     recommendedStops: finalStopCount,
