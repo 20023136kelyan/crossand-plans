@@ -33,6 +33,7 @@ import {
 import { Plan } from '@/types/plan';
 import { User } from 'firebase/auth';
 import { toast } from 'sonner';
+import { PlanDropdownMenu } from './PlanDropdownMenu';
 
 interface EnhancedPlanActionsProps {
   plan: Plan;
@@ -48,6 +49,8 @@ interface EnhancedPlanActionsProps {
   onDelete?: () => void;
   onSaveToCollection?: () => void;
   onReport?: () => void;
+  onViewAnalytics?: () => void;
+  onViewComments?: () => void;
 }
 
 export function EnhancedPlanActions({
@@ -63,7 +66,9 @@ export function EnhancedPlanActions({
   onEdit,
   onDelete,
   onSaveToCollection,
-  onReport
+  onReport,
+  onViewAnalytics,
+  onViewComments
 }: EnhancedPlanActionsProps) {
   const [isSaved, setIsSaved] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
@@ -218,71 +223,23 @@ export function EnhancedPlanActions({
         </div>
 
         {/* More Actions Menu */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            {/* Host Actions */}
-            {isHost && (
-              <>
-                {onEdit && !plan.isTemplate && (
-                  <DropdownMenuItem onClick={onEdit}>
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit Plan
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem onClick={onManageParticipants}>
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Manage Participants
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Settings className="h-4 w-4 mr-2" />
-                  Plan Settings
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {onDelete && (
-                  <DropdownMenuItem onClick={onDelete} className="text-red-600">
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Plan
-                  </DropdownMenuItem>
-                )}
-              </>
-            )}
-
-            {/* General Actions */}
-            {!isHost && (
-              <>
-                <DropdownMenuItem onClick={handleSaveToCollection}>
-                  <Bookmark className="h-4 w-4 mr-2" />
-                  {isSaved ? 'Remove from Collection' : 'Save to Collection'}
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Download className="h-4 w-4 mr-2" />
-                  Export Plan
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleReport} className="text-orange-600">
-                  <Flag className="h-4 w-4 mr-2" />
-                  Report Plan
-                </DropdownMenuItem>
-              </>
-            )}
-
-            {/* View Actions */}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <Eye className="h-4 w-4 mr-2" />
-              View Analytics
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <MessageSquare className="h-4 w-4 mr-2" />
-              View Comments
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <PlanDropdownMenu
+          plan={plan}
+          currentUserUid={currentUser?.uid}
+          isHost={isHost}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onManageParticipants={onManageParticipants}
+          onSaveToCollection={onSaveToCollection}
+          onReport={onReport}
+          onViewAnalytics={onViewAnalytics}
+          onViewComments={onViewComments}
+          variant="enhanced"
+          triggerClassName="h-8 w-8"
+          className="w-48"
+          isSaved={isSaved}
+          isLiked={isLiked}
+        />
       </div>
 
       {/* Plan Stats */}

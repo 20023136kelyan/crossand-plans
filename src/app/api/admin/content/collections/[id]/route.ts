@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authAdmin, firestoreAdmin } from '@/lib/firebaseAdmin';
 
 // PUT /api/admin/content/collections/[id] - Update collection
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   try {
     const authHeader = request.headers.get('authorization');
     if (!authHeader?.startsWith('Bearer ')) {
@@ -19,7 +17,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    const collectionId = params.id;
+    const collectionId = id;
     const body = await request.json();
     const {
       title,
@@ -107,10 +105,8 @@ export async function PUT(
 }
 
 // DELETE /api/admin/content/collections/[id] - Delete collection
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   try {
     const authHeader = request.headers.get('authorization');
     if (!authHeader?.startsWith('Bearer ')) {
@@ -124,7 +120,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    const collectionId = params.id;
+    const collectionId = id;
     
     // Check if collection exists
     const collectionRef = firestoreAdmin!.collection('planCollections').doc(collectionId);

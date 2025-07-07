@@ -30,17 +30,16 @@ import { getPublishedPlansByCategoryAction } from '@/app/actions/planActions';
 import { useToast } from '@/hooks/use-toast';
 import { PlansPageProvider } from '@/context/PlansPageContext';
 
-export default function CategoryPlansPage() {
-  const params = useParams();
+export default async function PlansCategoryPage({ params }: { params: Promise<{ categoryName: string }> }) {
+  const { categoryName } = await params;
   const router = useRouter();
   const { toast } = useToast();
-  const rawCategoryName = params.categoryName as string;
-  const categoryName = decodeURIComponent(rawCategoryName);
+  const rawCategoryName = categoryName as string;
+  const decodedCategoryName = decodeURIComponent(rawCategoryName);
   const { user: currentUser } = useAuth();
   const [plans, setPlans] = useState<PlanType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [decodedCategoryName, setDecodedCategoryName] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: 'date' | 'name'; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
@@ -56,6 +55,25 @@ export default function CategoryPlansPage() {
       variant: "default"
     });
   }, [toast]);
+
+  // Add missing handlers for PlansPageProvider
+  const handleMarkAsCompleted = useCallback((planId: string, planName: string) => {
+    toast({
+      title: "Action Not Allowed",
+      description: "This action is not available in category view.",
+      variant: "default"
+    });
+  }, [toast]);
+
+  const handleConfirmCompletion = useCallback(async (planId: string) => {
+    toast({
+      title: "Action Not Allowed",
+      description: "This action is not available in category view.",
+      variant: "default"
+    });
+  }, [toast]);
+
+  const isConfirmingCompletion = false;
 
   // Filter and sort plans
   const filteredAndSortedPlans = useMemo(() => {
@@ -92,7 +110,6 @@ export default function CategoryPlansPage() {
         
         if (result.success && result.plans) {
           setPlans(result.plans);
-          setDecodedCategoryName(categoryName);
         } else {
           setError(result.error || 'Failed to fetch plans');
           toast({
@@ -222,7 +239,12 @@ export default function CategoryPlansPage() {
   }
 
   return (
-    <PlansPageProvider handleDeleteRequest={handleDeleteRequest}>
+    <PlansPageProvider 
+      handleDeleteRequest={handleDeleteRequest}
+      handleMarkAsCompleted={handleMarkAsCompleted}
+      handleConfirmCompletion={handleConfirmCompletion}
+      isConfirmingCompletion={isConfirmingCompletion}
+    >
       <div className="container max-w-7xl mx-auto p-4 space-y-4">
         <div className="flex items-center gap-4 mb-6">
           <Button variant="ghost" size="icon" onClick={() => router.back()} className="shrink-0">

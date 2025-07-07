@@ -64,8 +64,8 @@ import { z } from 'zod';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { GoogleMapsProvider } from '@/context/GoogleMapsContext';
 import { getFriendUidsAdmin } from '@/services/userService.server';
-import { getUserCompletedPlansAdmin, getPendingPlanSharesForUserAdmin, getPendingPlanInvitationsCountAdmin } from '@/services/planService.server';
-import { getUserChatsAdmin } from '@/services/chatService.server';
+import { getCompletedPlansAdmin } from '@/services/planService.server';
+import { getPendingPlanSharesForUser, getPendingPlanInvitationsCount, getUserChats, getUserPlans } from '@/services/clientServices';
 import { UpcomingPlansCalendar } from '@/components/plans/UpcomingPlansCalendar';
 
 async function canvasPreview(
@@ -322,7 +322,9 @@ export default function AppLayout({
     }
     resetCreatePostDialogStates(); setIsCreatePostDialogOpen(true); setLoadingCompletedPlans(true);
     try {
-      const completedPlans = await getUserCompletedPlans(currentAuthUser.uid); setUserCompletedPlans(completedPlans);
+      const userPlans = await getUserPlans(currentAuthUser.uid);
+      const completedPlans = userPlans.filter(plan => plan.status === 'completed');
+      setUserCompletedPlans(completedPlans);
       if (completedPlans.length === 0) toast({ title: "No Completed Plans", description: "You need to have completed a plan to share highlights.", variant: "default", duration: 4000 });
     } catch (error: any) { toast({ title: "Error Fetching Plans", description: error.message || "Could not fetch your completed plans.", variant: "destructive" });
     } finally { setLoadingCompletedPlans(false); }

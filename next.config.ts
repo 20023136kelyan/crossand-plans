@@ -13,27 +13,7 @@ const nextConfig: NextConfig = {
       bodySizeLimit: 10 * 6000 * 6000, // 10MB
     },
   },
-  webpack: (config, { isServer, dev, webpack }) => {
-    // Only apply webpack config when Turbopack is not being used
-    // Turbopack is enabled via --turbo flag or TURBOPACK env var
-    const isTurbopack = process.env.TURBOPACK === '1' || process.argv.includes('--turbo');
-    
-    if (!isTurbopack) {
-      // Suppress OpenTelemetry warnings from Genkit AI
-      config.ignoreWarnings = [
-        /Module not found: Can't resolve '@opentelemetry\/exporter-jaeger'/,
-        /require\.extensions is not supported by webpack/,
-      ];
-      
-      // Ignore optional OpenTelemetry modules that Genkit tries to load
-      config.externals = config.externals || [];
-      if (isServer) {
-        config.externals.push('@opentelemetry/exporter-jaeger');
-      }
-    }
-    
-    return config;
-  },
+
   images: {
     remotePatterns: [
       {

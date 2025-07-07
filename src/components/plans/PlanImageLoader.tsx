@@ -245,6 +245,17 @@ export function PlanImageLoader({
         setDynamicPhotoUrl(generatedUrl);
         setIsLoading(false);
         return;
+      } else {
+        console.warn('[PlanImageLoader] Failed to generate photo URL from reference:', imageData.url);
+        // If photo reference generation fails, try dynamic fetching as fallback
+        if (imageData.placeName || imageData.googlePlaceId) {
+          console.log('[PlanImageLoader] Attempting dynamic photo fetch as fallback');
+        } else {
+          console.warn('[PlanImageLoader] No fallback options available for photo reference');
+          setImageError(true);
+          setIsLoading(false);
+          return;
+        }
       }
 
       // If photo reference fails, try dynamic fetching as fallback

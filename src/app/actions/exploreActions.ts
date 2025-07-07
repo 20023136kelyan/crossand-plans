@@ -94,7 +94,7 @@ async function getFeaturedProfiles(): Promise<Profile[]> {
 async function getCategories(): Promise<Category[]> {
   if (!firestoreAdmin) return [];
   try {
-    const plansRef = (firestoreAdmin as Firestore).collection(COLLECTIONS.PLANS).where('status', '==', 'published').where('isTemplate', '==', true);
+    const plansRef = (firestoreAdmin as Firestore).collection(COLLECTIONS.PLANS).where('isTemplate', '==', true);
     const snapshot = await plansRef.get();
     
     const uniqueCategories = new Set<string>();
@@ -123,7 +123,7 @@ interface CityWithCount extends Omit<City, 'imageUrl'> {
 async function getFeaturedCities(): Promise<City[]> {
   if (!firestoreAdmin) return [];
   try {
-    const plansRef = (firestoreAdmin as Firestore).collection(COLLECTIONS.PLANS).where('status', '==', 'published').where('isTemplate', '==', true);
+    const plansRef = (firestoreAdmin as Firestore).collection(COLLECTIONS.PLANS).where('isTemplate', '==', true);
     const snapshot = await plansRef.get();
     
     const cityCounts = new Map<string, number>();
@@ -139,6 +139,7 @@ async function getFeaturedCities(): Promise<City[]> {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
       .map(([name, count]): CityWithCount => ({
+        id: name,
         name,
         count,
         date: new Date().toISOString(),
@@ -166,7 +167,6 @@ export const fetchExplorePageDataAction = async (
     // First fetch featured template plans
     const featuredPlansSnapshot = await firestoreAdmin
       .collection(COLLECTIONS.PLANS)
-      .where('status', '==', 'published')
       .where('isTemplate', '==', true)
       .where('featured', '==', true)
       .get();
@@ -174,7 +174,6 @@ export const fetchExplorePageDataAction = async (
     // Then fetch regular template plans
     const regularPlansSnapshot = await firestoreAdmin
       .collection(COLLECTIONS.PLANS)
-      .where('status', '==', 'published')
       .where('isTemplate', '==', true)
       .where('featured', '==', false)
       .get();

@@ -1,12 +1,17 @@
 // src/types/user.ts
 
-import type { Timestamp as ClientTimestamp } from 'firebase/firestore'; 
+import type { Timestamp as ClientTimestamp, GeoPoint } from 'firebase/firestore';
 import type { FieldValue } from 'firebase-admin/firestore';
 
 // Simplified Timestamp type for use in interfaces, services will handle specific SDK types
-export type AppTimestamp = ClientTimestamp | Date | string; 
+export type AppTimestamp = ClientTimestamp | Date | string;
 
 export type UserRoleType = 'user' | 'admin' | 'influencer' | 'corporate';
+
+export type TransitMode = 'driving' | 'walking' | 'bicycling' | 'transit';
+export type PlanStatusType = 'draft' | 'published' | 'cancelled';
+export type PlanTypeType = 'single-stop' | 'multi-stop';
+export type PriceRangeType = '$' | '$$' | '$$$' | '$$$$' | 'Free';
 
 export interface UserProfile {
   uid: string; 
@@ -36,6 +41,7 @@ export interface UserProfile {
   activityTypePreferences: string[];
   activityTypeDislikes: string[];
   environmentalSensitivities: string[];
+  preferredTransitModes?: TransitMode[];
   
   // Planning Style
   travelTolerance: string; // e.g., "Up to 1 hour", "Any distance for the right event"
@@ -184,11 +190,6 @@ export interface ChatMessageCreate {
   timestamp: FieldValue; // FieldValue.serverTimestamp() for server-side creation
   hiddenBy?: string[]; // Array of UIDs who have hidden this message for themselves
 }
-
-export type TransitMode = 'driving' | 'walking' | 'bicycling' | 'transit';
-export type PlanStatusType = 'draft' | 'published' | 'cancelled';
-export type PlanTypeType = 'single-stop' | 'multi-stop';
-export type PriceRangeType = '$' | '$$' | '$$$' | '$$$$' | 'Free';
 export type RSVPStatusType = 'going' | 'maybe' | 'not-going' | 'pending';
 
 
@@ -217,28 +218,13 @@ export interface ItineraryItem {
   startTime: string | null;
   endTime: string | null;
   durationMinutes: number | null;
-  transitMode: 'driving' | 'walking' | 'bicycling' | 'transit' | null;
+  transitMode: TransitMode | null;
   transitTimeFromPreviousMinutes?: number | null;
   notes: string | null;
-}
-
-export interface FirestoreTimestamp {
-  toDate(): Date;
-  seconds: number;
-  nanoseconds: number;
-}
-
-export type GeoPoint = {
-  latitude: number;
-  longitude: number;
-};
-
-export interface UserPreferences {
-  preferredCategories: string[];
-  preferredLocations: string[];
-  preferredPriceRange: string;
-  preferredDayOfWeek?: string[];
-  preferredTimeOfDay?: string[];
+  suggestedActivities?: string[];
+  noiseLevel?: 'low' | 'moderate' | 'high' | null;
+  reservationRecommended?: boolean;
+  bookingLink?: string | null;
 }
 
 export type PlanStatus = 'draft' | 'published' | 'archived' | 'completed' | 'cancelled';
@@ -297,7 +283,6 @@ export interface Plan {
   reviewCount: number;
   photoHighlights: string[];
   participantResponses: Record<string, ParticipantResponse>;
-  // Enhanced RSVP features
   participantRSVPDetails?: Record<string, RSVPDetails>;
   rsvpSettings?: PlanRSVPSettings;
   waitlist?: string[]; // Array of user IDs on waitlist
@@ -335,6 +320,18 @@ export interface Plan {
   templateOriginalHostName?: string; // Original host name when plan becomes template
   waitlistUserIds?: string[]; // Array of user IDs on waitlist
   privateNotes?: string | null; // Private notes that get cleared when becoming template
+  noisePreference?: 'quiet' | 'moderate' | 'lively' | null;
+  stopCountReasoning?: {
+    chosenCount: number;
+    reasons: string[];
+    comparisonAnalysis: Array<{
+      alternativeCount: number;
+      whyNotChosen: string;
+    }>;
+    timeConsiderations: string;
+    groupFactors: string;
+    qualityImpact: string;
+  } | null;
 }
 
 export interface Rating {

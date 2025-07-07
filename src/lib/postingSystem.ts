@@ -4,7 +4,7 @@
 import { processImage, getOptimalProcessingOptions } from './imageProcessing';
 import { validateFile, FileValidationType } from './fileValidation';
 import { authAdmin, storageAdmin } from './firebaseAdmin';
-import { v4 as uuidv4 } from 'uuid';
+// Using crypto.randomUUID() instead of uuid package for better compatibility
 
 export interface PostingOptions {
   type: 'avatar' | 'chat_message' | 'post_highlight';
@@ -101,7 +101,7 @@ export async function uploadAndProcessImage(
 
       // Generate file path based on type
       const timestamp = Date.now();
-      const uniqueId = uuidv4();
+      const uniqueId = crypto.randomUUID();
       let filePath: string;
       
       switch (options.type) {

@@ -20,7 +20,8 @@ import {
   updateCommentAction,
   deleteCommentAction,
   createPlanShareInviteAction,
-  copyPlanToMyAccountAction
+  copyPlanToMyAccountAction,
+  getPlanForViewingAction
 } from '@/app/actions/planActions';
 import { canUserCommentAndRate, hasUserRSVPd } from '@/utils/planPermissions';
 import { createFeedPostAction } from '@/app/actions/feedActions';
@@ -107,13 +108,39 @@ const [deleteLoading, setDeleteLoading] = useState(false);
     try {
       setLoading(true);
       
-      // Fetch plan data
-      // const planData = await getPlanById(planId);
-      if (!plan) {
+      // Fetch plan data using the authenticated action
+      if (!user) {
+        toast.error('You must be logged in to view this plan');
+        router.push('/login');
+        return;
+      }
+
+      const idToken = await user.getIdToken();
+      const result = await getPlanForViewingAction(planId, idToken);
+      
+      if (!result.success) {
+        if (result.notFound) {
+          toast.error('Plan not found');
+          router.push('/plans');
+          return;
+        }
+        if (result.unauthorized) {
+          toast.error('You are not authorized to view this plan');
+          router.push('/plans');
+          return;
+        }
+        toast.error(result.error || 'Failed to load plan');
         router.push('/plans');
         return;
       }
-      setPlan(plan);
+
+      if (!result.plan) {
+        toast.error('Plan not found');
+        router.push('/plans');
+        return;
+      }
+
+      setPlan(result.plan);
       
       // Fetch comments
       // const unsubscribeComments = getPlanComments(planId, (commentsData) => {
@@ -130,19 +157,20 @@ const [deleteLoading, setDeleteLoading] = useState(false);
       }
       
       // Fetch participant details
-      const allParticipantIds = [plan.hostId, ...(plan.invitedParticipantUserIds || [])];
+      const fetchedPlan = result.plan;
+      const allParticipantIds = [fetchedPlan.hostId, ...(fetchedPlan.invitedParticipantUserIds || [])];
       if (allParticipantIds.length > 0) {
         // const profiles = await getUsersProfiles(allParticipantIds);
         
         const details: ParticipantDetails[] = allParticipantIds.map(userId => {
           // const profile = profiles.find(p => p.uid === userId);
-          const response = plan.participantResponses?.[userId] || (userId === plan.hostId ? 'going' : 'pending');
+          const response = fetchedPlan.participantResponses?.[userId] || (userId === fetchedPlan.hostId ? 'going' : 'pending');
           return {
             userId,
             name: userId,
-            profilePicture: userId === plan.hostId ? plan.hostAvatarUrl : undefined,
+            profilePicture: userId === fetchedPlan.hostId ? fetchedPlan.hostAvatarUrl : undefined,
             response: response as ParticipantResponse,
-            isHost: userId === plan.hostId
+            isHost: userId === fetchedPlan.hostId
           };
         });
         
@@ -151,13 +179,14 @@ const [deleteLoading, setDeleteLoading] = useState(false);
     } catch (error) {
       console.error('Error fetching plan data:', error);
       toast.error('Failed to load plan details');
+      router.push('/plans');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (planId) {
+    if (planId && user) {
       fetchPlanAndRelatedData();
     }
   }, [planId, user]);

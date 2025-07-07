@@ -13,8 +13,8 @@ import { ExploreCard } from '@/components/explore/ExploreCard';
 import { ChevronLeft, Users, Tag, Palette } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
-export default async function CollectionDetailPage({ params }: { params: { collectionId: string } }) {
-  const collectionId = params.collectionId;
+export default async function CollectionDetailPage({ params }: { params: Promise<{ collectionId: string }> }) {
+  const { collectionId } = await params;
   const collection: PlanCollection | null = await getCollectionByIdAdmin(collectionId);
 
   if (!collection) {

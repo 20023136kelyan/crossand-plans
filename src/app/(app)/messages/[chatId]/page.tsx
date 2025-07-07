@@ -151,16 +151,17 @@ export default function ChatPage() {
   useEffect(() => {
     if (!chatId || !user?.uid || !chatDetails /* Ensure chatDetails is loaded first */) return () => {}; 
     
-    const unsubscribe = // TODO: Replace with appropriate action calls or server functions
-    setMessages(fetchedMessages); 
+    // TODO: Replace with appropriate action calls or server functions
+    // const unsubscribe = getMessagesForChat(chatId, (messages) => {
+    //   setMessages(messages);
+    // }, (error) => {
+    //   console.error('Error fetching messages:', error);
+    // });
 
-    if (newMessagesArrived && fetchedMessages.length > 0 && user?.uid) {
-      const lastMsg = fetchedMessages[fetchedMessages.length - 1];
-      if (lastMsg.senderId !== user.uid) { 
-        handleMarkChatAsRead(); 
-      }
-    }
-  }, [chatId, user?.uid, chatDetails, handleMarkChatAsRead]); 
+    // return () => {
+    //   if (unsubscribe) unsubscribe();
+    // };
+  }, [chatId, user?.uid, chatDetails]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     messagesEndRef.current?.scrollIntoView({ behavior });

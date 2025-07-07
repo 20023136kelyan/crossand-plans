@@ -21,7 +21,7 @@ import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from 'next-themes';
-import { generatePlanWithAIAction, createPlanAction } from '@/app/actions/planActions';
+import { generatePlanWithAIAction, generateDeepPlanWithAIAction, createPlanAction } from '@/app/actions/planActions';
 import type { PlanFormValues } from '@/components/plans/PlanForm';
 import { PlanForm } from '@/components/plans/PlanForm';
 import { ItineraryItemPreviewCard } from '@/components/plans/ItineraryItemPreviewCard';
@@ -44,9 +44,10 @@ const PlanGenerationFormSchema = z.object({
   planTypeHint: z.enum(['ai-decide', 'single-stop', 'multi-stop']).default('ai-decide'),
   userPrompt: z.string().default(''),
   invitedParticipantUserIds: z.array(z.string()).default([]),
-  locationQuery: z.string().default(''),
-  latitude: z.number().nullable(),
-  longitude: z.number().nullable(),
+  locationQuery: z.string().min(3, { message: 'Location is required' }),
+  latitude: z.number().min(-90).max(90),  // Required latitude
+  longitude: z.number().min(-180).max(180),  // Required longitude
+  useDeepPlanner: z.boolean().default(false),
 });
 
 type PlanGenerationFormData = z.infer<typeof PlanGenerationFormSchema>;
@@ -204,6 +205,7 @@ function GeneratePlanPage() {
   const [showFriendSelector, setShowFriendSelector] = useState(false);
   const [showPriceRangeSelector, setShowPriceRangeSelector] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [useDeepPlanner, setUseDeepPlanner] = useState(false);
   const friendSelectorRef = useRef<HTMLDivElement>(null);
   const friendButtonRef = useRef<HTMLButtonElement>(null);
   const priceRangeButtonRef = useRef<HTMLButtonElement>(null);
@@ -401,29 +403,71 @@ function GeneratePlanPage() {
     resolver: zodResolver(PlanGenerationFormSchema),
     defaultValues: {
       planDateTime: defaultDateTime,
-      searchRadius: 2, // 2km default radius
+      searchRadius: null,
       priceRange: null,
       planTypeHint: 'ai-decide',
       userPrompt: '',
       invitedParticipantUserIds: [],
       locationQuery: '',
-      latitude: null,
-      longitude: null,
+      latitude: 0,
+      longitude: 0,
+      useDeepPlanner: false,
     },
+    mode: 'onChange',
   });
+
+  // Watch the useDeepPlanner field and sync it with state
+  useEffect(() => {
+    const subscription = form.watch((value, { name }) => {
+      if (name === 'useDeepPlanner') {
+        setUseDeepPlanner(value.useDeepPlanner || false);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [form]);
+
+  // Update form when toggle changes
+  useEffect(() => {
+    form.setValue('useDeepPlanner', useDeepPlanner, { shouldDirty: true, shouldTouch: true });
+  }, [useDeepPlanner, form]);
 
   // Get user's current location and set it as default
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (position) => {
-          form.reset({
-            ...form.getValues(),
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            searchRadius: 2, // Set to 2km
-            locationQuery: 'Current Location',
-          });
+        async (position) => {
+          try {
+            const geocoder = new google.maps.Geocoder();
+            const result = await geocoder.geocode({
+              location: {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude
+              }
+            });
+
+            if (result.results && result.results.length > 0) {
+              const address = result.results[0].formatted_address;
+              form.reset({
+                ...form.getValues(),
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+                searchRadius: 2, // Set to 2km
+                locationQuery: address,
+              });
+            } else {
+              throw new Error('No address found');
+            }
+          } catch (error) {
+            console.error('Error getting address:', error);
+            // Fallback to coordinates if geocoding fails
+            form.reset({
+              ...form.getValues(),
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              searchRadius: 2,
+              locationQuery: `${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`,
+            });
+          }
         },
         (error) => {
           console.error('Error getting location:', error);
@@ -732,62 +776,49 @@ function GeneratePlanPage() {
     setIsGenerating(true);
     setLoadingMessage(loadingMessages[0]);
     
-    // Cycle through loading messages
-    const messageInterval = setInterval(() => {
-      setLoadingMessage(prevMessage => {
-        const currentIndex = loadingMessages.indexOf(prevMessage);
-        const nextIndex = (currentIndex + 1) % loadingMessages.length;
-        return loadingMessages[nextIndex];
-      });
-    }, 3000);
     try {
-      const authToken = await currentUser.getIdToken();
-      const clientInput = {
-        hostUid: currentUser.uid,
-        planDateTime: data.planDateTime.toISOString(),
-        locationQuery: data.locationQuery,
-        selectedLocationLat: data.latitude,
-        selectedLocationLng: data.longitude,
-        searchRadius: data.searchRadius,
-        priceRange: data.priceRange,
-        planTypeHint: data.planTypeHint,
-        userPrompt: data.userPrompt,
-        invitedParticipantUserIds: data.invitedParticipantUserIds,
-      };
-      
-      console.log('🚀 [GeneratePlan] Sending to AI:', {
-        planDateTime: data.planDateTime.toISOString(),
-        planDateTimeOriginal: data.planDateTime,
-        locationQuery: data.locationQuery,
-        userPrompt: data.userPrompt,
-        priceRange: data.priceRange,
-        planTypeHint: data.planTypeHint
-      });
-      // Generate unique identifiers and random values for this specific request
-      const sessionId = crypto.randomUUID().slice(0, 8);
-      const timestamp = Date.now();
-      const randomValue = Math.random();
-      const timeVariance = Math.floor(Math.random() * 30) * 60 * 1000; // Random minutes up to 30
-      const dietaryTime = (new Date().getHours() >= 11 && new Date().getHours() <= 14) ? 'lunch' : 
-                         (new Date().getHours() >= 17 && new Date().getHours() <= 21) ? 'dinner' : 'any';
-      
-      const result = await generatePlanWithAIAction({
-        ...clientInput,
-        // Enhance userPrompt with more context and uniqueness markers
-        userPrompt: `${clientInput.userPrompt} (Generated at ${new Date(timestamp).toISOString()}, 
-          Session: ${sessionId}, 
-          TimeContext: ${dietaryTime}, 
-          Uniqueness: HIGH_PRIORITY, 
-          Preferences: GENERATE_COMPLETELY_DIFFERENT_AND_UNIQUE_PLACES from previous attempts,
-          Diversity: MAXIMIZE_VARIETY in both place types and activities)`.replace(/\s+/g, ' '),
-        // Force a new unique ID for each generation
-        
-        // Add a meaningful time offset to further differentiate requests
-        planDateTime: new Date(new Date(clientInput.planDateTime).getTime() + timeVariance).toISOString()
-      }, authToken);
+      // Ensure we have valid coordinates
+      if (!data.latitude || !data.longitude) {
+        throw new Error('Location coordinates are required');
+      }
+
+      const result = await (data.useDeepPlanner ? generateDeepPlanWithAIAction : generatePlanWithAIAction)(
+        {
+          ...data,
+          planDateTime: format(data.planDateTime, "yyyy-MM-dd'T'HH:mm:ss"),
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          hostUid: currentUser.uid,
+          selectedLocationLat: data.latitude,
+          selectedLocationLng: data.longitude,
+        },
+        await currentUser.getIdToken()
+      );
       
       if (result.success && result.plan) {
-        setGeneratedPlan(result.plan);
+        // Ensure all fields are preserved
+        const plan = {
+          ...result.plan,
+          itinerary: result.plan.itinerary.map(item => ({
+            ...item,
+            description: item.description || null,
+            activitySuggestions: item.activitySuggestions || [],
+            tagline: item.tagline || null,
+            noiseLevel: item.noiseLevel || null,
+            transitTimeFromPreviousMinutes: item.transitTimeFromPreviousMinutes || null,
+            googlePlaceId: item.googlePlaceId || null,
+            googleMapsImageUrl: item.googleMapsImageUrl || null,
+            googlePhotoReference: item.googlePhotoReference || null,
+            rating: item.rating || null,
+            reviewCount: item.reviewCount || null,
+            openingHours: item.openingHours || null,
+            phoneNumber: item.phoneNumber || null,
+            website: item.website || null,
+            priceLevel: item.priceLevel || null,
+            types: item.types || null,
+            transitMode: item.transitMode || 'driving'
+          }))
+        };
+        setGeneratedPlan(plan);
         toast({
           title: 'Plan generated successfully!',
           description: 'Review your AI-generated plan and make any adjustments.',
@@ -804,6 +835,7 @@ function GeneratePlanPage() {
       });
     } finally {
       setIsGenerating(false);
+      setIsLoading(false);
     }
   };
 
@@ -1993,14 +2025,41 @@ function GeneratePlanPage() {
                                     if (friendSelectorRef.current) {
                                       friendSelectorRef.current.scrollIntoView({ 
                                         behavior: 'smooth',
-                                        block: 'nearest'
+                                        block: 'center'
                                       });
                                     }
-                                  }, 50);
+                                  }, 100);
                                 }
+                                
+                                setShowPriceRangeSelector(false);
                               }}
                             >
                               <UserPlus className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className={cn(
+                                "h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg border border-border",
+                                form.watch('useDeepPlanner') && "text-primary"
+                              )}
+                              onClick={() => {
+                                const newValue = !form.watch('useDeepPlanner');
+                                form.setValue('useDeepPlanner', newValue, { shouldDirty: true, shouldTouch: true });
+                                setUseDeepPlanner(newValue);
+                                
+                                toast({
+                                  title: newValue ? 'Deep Planning Mode Enabled' : 'Deep Planning Mode Disabled',
+                                  description: newValue 
+                                    ? 'Using advanced AI for more detailed suggestions' 
+                                    : 'Using standard AI planning mode',
+                                  variant: 'default',
+                                });
+                              }}
+                              title={form.watch('useDeepPlanner') ? 'Disable Deep Planning' : 'Enable Deep Planning'}
+                            >
+                              <Sparkles className="h-4 w-4" />
                             </Button>
                           </div>
                           <Button 

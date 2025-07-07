@@ -3,10 +3,8 @@ import { firestoreAdmin } from '@/lib/firebaseAdmin';
 import { verifyAdminAuth } from '@/lib/auth/adminAuth';
 import { Firestore } from 'firebase-admin/firestore';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { backupId: string } }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ backupId: string }> }) {
+  const { backupId } = await params;
   try {
     // Verify admin authentication
     const authResult = await verifyAdminAuth(request);
@@ -21,8 +19,6 @@ export async function GET(
       return NextResponse.json({ error: 'Firestore not initialized' }, { status: 500 });
     }
 
-    const { backupId } = params;
-    
     if (!backupId) {
       return NextResponse.json({ error: 'Backup ID is required' }, { status: 400 });
     }

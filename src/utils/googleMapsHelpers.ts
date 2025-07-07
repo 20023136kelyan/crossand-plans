@@ -79,6 +79,26 @@ export function getGooglePlacePhotoUrl(
       }
     }
   }
+  
+  // Additional check: if the photoReference looks like a full Google Places photo URL, extract the reference
+  if (photoReference.includes('maps.googleapis.com/maps/api/place/photo')) {
+    console.log('[getGooglePlacePhotoUrl] Photo reference is a full Google Places photo URL, extracting reference');
+    try {
+      const url = new URL(photoReference);
+      const extractedReference = url.searchParams.get('photoreference');
+      if (extractedReference) {
+        cleanPhotoReference = extractedReference;
+        console.log('[getGooglePlacePhotoUrl] Extracted reference from full URL:', cleanPhotoReference);
+      }
+    } catch (e) {
+      // Fallback regex extraction
+      const match = photoReference.match(/photoreference=([^&]+)/);
+      if (match && match[1]) {
+        cleanPhotoReference = match[1];
+        console.log('[getGooglePlacePhotoUrl] Extracted reference via regex from full URL:', cleanPhotoReference);
+      }
+    }
+  }
 
   // Return a properly formatted Google Maps Place Photo URL
   console.log('[getGooglePlacePhotoUrl] Final URL generation:', {

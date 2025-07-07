@@ -624,34 +624,38 @@ export default function MessagesPage() {
       // const idToken = await user.getIdToken(true);
       // if (!idToken) throw new Error("Authentication token not available.");
 
-      let result;
+      let result: { success: boolean; message?: string; error?: string } | undefined;
       switch (action) {
         case 'send':
           // TODO: Replace with appropriate action calls or server functions
           // result = await sendFriendRequestAction(targetUid, idToken);
+          result = { success: false, error: "Action not implemented yet" };
           break;
         case 'accept':
           // TODO: Replace with appropriate action calls or server functions
           // result = await acceptFriendRequestAction(targetUid, idToken);
+          result = { success: false, error: "Action not implemented yet" };
           break;
         case 'decline':
         case 'cancel':
           // TODO: Replace with appropriate action calls or server functions
           // result = await declineFriendRequestAction(targetUid, idToken);
+          result = { success: false, error: "Action not implemented yet" };
           break;
         case 'remove':
           // TODO: Replace with appropriate action calls or server functions
           // result = await removeFriendAction(targetUid, idToken);
+          result = { success: false, error: "Action not implemented yet" };
           break;
         default:
           throw new Error("Invalid friend action");
       }
 
-      if (result.success) {
+      if (result?.success) {
         toast({ title: "Success", description: result.message || "Friend action successful." });
         // The real-time listener will update the state
       } else {
-        toast({ title: "Error", description: result.error || "Could not complete action.", variant: "destructive" });
+        toast({ title: "Error", description: result?.error || "Could not complete action.", variant: "destructive" });
       }
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to perform action.", variant: "destructive" });

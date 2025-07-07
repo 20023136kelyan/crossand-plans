@@ -57,516 +57,8 @@ import { HorizontalPlanCards } from '@/components/plans/HorizontalPlanCards';
 import { HorizontalListPlanCard } from '@/components/plans/HorizontalListPlanCard';
 import { getPostComments, getUserProfile, getUserPlansSubscription, getUserSavedPlans } from '@/services/clientServices';
 import { FriendPickerDialog } from '@/components/messages/FriendPickerDialog';
-
-// Define UserPlanViewStatus enum and its configuration
-export enum UserPlanViewStatus {
-  INVITED_TO_PLAN = 'INVITED_TO_PLAN',
-  MY_DRAFT_UPCOMING = 'MY_DRAFT_UPCOMING',
-  MY_AWAITING_RESPONSES = 'MY_AWAITING_RESPONSES',
-  MY_CONFIRMED_READY = 'MY_CONFIRMED_READY',
-  COMPLETED = 'COMPLETED',
-}
-
-export const userPlanViewStatusConfig: Record<UserPlanViewStatus, { label: string; icon: React.ElementType; badgeVariant: "default" | "secondary" | "destructive" | "outline" | string }> = {
-  [UserPlanViewStatus.INVITED_TO_PLAN]: { label: 'Invitation', icon: MailQuestion, badgeVariant: 'primary' },
-  [UserPlanViewStatus.MY_DRAFT_UPCOMING]: { label: 'Draft', icon: Edit3, badgeVariant: 'outline' },
-  [UserPlanViewStatus.MY_AWAITING_RESPONSES]: { label: 'Awaiting Confirmations', icon: UsersIcon, badgeVariant: 'secondary' },
-  [UserPlanViewStatus.MY_CONFIRMED_READY]: { label: 'Confirmed & Ready', icon: CheckCircle, badgeVariant: 'default' },
-  [UserPlanViewStatus.COMPLETED]: { label: 'Completed', icon: History, badgeVariant: 'outline' },
-};
-
-interface PlanCardProps {
-  plan: PlanType;
-  currentUserUid: string | undefined;
-}
-
-export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => {
-  const { handleDeleteRequest } = usePlansPageContext();
-  const { handleMarkAsCompleted, handleConfirmCompletion, isConfirmingCompletion } = usePlansPageContext();
-  const [formattedDay, setFormattedDay] = useState<string | null>(null);
-  const [formattedMonth, setFormattedMonth] = useState<string | null>(null);
-  const [formattedTime, setFormattedTime] = useState<string | null>(null);
-  const [displayStatus, setDisplayStatus] = useState<UserPlanViewStatus | null>(null);
-  const [isClient, setIsClient] = useState(false);
-  const [itineraryBrief, setItineraryBrief] = useState<string | null>(null);
-
-  const [timeUrgency, setTimeUrgency] = useState<'urgent' | 'soon' | 'normal'>('normal');
-  const [completionPercentage, setCompletionPercentage] = useState<number>(0);
-
-  const isHost = plan.hostId === currentUserUid;
-  const isInvited = (plan.invitedParticipantUserIds || []).includes(currentUserUid || '');
-  const isParticipant = isHost || isInvited;
-
-  useEffect(() => {
-    setIsClient(true);
-    let day = null;
-    let month = null;
-    let time = null;
-    let currentDisplayStatus: UserPlanViewStatus | null = null;
-    let planEventDate: Date | null = null;
-
-    if (plan.eventTime && isValid(parseISO(plan.eventTime))) {
-      planEventDate = parseISO(plan.eventTime);
-      day = format(planEventDate, 'd');
-      month = format(planEventDate, 'MMM').toUpperCase();
-      time = format(planEventDate, 'p');
-
-      const allRelevantUidsPlusHost = Array.from(new Set([plan.hostId, ...(plan.invitedParticipantUserIds || [])])).filter(Boolean);
-      const isEveryoneGoing = allRelevantUidsPlusHost.length > 0 && allRelevantUidsPlusHost.every(uid => plan.participantResponses?.[uid] === 'going');
-
-      if (isPast(planEventDate)) {
-        currentDisplayStatus = UserPlanViewStatus.COMPLETED;
-      } else if (isFuture(planEventDate)) {
-        if (isHost) {
-          if (plan.status === 'draft') {
-            currentDisplayStatus = UserPlanViewStatus.MY_DRAFT_UPCOMING;
-          } else if (plan.status === 'published') {
-            if (isEveryoneGoing) {
-              currentDisplayStatus = UserPlanViewStatus.MY_CONFIRMED_READY;
-            } else {
-              currentDisplayStatus = UserPlanViewStatus.MY_AWAITING_RESPONSES;
-            }
-          }
-        } else if (isInvited && plan.status === 'published') {
-          const userRsvp = plan.participantResponses?.[currentUserUid || ''];
-          if (!userRsvp || userRsvp === 'pending' || userRsvp === 'maybe') {
-            currentDisplayStatus = UserPlanViewStatus.INVITED_TO_PLAN;
-          } else if (userRsvp === 'going') {
-            if (isEveryoneGoing) {
-              currentDisplayStatus = UserPlanViewStatus.MY_CONFIRMED_READY;
-            } else {
-              currentDisplayStatus = UserPlanViewStatus.MY_AWAITING_RESPONSES;
-            }
-          }
-        }
-      }
-    } else {
-      day = "??"; month = "???"; time = "N/A";
-      if (plan.eventTime && isValid(parseISO(plan.eventTime)) && isPast(parseISO(plan.eventTime))) {
-        currentDisplayStatus = UserPlanViewStatus.COMPLETED;
-      }
-    }
-    setFormattedDay(day);
-    setFormattedMonth(month);
-    setFormattedTime(time);
-    setDisplayStatus(currentDisplayStatus);
-
-    // Set itinerary brief
-    const firstItemDesc = plan.itinerary?.[0]?.description;
-    const planDesc = plan.description;
-    let brief = firstItemDesc || planDesc || null;
-    if (brief && brief.length > 60) {
-      brief = brief.substring(0, 57) + "...";
-    }
-    setItineraryBrief(brief);
-
-    // Calculate time urgency for upcoming plans
-    if (planEventDate && isFuture(planEventDate)) {
-      const hoursToEvent = differenceInHours(planEventDate, new Date());
-      if (hoursToEvent <= 2) {
-        setTimeUrgency('urgent');
-      } else if (hoursToEvent <= 24) {
-        setTimeUrgency('soon');
-      } else {
-        setTimeUrgency('normal');
-      }
-    }
-
-    // Calculate completion percentage for drafts
-    if (plan.status === 'draft') {
-      let score = 0;
-      if (plan.name) score += 20;
-      if (plan.description) score += 15;
-      if (plan.eventTime) score += 20;
-      if (plan.location) score += 15;
-      if (plan.itinerary?.length > 0) score += 20;
-      if (plan.invitedParticipantUserIds?.length > 0) score += 10;
-      setCompletionPercentage(score);
-    }
-
-  }, [plan, currentUserUid]);
-
-  if (!isClient) {
-    return (
-      <Card className="overflow-hidden shadow-md bg-card text-card-foreground flex flex-col h-full rounded-lg animate-pulse border border-border/30">
-        <div className="flex p-3 items-start gap-3 flex-grow">
-          <div className="flex flex-col items-center shrink-0 w-20">
-            <div className="bg-muted h-20 w-20 rounded-lg"></div>
-            <div className="bg-card border border-border/50 shadow-sm rounded-md p-1 text-center w-full mt-2 min-h-[60px]">
-              <div className="h-6 bg-muted rounded-sm w-1/2 mx-auto mb-1"></div>
-              <div className="h-3 bg-muted rounded-sm w-1/3 mx-auto mb-1"></div>
-              <div className="h-3 bg-muted rounded-sm w-1/4 mx-auto"></div>
-            </div>
-          </div>
-          <div className="flex-grow space-y-2 pt-1">
-            <div className="h-4 bg-muted rounded w-3/4"></div>
-            <div className="h-3 bg-muted rounded w-1/2"></div>
-            <div className="h-3 bg-muted rounded w-full mt-1"></div>
-            <div className="flex gap-1 mt-2">
-                <div className="h-4 w-16 bg-muted rounded-full"></div>
-                <div className="h-4 w-20 bg-muted rounded-full"></div>
-            </div>
-          </div>
-        </div>
-      </Card>
-    );
-  }
-
-  const StatusIcon = displayStatus ? userPlanViewStatusConfig[displayStatus]?.icon : CheckCircle;
-  const statusBadgeVariant = displayStatus ? userPlanViewStatusConfig[displayStatus]?.badgeVariant : 'outline';
-  const statusLabel = displayStatus ? userPlanViewStatusConfig[displayStatus]?.label : (plan.status ? (plan.status.charAt(0).toUpperCase() + plan.status.slice(1)) : "Status Unknown");
-
-  const hostInitial = plan.hostName ? plan.hostName.charAt(0).toUpperCase() : (plan.hostId ? plan.hostId.charAt(0).toUpperCase() : '?');
-
-  return (
-    <Card className="group relative overflow-hidden bg-card border border-border/20 rounded-2xl transition-all duration-300 hover:shadow-xl hover:border-primary/30 hover:scale-[1.01] cursor-pointer">
-      <div className="flex flex-col sm:flex-row">
-        {/* Image Section */}
-        <div className="relative w-full h-40 sm:h-auto sm:w-40 flex-shrink-0 overflow-hidden">
-          <PlanImageLoader
-            plan={plan}
-            width={160}
-            height={160}
-            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
-            altText={plan.name || 'Plan image'}
-            priority={false}
-          />
-          {/* Event & Status Badges */}
-          <div className="absolute top-2 left-2 space-y-1">
-            {plan.eventType && (
-              <Badge variant="secondary" className="text-xs px-2 py-1 bg-black/70 text-white border-0">
-                {plan.eventType}
-              </Badge>
-            )}
-            {displayStatus && (
-              <Badge variant="secondary" className="text-xs px-2 py-1 bg-black/70 text-white border-0 flex items-center">
-                <StatusIcon className="h-3 w-3 mr-1" />
-                <span className="truncate text-[10px]">{statusLabel}</span>
-              </Badge>
-            )}
-            {/* Time urgency indicator */}
-            {timeUrgency === 'urgent' && (
-              <Badge variant="destructive" className="text-xs px-2 py-1 border-0 animate-bounce shadow-lg">
-                🚀 Starting Soon!
-              </Badge>
-            )}
-            {timeUrgency === 'soon' && (
-              <Badge className="text-xs px-2 py-1 bg-accent text-accent-foreground border-0 shadow-md animate-pulse">
-                ⭐ Today's Fun!
-              </Badge>
-            )}
-          </div>
-          
-          {/* Participant count indicator */}
-          {(plan.invitedParticipantUserIds?.length > 0 || plan.participantUserIds?.length > 1) && (
-            <div className="absolute top-2 right-2">
-              <Badge className="text-xs px-2 py-1 bg-secondary text-secondary-foreground border-0 flex items-center shadow-md hover:shadow-lg transition-all duration-200 hover:scale-105">
-                <Users className="h-3 w-3 mr-1" />
-                {(plan.invitedParticipantUserIds?.length || 0) + 1}
-                {(plan.invitedParticipantUserIds?.length || 0) + 1 > 3 && <span className="ml-1">🎉</span>}
-              </Badge>
-            </div>
-          )}
-        </div>
-
-        {/* Content Section */}
-        <div className="relative flex-1 p-4 pt-6 sm:pt-4 min-w-0">
-          {/* More Options – mobile */}
-          <div className="absolute top-6 right-0 sm:hidden">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground">
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40">
-                <DropdownMenuItem asChild>
-                  <Link href={`/p/${plan.id}`} className="flex items-center text-xs cursor-pointer">
-                    <Eye className="mr-2 h-3.5 w-3.5" /> View Details
-                  </Link>
-                </DropdownMenuItem>
-                {isHost && (
-                  <DropdownMenuItem asChild>
-                    <Link href={`/plans/create?editId=${plan.id}`} className="flex items-center text-xs cursor-pointer">
-                      <Edit3 className="mr-2 h-3.5 w-3.5" /> Edit Plan
-                    </Link>
-                  </DropdownMenuItem>
-                )}
-                {isHost && plan.eventTime && isValid(parseISO(plan.eventTime)) && isPast(parseISO(plan.eventTime)) && plan.status !== 'completed' && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleMarkAsCompleted(plan.id, plan.name);
-                      }}
-                      className="flex items-center text-xs cursor-pointer"
-                    >
-                      <CheckCircle className="mr-2 h-3.5 w-3.5" /> Mark as Completed
-                    </DropdownMenuItem>
-                  </>
-                )}
-                {!isHost && plan.status === 'completed' && plan.completionConfirmedBy && !plan.completionConfirmedBy.includes(currentUserUid || '') && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleConfirmCompletion(plan.id);
-                      }}
-                      disabled={isConfirmingCompletion}
-                      className="flex items-center text-xs cursor-pointer"
-                    >
-                      <CheckCircle className="mr-2 h-3.5 w-3.5" /> Confirm Completion
-                    </DropdownMenuItem>
-                  </>
-                )}
-                {isHost && handleDeleteRequest && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleDeleteRequest(plan.id, plan.name);
-                      }}
-                      className="flex items-center text-xs text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
-                    >
-                      <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete Plan
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-          <Link href={`/plans/${plan.id}`} className="block group-hover:text-primary transition-colors">
-            <h3 className="font-semibold text-base leading-tight line-clamp-1 mb-1" title={plan.name}>
-              {plan.name}
-            </h3>
-          </Link>
-          
-          {/* Host Info */}
-          {plan.hostName && (
-            <div className="flex items-center text-sm text-muted-foreground mb-2">
-              <Avatar className="h-4 w-4 mr-2">
-                <AvatarImage src={plan.hostAvatarUrl || undefined} alt={plan.hostName}/>
-                <AvatarFallback className="text-xs">{hostInitial}</AvatarFallback>
-              </Avatar>
-              <span className="truncate">by {plan.hostName}</span>
-            </div>
-          )}
-
-          {/* Location */}
-          <div className="flex items-center text-sm text-muted-foreground mb-2">
-            <MapPin className="h-4 w-4 mr-2 flex-shrink-0" />
-            <span className="truncate" title={`${plan.location}, ${plan.city}`}>
-              {plan.location}, {plan.city}
-            </span>
-          </div>
-
-          {/* Rating or Brief */}
-          <div className="flex items-start text-sm text-muted-foreground mb-2">
-            {(plan.averageRating !== undefined && plan.averageRating !== null && typeof plan.averageRating === 'number') ? (
-              <div className="flex items-center">
-                <span className="text-amber-400 mr-1">⭐</span>
-                <span>{plan.averageRating.toFixed(1)} ({plan.reviewCount || 0})</span>
-              </div>
-            ) : itineraryBrief ? (
-              <div className="flex items-start">
-                <ListChecks className="h-4 w-4 mr-2 flex-shrink-0 mt-0.5" />
-                <span className="line-clamp-1">{itineraryBrief}</span>
-              </div>
-            ) : (
-              plan.eventTime && isValid(parseISO(plan.eventTime)) && isPast(parseISO(plan.eventTime)) && 
-              <div className="flex items-center">
-                <span className="text-muted-foreground/50 mr-2">⭐</span> 
-                <span>No reviews yet</span>
-              </div>
-            )}
-          </div>
-
-          {/* Draft completion progress */}
-          {plan.status === 'draft' && completionPercentage > 0 && (
-            <div className="mb-2">
-              <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-                <span className="flex items-center gap-1">
-                  ✨ Plan progress 
-                  {completionPercentage >= 80 && <span>🎯</span>}
-                  {completionPercentage >= 50 && completionPercentage < 80 && <span>📝</span>}
-                  {completionPercentage < 50 && <span>🌱</span>}
-                </span>
-                <span className="font-medium">{completionPercentage}%</span>
-              </div>
-              <div className="w-full bg-muted rounded-full h-2 shadow-inner">
-                <div 
-                  className={cn(
-                    "h-2 rounded-full transition-all duration-500 relative overflow-hidden shadow-sm",
-                    completionPercentage >= 80 ? "bg-green-600 dark:bg-green-500" :
-                    completionPercentage >= 50 ? "bg-yellow-500 dark:bg-yellow-400" : 
-                    "bg-primary"
-                  )}
-                  style={{ width: `${completionPercentage}%` }}
-                >
-                  {completionPercentage > 20 && (
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* RSVP Status for published plans */}
-          {plan.status === 'published' && plan.invitedParticipantUserIds?.length > 0 && (
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">RSVP Status:</span>
-              <div className="flex gap-1">
-                {(() => {
-                  const responses = plan.participantResponses || {};
-                  const allParticipants = [plan.hostId, ...(plan.invitedParticipantUserIds || [])];
-                  const going = allParticipants.filter(uid => responses[uid] === 'going' || uid === plan.hostId).length;
-                  const pending = allParticipants.filter(uid => !responses[uid] || responses[uid] === 'pending').length;
-                  
-                  return (
-                    <>
-                      {going > 0 && (
-                        <Badge className="h-4 px-1 text-[10px] bg-green-600 dark:bg-green-500 text-white shadow-sm">
-                          🎉 {going}
-                        </Badge>
-                      )}
-                      {pending > 0 && (
-                        <Badge className="h-4 px-1 text-[10px] bg-yellow-500 text-white shadow-sm animate-pulse">
-                          ⏳ {pending}
-                        </Badge>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Date & Status Section */}
-        <div className="w-full sm:w-24 p-3 sm:p-4 flex flex-row sm:flex-col items-center sm:items-end justify-between">
-          {/* Date Display - Prominent */}
-          {/* Mobile overlay for date/template badge */}
-          {(
-            plan.isTemplate ? true : (formattedDay && formattedMonth && formattedTime)
-          ) && (
-            <div className="absolute top-2 right-2 sm:hidden">
-              {plan.isTemplate ? (
-                <div className="bg-gradient-to-br from-primary/10 to-primary/20 border border-primary/30 rounded-xl p-2 text-center min-w-[60px]">
-                  <div className="text-[10px] font-semibold text-primary leading-none">TEMPLATE</div>
-                </div>
-              ) : (
-                <div className="bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-xl p-2 text-center min-w-[60px]">
-                  <div className="text-lg font-bold text-primary leading-none">{formattedDay}</div>
-                  <div className="text-[9px] font-medium uppercase text-muted-foreground tracking-wide leading-none mt-0.5">{formattedMonth}</div>
-                  <div className="text-[9px] text-muted-foreground leading-tight mt-0.5">{formattedTime}</div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {plan.isTemplate ? (
-            <div className="hidden sm:flex bg-gradient-to-br from-primary/10 to-primary/20 border border-primary/30 rounded-xl p-2 text-center w-full flex-col justify-center items-center min-h-[64px]">
-              <div className="text-xs font-semibold text-primary leading-none">TEMPLATE</div>
-              <div className="text-[10px] text-muted-foreground mt-1">Guide</div>
-              {plan.averageRating && (
-                <div className="flex items-center text-[10px] text-amber-600 mt-1">
-                  <span className="text-amber-600 mr-0.5">⭐</span>
-                  {plan.averageRating.toFixed(1)}
-                </div>
-              )}
-            </div>
-          ) : (formattedDay && formattedMonth && formattedTime) && (
-            <div className="hidden sm:flex bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 rounded-xl p-2 text-center w-full min-h-[64px] flex-col justify-center">
-              <div className="text-2xl font-bold text-primary leading-none">{formattedDay}</div>
-              <div className="text-[10px] font-medium uppercase text-muted-foreground tracking-wide leading-none mt-1">{formattedMonth}</div>
-              <div className="text-[10px] text-muted-foreground leading-tight mt-1">{formattedTime}</div>
-            </div>
-          )}
-
-          
-
-          {/* More Options */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="hidden sm:inline-flex h-6 w-6 ml-auto sm:ml-0 text-muted-foreground hover:text-foreground">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuItem asChild>
-                <Link href={`/p/${plan.id}`} className="flex items-center text-xs cursor-pointer">
- <Eye className="mr-2 h-3.5 w-3.5" /> View Details
-                </Link>
-              </DropdownMenuItem>
-              {isHost && (
-                <DropdownMenuItem asChild>
- <Link href={`/plans/create?editId=${plan.id}`} className="flex items-center text-xs cursor-pointer">
-   <Edit3 className="mr-2 h-3.5 w-3.5" /> Edit Plan
- </Link>
-                </DropdownMenuItem>
-              )}
-              {/* Completion options for hosts when plan is past event time */}
-              {isHost && plan.eventTime && isValid(parseISO(plan.eventTime)) && isPast(parseISO(plan.eventTime)) && plan.status !== 'completed' && (
-                <>
- <DropdownMenuSeparator />
- <DropdownMenuItem
-   onClick={(e) => {
-     e.preventDefault();
-     e.stopPropagation();
-     handleMarkAsCompleted(plan.id, plan.name);
-   }}
-   className="flex items-center text-xs cursor-pointer"
- >
-   <CheckCircle className="mr-2 h-3.5 w-3.5" /> Mark as Completed
- </DropdownMenuItem>
-                </>
-              )}
-              {/* Confirmation option for participants when plan is completed but not confirmed by them */}
-              {!isHost && plan.status === 'completed' && plan.completionConfirmedBy && !plan.completionConfirmedBy.includes(currentUserUid || '') && (
-                <>
- <DropdownMenuSeparator />
- <DropdownMenuItem
-   onClick={(e) => {
-     e.preventDefault();
-     e.stopPropagation();
-     handleConfirmCompletion(plan.id);
-   }}
-   disabled={isConfirmingCompletion}
-   className="flex items-center text-xs cursor-pointer"
- >
-   <CheckCircle className="mr-2 h-3.5 w-3.5" /> Confirm Completion
- </DropdownMenuItem>
-                </>
-              )}
-              {isHost && handleDeleteRequest && (
-                <>
- <DropdownMenuSeparator />
- <DropdownMenuItem
-   onClick={(e) => {
-     e.preventDefault();
-     e.stopPropagation();
-     handleDeleteRequest(plan.id, plan.name);
-   }}
-   className="flex items-center text-xs text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
- >
-   <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete Plan
- </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-    </Card>
-  );
-});
-PlanCard.displayName = 'PlanCard';
+import { PlanDropdownMenu } from '@/components/plans/PlanDropdownMenu';
+import { PlanCard, UserPlanViewStatus, userPlanViewStatusConfig } from '@/components/plans/PlanCard';
 
 interface PlanStackSectionProps {
   title: string;
@@ -2458,6 +1950,47 @@ export default function PlansPage() {
           </Tabs>
         </div>
       </div>
+      <AlertDialog open={!!planToComplete} onOpenChange={(open) => { if (!open) setPlanToComplete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mark Plan as Completed?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to mark <b>{planToComplete?.name}</b> as completed? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => setPlanToComplete(null)}
+              disabled={isMarkingComplete}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!planToComplete || !user) return;
+                setIsMarkingComplete(true);
+                try {
+                  const idToken = await user.getIdToken();
+                  const result = await markPlanAsCompletedAction(planToComplete.id, idToken);
+                  if (result.success) {
+                    toast({ title: "Plan marked as completed", description: `"${planToComplete.name}" is now completed.` });
+                  } else {
+                    toast({ title: "Error", description: result.error || "Failed to mark as completed", variant: "destructive" });
+                  }
+                } catch (err) {
+                  toast({ title: "Error", description: "Unexpected error", variant: "destructive" });
+                } finally {
+                  setIsMarkingComplete(false);
+                  setPlanToComplete(null);
+                }
+              }}
+              disabled={isMarkingComplete}
+            >
+              {isMarkingComplete ? "Marking..." : "Confirm"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PlansPageProvider>
   );
 }

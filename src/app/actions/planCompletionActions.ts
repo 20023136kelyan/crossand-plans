@@ -1,6 +1,8 @@
 'use server';
 
 import { firestoreAdmin, authAdmin } from '../../lib/firebaseAdmin';
+// Using crypto.randomUUID() instead of uuid package for better compatibility
+import { createTemplateFromPlan } from '@/lib/templateUtils';
 
 const PLANS_COLLECTION = 'plans';
 import type { Plan } from '../../types/user';
@@ -32,6 +34,7 @@ export async function markPlanAsCompletedAction(
   planId: string,
   idToken: string
 ): Promise<{ success: boolean; error?: string }> {
+  console.log('[markPlanAsCompletedAction] Called for planId:', planId);
   if (!firestoreAdmin || !authAdmin) {
     console.error('[markPlanAsCompletedAction] Firebase Admin SDK is not initialized.');
     return { success: false, error: 'Database not available' };
@@ -240,7 +243,36 @@ export async function markPlanAsCompletedAction(
       sanitizedUpdateData = baseUpdateData;
     }
 
-    await firestoreAdmin.collection(PLANS_COLLECTION).doc(planId).update(sanitizedUpdateData);
+    console.log('[markPlanAsCompletedAction] shouldCreateNewTemplate:', shouldCreateNewTemplate);
+    if (shouldCreateNewTemplate) {
+      console.log('[markPlanAsCompletedAction] Creating template for planId:', planId);
+    } else {
+      console.log('[markPlanAsCompletedAction] Not creating template for planId:', planId);
+    }
+
+    // Before Firestore update
+    console.log('[markPlanAsCompletedAction] Updating Firestore for planId:', planId, 'with data:', sanitizedUpdateData);
+    try {
+      // 1. Always update the original plan to completed (retain all user/event data)
+      await firestoreAdmin.collection(PLANS_COLLECTION).doc(planId).update({
+        ...baseUpdateData,
+      });
+      console.log('[markPlanAsCompletedAction] Original plan marked as completed:', planId);
+
+      // 2. If shouldCreateNewTemplate, create a new template document
+      if (shouldCreateNewTemplate) {
+        const newTemplateId = crypto.randomUUID();
+        const templateData = {
+          ...createTemplateFromPlan(planData),
+          id: newTemplateId,
+        };
+        await firestoreAdmin.collection(PLANS_COLLECTION).doc(newTemplateId).set(templateData);
+        console.log('[markPlanAsCompletedAction] New template created:', newTemplateId, 'from plan:', planId);
+      }
+    } catch (updateError) {
+      console.error('[markPlanAsCompletedAction] Firestore update FAILED for planId:', planId, updateError);
+      throw updateError;
+    }
 
     // Verify the completion status was properly set
     const finalStatus = await getCompletionStatus(planId, userId);

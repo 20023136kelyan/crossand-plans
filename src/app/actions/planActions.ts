@@ -4,7 +4,7 @@
 import {
   createPlanAdmin,
   updatePlanAdmin as updatePlanAdminService,
-  getPlanByIdAdminService, // Renamed to getPlanByIdAdmin in the instructions, using current name from file
+  getPlanByIdAdminService,
   setRatingAdmin,
   addCommentAdmin,
   deletePlanAdmin as deletePlanAdminService,
@@ -40,8 +40,9 @@ import { validateImageFile } from '@/lib/imageProcessing';
 import { uploadPostHighlight } from '@/lib/postingSystem';
 import { z } from 'zod';
 import { generateFullPlan, type GenerateFullPlanInput } from '@/ai/flows/generate-full-plan';
+import { generateDeepPlan, type GenerateDeepPlanInput } from '@/ai/flows/generate-deep-plan';
 import { authAdmin, firestoreAdmin, storageAdmin } from '@/lib/firebaseAdmin'; 
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, GeoPoint } from 'firebase-admin/firestore';
 import { parseISO, isValid, addHours, isPast } from 'date-fns'; 
 import {
   generateVenuePlanQR,
@@ -49,6 +50,21 @@ import {
   getAffinityScore,
   getUserAffinities
 } from '@/services/planCompletionService.server';
+import { getDefaultTemplateFields } from '@/lib/templateUtils';
+import { sanitizeItineraryUUIDs } from '@/lib/utils';
+import { processAIGeneratedPlan } from '@/lib/planUtils';
+
+import {
+  AIEnhancedProfileSchema,
+  GeneratePlanInputSchema,
+  PriceRangeSchema
+} from '@/ai/schemas/shared';
+
+// Type for the enhanced profile from schema
+export type AIEnhancedProfileType = z.infer<typeof AIEnhancedProfileSchema>;
+
+// Type for the generate plan input from schema
+export type GeneratePlanInputType = z.infer<typeof GeneratePlanInputSchema>;
 
 // Helper functions for Place ID validation and refresh (server-side)
 async function validatePlaceId(placeId: string): Promise<boolean> {
@@ -152,6 +168,8 @@ const GenerateFullPlanInputClientSchema = z.object({
   userPrompt: z.string().min(10, { message: 'Prompt must be at least 10 characters.' }).max(500),
   searchRadius: z.number().min(0).max(50).optional().nullable(),
   planTypeHint: z.enum(['ai-decide', 'single-stop', 'multi-stop'] as const).optional().default('ai-decide'),
+  useDeepPlanner: z.boolean().optional().default(false),
+  timezone: z.string().optional(), // Timezone from client
 });
 
 const serverItineraryItemSchema = z.object({
@@ -183,161 +201,219 @@ const serverItineraryItemSchema = z.object({
   transitTimeFromPreviousMinutes: z.number().int().min(0).optional().nullable(),
 });
 
+// Helper function to derive additional plan input fields
+function deriveAdditionalPlanFields(clientInput: z.infer<typeof GenerateFullPlanInputClientSchema>) {
+  // Derive duration based on plan type hint
+  const duration = clientInput.planTypeHint === 'single-stop' ? '2 hours' : 
+                  clientInput.planTypeHint === 'multi-stop' ? '4-6 hours' : '3-4 hours';
+  
+  // Derive group size from invited participants
+  const groupSize = clientInput.invitedParticipantUserIds?.length 
+    ? `${clientInput.invitedParticipantUserIds.length + 1} people`
+    : 'solo';
+
+  // Derive activity type from user prompt and location
+  const activityType = clientInput.userPrompt.toLowerCase().includes('dinner') ? 'dining' :
+                      clientInput.userPrompt.toLowerCase().includes('lunch') ? 'dining' :
+                      clientInput.userPrompt.toLowerCase().includes('coffee') ? 'cafe' :
+                      clientInput.userPrompt.toLowerCase().includes('drinks') ? 'nightlife' :
+                      'general';
+
+  // Derive time of day from plan date time
+  const planHour = new Date(clientInput.planDateTime).getHours();
+  const timeOfDay = planHour >= 5 && planHour < 12 ? 'morning' :
+                   planHour >= 12 && planHour < 17 ? 'afternoon' :
+                   planHour >= 17 && planHour < 22 ? 'evening' :
+                   'night';
+
+  // Derive budget from price range
+  const budget = clientInput.priceRange === 'Free' ? 'no-cost' :
+                clientInput.priceRange === '$' ? 'budget' :
+                clientInput.priceRange === '$$' ? 'moderate' :
+                clientInput.priceRange === '$$$' ? 'upscale' :
+                clientInput.priceRange === '$$$$' ? 'luxury' :
+                'flexible';
+
+  // Default to driving if not specified
+  const transportation = 'driving';
+
+  return {
+    duration,
+    groupSize,
+    activityType,
+    timeOfDay,
+    budget,
+    transportation
+  };
+}
 
 export async function generatePlanWithAIAction(
   clientInput: z.infer<typeof GenerateFullPlanInputClientSchema>,
   idToken: string
 ): Promise<{ success: boolean; plan?: Plan; error?: string }> {
-  // // console.log('[generatePlanWithAIAction] Action started. Client input (partial):', { 
-  // //   hostUid: clientInput.hostUid, 
-  // //   planDateTime: clientInput.planDateTime,
-  // //   locationQuery: clientInput.locationQuery,
-  // // });
-
-  if (!authAdmin) {
-    console.error("[generatePlanWithAIAction] Firebase Admin Auth service not available.");
-    return { success: false, error: "Server error: Auth service not available." };
-  }
-
-  let decodedToken;
   try {
-    decodedToken = await authAdmin!.verifyIdToken(idToken);
-    if (decodedToken.uid !== clientInput.hostUid) {
-      console.error(`[generatePlanWithAIAction] ID Token UID (${decodedToken.uid}) does not match hostUid (${clientInput.hostUid}). Authorization denied.`);
-      return { success: false, error: "User UID mismatch. Authorization denied." };
+    // Get user profile for host
+    const hostProfile = await getUserProfileAdmin(clientInput.hostUid);
+    if (!hostProfile) {
+      return { success: false, error: 'Host profile not found' };
     }
-    // // console.log(`[generatePlanWithAIAction] User ${decodedToken.uid} verified.`);
-  } catch (authError: any) {
-    console.error(`[generatePlanWithAIAction] ID Token verification failed for hostUid ${clientInput.hostUid}:`, authError);
-    let specificError = 'Authentication failed. Invalid or expired token.';
-    if (authError.code === 'auth/id-token-expired') {
-      specificError = 'Your session has expired. Please log in again.';
-    } else if (authError.code === 'auth/argument-error') {
-        specificError = 'Authentication token is malformed. Please try again.';
-    }
-    return { success: false, error: specificError };
-  }
-  
-  const validationResult = GenerateFullPlanInputClientSchema.safeParse(clientInput);
-  if (!validationResult.success) {
-    console.error("[generatePlanWithAIAction] Zod validation failed for client input:", validationResult.error.flatten());
-    return { success: false, error: "Invalid input: " + JSON.stringify(validationResult.error.flatten().fieldErrors) };
-  }
-  const validatedClientData = validationResult.data;
 
+    // Get profiles for invited friends
+    const invitedFriendProfiles = clientInput.invitedParticipantUserIds?.length
+      ? await getUsersProfilesAdmin(clientInput.invitedParticipantUserIds)
+      : [];
 
-  try {
-    const hostProfileData = await getUserProfileAdmin(validatedClientData.hostUid);
-    if (!hostProfileData) {
-      console.error('[generatePlanWithAIAction] Host profile not found for UID:', validatedClientData.hostUid);
-      return { success: false, error: 'Host profile not found.' };
-    }
+    // Convert user profile to AI-enhanced profile format
     const hostProfileForAI = {
-      uid: hostProfileData.uid,
-      name: hostProfileData.name,
-      preferences: hostProfileData.preferences || [],
-      generalPreferences: hostProfileData.generalPreferences || null,
-      allergies: hostProfileData.allergies || [],
-      dietaryRestrictions: hostProfileData.dietaryRestrictions || [],
-      favoriteCuisines: hostProfileData.favoriteCuisines || [],
-      activityTypePreferences: hostProfileData.activityTypePreferences || [],
-      activityTypeDislikes: hostProfileData.activityTypeDislikes || [],
-      physicalLimitations: hostProfileData.physicalLimitations || [],
-      environmentalSensitivities: hostProfileData.environmentalSensitivities || [],
-      travelTolerance: hostProfileData.travelTolerance || null,
-      budgetFlexibilityNotes: hostProfileData.budgetFlexibilityNotes || null,
-      socialPreferences: hostProfileData.socialPreferences || null,
-      availabilityNotes: hostProfileData.availabilityNotes || null,
+      uid: hostProfile.uid,
+      name: hostProfile.name || undefined,
+      preferences: hostProfile.preferences || [],
+      allergies: hostProfile.allergies || [],
+      dietaryRestrictions: hostProfile.dietaryRestrictions || [],
+      favoriteCuisines: hostProfile.favoriteCuisines || [],
+      activityTypePreferences: hostProfile.activityTypePreferences || [],
+      activityTypeDislikes: hostProfile.activityTypeDislikes || [],
+      physicalLimitations: hostProfile.physicalLimitations || [],
+      environmentalSensitivities: hostProfile.environmentalSensitivities || [],
+      availabilityNotes: hostProfile.availabilityNotes
     };
 
-    let invitedFriendProfilesForAI: any[] = [];
-    if (validatedClientData.invitedParticipantUserIds && validatedClientData.invitedParticipantUserIds.length > 0) {
-      const friendProfilesData = await getUsersProfilesAdmin(validatedClientData.invitedParticipantUserIds);
-      invitedFriendProfilesForAI = friendProfilesData
-        .filter((fp): fp is UserProfile => fp !== null)
-        .map(fp => ({
-            uid: fp.uid,
-            name: fp.name,
-            preferences: fp.preferences || [],
-            generalPreferences: fp.generalPreferences || null,
-            allergies: fp.allergies || [],
-            dietaryRestrictions: fp.dietaryRestrictions || [],
-            favoriteCuisines: fp.favoriteCuisines || [],
-            activityTypePreferences: fp.activityTypePreferences || [],
-            activityTypeDislikes: fp.activityTypeDislikes || [],
-            physicalLimitations: fp.physicalLimitations || [],
-            environmentalSensitivities: fp.environmentalSensitivities || [],
-            travelTolerance: fp.travelTolerance || null,
-            budgetFlexibilityNotes: fp.budgetFlexibilityNotes || null,
-            socialPreferences: fp.socialPreferences || null,
-            availabilityNotes: fp.availabilityNotes || null,
-        }));
-    }
-    
-    const aiFlowInput: GenerateFullPlanInput = {
+    // Convert invited friend profiles to AI format
+    const invitedFriendProfilesForAI = invitedFriendProfiles.map(profile => ({
+      uid: profile.uid,
+      name: profile.name || undefined,
+      preferences: profile.preferences || [],
+      allergies: profile.allergies || [],
+      dietaryRestrictions: profile.dietaryRestrictions || [],
+      favoriteCuisines: profile.favoriteCuisines || [],
+      activityTypePreferences: profile.activityTypePreferences || [],
+      activityTypeDislikes: profile.activityTypeDislikes || [],
+      physicalLimitations: profile.physicalLimitations || [],
+      environmentalSensitivities: profile.environmentalSensitivities || [],
+      availabilityNotes: profile.availabilityNotes
+    }));
+
+    // Derive additional fields required by the AI
+    const additionalFields = deriveAdditionalPlanFields(clientInput);
+
+    // Prepare AI input
+    const aiFlowInput: z.infer<typeof GenerateFullPlanInput> = {
       hostProfile: hostProfileForAI,
       invitedFriendProfiles: invitedFriendProfilesForAI,
-      planDateTime: validatedClientData.planDateTime, 
-      locationQuery: validatedClientData.locationQuery,      selectedLocationLat: validatedClientData.selectedLocationLat,
-      selectedLocationLng: validatedClientData.selectedLocationLng,
-      priceRange: validatedClientData.priceRange,  // Empty string handling is now done at schema level
-      userPrompt: validatedClientData.userPrompt,
-      searchRadius: validatedClientData.searchRadius,
-      planTypeHint: validatedClientData.planTypeHint,
+      planDateTime: clientInput.planDateTime,
+      locationQuery: clientInput.locationQuery,
+      selectedLocationLat: clientInput.selectedLocationLat || 0,
+      selectedLocationLng: clientInput.selectedLocationLng || 0,
+      priceRange: clientInput.priceRange || undefined,
+      userPrompt: clientInput.userPrompt,
+      searchRadius: clientInput.searchRadius || undefined,
+      planTypeHint: clientInput.planTypeHint || 'ai-decide',
+      ...additionalFields
     };
     
-    const generatedPlanOutput = await generateFullPlan(aiFlowInput);
+    // Generate plan using AI
+    const generatedPlan = await generateFullPlan(aiFlowInput);
 
-    if (generatedPlanOutput) {
-      // Augment with host details if AI didn't include them (though it should)
-      generatedPlanOutput.hostId = validatedClientData.hostUid; 
-      generatedPlanOutput.hostName = hostProfileData.name || undefined;
-      generatedPlanOutput.hostAvatarUrl = hostProfileData.avatarUrl || undefined;
-
-      // Validate and refresh invalid Place IDs for AI-generated plans
-      if (generatedPlanOutput.itinerary && generatedPlanOutput.itinerary.length > 0) {
-        for (const item of generatedPlanOutput.itinerary) {
-          if (item.googlePlaceId && item.placeName) {
-            try {
-              // Test if Place ID is valid by attempting to get place details
-              const isValid = await validatePlaceId(item.googlePlaceId);
-              if (!isValid) {
-                console.log(`[generatePlanWithAIAction] Invalid Place ID detected for ${item.placeName}, attempting refresh...`);
-                const newPlaceId = await refreshPlaceId(item.placeName, item.city || undefined);
-                if (newPlaceId) {
-                  item.googlePlaceId = newPlaceId;
-                  console.log(`[generatePlanWithAIAction] Successfully refreshed Place ID for ${item.placeName}`);
-                } else {
-                  console.warn(`[generatePlanWithAIAction] Could not refresh Place ID for ${item.placeName}`);
-                  item.googlePlaceId = null; // Clear invalid Place ID
-                }
-              }
-            } catch (error) {
-              console.error(`[generatePlanWithAIAction] Error validating Place ID for ${item.placeName}:`, error);
-              // Keep the original Place ID if validation fails
-            }
-          }
-        }
-      }
-
-      // console.log('[generatePlanWithAIAction] Successfully generated plan (partial):', {name: generatedPlanOutput.name, id: generatedPlanOutput.id});
-      return { success: true, plan: generatedPlanOutput };
-    } else {
-      console.error('[generatePlanWithAIAction] AI generateFullPlan flow returned null or undefined.');
-      return { success: false, error: 'AI failed to generate a plan response.' };
+    // Get user profile for processing
+    const userProfileForProcessing = await getUserProfileAdmin(clientInput.hostUid);
+    if (!userProfileForProcessing) {
+      console.error(`[generatePlanWithAIAction] User profile not found for hostUid: ${clientInput.hostUid}`);
+      return { success: false, error: 'User profile not found.' };
     }
-  } catch (error: any) {
-    console.error('[generatePlanWithAIAction] Error during AI plan generation process:', error);
-    return { success: false, error: error.message || 'Failed to generate plan with AI.' };
+
+    // Process and return the generated plan
+    const { plan: processedPlan, validationErrors, warnings } = await processAIGeneratedPlan(
+      generatedPlan,
+      clientInput.planDateTime,
+      userProfileForProcessing,
+      clientInput.userPrompt
+    );
+    
+    // Log any validation issues
+    if (validationErrors.length > 0) {
+      console.warn('[generatePlanWithAIAction] Validation errors:', validationErrors);
+    }
+    if (warnings.length > 0) {
+      console.warn('[generatePlanWithAIAction] Warnings:', warnings);
+    }
+    
+    return { success: true, plan: processedPlan };
+
+            } catch (error) {
+    console.error('[generatePlanWithAIAction] Error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error occurred' };
   }
 }
 
-export async function getPlanForEditingAction(
-  planId: string,
+export async function generateDeepPlanWithAIAction(
+  clientInput: z.infer<typeof GenerateFullPlanInputClientSchema>,
   idToken: string
-): Promise<{ success: boolean; plan?: Plan; error?: string; notFound?: boolean; unauthorized?: boolean; }> {
+): Promise<{ success: boolean; plan?: Plan; error?: string }> {
+  try {
+    // Get user profile for host
+    const hostProfile = await getUserProfileAdmin(clientInput.hostUid);
+    if (!hostProfile) {
+      return { success: false, error: 'Host profile not found' };
+    }
+
+    // Get profiles for invited friends
+    const invitedFriendProfiles = clientInput.invitedParticipantUserIds?.length
+      ? await getUsersProfilesAdmin(clientInput.invitedParticipantUserIds)
+      : [];
+
+    // Filter out any potentially undefined profiles from friends list for robustness
+    const validInvitedFriendProfiles = invitedFriendProfiles.filter((p): p is UserProfile => !!p);
+
+    // Derive additional fields required by the AI
+    const additionalFields = deriveAdditionalPlanFields(clientInput);
+
+    // Prepare AI input
+    const aiFlowInput: GenerateDeepPlanInput = {
+      userProfile: hostProfile,
+      invitedFriendProfiles: validInvitedFriendProfiles,
+      planDateTime: clientInput.planDateTime,
+      locationQuery: clientInput.locationQuery,
+      priceRange: clientInput.priceRange || undefined,
+      userPrompt: clientInput.userPrompt,
+      planTypeHint: clientInput.planTypeHint || 'ai-decide',
+      timezone: clientInput.timezone,
+    };
+
+    // Generate plan using AI
+    const generatedPlan = await generateDeepPlan(aiFlowInput);
+    
+    // Process and return the generated plan
+    const { plan: processedPlan, validationErrors, warnings } = await processAIGeneratedPlan(
+      generatedPlan,
+      clientInput.planDateTime,
+      hostProfile,
+      clientInput.userPrompt
+    );
+
+    // Log any validation issues
+    if (validationErrors.length > 0) {
+      console.warn('[generateDeepPlanWithAIAction] Validation errors:', validationErrors);
+    }
+    if (warnings.length > 0) {
+      console.warn('[generateDeepPlanWithAIAction] Warnings:', warnings);
+    }
+    
+    return { success: true, plan: processedPlan };
+
+            } catch (error) {
+    console.error('[generateDeepPlanWithAIAction] Error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error occurred' };
+  }
+}
+
+// Shared base function for plan access with authentication
+async function getPlanWithAuth(
+  planId: string,
+  idToken: string,
+  actionName: string
+): Promise<{ success: boolean; plan?: Plan; error?: string; notFound?: boolean; unauthorized?: boolean; userId?: string }> {
   if (!authAdmin) {
-    console.error("[getPlanForEditingAction] Firebase Admin Auth service not available.");
+    console.error(`[${actionName}] Firebase Admin Auth service not available.`);
     return { success: false, error: "Server error: Auth service not available." };
   }
   if (!planId) {
@@ -350,7 +426,7 @@ export async function getPlanForEditingAction(
     decodedToken = await authAdmin!.verifyIdToken(idToken);
     userId = decodedToken.uid;
   } catch (authError: any) {
-    console.error(`[getPlanForEditingAction] ID Token verification failed for plan ${planId}:`, authError);
+    console.error(`[${actionName}] ID Token verification failed for plan ${planId}:`, authError);
     let specificError = "Authentication failed.";
     if (authError.code === 'auth/id-token-expired') {
       specificError = 'Your session has expired. Please log in again.';
@@ -367,20 +443,34 @@ export async function getPlanForEditingAction(
       return { success: false, notFound: true, error: "Plan not found." };
     }
 
-    if (plan.hostId !== userId) {
-      return { success: false, unauthorized: true, error: "User not authorized to edit this plan." };
-    }
-
-    return { success: true, plan: plan };
+    return { success: true, plan: plan, userId };
 
   } catch (error: any) {
-    console.error(`[getPlanForEditingAction] Error retrieving plan ${planId} for editing:`, error);
+    console.error(`[${actionName}] Error retrieving plan ${planId}:`, error);
     // Check if the error indicates a "not found" scenario that getPlanByIdAdminService might throw differently
     if (error.message?.toLowerCase().includes('not found') || error.code === 'firestore/not-found') { // Example error check
         return { success: false, notFound: true, error: "Plan not found." };
     }
-    return { success: false, error: "Could not retrieve plan for editing." };
+    return { success: false, error: `Could not retrieve plan for ${actionName.toLowerCase()}.` };
   }
+}
+
+export async function getPlanForEditingAction(
+  planId: string,
+  idToken: string
+): Promise<{ success: boolean; plan?: Plan; error?: string; notFound?: boolean; unauthorized?: boolean; }> {
+  const result = await getPlanWithAuth(planId, idToken, "getPlanForEditingAction");
+  
+  if (!result.success) {
+    return result;
+  }
+
+  // Check if user is the host (only hosts can edit)
+  if (result.plan!.hostId !== result.userId) {
+    return { success: false, unauthorized: true, error: "User not authorized to edit this plan." };
+  }
+
+  return { success: true, plan: result.plan };
 }
 
 export async function createPlanAction(
@@ -515,6 +605,9 @@ export async function createPlanAction(
        });
     }
 
+    // Sanitize all itinerary UUIDs to ensure they are valid
+    finalItinerary = sanitizeItineraryUUIDs(finalItinerary);
+
     // Extract coordinates from first itinerary item for weather and location services
     const firstItineraryItem = finalItinerary[0];
     const planCoordinates = (firstItineraryItem?.lat && firstItineraryItem?.lng) ? {
@@ -522,7 +615,10 @@ export async function createPlanAction(
       longitude: firstItineraryItem.lng
     } : undefined;
 
-    const planDataForService: Omit<Plan, 'id' | 'createdAt' | 'updatedAt' | 'hostName' | 'hostAvatarUrl'> = {
+    // Sanitize all itinerary UUIDs to ensure they are valid
+    finalItinerary = sanitizeItineraryUUIDs(finalItinerary);
+
+    const planDataForService: any = {
       name: planFormData.name,
       description: planFormData.description || null,
       eventTime: eventStartTimeISO,
@@ -539,13 +635,11 @@ export async function createPlanAction(
       planType: planFormData.planType,
       originalPlanId: null, 
       sharedByUid: null,    
-      // New plans start with no ratings
       averageRating: null,
       reviewCount: 0,
       photoHighlights: [],
       participantResponses: {},
-      // Include coordinates from first itinerary item
-      coordinates: planCoordinates,
+      coordinates: planCoordinates ? new GeoPoint(planCoordinates.latitude, planCoordinates.longitude) : undefined,
     };
 
     // 🔍 DETAILED SERVER-SIDE LOGGING - Final Data to Database
@@ -582,7 +676,7 @@ export async function createPlanAction(
           notes: item.notes,
         }))
       },
-      coordinates: planCoordinates,
+      coordinates: planCoordinates ? new GeoPoint(planCoordinates.latitude, planCoordinates.longitude) : undefined,
       itineraryCount: finalItinerary.length,
     });
 
@@ -712,6 +806,9 @@ export async function updatePlanAction(
             });
         }
         
+        // Sanitize all itinerary UUIDs to ensure they are valid
+        finalItinerary = sanitizeItineraryUUIDs(finalItinerary);
+        
         // Extract coordinates from first itinerary item for weather and location services
         const firstItineraryItem = finalItinerary[0];
         const planCoordinates = (firstItineraryItem?.lat && firstItineraryItem?.lng) ? {
@@ -719,7 +816,7 @@ export async function updatePlanAction(
           longitude: firstItineraryItem.lng
         } : undefined;
 
-        const planDataToUpdate: Partial<Omit<Plan, 'id' | 'createdAt' | 'hostId' | 'hostName' | 'hostAvatarUrl' | 'updatedAt'>> = {
+        const planDataToUpdate: any = {
             name: planFormData.name,
             description: planFormData.description || null,
             eventTime: eventStartTimeISO,
@@ -732,13 +829,14 @@ export async function updatePlanAction(
             itinerary: finalItinerary,
             status: planFormData.status,
             planType: planFormData.planType,
+            updatedAt: FieldValue.serverTimestamp(),
             photoHighlights: currentPlanData.photoHighlights || [], 
             averageRating: currentPlanData.averageRating,
             reviewCount: currentPlanData.reviewCount,
             originalPlanId: currentPlanData.originalPlanId,
             sharedByUid: currentPlanData.sharedByUid,
             // Update coordinates from first itinerary item
-            coordinates: planCoordinates,
+            coordinates: planCoordinates ? new GeoPoint(planCoordinates.latitude, planCoordinates.longitude) : undefined,
         };
         
         await updatePlanAdminService(planId, planDataToUpdate, currentPlanData);
@@ -783,7 +881,11 @@ export async function copyPlanToMyAccountAction(
     const templateName = originalPlan.name.startsWith('Copy of ') ? originalPlan.name : originalPlan.name;
     const newPlanName = templateName.includes(' in ') ? templateName : `${templateName} in ${originalPlan.city}`;
     
-    const newPlanDataForService: Omit<Plan, 'id' | 'createdAt' | 'updatedAt' | 'hostName' | 'hostAvatarUrl'> = {
+    const sanitizedItinerary = sanitizeItineraryUUIDs(originalPlan.itinerary);
+    
+    const newPlanDataForService: Plan = {
+      ...originalPlan,
+      id: crypto.randomUUID(),
       name: newPlanName,
       description: originalPlan.description,
       eventTime: new Date().toISOString(), // Set to current time as placeholder - user will update
@@ -798,18 +900,7 @@ export async function copyPlanToMyAccountAction(
       participantResponses: {},
       waitlistUserIds: [],
       privateNotes: '',
-      itinerary: originalPlan.itinerary.map(item => ({ 
-        ...item, 
-        id: crypto.randomUUID(),
-        // If copying from template, preserve time slots but add today's date
-        // If copying from regular plan, reset times
-        startTime: originalPlan.isTemplate && typeof item.startTime === 'string' && item.startTime.includes(':') 
-          ? new Date(`${new Date().toDateString()} ${item.startTime}`).toISOString()
-          : new Date().toISOString(),
-        endTime: originalPlan.isTemplate && typeof item.endTime === 'string' && item.endTime.includes(':')
-          ? new Date(`${new Date().toDateString()} ${item.endTime}`).toISOString()
-          : new Date(Date.now() + 60 * 60 * 1000).toISOString() // 1 hour later
-      })),
+      itinerary: sanitizedItinerary,
       status: 'draft',
       planType: originalPlan.planType,
       originalPlanId: originalPlan.id,
@@ -823,8 +914,7 @@ export async function copyPlanToMyAccountAction(
       completionConfirmedBy: [],
       highlightsEnabled: false,
       // Don't copy template-specific fields - this is a new plan
-      templateOriginalHostId: undefined,
-      templateOriginalHostName: undefined,
+      ...getDefaultTemplateFields(),
     };
     
     const newPlanId = await createPlanAdmin(newPlanDataForService, newHostId);
@@ -1689,4 +1779,25 @@ export async function getUserAffinitiesAction(
     console.error('Error in getUserAffinitiesAction:', error);
     return { success: false, error: error.message || 'Failed to get user affinities' };
   }
+}
+
+export async function getPlanForViewingAction(
+  planId: string,
+  idToken: string
+): Promise<{ success: boolean; plan?: Plan; error?: string; notFound?: boolean; unauthorized?: boolean; }> {
+  const result = await getPlanWithAuth(planId, idToken, "getPlanForViewingAction");
+  
+  if (!result.success) {
+    return result;
+  }
+
+  // Check if user has access to this plan (host or participant)
+  const isHost = result.plan!.hostId === result.userId;
+  const isParticipant = result.plan!.invitedParticipantUserIds?.includes(result.userId!) || result.plan!.participantUserIds?.includes(result.userId!);
+  
+  if (!isHost && !isParticipant) {
+    return { success: false, unauthorized: true, error: "You don't have access to view this plan." };
+  }
+
+  return { success: true, plan: result.plan };
 }

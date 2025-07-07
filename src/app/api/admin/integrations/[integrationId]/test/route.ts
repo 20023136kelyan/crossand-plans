@@ -147,10 +147,8 @@ async function testGoogleAnalyticsConnection(trackingId: string, measurementId: 
   }
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { integrationId: string } }
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ integrationId: string }> }) {
+  const { integrationId } = await params;
   try {
     // Verify admin authentication
     const authResult = await verifyAdminAuth(request);
@@ -165,8 +163,6 @@ export async function POST(
       return NextResponse.json({ error: 'Firestore not initialized' }, { status: 500 });
     }
 
-    const { integrationId } = params;
-    
     if (!integrationId) {
       return NextResponse.json({ error: 'Integration ID is required' }, { status: 400 });
     }

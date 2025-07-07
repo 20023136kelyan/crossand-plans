@@ -1,6 +1,6 @@
 import { firestoreAdmin } from '../lib/firebaseAdmin';
 import type { Plan, PlanCompletion, UserAffinity } from '../types/user';
-import { v4 as uuidv4 } from 'uuid';
+// Using crypto.randomUUID() instead of uuid package for better compatibility
 import { addHours } from 'date-fns';
 import * as crypto from 'crypto';
 import { Firestore } from 'firebase-admin/firestore';
@@ -178,7 +178,7 @@ export async function recordPlanCompletion(
     }
 
     const completion: PlanCompletion = {
-      id: uuidv4(),
+      id: crypto.randomUUID(),
       planId,
       userId,
       completedAt: new Date().toISOString(),

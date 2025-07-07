@@ -39,6 +39,7 @@ import type { Plan as PlanType } from '@/types/user';
 import { VerificationBadge } from '@/components/ui/verification-badge';
 import { getGooglePlacePhotoUrl } from '@/utils/googleMapsHelpers';
 import { User } from 'firebase/auth';
+import { PlanDropdownMenu } from './PlanDropdownMenu';
 
 type UserRole = 'host' | 'confirmed' | 'invited' | 'public' | 'authenticated';
 
@@ -258,52 +259,20 @@ const PlanHero = memo(function PlanHero({
               </Button>
             )}
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Share2 className="h-4 w-4" />
-                  Share
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem onClick={onSharePlanLink}>
-                  <LinkIcon className="h-4 w-4 mr-2" />
-                  Copy Link
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={onOpenQRCodeDialog}>
-                  <QrCode className="h-4 w-4 mr-2" />
-                  QR Code
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={onShowFriendPicker}>
-                  <Users className="h-4 w-4 mr-2" />
-                  Share with Friends
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={onShowShareToFeedDialog}>
-                  <MessageSquare className="h-4 w-4 mr-2" />
-                  Share to Feed
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            {isHost && !plan.isTemplate && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() => router.push(`/plans/create?editId=${plan.id}`)}>
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit Plan
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={onDeletePlanRequest} className="text-destructive">
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete Plan
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+            <PlanDropdownMenu
+              plan={plan}
+              currentUserUid={currentUser?.uid}
+              isHost={isHost}
+              onCopyLink={onSharePlanLink}
+              onQRCode={onOpenQRCodeDialog}
+              onShareWithFriends={onShowFriendPicker}
+              onShareToFeed={onShowShareToFeedDialog}
+              onEdit={() => router.push(`/plans/create?editId=${plan.id}`)}
+              onDeleteRequest={onDeletePlanRequest}
+              variant="hero"
+              triggerClassName="h-8 w-8"
+              className="w-48"
+            />
           </div>
         </div>
       </div>

@@ -41,6 +41,7 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import type { Plan as PlanType } from '@/types/user';
+import { PlanDropdownMenu } from './PlanDropdownMenu';
 
 type UserRole = 'host' | 'confirmed' | 'invited' | 'public' | 'authenticated';
 
@@ -395,32 +396,17 @@ export function PlanActions({
                   <Link className="h-4 w-4" />
                 </Button>
                 
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" disabled={isSharing}>
-                      <Share2 className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => handleShare('native')}>
-                      <Share2 className="h-4 w-4 mr-2" />
-                      Share
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleShare('link')}>
-                      <Link className="h-4 w-4 mr-2" />
-                      Copy Link
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleShare('qr')}>
-                      <QrCode className="h-4 w-4 mr-2" />
-                      QR Code
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => handleShare('email')}>
-                      <Mail className="h-4 w-4 mr-2" />
-                      Email
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <PlanDropdownMenu
+                  plan={plan}
+                  currentUserUid={undefined} // This component doesn't have currentUserUid
+                  isHost={false} // This component doesn't have isHost
+                  onShare={() => handleShare('native')}
+                  onCopyLink={() => handleShare('link')}
+                  onQRCode={() => handleShare('qr')}
+                  variant="basic"
+                  triggerClassName="h-8 w-8"
+                  className="w-40"
+                />
               </div>
             </div>
           </div>

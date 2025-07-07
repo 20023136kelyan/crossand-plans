@@ -838,9 +838,7 @@ export const calculateUserPremiumStatus = async (userId: string): Promise<boolea
       .getFilteredQuery(COLLECTIONS.SUBSCRIPTIONS, [
         ['userId', '==', userId],
         ['status', '==', 'active']
-      ])
-      .orderBy('createdAt', 'desc')
-      .limit(1)
+      ], { limit: 1 })
       .get();
 
     return !subscriptionDoc.empty;
