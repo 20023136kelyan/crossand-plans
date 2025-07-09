@@ -1,485 +1,319 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { toast } from 'react-hot-toast';
-import { Loader2 } from 'lucide-react';
-import { format, isPast, isFuture } from 'date-fns';
-import { motion, useScroll, useTransform } from 'framer-motion';
+import Image from 'next/image';
+import { format, parseISO, isValid } from 'date-fns';
+import { 
+  CalendarDays, 
+  MapPin, 
+  Users, 
+  MessageSquare, 
+  Share2, 
+  ThumbsUp, 
+  ChevronLeft,
+  Loader2
+} from 'lucide-react';
 
-// Context
 import { useAuth } from '@/context/AuthContext';
+import { getPlanById } from '@/services/clientServices';
+import { Plan, ParticipantResponse } from '@/types/user';
 
-// Types
-import { Plan, RSVPStatusType, ParticipantDetails, Comment, Rating, CreateFeedPostData } from '@/types/user';
-
-// Mock Actions - Replace with actual implementations
-const fetchPlanByIdAction = async (planId: string): Promise<{ success: boolean; plan?: Plan; error?: string }> => {
-  // Mock implementation
-  return {
-    success: true,
-    plan: {
-      id: planId,
-      name: `Plan ${planId}`,
-      description: 'This is a mock plan description.',
-      location: 'Mock Location',
-      description: "This is a sample plan",
-      eventTime: new Date().toISOString(),
-      hostId: "user123",
-      participantResponses: {} as Record<string, ParticipantResponse>,
-      itinerary: [],
-      comments: [],
-      shareSettings: { public: true, allowRSVP: true, allowComments: true, allowItineraryContribution: false },
-      waitlist: [],
-      // Add required fields from the Plan interface
-      location: "Sample Location",
-      city: "Sample City",
-      eventType: "gathering",
-      eventTypeLowercase: "gathering",
-      startsAt: new Date().toISOString(),
-      endsAt: new Date().toISOString(),
-      isPast: false,
-      photoURL: null,
-      photoURLs: [],
-      hostName: "Sample Host",
-      hostUsername: "samplehost",
-      hostPhotoURL: null,
-      status: "active",
-      isPrivate: false
-    },
-    error: undefined,
-    // For TypeScript, add an empty participantDetails array (should be populated by real implementation)
-    participantDetails: []
-  };
-}
-
-// Helper functions
-async function getUsersProfiles(uids: string[]): Promise<Record<string, UserProfile>> {
-  console.log('Fetching profiles for:', uids);
-  // In a real app, this would fetch from Firestore or your backend
-  return Promise.resolve({});
-}
-
-async function uploadPhotoAndGetURL(file: File): Promise<string> {
-  console.log('Uploading file:', file.name);
-  // In a real app, this would use Firebase Storage or another service
-  return Promise.resolve(`https://example.com/uploads/${file.name}`);
-}
-
-// Mock component imports
-// In a real project, these would be imported from their respective files
-const PlanHero = ({ plan, isHost }: { plan: PlanType; isHost: boolean }) => <div>Plan Hero Component</div>;
-const PlanDetailsHeader = ({ plan }: { plan: PlanType }) => <div>Plan Details Header Component</div>;
-const PlanInfoCards = ({ plan }: { plan: PlanType }) => <div>Plan Info Cards Component</div>;
-const PlanItinerary = ({ plan, isHost }: { plan: PlanType; isHost: boolean }) => <div>Plan Itinerary Component</div>;
-const PlanMap = ({ plan }: { plan: PlanType }) => <div>Plan Map Component</div>;
-const PlanParticipants = ({ plan, participants }: { plan: PlanType; participants: ParticipantDetails[] }) => <div>Plan Participants Component</div>;
-const PlanPhotoHighlights = ({ plan }: { plan: PlanType }) => <div>Plan Photo Highlights Component</div>;
-const PlanChat = ({ plan }: { plan: PlanType }) => <div>Plan Chat Component</div>;
-const PlanRatingSection = ({ plan, onSubmitRating }: { plan: PlanType; onSubmitRating: (rating: number) => Promise<void> }) => <div>Plan Rating Section Component</div>;
-const PlanComments = ({ plan }: { plan: PlanType }) => <div>Plan Comments Component</div>;
-const ShareToFeedDialog = ({ isOpen, onClose, plan }: { isOpen: boolean; onClose: () => void; plan: PlanType }) => <div>Share To Feed Dialog</div>;
-const QRCodeDialog = ({ isOpen, onClose, plan }: { isOpen: boolean; onClose: () => void; plan: PlanType }) => <div>QR Code Dialog</div>;
-const FriendPickerDialog = ({ isOpen, onClose, plan }: { isOpen: boolean; onClose: () => void; plan: PlanType }) => <div>Friend Picker Dialog</div>;
-const DeletePlanDialog = ({ isOpen, onClose, onDelete }: { isOpen: boolean; onClose: () => void; onDelete: () => Promise<void> }) => <div>Delete Plan Dialog</div>;
-const AdvancedRSVPDialog = ({ isOpen, onClose, plan }: { isOpen: boolean; onClose: () => void; plan: PlanType }) => <div>Advanced RSVP Dialog</div>;
-const WaitlistDialog = ({ isOpen, onClose, plan, currentUser, participantDetails, isOnWaitlist, onJoinWaitlist }: { isOpen: boolean; onClose: () => void; plan: PlanType; currentUser: any; participantDetails: Record<string, ParticipantDetails>; isOnWaitlist: boolean; onJoinWaitlist: (notes?: string) => Promise<void> }) => <div>Waitlist Dialog</div>;
-const CopyPlanDialog = ({ isOpen, onClose, onCopy }: { isOpen: boolean; onClose: () => void; onCopy: () => Promise<void> }) => <div>Copy Plan Dialog</div>;
-const ParticipantManagementDialog = ({ isOpen, onClose, plan, participants }: { isOpen: boolean; onClose: () => void; plan: PlanType; participants: ParticipantDetails[] }) => <div>Participant Management Dialog</div>;
-const EnhancedPlanSharingDialog = ({ isOpen, onClose, plan }: { isOpen: boolean; onClose: () => void; plan: PlanType }) => <div>Enhanced Plan Sharing Dialog</div>;
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Separator } from '@/components/ui/separator';
+import { Card, CardContent } from '@/components/ui/card';
+import toast from 'react-hot-toast';
 
 export default function PlanDetailPage() {
-  const params = useParams();
+  const { id } = useParams() as { id: string };
   const router = useRouter();
-  const { user, loading: authLoading, currentUserProfile } = useAuth();
-  const planId = params.id as string;
-
-  const [plan, setPlan] = useState<PlanType | null>(null);
-  const [participantDetails, setParticipantDetails] = useState<ParticipantDetails[]>([]);
-  const [userRole, setUserRole] = useState<UserRole>('public');
-  
+  const { user } = useAuth();
+  const [plan, setPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({
-    rsvp: false,
-    rating: false,
-    comment: false,
-    photoUpload: false,
-    delete: false,
-    copy: false,
-    shareToFeed: false
-  });
-  const [idToken, setIdToken] = useState<string | null>(null);
+  const [rsvpLoading, setRsvpLoading] = useState(false);
 
-  const [dialogOpen, setDialogOpen] = useState<DialogsState>({
-    shareToFeed: false,
-    qrCode: false,
-    friendPicker: false,
-    delete: false,
-    advancedRSVP: false,
-    waitlist: false,
-    copy: false,
-    participantManagement: false,
-    enhancedSharing: false,
-  });
-
-  // Function to fetch plan data from server
-  const fetchPlanData = useCallback(async () => {
-    if (!planId) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // Get new ID token
-      const token = user ? await user.getIdToken() : null;
-      setIdToken(token);
-      
-      // Get plan data
-      if (token) { // Only proceed if we have a token
-        const result = await getPlanForViewingAction(token, planId);
-        
-        if (result.error) {
-          setError(result.error);
-          setPlan(null);
-        } else if (result.plan) {
-          setPlan(result.plan);
-          
-          // If the API returns participant details, use them directly
-          if (result.participantDetails && result.participantDetails.length > 0) {
-            setParticipantDetails(result.participantDetails);
-          } 
-          // Otherwise, build them from the plan data
-          else if (result.plan.participantResponses) {
-            const participants: ParticipantDetails[] = [];
-            
-            // Add host as participant
-            participants.push({
-              userId: result.plan.hostId,
-              name: 'Host',  // Placeholder - replace with actual user data
-              username: null,
-              profilePicture: undefined,
-              response: 'yes', 
-              isHost: true
-            });
-            
-            // Add other participants
-            Object.entries(result.plan.participantResponses).forEach(([userId, response]) => {
-              participants.push({
-                userId,
-                name: 'User ' + userId.substring(0, 5),  // Placeholder - replace with actual user data
-                username: null,
-                profilePicture: undefined,
-                response: response as RSVPStatusType, 
-                isHost: userId === result.plan.hostId
-              });
-            });
-            setParticipantDetails(participants);
-          }
-        }
-        
-        // Determine user role
-        if (user && result.plan.hostId === user.uid) {
-          setUserRole('host');
-        } else if (user && result.plan.participantResponses && 
-                  result.plan.participantResponses[user.uid]) {
-          setUserRole('confirmed');
-        } else if (user) {
-          setUserRole('authenticated');
+  useEffect(() => {
+    const fetchPlanData = async () => {
+      try {
+        setLoading(true);
+        const fetchedPlan = await getPlanById(id);
+        if (fetchedPlan) {
+          setPlan(fetchedPlan);
         } else {
-          setUserRole('public');
+          toast.error('Plan not found');
+          router.push('/plans');
         }
+      } catch (error) {
+        console.error('Error fetching plan:', error);
+        toast.error('Error loading plan details');
+      } finally {
+        setLoading(false);
       }
-    }
-  } catch (err) {
-    console.error('Error fetching plan:', err);
-    setError('Failed to load plan. Please try again later.');
-  } finally {
-    setLoading(false);
-  }
-}, [planId, user]);
+    };
 
-// ...
-
-// Action Handlers
-const handleRSVP = async (response: 'maybe' | 'yes' | 'no' | 'going' | 'not-going') => {
-  if (!user || !plan || actionLoading.rsvp) return;
-  
-  // Map friendly values to backend values
-  const rsvpMapping: Record<string, RSVPStatusType> = {
-    'maybe': 'maybe',
-    'yes': 'yes',
-    'no': 'no',
-    'going': 'yes',
-    'not-going': 'no'
-  };
-  
-  setActionLoading((prev) => ({ ...prev, rsvp: true }));
-  
-  try {
-    const token = await user.getIdToken();
-    const result = await updateMyRSVPAction(plan.id, token, rsvpMapping[response]);
-    
-    if (result.success) {
-      // Optimistically update UI
-      // In a real app, we'd refetch the plan data or use a more sophisticated state management
-      toast.success(`You are ${response} to this plan.`);
+    if (id) {
       fetchPlanData();
-    } else {
-      toast.error('Failed to update your RSVP. Please try again.');
+    }
+  }, [id, router]);
 
-  if (loading || authLoading) {
+  const isHost = user?.uid === plan?.hostId;
+  const isInvited = plan?.invitedParticipantUserIds?.includes(user?.uid || '') || false;
+  const userResponse = user?.uid && plan?.participantResponses ? 
+    plan.participantResponses[user.uid] : undefined;
+  
+  const isGoing = userResponse === 'going';
+  const isMaybe = userResponse === 'maybe';
+  const hasDeclined = userResponse === 'not-going';
+
+  const handleRSVP = async (response: ParticipantResponse) => {
+    if (!user || !plan) return;
+
+    try {
+      setRsvpLoading(true);
+      // In real implementation, call your API to update RSVP status
+      // await updateRsvpStatus(plan.id, user.uid, response);
+      toast.success(`RSVP updated to ${response}`);
+      
+      // Update local state to reflect the change
+      setPlan(prev => {
+        if (!prev) return prev;
+        
+        // Create new plan object with updated responses
+        const updatedPlan = { ...prev };
+        
+        // Update the participant responses
+        updatedPlan.participantResponses = {
+          ...updatedPlan.participantResponses,
+          [user.uid]: response
+        };
+        
+        // Update participant user IDs list based on response
+        if (response === 'going' && !updatedPlan.participantUserIds.includes(user.uid)) {
+          updatedPlan.participantUserIds = [...updatedPlan.participantUserIds, user.uid];
+        } else if (response !== 'going') {
+          updatedPlan.participantUserIds = updatedPlan.participantUserIds.filter(id => id !== user.uid);
+        }
+        
+        return updatedPlan;
+      });
+    } catch (error) {
+      console.error('Error updating RSVP:', error);
+      toast.error('Failed to update RSVP');
+    } finally {
+      setRsvpLoading(false);
+    }
+  };
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString || !isValid(parseISO(dateString))) return 'Date not set';
+    return format(parseISO(dateString), 'EEEE, MMMM d, yyyy • h:mm a');
+  };
+
+  if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="flex flex-col items-center justify-center min-h-screen p-4">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="mt-2 text-muted-foreground">Loading plan details...</p>
       </div>
     );
-  
-  setActionLoading((prev) => ({ ...prev, rating: true }));
-  
-  try {
-    const token = await user.getIdToken();
-    const result = await submitRatingAction(token, plan.id, newRating);
-    
-    if (result.success) {
-      toast.success('Rating submitted!');
-      fetchPlanData(); // Refetch to get updated data
-    } else {
-      toast.error(result.error || 'Failed to submit rating');
-    }
-  } catch (error) {
-    console.error('Error submitting rating:', error);
-    toast.error('An error occurred while submitting your rating');
-  } finally {
-    setActionLoading((prev) => ({ ...prev, rating: false }));
   }
-};
-        onCopyToMyPlans={() => setDialogOpen((prev: DialogsState) => ({ ...prev, copy: true }))}
-        onSharePlanLink={onSharePlanLink}
-        onOpenQRCodeDialog={() => setDialogOpen((prev: DialogsState) => ({ ...prev, qrCode: true }))}
-        onShowFriendPicker={() => setDialogOpen((prev: DialogsState) => ({ ...prev, friendPicker: true }))}
-        onShowShareToFeedDialog={() => setDialogOpen((prev: DialogsState) => ({ ...prev, shareToFeed: true }))}
-        onDeletePlanRequest={() => setDialogOpen((prev: DialogsState) => ({ ...prev, delete: true }))}
-      />
 
-      <motion.div ref={drawerRef} style={{ y: drawerY }} className="relative z-10 -mt-16 rounded-t-2xl bg-background p-4 pb-24 shadow-2xl">
-        <div className="mx-auto max-w-4xl">
-          <PlanHero
-            plan={plan}
-            userRole={userRole}
-            currentUser={user}
-            isHost={isHost}
-            onDeletePlanRequest={() => setDialogOpen((prev: DialogsState) => ({ ...prev, delete: true }))}
-            onCopyToMyPlans={() => setDialogOpen((prev: DialogsState) => ({ ...prev, copy: true }))}
-            onSharePlanLink={onSharePlanLink}
-            onShowShareToFeedDialog={() => setDialogOpen((prev: DialogsState) => ({ ...prev, shareToFeed: true }))}
-            onShowFriendPicker={() => setDialogOpen((prev: DialogsState) => ({ ...prev, friendPicker: true }))}
-            onOpenQRCodeDialog={() => setDialogOpen((prev: DialogsState) => ({ ...prev, qrCode: true }))}
-            copyLoading={actionLoading.copy}
-          />
-          <div className="mt-6 grid grid-cols-1 gap-8 md:grid-cols-3">
-            <div className="md:col-span-2 space-y-8">
-              <PlanInfoCards plan={plan} />
-              <PlanItinerary itinerary={plan.itinerary || []} />
-              <PlanMap 
-                itinerary={plan.itinerary || []} 
-                planName={plan.name} 
-                apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
-              />
-              <PlanParticipants
-                plan={plan}
-                currentUser={user}
-                isCurrentUserParticipant={isParticipant}
-                isHost={isHost}
-                isEventDateValid={isFuture(new Date(plan.eventTime))}
-                currentUserResponse={plan.participantResponses?.[user?.uid || '']}
-                rsvpSummary={{
-                  yes: Object.values(plan.participantResponses || {}).filter(r => r === 'going').length,
-                  maybe: Object.values(plan.participantResponses || {}).filter(r => r === 'maybe').length,
-                  no: Object.values(plan.participantResponses || {}).filter(r => r === 'not-going').length,
-                }}
-                participantDetails={participantDetailsMap}
-                rsvpLoading={actionLoading.rsvp}
-                onRSVP={(response) => handleRSVP(rsvpStatusMap[response])}
-                onAdvancedRSVP={() => setDialogOpen((prev: DialogsState) => ({ ...prev, advancedRSVP: true }))}
-                onManageParticipants={() => setDialogOpen((prev: DialogsState) => ({ ...prev, participantManagement: true }))}
-                onJoinWaitlist={() => setDialogOpen((prev: DialogsState) => ({ ...prev, waitlist: true }))}
-              />
-              <PlanPhotoHighlights
-                plan={plan}
-                isCurrentUserParticipant={isParticipant}
-                highlightUploading={actionLoading.photoUpload}
-                onUploadHighlight={handlePhotoUpload}
-              />
-              <PlanChat plan={plan} planId={plan.id} currentUser={user} isParticipant={isParticipant || isHost} />
-              {canUserCommentAndRate && (
-                <PlanRatingSection
-                  isHost={isHost}
-                  userRating={userRating || 0}
-                  hasRated={!!userRating}
-                  ratingLoading={actionLoading.rating}
-                  canRate={canUserCommentAndRate}
-                  onRatingChange={(newRating) => {
-                    // This is a temporary state update for the UI
-                    // The actual submission happens on button click
-                    // We can enhance this by creating a state for the rating
-                  }}
-                  onRatingSubmit={() => userRating && handleRatingSubmit(userRating)}
-                  onClearRating={() => handleRatingSubmit(0)} // Or a dedicated clear action
-                />
-              )}
-              <PlanComments
-                comments={plan.comments as any[]}
-                currentUserId={user?.uid}
-                canComment={canUserCommentAndRate}
-                onCommentSubmit={handleCommentSubmit}
-                onCommentUpdate={handleCommentUpdate}
-                onCommentDelete={handleCommentDelete}
-              />
+  if (!plan) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen p-4">
+        <p className="text-muted-foreground">Plan not found</p>
+        <Button 
+          variant="ghost" 
+          className="mt-4"
+          onClick={() => router.push('/plans')}
+        >
+          <ChevronLeft className="mr-2 h-4 w-4" />
+          Back to plans
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pb-16 flex flex-col">
+      {/* Header with back button */}
+      <div className="fixed top-0 left-0 right-0 z-10 bg-background/80 backdrop-blur-md p-2 flex items-center border-b">
+        <Button 
+          variant="ghost" 
+          size="icon"
+          onClick={() => router.push('/plans')}
+          className="mr-2"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </Button>
+        <h1 className="text-lg font-semibold truncate flex-1">Plan Details</h1>
+      </div>
+
+      {/* Hero image with gradient overlay */}
+      <div className="relative w-full h-60 mt-12">
+        <div className="absolute inset-0 bg-muted">
+          {plan.images?.length > 0 ? (
+            <Image
+              src={plan.images[0].url}
+              alt={plan.images[0].alt || plan.name || 'Plan'}
+              fill
+              className="object-cover"
+              priority
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-700 to-blue-500">
+              <CalendarDays className="h-12 w-12 text-white opacity-50" />
             </div>
-            <div className="space-y-4 md:col-span-1">
-              <h3 className="font-semibold">Actions</h3>
-              {isUpcoming && !isHost && (
-                <div className="flex space-x-2">
-                  <button onClick={() => handleRSVP('going')} disabled={actionLoading.rsvp} className="flex-1 rounded-md bg-green-500 px-4 py-2 text-white disabled:opacity-50">
-                    Going
-                  </button>
-                  <button onClick={() => handleRSVP('not-going')} disabled={actionLoading.rsvp} className="flex-1 rounded-md bg-red-500 px-4 py-2 text-white disabled:opacity-50">
-                    Not Going
-                  </button>
-                </div>
-              )}
-              {isUpcoming && !isHost && (
-                <button
-                  onClick={() => setDialogOpen((prev: DialogsState) => ({ ...prev, advancedRSVP: true }))}
-                  className="w-full rounded-md border bg-card px-4 py-2 text-sm font-medium shadow hover:bg-muted"
-                >
-                  Advanced RSVP
-                </button>
-              )}
-              <button
-                onClick={() => setDialogOpen((prev: DialogsState) => ({ ...prev, copy: true }))}
-                disabled={actionLoading.copy}
-                className="flex w-full items-center justify-center rounded-md border bg-card px-4 py-2 text-sm font-medium shadow hover:bg-muted"
-              >
-                {actionLoading.copy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Copy Plan
-              </button>
-              <button
-                onClick={() => setDialogOpen((prev: DialogsState) => ({ ...prev, enhancedSharing: true }))}
-                className="flex w-full items-center justify-center rounded-md border bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow"
-              >
-                <Share2 className="mr-2 h-4 w-4" /> Share Plan
-              </button>
-            </div>
-          </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
         </div>
-      </motion.div>
 
-      {/* Dialogs */}
-      {plan && (
-        <ShareToFeedDialog
-          open={dialogOpen.shareToFeed}
-          onOpenChange={(isOpen: boolean) => setDialogOpen((prev: DialogsState) => ({ ...prev, shareToFeed: isOpen }))}
-          plan={plan}
-          onSubmit={handleShareToFeed}
-        />
+        {/* Event Type Badge */}
+        {plan.eventType && (
+          <Badge variant="secondary" className="absolute top-2 right-2 bg-black/70 text-white border-0">
+            {plan.eventType}
+          </Badge>
+        )}
+      </div>
+
+      {/* Plan name and host info */}
+      <div className="px-4 -mt-8 relative z-10">
+        <Card className="shadow-lg border-border/50">
+          <CardContent className="p-4">
+            <h1 className="text-2xl font-bold">{plan.name}</h1>
+            
+            <div className="flex items-center mt-2">
+              <Avatar className="h-6 w-6 mr-2">
+                <AvatarImage src={plan.hostAvatarUrl || undefined} alt={plan.hostName || 'Host'} />
+                <AvatarFallback>{(plan.hostName?.[0] || '?').toUpperCase()}</AvatarFallback>
+              </Avatar>
+              <span className="text-sm text-muted-foreground">
+                Hosted by <span className="font-medium">{plan.creatorUsername || plan.hostName}</span>
+              </span>
+            </div>
+
+            {/* Date/time and location */}
+            <div className="mt-4 space-y-2">
+              <div className="flex items-center text-sm">
+                <CalendarDays className="h-4 w-4 mr-2 text-muted-foreground" />
+                <span>{formatDate(plan.eventTime)}</span>
+              </div>
+              <div className="flex items-center text-sm">
+                <MapPin className="h-4 w-4 mr-2 text-muted-foreground" />
+                <span>{plan.location || 'Location not set'}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Plan description */}
+      {plan.description && (
+        <div className="px-4 mt-4">
+          <Card>
+            <CardContent className="p-4">
+              <h2 className="font-medium mb-2">About this plan</h2>
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{plan.description}</p>
+            </CardContent>
+          </Card>
+        </div>
       )}
-      {plan && (
-        <QRCodeDialog
-          open={dialogOpen.qrCode}
-          onOpenChange={(isOpen) => setDialogOpen((prev: DialogsState) => ({ ...prev, qrCode: isOpen }))}
-          plan={plan}
-          planUrl={`${window.location.origin}/plans/${plan.id}`}
-        />
-      )}
-      {plan && (
-        <FriendPickerDialog
-          open={dialogOpen.friendPicker}
-          onOpenChange={(isOpen) => setDialogOpen((prev: DialogsState) => ({ ...prev, friendPicker: isOpen }))}
-          plan={plan}
-          onShare={async (friendIds: string[]) => {
-            console.log('Selected friends:', friendIds);
-            toast.info('Friend sharing not implemented yet.');
-          }}
-        />
-      )}
-      <DeletePlanDialog
-        open={dialogOpen.delete}
-        onOpenChange={(isOpen) => setDialogOpen((prev: DialogsState) => ({ ...prev, delete: isOpen }))}
-        onConfirm={handleDeletePlan}
-        loading={actionLoading.delete || false}
-      />
-      {user && plan && (
-        <AdvancedRSVPDialog
-          open={dialogOpen.advancedRSVP}
-          onOpenChange={(isOpen) => setDialogOpen((prev: DialogsState) => ({ ...prev, advancedRSVP: isOpen }))}
-          plan={plan}
-          currentUser={user}
-          onSubmit={async (details: any) => {
-            console.log('Advanced RSVP details:', details);
-            toast.info('Advanced RSVP not implemented yet.');
-          }}
-        />
-      )}
-      {user && plan && (
-        <WaitlistDialog
-          open={dialogOpen.waitlist}
-          onOpenChange={(isOpen) => setDialogOpen((prev: DialogsState) => ({ ...prev, waitlist: isOpen }))}
-          plan={plan}
-          currentUser={user}
-          participantDetails={participantDetailsMap}
-          isOnWaitlist={!!plan.waitlist?.includes(user.uid)}
-          onJoinWaitlist={async (notes?: string | undefined) => {
-            console.log('Joining waitlist with notes:', notes);
-            toast.info('Waitlist functionality not implemented yet.');
-          }}
-          onLeaveWaitlist={async () => {
-            console.log('Leaving waitlist');
-            toast.info('Waitlist functionality not implemented yet.');
-          }}
-        />
-      )}
-      {plan && user && (
-        <CopyPlanDialog
-          open={dialogOpen.copy}
-          onOpenChange={(isOpen) => setDialogOpen((prev: DialogsState) => ({ ...prev, copy: isOpen }))}
-          plan={plan}
-          currentUser={user}
-          onCopy={async (customizations: any) => {
-            console.log('Copying plan with customizations:', customizations);
-            await handleCopyPlan();
-          }}
-        />
-      )}
-      {user && plan && (
-        <ParticipantManagementDialog
-          open={dialogOpen.participantManagement}
-          onOpenChange={(isOpen) => setDialogOpen((prev: DialogsState) => ({ ...prev, participantManagement: isOpen }))}
-          plan={plan}
-          currentUser={user}
-          isHost={isHost}
-          onSendReminder={async () => { toast.info('Reminder functionality not implemented.'); }}
-          onSendMessage={async () => { toast.info('Send message functionality not implemented.'); }}
-          onRemoveParticipant={async () => { toast.info('Remove participant functionality not implemented.'); }}
-          onPromoteToHost={async () => { toast.info('Promote to host functionality not implemented.'); }}
-          onExportParticipants={async () => { toast.info('Export functionality not implemented.'); }}
-        />
-      )}
-      {user && plan && (
-        <EnhancedPlanSharingDialog
-          open={dialogOpen.enhancedSharing}
-          onOpenChange={(isOpen) => setDialogOpen((prev: DialogsState) => ({ ...prev, enhancedSharing: isOpen }))}
-          plan={plan}
-          currentUser={user}
-          isHost={isHost}
-          onShareToFeed={async () => setDialogOpen((prev: DialogsState) => ({ ...prev, shareToFeed: true, enhancedSharing: false }))}
-          onShareWithFriends={async () => setDialogOpen((prev: DialogsState) => ({ ...prev, friendPicker: true, enhancedSharing: false }))}
-          onUpdateShareSettings={async (settings: any) => {
-            console.log('Update share settings:', settings);
-            toast.info('Updating share settings not implemented yet.');
-          }}
-        />
-      )}
+
+      {/* Participants */}
+      <div className="px-4 mt-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="font-medium">Participants</h2>
+              <div className="flex items-center">
+                <Users className="h-4 w-4 mr-1 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">
+                  {(plan.participantUserIds?.length || 0) + (isHost ? 0 : 1)}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex -space-x-2 overflow-hidden my-2">
+              {/* Host avatar */}
+              <Avatar className="h-8 w-8 border-2 border-background">
+                <AvatarImage src={plan.hostAvatarUrl || undefined} alt={plan.hostName || 'Host'} />
+                <AvatarFallback>{(plan.hostName?.[0] || '?').toUpperCase()}</AvatarFallback>
+              </Avatar>
+
+              {/* Only show up to 5 participants for simplicity */}
+              {(plan.participantUserIds || []).slice(0, 4).map((participantId, index) => (
+                <Avatar key={participantId} className="h-8 w-8 border-2 border-background">
+                  <AvatarFallback>{index + 1}</AvatarFallback>
+                </Avatar>
+              ))}
+
+              {/* Show count if there are more */}
+              {(plan.participantUserIds?.length || 0) > 4 && (
+                <Avatar className="h-8 w-8 border-2 border-background bg-muted">
+                  <AvatarFallback>+{(plan.participantUserIds?.length || 0) - 4}</AvatarFallback>
+                </Avatar>
+              )}
+            </div>
+
+            {/* RSVP section for invited users */}
+            {(isInvited || isHost) && (
+              <>
+                <Separator className="my-3" />
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <Button
+                    size="sm"
+                    variant={isGoing ? "default" : "outline"}
+                    onClick={() => handleRSVP('going')}
+                    disabled={rsvpLoading || isHost}
+                    className={isGoing ? "bg-green-600 hover:bg-green-700" : ""}
+                  >
+                    {rsvpLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ThumbsUp className="h-4 w-4 mr-2" />}
+                    Going
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={isMaybe ? "default" : "outline"}
+                    onClick={() => handleRSVP('maybe')}
+                    disabled={rsvpLoading || isHost}
+                    className={isMaybe ? "bg-amber-500 hover:bg-amber-600" : ""}
+                  >
+                    Maybe
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={hasDeclined ? "default" : "outline"}
+                    onClick={() => handleRSVP('not-going')}
+                    disabled={rsvpLoading || isHost}
+                    className={hasDeclined ? "bg-red-500 hover:bg-red-600" : ""}
+                  >
+                    Decline
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Mobile action buttons - fixed at bottom */}
+      <div className="fixed bottom-0 left-0 right-0 p-3 bg-background/90 backdrop-blur-md border-t flex justify-around">
+        <Button variant="ghost" className="flex flex-col items-center text-xs w-16">
+          <MessageSquare className="h-5 w-5 mb-1" />
+          Chat
+        </Button>
+        <Button variant="ghost" className="flex flex-col items-center text-xs w-16">
+          <Share2 className="h-5 w-5 mb-1" />
+          Share
+        </Button>
+        {isHost && (
+          <Button variant="ghost" className="flex flex-col items-center text-xs w-16">
+            <Users className="h-5 w-5 mb-1" />
+            Manage
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
