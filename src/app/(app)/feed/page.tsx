@@ -609,8 +609,30 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ post, commentsData: initi
 
   const sortedCommentsData = useMemo(() => {
     return [...(initialCommentsData || [])].sort((a, b) => {
-      const timeA = a.createdAt && isValid(parseISO(a.createdAt as string)) ? parseISO(a.createdAt as string).getTime() : 0;
-      const timeB = b.createdAt && isValid(parseISO(b.createdAt as string)) ? parseISO(b.createdAt as string).getTime() : 0;
+      // Safely parse dates, handle different timestamp formats
+      const getTimeFromTimestamp = (timestamp: any): number => {
+        if (!timestamp) return 0;
+        
+        // Handle Firebase Timestamp objects that might be serialized differently
+        if (typeof timestamp === 'object' && timestamp.seconds) {
+          return timestamp.seconds * 1000;
+        }
+        
+        // Handle ISO string dates
+        if (typeof timestamp === 'string') {
+          try {
+            const date = parseISO(timestamp);
+            return isValid(date) ? date.getTime() : 0;
+          } catch (e) {
+            return 0;
+          }
+        }
+        
+        return 0;
+      };
+      
+      const timeA = getTimeFromTimestamp(a.createdAt);
+      const timeB = getTimeFromTimestamp(b.createdAt);
       return timeA - timeB;
     });
   }, [initialCommentsData]);
@@ -673,7 +695,36 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ post, commentsData: initi
             : sortedCommentsData.length === 0 ? (<p className="text-sm text-muted-foreground text-center py-8">No comments yet. Be the first!</p>)
             : (<div className="space-y-3 pb-2">{sortedCommentsData.map((comment) => {
                 let commentTimestampRelative = 'just now';
-                if (comment.createdAt) { const dateValue = parseISO(comment.createdAt as string); if (isValid(dateValue)) { commentTimestampRelative = formatDistanceToNowStrict(dateValue, { addSuffix: true }); }}
+                if (comment.createdAt) { 
+                  try {
+                    // Handle different timestamp formats
+                    let dateValue;
+                    if (typeof comment.createdAt === 'object' && comment.createdAt !== null) {
+                      // Handle Firebase Timestamp objects
+                      if ('seconds' in comment.createdAt && typeof comment.createdAt.seconds === 'number') {
+                        dateValue = new Date(comment.createdAt.seconds * 1000);
+                      } else if (comment.createdAt instanceof Date) {
+                        dateValue = comment.createdAt;
+                      } else {
+                        // Default case - try to create a date
+                        dateValue = new Date();
+                      }
+                    } else if (typeof comment.createdAt === 'string') {
+                      // Handle ISO string dates
+                      dateValue = parseISO(comment.createdAt);
+                    } else {
+                      // Fallback
+                      dateValue = new Date();
+                    }
+                    
+                    if (isValid(dateValue)) { 
+                      commentTimestampRelative = formatDistanceToNowStrict(dateValue, { addSuffix: true }); 
+                    }
+                  } catch (e) {
+                    console.error('Error parsing comment date:', e);
+                    // Keep default 'just now' value
+                  }
+                }
                 const commenterInitial = comment.username ? comment.username.charAt(0).toUpperCase() : (comment.userName ? comment.userName.charAt(0).toUpperCase() : 'U');
                 const isCommentOwner = user?.uid === comment.userId;
                 return (<div key={comment.id} className="flex flex-col mt-0 mb-0 relative">

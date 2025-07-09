@@ -89,9 +89,9 @@ export async function generateDeepPlan(input: GenerateDeepPlanInput): Promise<Ge
       }
       console.log(`[Deep Plan Agent] Derived price range '${effectivePriceRange}' from user's budget flexibility notes: "${budgetFlexibilityNotes}"`);
     } else {
-      // Default to moderate if no budget notes
-      effectivePriceRange = '$$';
-      console.log('[Deep Plan Agent] No explicit price range or budget flexibility notes found. Defaulting to "$$" (moderate)');
+      // Don't set a default price range, allowing the AI to use its best judgment
+      effectivePriceRange = undefined;
+      console.log('[Deep Plan Agent] No explicit price range or budget flexibility notes found. AI will use its best judgment based on other preferences.');
     }
   }
   
@@ -128,7 +128,7 @@ export async function generateDeepPlan(input: GenerateDeepPlanInput): Promise<Ge
       Your process for each itinerary stop is critical:
       1.  **Discover a Venue**: Use the \`deepPlace-discovery\` to find a potential venue that fits the user's request and profile.
          - IMPORTANT: When evaluating venues, give significant weight to the user's price preference. If a specific price range is provided (e.g., '$', '$$', etc.), prioritize places that match this budget.
-         - If no price range is specified, default to moderately-priced options ('$$') that offer good value.
+         - If no price range is specified, use your best judgment based on the user's other preferences, activity type, and location to suggest appropriate venues. Don't rigidly adhere to a single price category - consider what would create the best experience.
       2.  **Conduct Research**: CRITICAL STEP. Once you have a venue name, use the \`exaSearchTool\` with a precise query (e.g., "Blue Bottle Coffee menu NYC" or "special exhibits at MoMA") to find specific, real-world details about it. Look for signature dishes, current events, unique features, or what makes it special.
          - Include price information in your research when available to verify budget alignment.
       3.  **Generate Suggestions**: Based on your research from the search tool, create 2-3 specific, creative, and actionable \`suggestedActivities\`. DO NOT use generic suggestions. Your suggestions must be directly informed by the information you found online.
@@ -269,7 +269,7 @@ export async function generateDeepPlan(input: GenerateDeepPlanInput): Promise<Ge
     location: input.locationQuery,
     city: input.locationQuery.split(',')[0].trim(),
     itinerary: enrichedItineraryItems,
-    priceRange: input.priceRange || 'Free',
+    priceRange: effectivePriceRange || 'Free', // Use the derived price range that respects user's budget flexibility
     planType: enrichedItineraryItems.length > 1 ? 'multi-stop' : 'single-stop', // Set based on actual number of stops after enforcement
     status: 'draft',
     createdAt: new Date().toISOString(),

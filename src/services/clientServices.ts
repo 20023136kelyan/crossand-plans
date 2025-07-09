@@ -423,6 +423,8 @@ export function getUserPlansSubscription(
               averageRating: data.averageRating === undefined ? null : data.averageRating,
               reviewCount: data.reviewCount === undefined ? 0 : data.reviewCount,
               photoHighlights: data.photoHighlights || [],
+              images: data.images || [],
+              comments: data.comments || [],
               createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || '',
               updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || '',
               coordinates: data.coordinates || undefined,
@@ -496,6 +498,9 @@ export function getUserPlansSubscription(
               averageRating: data.averageRating === undefined ? null : data.averageRating,
               reviewCount: data.reviewCount === undefined ? 0 : data.reviewCount,
               photoHighlights: data.photoHighlights || [],
+              // Required fields from interface
+              images: data.images || [], 
+              comments: data.comments || [],
               createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || '',
               updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || '',
               coordinates: data.coordinates || undefined,
@@ -623,27 +628,67 @@ export async function getUserPlans(userId: string): Promise<Plan[]> {
   if (!userId) return [];
 
   try {
-    const plansQuery = query(
+    // Get plans where user is the host
+    const hostedPlansQuery = query(
       collection(getDb(), 'plans'),
-      where('userId', '==', userId),
+      where('hostId', '==', userId),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+    
+    // Get plans where user is an invited participant
+    const participantPlansQuery = query(
+      collection(getDb(), 'plans'),
+      where('invitedParticipantUserIds', 'array-contains', userId),
       orderBy('createdAt', 'desc'),
       limit(50)
     );
 
-    const snapshot = await getDocs(plansQuery);
-    const plans: Plan[] = [];
+    // Execute both queries
+    const [hostedSnapshot, participantSnapshot] = await Promise.all([
+      getDocs(hostedPlansQuery),
+      getDocs(participantPlansQuery)
+    ]);
     
-    snapshot.forEach((doc) => {
+    const plans: Plan[] = [];
+    const planIds = new Set<string>(); // To prevent duplicates
+    
+    // Process hosted plans
+    hostedSnapshot.forEach((doc) => {
       const data = doc.data();
       plans.push({
         id: doc.id,
-        ...data
+        ...data,
+        // Ensure required properties exist
+        images: data.images || [],
+        comments: data.comments || []
       } as Plan);
+      planIds.add(doc.id);
+    });
+    
+    // Process participant plans (avoid duplicates)
+    participantSnapshot.forEach((doc) => {
+      if (!planIds.has(doc.id)) {
+        const data = doc.data();
+        plans.push({
+          id: doc.id,
+          ...data,
+          // Ensure required properties exist
+          images: data.images || [],
+          comments: data.comments || []
+        } as Plan);
+      }
     });
 
-    return plans;
+    // Sort all plans by creation date (newest first)
+    return plans.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+      return dateB - dateA;
+    });
+    
   } catch (error) {
     console.error('Error fetching user plans:', error);
     return [];
   }
-} 
+}
