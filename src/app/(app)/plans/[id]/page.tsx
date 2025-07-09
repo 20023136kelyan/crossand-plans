@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { format, parseISO, isValid } from 'date-fns';
@@ -33,6 +33,23 @@ export default function PlanDetailPage() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(true);
   const [rsvpLoading, setRsvpLoading] = useState(false);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const slideInterval = useRef<NodeJS.Timeout>();
+
+  // Set up image slideshow
+  useEffect(() => {
+    if (plan?.images && plan.images.length > 1) {
+      slideInterval.current = setInterval(() => {
+        setActiveImageIndex(prev => (prev + 1) % plan.images.length);
+      }, 5000); // Change image every 5 seconds
+    }
+
+    return () => {
+      if (slideInterval.current) {
+        clearInterval(slideInterval.current);
+      }
+    };
+  }, [plan]);
 
   useEffect(() => {
     const fetchPlanData = async () => {
@@ -137,60 +154,90 @@ export default function PlanDetailPage() {
   }
 
   return (
-    <div className="pb-16 flex flex-col">
-      {/* Header with back button */}
-      <div className="fixed top-0 left-0 right-0 z-10 bg-background/80 backdrop-blur-md p-2 flex items-center border-b">
+    <div className="min-h-screen flex flex-col relative">
+      {/* Full screen background image with gradient overlay */}
+      <div className="fixed inset-0 z-0">
+        {plan?.images?.length > 0 ? (
+          <>
+            {/* Image slideshow */}
+            {plan?.images?.map((image, index) => (
+              <div 
+                key={index}
+                className={`absolute inset-0 transition-opacity duration-1000 ${index === activeImageIndex ? 'opacity-100' : 'opacity-0'}`}
+              >
+                <Image
+                  src={image.url}
+                  alt={image.alt || plan.name || 'Plan'}
+                  fill
+                  className="object-cover"
+                  priority={index === 0}
+                  quality={85}
+                />
+              </div>
+            ))}
+            
+            {/* Image navigation dots if multiple images */}
+            {plan?.images?.length > 1 && (
+              <div className="absolute bottom-[33%] left-1/2 transform -translate-x-1/2 flex space-x-1 z-10">
+                {plan?.images?.map((_, index) => (
+                  <button 
+                    key={index}
+                    onClick={() => setActiveImageIndex(index)}
+                    className={`w-2 h-2 rounded-full ${index === activeImageIndex ? 'bg-white' : 'bg-white/50'}`}
+                    aria-label={`Go to image ${index + 1}`}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-b from-purple-800 to-blue-900">
+            <div className="absolute inset-0 flex items-center justify-center">
+              <CalendarDays className="h-20 w-20 text-white/30" />
+            </div>
+          </div>
+        )}
+        
+        {/* Gradient overlay - stronger fade at bottom */}
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/95 to-transparent" />
+      </div>
+      
+      {/* Header with back button - now transparent on top of image */}
+      <div className="fixed top-0 left-0 right-0 z-20 bg-black/30 backdrop-blur-md p-2 flex items-center">
         <Button 
           variant="ghost" 
           size="icon"
           onClick={() => router.push('/plans')}
-          className="mr-2"
+          className="mr-2 text-white hover:bg-white/20"
         >
           <ChevronLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-lg font-semibold truncate flex-1">Plan Details</h1>
+        <h1 className="text-lg font-semibold truncate flex-1 text-white drop-shadow-md">Plan Details</h1>
       </div>
+      
+      {/* Empty space to push content below the full-bleed image */}
+      <div className="h-[35vh]" />
 
-      {/* Hero image with gradient overlay */}
-      <div className="relative w-full h-60 mt-12">
-        <div className="absolute inset-0 bg-muted">
-          {plan.images?.length > 0 ? (
-            <Image
-              src={plan.images[0].url}
-              alt={plan.images[0].alt || plan.name || 'Plan'}
-              fill
-              className="object-cover"
-              priority
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-700 to-blue-500">
-              <CalendarDays className="h-12 w-12 text-white opacity-50" />
-            </div>
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
+      {/* Event Type Badge */}
+      {plan?.eventType && (
+        <div className="px-4 z-10 relative">
+          <Badge className="bg-primary text-white hover:bg-primary">{plan.eventType}</Badge>
         </div>
-
-        {/* Event Type Badge */}
-        {plan.eventType && (
-          <Badge variant="secondary" className="absolute top-2 right-2 bg-black/70 text-white border-0">
-            {plan.eventType}
-          </Badge>
-        )}
-      </div>
+      )}
 
       {/* Plan name and host info */}
-      <div className="px-4 -mt-8 relative z-10">
-        <Card className="shadow-lg border-border/50">
+      <div className="px-4 relative z-10">
+        <Card className="shadow-lg border-border/50 backdrop-blur-sm bg-background/80">
           <CardContent className="p-4">
-            <h1 className="text-2xl font-bold">{plan.name}</h1>
+            <h1 className="text-2xl font-bold">{plan?.name || 'Unnamed Plan'}</h1>
             
             <div className="flex items-center mt-2">
               <Avatar className="h-6 w-6 mr-2">
-                <AvatarImage src={plan.hostAvatarUrl || undefined} alt={plan.hostName || 'Host'} />
-                <AvatarFallback>{(plan.hostName?.[0] || '?').toUpperCase()}</AvatarFallback>
+                <AvatarImage src={plan?.hostAvatarUrl || undefined} alt={plan?.hostName || 'Host'} />
+                <AvatarFallback>{(plan?.hostName?.[0] || '?').toUpperCase()}</AvatarFallback>
               </Avatar>
               <span className="text-sm text-muted-foreground">
-                Hosted by <span className="font-medium">{plan.creatorUsername || plan.hostName}</span>
+                Hosted by <span className="font-medium">{plan?.creatorUsername || plan?.hostName || 'Unknown host'}</span>
               </span>
             </div>
 
@@ -198,11 +245,11 @@ export default function PlanDetailPage() {
             <div className="mt-4 space-y-2">
               <div className="flex items-center text-sm">
                 <CalendarDays className="h-4 w-4 mr-2 text-muted-foreground" />
-                <span>{formatDate(plan.eventTime)}</span>
+                <span>{formatDate(plan?.eventTime)}</span>
               </div>
               <div className="flex items-center text-sm">
                 <MapPin className="h-4 w-4 mr-2 text-muted-foreground" />
-                <span>{plan.location || 'Location not set'}</span>
+                <span>{plan?.location || 'Location not set'}</span>
               </div>
             </div>
           </CardContent>
@@ -210,12 +257,12 @@ export default function PlanDetailPage() {
       </div>
 
       {/* Plan description */}
-      {plan.description && (
+      {plan?.description && (
         <div className="px-4 mt-4">
-          <Card>
+          <Card className="backdrop-blur-sm bg-background/80">
             <CardContent className="p-4">
               <h2 className="font-medium mb-2">About this plan</h2>
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{plan.description}</p>
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{plan?.description}</p>
             </CardContent>
           </Card>
         </div>
@@ -223,14 +270,14 @@ export default function PlanDetailPage() {
 
       {/* Participants */}
       <div className="px-4 mt-4">
-        <Card>
+        <Card className="backdrop-blur-sm bg-background/80">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-2">
               <h2 className="font-medium">Participants</h2>
               <div className="flex items-center">
                 <Users className="h-4 w-4 mr-1 text-muted-foreground" />
                 <span className="text-sm text-muted-foreground">
-                  {(plan.participantUserIds?.length || 0) + (isHost ? 0 : 1)}
+                  {(plan?.participantUserIds?.length || 0) + (isHost ? 0 : 1)}
                 </span>
               </div>
             </div>
@@ -238,8 +285,8 @@ export default function PlanDetailPage() {
             <div className="flex -space-x-2 overflow-hidden my-2">
               {/* Host avatar */}
               <Avatar className="h-8 w-8 border-2 border-background">
-                <AvatarImage src={plan.hostAvatarUrl || undefined} alt={plan.hostName || 'Host'} />
-                <AvatarFallback>{(plan.hostName?.[0] || '?').toUpperCase()}</AvatarFallback>
+                <AvatarImage src={plan?.hostAvatarUrl || undefined} alt={plan?.hostName || 'Host'} />
+                <AvatarFallback>{(plan?.hostName?.[0] || '?').toUpperCase()}</AvatarFallback>
               </Avatar>
 
               {/* Only show up to 5 participants for simplicity */}
@@ -298,17 +345,17 @@ export default function PlanDetailPage() {
       </div>
 
       {/* Mobile action buttons - fixed at bottom */}
-      <div className="fixed bottom-0 left-0 right-0 p-3 bg-background/90 backdrop-blur-md border-t flex justify-around">
-        <Button variant="ghost" className="flex flex-col items-center text-xs w-16">
+      <div className="fixed bottom-0 left-0 right-0 p-3 bg-black/40 backdrop-blur-md border-t border-white/10 flex justify-around">
+        <Button variant="ghost" className="flex flex-col items-center text-xs w-16 text-white hover:bg-white/20">
           <MessageSquare className="h-5 w-5 mb-1" />
           Chat
         </Button>
-        <Button variant="ghost" className="flex flex-col items-center text-xs w-16">
+        <Button variant="ghost" className="flex flex-col items-center text-xs w-16 text-white hover:bg-white/20">
           <Share2 className="h-5 w-5 mb-1" />
           Share
         </Button>
         {isHost && (
-          <Button variant="ghost" className="flex flex-col items-center text-xs w-16">
+          <Button variant="ghost" className="flex flex-col items-center text-xs w-16 text-white hover:bg-white/20">
             <Users className="h-5 w-5 mb-1" />
             Manage
           </Button>
