@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { format, parseISO, isValid } from 'date-fns';
@@ -35,12 +35,71 @@ export default function PlanDetailPage() {
   const [rsvpLoading, setRsvpLoading] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const slideInterval = useRef<NodeJS.Timeout>();
-
-  // Set up image slideshow
+  
+  // Extract image data from plan using similar logic as PlanImageLoader component
+  const planImages = useMemo(() => {
+    if (!plan) return [];
+    
+    const images: {url: string; alt: string}[] = [];
+    
+    // Priority 1: Photo highlights (uploaded by users)
+    if (plan.photoHighlights?.length > 0) {
+      plan.photoHighlights.forEach(url => {
+        images.push({
+          url, 
+          alt: plan.name || 'Plan image'
+        });
+      });
+    }
+    
+    // Priority 2: Itinerary items with images
+    if (images.length === 0 && plan.itinerary?.length > 0) {
+      for (const item of plan.itinerary) {
+        // Add items with Google photo references
+        if (item.googlePhotoReference) {
+          // This URL would normally be constructed with your backend API endpoint
+          // that handles Google Places photo references and API keys securely
+          const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+          if (apiKey) {
+            images.push({
+              url: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=1200&photo_reference=${item.googlePhotoReference}&key=${apiKey}`,
+              alt: item.placeName || plan.name || 'Plan location'
+            });
+          }
+        }
+        // Add Google Maps image URLs as fallback
+        else if (item.googleMapsImageUrl) {
+          images.push({
+            url: item.googleMapsImageUrl,
+            alt: item.placeName || plan.name || 'Plan location'
+          });
+        }
+        
+        // Break after finding first image
+        if (images.length > 0) break;
+      }
+    }
+    
+    // Priority 3: Static map for first location if we have coordinates
+    if (images.length === 0 && plan.itinerary?.[0]?.lat && plan.itinerary[0].lng) {
+      const firstItem = plan.itinerary[0];
+      const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+      
+      if (apiKey) {
+        images.push({
+          url: `https://maps.googleapis.com/maps/api/staticmap?center=${firstItem.lat},${firstItem.lng}&zoom=15&size=1200x1200&markers=color:red%7C${firstItem.lat},${firstItem.lng}&key=${apiKey}`,
+          alt: firstItem.placeName || plan.name || 'Plan location map'
+        });
+      }
+    }
+    
+    return images;
+  }, [plan]);
+  
   useEffect(() => {
-    if (plan?.images && plan.images.length > 1) {
+    if (planImages.length > 1) {
       slideInterval.current = setInterval(() => {
-        setActiveImageIndex(prev => (prev + 1) % plan.images.length);
+        setActiveImageIndex(prev => (prev + 1) % planImages.length);
       }, 5000); // Change image every 5 seconds
     }
 
@@ -49,7 +108,7 @@ export default function PlanDetailPage() {
         clearInterval(slideInterval.current);
       }
     };
-  }, [plan]);
+  }, [planImages.length]);
 
   useEffect(() => {
     const fetchPlanData = async () => {
@@ -157,29 +216,30 @@ export default function PlanDetailPage() {
     <div className="min-h-screen flex flex-col relative">
       {/* Full screen background image with gradient overlay */}
       <div className="fixed inset-0 z-0">
-        {plan?.images?.length > 0 ? (
+        {planImages.length > 0 ? (
           <>
             {/* Image slideshow */}
-            {plan?.images?.map((image, index) => (
+            {planImages.map((image, index) => (
               <div 
                 key={index}
                 className={`absolute inset-0 transition-opacity duration-1000 ${index === activeImageIndex ? 'opacity-100' : 'opacity-0'}`}
               >
                 <Image
                   src={image.url}
-                  alt={image.alt || plan.name || 'Plan'}
+                  alt={image.alt || plan?.name || 'Plan'}
                   fill
                   className="object-cover"
                   priority={index === 0}
                   quality={85}
+                  unoptimized={image.url.startsWith('http')}
                 />
               </div>
             ))}
             
             {/* Image navigation dots if multiple images */}
-            {plan?.images?.length > 1 && (
+            {planImages.length > 1 && (
               <div className="absolute bottom-[33%] left-1/2 transform -translate-x-1/2 flex space-x-1 z-10">
-                {plan?.images?.map((_, index) => (
+                {planImages.map((_, index) => (
                   <button 
                     key={index}
                     onClick={() => setActiveImageIndex(index)}
