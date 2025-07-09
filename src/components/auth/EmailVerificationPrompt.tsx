@@ -25,7 +25,12 @@ export function EmailVerificationPrompt({ email, onVerified }: EmailVerification
     
     setIsResending(true);
     try {
-      await sendEmailVerification(user);
+      // Configure verification email with redirect to onboarding
+      const actionCodeSettings = {
+        url: `${window.location.origin}/onboarding`,
+        handleCodeInApp: true
+      };
+      await sendEmailVerification(user, actionCodeSettings);
       setLastSentTime(new Date());
       toast({
         title: 'Verification Email Sent',
@@ -57,6 +62,9 @@ export function EmailVerificationPrompt({ email, onVerified }: EmailVerification
         <CardDescription className="text-sm text-muted-foreground">
           We've sent a verification link to <strong>{email}</strong>
         </CardDescription>
+        <p className="text-sm font-medium text-orange-500 mt-1">
+          You must verify your email before proceeding to the onboarding process
+        </p>
       </CardHeader>
       <CardContent className="space-y-4">
         <Alert>

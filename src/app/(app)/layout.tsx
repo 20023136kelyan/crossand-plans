@@ -2,6 +2,7 @@
 
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
+import { BottomNavFade } from '@/components/layout/BottomNavFade';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -246,11 +247,32 @@ export default function AppLayout({
     const isOnboardingRelated = pathname === '/onboarding';
     const isPublicDynamicRoute = pathname.startsWith('/p/') || pathname.startsWith('/u/'); 
     if (profileExists === null && user) return;
+    
     if (user) { 
-      // Prevent immediate redirection for newly signed up users to allow email verification prompt
-      if (profileExists === false && !isOnboardingRelated && !isNewUserJustSignedUp) router.push('/onboarding');
-      else if (profileExists === true && (isOnboardingRelated || publicPaths.includes(pathname))) router.push('/feed');
+      // Check if email is verified, as it's required before onboarding
+      const isEmailVerified = user.emailVerified;
+      
+      if (!isEmailVerified && !isPublicDynamicRoute && !publicPaths.includes(pathname)) {
+        // If email is not verified, keep user on current page to allow verification
+        // This prevents redirection loops and allows email verification UI to show
+        return;
+      }
+      
+      // Three cases for redirection:
+      // 1. No profile exists and we're not on onboarding page -> go to onboarding
+      // 2. Just signed up with verified email -> go to onboarding
+      // 3. Has complete profile and is on public/onboarding page -> go to feed
+      
+      if (profileExists === false && !isOnboardingRelated) {
+        // Profile doesn't exist - go to onboarding regardless of isNewUserJustSignedUp status
+        // This ensures users who verify their email always go to onboarding next
+        router.push('/onboarding');
+      } else if (profileExists === true && (isOnboardingRelated || publicPaths.includes(pathname))) {
+        // User has complete profile and is on a public page - send to feed
+        router.push('/feed');
+      }
     } else { 
+      // No user logged in - redirect to login if not on public page
       if (!isPublicDynamicRoute && !publicPaths.includes(pathname)) router.push('/login');
     }
   }, [user, authLoading, profileExists, router, pathname, isNewUserJustSignedUp]);

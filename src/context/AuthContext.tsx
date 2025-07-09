@@ -62,8 +62,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     console.log(`${logPrefix} Fetching profile for UID: ${uid}`);
     try {
-        const exists = true; // TEMP: checkUserProfileExists disabled for build
-        const profileData = exists ? await getUserProfile(uid) : null;
+        // Check if profile exists by trying to get it
+        const profileData = await getUserProfile(uid);
+        // Profile exists if we got data back AND has at least some basic fields
+        // This should be a minimal check that will pass once onboarding is completed
+        const exists = !!profileData && 
+            // Just check for basic identification fields and that profile was created
+            !!profileData.uid && 
+            !!profileData.email &&
+            !!profileData.createdAt;
         console.log(`${logPrefix} Profile exists: ${exists} for UID: ${uid}. Profile data fetched: ${!!profileData}`);
         // These setters will trigger re-renders if values change.
         setProfileExists(exists);

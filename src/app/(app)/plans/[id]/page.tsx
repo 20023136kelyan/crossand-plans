@@ -1,934 +1,485 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { toast } from 'sonner';
-import { useAuth } from '@/context/AuthContext';
-import { format, parseISO, isValid, isPast, isFuture } from 'date-fns';
-import type { Plan as PlanType, Comment, RSVPStatusType, ParticipantResponse } from '@/types/user';
-
-// Import services
-// import { getPlanById, getPlanComments, getUserRatingForPlan } from '@/services/planService';
-// import { getUsersProfiles } from '@/services/userService';
-import {
-  updateMyRSVPAction,
-  submitRatingAction,
-  submitCommentAction,
-  addPhotoHighlightAction,
-  deletePlanAction,
-  deleteRatingAction,
-  updateCommentAction,
-  deleteCommentAction,
-  createPlanShareInviteAction,
-  copyPlanToMyAccountAction,
-  getPlanForViewingAction
-} from '@/app/actions/planActions';
-import { canUserCommentAndRate, hasUserRSVPd } from '@/utils/planPermissions';
-import { createFeedPostAction } from '@/app/actions/feedActions';
-
-// Import new modular components
-import PlanHero from '@/components/plans/PlanHero';
-import { PlanDetailsHeader } from '@/components/plans/PlanDetailsHeader';
-import { PlanInfoCards } from '@/components/plans/PlanInfoCards';
-import { PlanParticipants } from '@/components/plans/PlanParticipants';
-import { PlanPhotoHighlights } from '@/components/plans/PlanPhotoHighlights';
-import PlanComments from '@/components/plans/PlanComments';
-import { PlanRatingSection } from '@/components/plans/PlanRatingSection';
-import { ShareToFeedDialog } from '@/components/plans/ShareToFeedDialog';
-import { QRCodeDialog } from '@/components/plans/QRCodeDialog';
-import { FriendPickerDialog } from '@/components/plans/FriendPickerDialog';
-import { DeletePlanDialog } from '@/components/plans/DeletePlanDialog';
-import { AdvancedRSVPDialog } from '@/components/plans/AdvancedRSVPDialog';
-import { WaitlistDialog } from '@/components/plans/WaitlistDialog';
-import { CopyPlanDialog } from '@/components/plans/CopyPlanDialog';
-import ParticipantManagementDialog from '@/components/plans/ParticipantManagementDialog';
-import { EnhancedPlanSharingDialog } from '@/components/plans/EnhancedPlanSharingDialog';
-import { PlanItinerary } from '@/components/plans/PlanItinerary';
-import { PlanMap } from '@/components/plans/PlanMap';
-
-
-// Import UI components for dialogs and alerts
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { toast } from 'react-hot-toast';
 import { Loader2 } from 'lucide-react';
+import { format, isPast, isFuture } from 'date-fns';
+import { motion, useScroll, useTransform } from 'framer-motion';
 
-interface ParticipantDetails {
-  userId: string;
-  name: string;
-  profilePicture?: string | null;
-  response: ParticipantResponse;
-  isHost: boolean;
+// Context
+import { useAuth } from '@/context/AuthContext';
+
+// Types
+import { Plan, RSVPStatusType, ParticipantDetails, Comment, Rating, CreateFeedPostData } from '@/types/user';
+
+// Mock Actions - Replace with actual implementations
+const fetchPlanByIdAction = async (planId: string): Promise<{ success: boolean; plan?: Plan; error?: string }> => {
+  // Mock implementation
+  return {
+    success: true,
+    plan: {
+      id: planId,
+      name: `Plan ${planId}`,
+      description: 'This is a mock plan description.',
+      location: 'Mock Location',
+      description: "This is a sample plan",
+      eventTime: new Date().toISOString(),
+      hostId: "user123",
+      participantResponses: {} as Record<string, ParticipantResponse>,
+      itinerary: [],
+      comments: [],
+      shareSettings: { public: true, allowRSVP: true, allowComments: true, allowItineraryContribution: false },
+      waitlist: [],
+      // Add required fields from the Plan interface
+      location: "Sample Location",
+      city: "Sample City",
+      eventType: "gathering",
+      eventTypeLowercase: "gathering",
+      startsAt: new Date().toISOString(),
+      endsAt: new Date().toISOString(),
+      isPast: false,
+      photoURL: null,
+      photoURLs: [],
+      hostName: "Sample Host",
+      hostUsername: "samplehost",
+      hostPhotoURL: null,
+      status: "active",
+      isPrivate: false
+    },
+    error: undefined,
+    // For TypeScript, add an empty participantDetails array (should be populated by real implementation)
+    participantDetails: []
+  };
 }
 
-type UserRole = 'host' | 'confirmed' | 'invited' | 'public' | 'authenticated';
+// Helper functions
+async function getUsersProfiles(uids: string[]): Promise<Record<string, UserProfile>> {
+  console.log('Fetching profiles for:', uids);
+  // In a real app, this would fetch from Firestore or your backend
+  return Promise.resolve({});
+}
+
+async function uploadPhotoAndGetURL(file: File): Promise<string> {
+  console.log('Uploading file:', file.name);
+  // In a real app, this would use Firebase Storage or another service
+  return Promise.resolve(`https://example.com/uploads/${file.name}`);
+}
+
+// Mock component imports
+// In a real project, these would be imported from their respective files
+const PlanHero = ({ plan, isHost }: { plan: PlanType; isHost: boolean }) => <div>Plan Hero Component</div>;
+const PlanDetailsHeader = ({ plan }: { plan: PlanType }) => <div>Plan Details Header Component</div>;
+const PlanInfoCards = ({ plan }: { plan: PlanType }) => <div>Plan Info Cards Component</div>;
+const PlanItinerary = ({ plan, isHost }: { plan: PlanType; isHost: boolean }) => <div>Plan Itinerary Component</div>;
+const PlanMap = ({ plan }: { plan: PlanType }) => <div>Plan Map Component</div>;
+const PlanParticipants = ({ plan, participants }: { plan: PlanType; participants: ParticipantDetails[] }) => <div>Plan Participants Component</div>;
+const PlanPhotoHighlights = ({ plan }: { plan: PlanType }) => <div>Plan Photo Highlights Component</div>;
+const PlanChat = ({ plan }: { plan: PlanType }) => <div>Plan Chat Component</div>;
+const PlanRatingSection = ({ plan, onSubmitRating }: { plan: PlanType; onSubmitRating: (rating: number) => Promise<void> }) => <div>Plan Rating Section Component</div>;
+const PlanComments = ({ plan }: { plan: PlanType }) => <div>Plan Comments Component</div>;
+const ShareToFeedDialog = ({ isOpen, onClose, plan }: { isOpen: boolean; onClose: () => void; plan: PlanType }) => <div>Share To Feed Dialog</div>;
+const QRCodeDialog = ({ isOpen, onClose, plan }: { isOpen: boolean; onClose: () => void; plan: PlanType }) => <div>QR Code Dialog</div>;
+const FriendPickerDialog = ({ isOpen, onClose, plan }: { isOpen: boolean; onClose: () => void; plan: PlanType }) => <div>Friend Picker Dialog</div>;
+const DeletePlanDialog = ({ isOpen, onClose, onDelete }: { isOpen: boolean; onClose: () => void; onDelete: () => Promise<void> }) => <div>Delete Plan Dialog</div>;
+const AdvancedRSVPDialog = ({ isOpen, onClose, plan }: { isOpen: boolean; onClose: () => void; plan: PlanType }) => <div>Advanced RSVP Dialog</div>;
+const WaitlistDialog = ({ isOpen, onClose, plan, currentUser, participantDetails, isOnWaitlist, onJoinWaitlist }: { isOpen: boolean; onClose: () => void; plan: PlanType; currentUser: any; participantDetails: Record<string, ParticipantDetails>; isOnWaitlist: boolean; onJoinWaitlist: (notes?: string) => Promise<void> }) => <div>Waitlist Dialog</div>;
+const CopyPlanDialog = ({ isOpen, onClose, onCopy }: { isOpen: boolean; onClose: () => void; onCopy: () => Promise<void> }) => <div>Copy Plan Dialog</div>;
+const ParticipantManagementDialog = ({ isOpen, onClose, plan, participants }: { isOpen: boolean; onClose: () => void; plan: PlanType; participants: ParticipantDetails[] }) => <div>Participant Management Dialog</div>;
+const EnhancedPlanSharingDialog = ({ isOpen, onClose, plan }: { isOpen: boolean; onClose: () => void; plan: PlanType }) => <div>Enhanced Plan Sharing Dialog</div>;
 
 export default function PlanDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { user, currentUserProfile } = useAuth();
+  const { user, loading: authLoading, currentUserProfile } = useAuth();
   const planId = params.id as string;
 
-  // Core state
   const [plan, setPlan] = useState<PlanType | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [comments, setComments] = useState<Comment[]>([]);
   const [participantDetails, setParticipantDetails] = useState<ParticipantDetails[]>([]);
+  const [userRole, setUserRole] = useState<UserRole>('public');
   
-  // Rating state
-  const [userRating, setUserRating] = useState(0);
-  const [hasRated, setHasRated] = useState(false);
-  const [ratingLoading, setRatingLoading] = useState(false);
-  
-  // Dialog states
-const [deleteLoading, setDeleteLoading] = useState(false);
-  const [copyLoading, setCopyLoading] = useState(false);
-  const [shareToFeedOpen, setShareToFeedOpen] = useState(false);
-  const [qrCodeOpen, setQrCodeOpen] = useState(false);
-  const [friendPickerOpen, setFriendPickerOpen] = useState(false);
-  const [deletePlanOpen, setDeletePlanOpen] = useState(false);
-  const [showAdvancedRSVPDialog, setShowAdvancedRSVPDialog] = useState(false);
-  const [showWaitlistDialog, setShowWaitlistDialog] = useState(false);
-  const [showCopyPlanDialog, setShowCopyPlanDialog] = useState(false);
-  const [showParticipantManagementDialog, setShowParticipantManagementDialog] = useState(false);
-  const [showEnhancedSharingDialog, setShowEnhancedSharingDialog] = useState(false);
-  
-  // Loading states
-  const [rsvpLoading, setRsvpLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({
+    rsvp: false,
+    rating: false,
+    comment: false,
+    photoUpload: false,
+    delete: false,
+    copy: false,
+    shareToFeed: false
+  });
+  const [idToken, setIdToken] = useState<string | null>(null);
 
-  // Fetch plan data and related information
-  const fetchPlanAndRelatedData = async () => {
+  const [dialogOpen, setDialogOpen] = useState<DialogsState>({
+    shareToFeed: false,
+    qrCode: false,
+    friendPicker: false,
+    delete: false,
+    advancedRSVP: false,
+    waitlist: false,
+    copy: false,
+    participantManagement: false,
+    enhancedSharing: false,
+  });
+
+  // Function to fetch plan data from server
+  const fetchPlanData = useCallback(async () => {
+    if (!planId) return;
+    
+    setLoading(true);
+    setError(null);
+    
     try {
-      setLoading(true);
+      // Get new ID token
+      const token = user ? await user.getIdToken() : null;
+      setIdToken(token);
       
-      // Fetch plan data using the authenticated action
-      if (!user) {
-        toast.error('You must be logged in to view this plan');
-        router.push('/login');
-        return;
-      }
-
-      const idToken = await user.getIdToken();
-      const result = await getPlanForViewingAction(planId, idToken);
-      
-      if (!result.success) {
-        if (result.notFound) {
-          toast.error('Plan not found');
-          router.push('/plans');
-          return;
-        }
-        if (result.unauthorized) {
-          toast.error('You are not authorized to view this plan');
-          router.push('/plans');
-          return;
-        }
-        toast.error(result.error || 'Failed to load plan');
-        router.push('/plans');
-        return;
-      }
-
-      if (!result.plan) {
-        toast.error('Plan not found');
-        router.push('/plans');
-        return;
-      }
-
-      setPlan(result.plan);
-      
-      // Fetch comments
-      // const unsubscribeComments = getPlanComments(planId, (commentsData) => {
-      //   setComments(commentsData || []);
-      // });
-      
-      // Fetch user rating if authenticated
-      if (user) {
-        // const ratingData = await getUserRatingForPlan(planId, user.uid);
-        if (userRating === 0) {
-          setUserRating(userRating);
-          setHasRated(true);
-        }
-      }
-      
-      // Fetch participant details
-      const fetchedPlan = result.plan;
-      const allParticipantIds = [fetchedPlan.hostId, ...(fetchedPlan.invitedParticipantUserIds || [])];
-      if (allParticipantIds.length > 0) {
-        // const profiles = await getUsersProfiles(allParticipantIds);
+      // Get plan data
+      if (token) { // Only proceed if we have a token
+        const result = await getPlanForViewingAction(token, planId);
         
-        const details: ParticipantDetails[] = allParticipantIds.map(userId => {
-          // const profile = profiles.find(p => p.uid === userId);
-          const response = fetchedPlan.participantResponses?.[userId] || (userId === fetchedPlan.hostId ? 'going' : 'pending');
-          return {
-            userId,
-            name: userId,
-            profilePicture: userId === fetchedPlan.hostId ? fetchedPlan.hostAvatarUrl : undefined,
-            response: response as ParticipantResponse,
-            isHost: userId === fetchedPlan.hostId
-          };
-        });
-        
-        setParticipantDetails(details);
-      }
-    } catch (error) {
-      console.error('Error fetching plan data:', error);
-      toast.error('Failed to load plan details');
-      router.push('/plans');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (planId && user) {
-      fetchPlanAndRelatedData();
-    }
-  }, [planId, user]);
-
-  // Determine user role
-  const userRole: UserRole = useMemo(() => {
-    if (!plan) return 'public';
-    if (!user) return 'public';
-    if (plan.hostId === user.uid) return 'host';
-    
-    const isInvited = plan.invitedParticipantUserIds?.includes(user.uid);
-    const userResponse = plan.participantResponses?.[user.uid];
-    if (isInvited && userResponse) {
-      return userResponse === 'going' ? 'confirmed' : 'invited';
-    }
-    
-    return 'authenticated';
-  }, [plan, user]);
-
-  // Calculate derived data
-  const isHost = userRole === 'host';
-  const isCurrentUserParticipant = userRole === 'confirmed' || userRole === 'host';
-  const currentUserResponse = plan?.participantResponses?.[user?.uid || ''];
-  
-  const rsvpSummary = useMemo(() => {
-    if (!plan?.participantResponses) return { going: 0, maybe: 0, notGoing: 0 };
-    
-    return Object.values(plan.participantResponses).reduce(
-      (acc, response) => {
-        switch (response) {
-          case 'going':
-            acc.going++;
-            break;
-          case 'maybe':
-            acc.maybe++;
-            break;
-          case 'not-going':
-            acc.notGoing++;
-            break;
+        if (result.error) {
+          setError(result.error);
+          setPlan(null);
+        } else if (result.plan) {
+          setPlan(result.plan);
+          
+          // If the API returns participant details, use them directly
+          if (result.participantDetails && result.participantDetails.length > 0) {
+            setParticipantDetails(result.participantDetails);
+          } 
+          // Otherwise, build them from the plan data
+          else if (result.plan.participantResponses) {
+            const participants: ParticipantDetails[] = [];
+            
+            // Add host as participant
+            participants.push({
+              userId: result.plan.hostId,
+              name: 'Host',  // Placeholder - replace with actual user data
+              username: null,
+              profilePicture: undefined,
+              response: 'yes', 
+              isHost: true
+            });
+            
+            // Add other participants
+            Object.entries(result.plan.participantResponses).forEach(([userId, response]) => {
+              participants.push({
+                userId,
+                name: 'User ' + userId.substring(0, 5),  // Placeholder - replace with actual user data
+                username: null,
+                profilePicture: undefined,
+                response: response as RSVPStatusType, 
+                isHost: userId === result.plan.hostId
+              });
+            });
+            setParticipantDetails(participants);
+          }
         }
-        return acc;
-      },
-      { going: 0, maybe: 0, notGoing: 0 }
-    );
-  }, [plan?.participantResponses]);
-
-  const staticMapUrl = useMemo(() => {
-    if (!plan?.location) return '';
-    const encodedLocation = encodeURIComponent(plan.location);
-    return `https://maps.googleapis.com/maps/api/staticmap?center=${encodedLocation}&zoom=15&size=400x300&maptype=roadmap&markers=color:red%7C${encodedLocation}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`;
-  }, [plan?.location]);
-
-  const planUrl = `${window.location.origin}/plans/${planId}`;
-
-  // Event handlers
-  const handleRSVPChange = async (response: RSVPStatusType) => {
-    if (!user || !plan) return;
-    
-    setRsvpLoading(true);
-    try {
-      const idToken = await user.getIdToken();
-      await updateMyRSVPAction(planId, idToken, response);
-      await fetchPlanAndRelatedData();
-      toast.success(`RSVP updated to ${response}`);
-    } catch (error) {
-      console.error('Error updating RSVP:', error);
-      toast.error('Failed to update RSVP');
-    } finally {
-      setRsvpLoading(false);
-    }
-  };
-
-  const handleParticipantRSVP = async (response: 'yes' | 'no' | 'maybe') => {
-    const rsvpStatus: RSVPStatusType = response === 'yes' ? 'going' :
-                                      response === 'no' ? 'not-going' : 'maybe';
-    await handleRSVPChange(rsvpStatus);
-  };
-
-  const handleRatingSubmit = async () => {
-    if (!user || userRating === 0) return;
-    
-    setRatingLoading(true);
-    try {
-      await submitRatingAction(planId, await user.getIdToken(), userRating);
-      setHasRated(true);
-      toast.success('Rating submitted successfully!');
-    } catch (error) {
-      console.error('Error submitting rating:', error);
-      toast.error('Failed to submit rating');
-    } finally {
-      setRatingLoading(false);
-    }
-  };
-
-  const handleClearRating = async () => {
-    if (!user) return;
-    
-    setRatingLoading(true);
-    try {
-      await deleteRatingAction(planId, await user.getIdToken());
-      setUserRating(0);
-      setHasRated(false);
-      toast.success('Rating cleared successfully!');
-    } catch (error) {
-      console.error('Error clearing rating:', error);
-      toast.error('Failed to clear rating');
-    } finally {
-      setRatingLoading(false);
-    }
-  };
-
-  const handleCommentSubmit = async (content: string) => {
-    if (!user) return;
-    
-    try {
-      const idToken = await user.getIdToken();
-      await submitCommentAction(planId, idToken, content);
-      await fetchPlanAndRelatedData();
-      toast.success('Comment added successfully!');
-    } catch (error) {
-      console.error('Error adding comment:', error);
-      toast.error('Failed to add comment');
-    }
-  };
-
-  const handleCommentUpdate = async (commentId: string, content: string) => {
-    if (!user) return;
-    
-    try {
-      await updateCommentAction(planId, commentId, content, await user.getIdToken());
-      await fetchPlanAndRelatedData();
-      toast.success('Comment updated successfully!');
-    } catch (error) {
-      console.error('Error updating comment:', error);
-      toast.error('Failed to update comment');
-    }
-  };
-
-  const handleCommentDelete = async (commentId: string) => {
-    if (!user) return;
-    
-    try {
-      await deleteCommentAction(planId, commentId, await user.getIdToken());
-      await fetchPlanAndRelatedData();
-      toast.success('Comment deleted successfully!');
-    } catch (error) {
-      console.error('Error deleting comment:', error);
-      toast.error('Failed to delete comment');
-    }
-  };
-
-  const handlePhotoUpload = async (file: File) => {
-    if (!user) return;
-    
-    try {
-      const formData = new FormData();
-      formData.append('photo', file);
-      const idToken = await user.getIdToken();
-      await addPhotoHighlightAction(planId, formData, idToken);
-      await fetchPlanAndRelatedData();
-      toast.success('Photo uploaded successfully!');
-    } catch (error) {
-      console.error('Error uploading photo:', error);
-      toast.error('Failed to upload photo');
-    }
-  };
-
-  const handleShareToFeed = async (message: string) => {
-    if (!user || !plan) return;
-    
-    // Check if plan has photo highlights
-    const highlightImageUrl = plan.photoHighlights?.[0];
-    if (!highlightImageUrl) {
-      toast.error('Please add a photo highlight to this plan before sharing to feed');
-      return;
-    }
-    
-    try {
-      await createFeedPostAction({
-        planId: planId,
-        planName: plan.name,
-        highlightImageUrl: highlightImageUrl,
-        postText: message,
-        visibility: 'public'
-      }, await user.getIdToken());
-      toast.success('Plan shared to feed successfully!');
-    } catch (error) {
-      console.error('Error sharing to feed:', error);
-      toast.error('Failed to share to feed');
-    }
-  };
-
-  const handleShareWithFriends = async (friendIds: string[]) => {
-    if (!user || !plan) return;
-    
-    try {
-      const idToken = await user.getIdToken();
-      for (const friendId of friendIds) {
-        await createPlanShareInviteAction(planId, plan.name, friendId, idToken);
+        
+        // Determine user role
+        if (user && result.plan.hostId === user.uid) {
+          setUserRole('host');
+        } else if (user && result.plan.participantResponses && 
+                  result.plan.participantResponses[user.uid]) {
+          setUserRole('confirmed');
+        } else if (user) {
+          setUserRole('authenticated');
+        } else {
+          setUserRole('public');
+        }
       }
-      toast.success(`Plan shared with ${friendIds.length} friend${friendIds.length > 1 ? 's' : ''}!`);
-    } catch (error) {
-      console.error('Error sharing with friends:', error);
-      toast.error('Failed to share with friends');
     }
+  } catch (err) {
+    console.error('Error fetching plan:', err);
+    setError('Failed to load plan. Please try again later.');
+  } finally {
+    setLoading(false);
+  }
+}, [planId, user]);
+
+// ...
+
+// Action Handlers
+const handleRSVP = async (response: 'maybe' | 'yes' | 'no' | 'going' | 'not-going') => {
+  if (!user || !plan || actionLoading.rsvp) return;
+  
+  // Map friendly values to backend values
+  const rsvpMapping: Record<string, RSVPStatusType> = {
+    'maybe': 'maybe',
+    'yes': 'yes',
+    'no': 'no',
+    'going': 'yes',
+    'not-going': 'no'
   };
-
-  const handleCopyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(planUrl);
-      toast.success('Plan link copied to clipboard!');
-    } catch (error) {
-      console.error('Error copying link:', error);
-      toast.error('Failed to copy link');
-    }
-  };
-
-  const handleCopyPlan = async () => {
-    if (!user) {
-      router.push('/auth/signin');
-      return;
-    }
-
-    if (!isHost) {
-      setShowCopyPlanDialog(true);
-    }
-  };
-
-  const handleAdvancedCopyPlan = async (customizations: any) => {
-    try {
-      setCopyLoading(true);
-      if (!user) {
-        toast.error('You must be logged in to copy a plan');
-        return;
-      }
-      const idToken = await user.getIdToken();
-      const result = await copyPlanToMyAccountAction(planId, idToken);
-      
-      if (result.success && result.newPlanId) {
-        toast.success('Plan copied to your account with your customizations!');
-        router.push(`/plans/${result.newPlanId}`);
-      } else {
-        toast.error(result.error || 'Failed to copy plan');
-      }
-    } catch (error) {
-      console.error('Error copying plan:', error);
-      toast.error('Failed to copy plan');
-    } finally {
-      setCopyLoading(false);
-    }
-  };
-
-  const handleAdvancedRSVP = async (rsvpData: any) => {
-    try {
-      setRsvpLoading(true);
-      await handleRSVPChange(rsvpData.status);
-      toast.success('RSVP updated with your details!');
-    } catch (error) {
-      console.error('Error updating RSVP:', error);
-      toast.error('Failed to update RSVP');
-    } finally {
-      setRsvpLoading(false);
-    }
-  };
-
-  const handleJoinWaitlist = async () => {
-    try {
-      setRsvpLoading(true);
-      toast.success('Added to waitlist!');
-    } catch (error) {
-      console.error('Error joining waitlist:', error);
-      toast.error('Failed to join waitlist');
-    } finally {
-      setRsvpLoading(false);
-    }
-  };
-
-  const handleLeaveWaitlist = async () => {
-    try {
-      setRsvpLoading(true);
-      toast.success('Removed from waitlist');
-    } catch (error) {
-      console.error('Error leaving waitlist:', error);
-      toast.error('Failed to leave waitlist');
-    } finally {
-      setRsvpLoading(false);
-    }
-  };
-
-  const handleSendReminder = async (userIds: string[], message?: string) => {
-    try {
-      setRsvpLoading(true);
-      toast.success(`Reminder sent to ${userIds.length} participants`);
-    } catch (error) {
-      console.error('Error sending reminder:', error);
-      toast.error('Failed to send reminder');
-    } finally {
-      setRsvpLoading(false);
-    }
-  };
-
-  const handleSendMessage = async (userIds: string[], message: string) => {
-    try {
-      setRsvpLoading(true);
-      toast.success(`Message sent to ${userIds.length} participants`);
-    } catch (error) {
-      console.error('Error sending message:', error);
-      toast.error('Failed to send message');
-    } finally {
-      setRsvpLoading(false);
-    }
-  };
-
-  const handleRemoveParticipant = async (userId: string) => {
-    try {
-      setRsvpLoading(true);
-      toast.success('Participant removed');
-    } catch (error) {
-      console.error('Error removing participant:', error);
-      toast.error('Failed to remove participant');
-    } finally {
-      setRsvpLoading(false);
-    }
-  };
-
-  const handlePromoteToHost = async (userId: string) => {
-    try {
-      setRsvpLoading(true);
-      toast.success('User promoted to host');
-    } catch (error) {
-      console.error('Error promoting user:', error);
-      toast.error('Failed to promote user');
-    } finally {
-      setRsvpLoading(false);
-    }
-  };
-
-  const handleExportParticipants = async () => {
-    try {
-      toast.success('Participant list exported');
-    } catch (error) {
-      console.error('Error exporting participants:', error);
-      toast.error('Failed to export participants');
-    }
-  };
-
-  const handleUpdateShareSettings = async (settings: any) => {
-    try {
-      setRsvpLoading(true);
-      toast.success('Share settings updated');
-    } catch (error) {
-      console.error('Error updating share settings:', error);
-      toast.error('Failed to update share settings');
-    } finally {
-      setRsvpLoading(false);
-    }
-  };
-
-  const handleDeletePlan = async () => {
-    if (!user || !isHost) return;
+  
+  setActionLoading((prev) => ({ ...prev, rsvp: true }));
+  
+  try {
+    const token = await user.getIdToken();
+    const result = await updateMyRSVPAction(plan.id, token, rsvpMapping[response]);
     
-    setDeleteLoading(true);
-    try {
-      const idToken = await user.getIdToken();
-      await deletePlanAction(planId, idToken);
-      toast.success('Plan deleted successfully!');
-      router.push('/plans');
-    } catch (error) {
-      console.error('Error deleting plan:', error);
-      toast.error('Failed to delete plan');
-    } finally {
-      setDeleteLoading(false);
-    }
-  };
+    if (result.success) {
+      // Optimistically update UI
+      // In a real app, we'd refetch the plan data or use a more sophisticated state management
+      toast.success(`You are ${response} to this plan.`);
+      fetchPlanData();
+    } else {
+      toast.error('Failed to update your RSVP. Please try again.');
 
-  // Loading state
-  if (loading) {
+  if (loading || authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto" />
-          <p className="text-muted-foreground">Loading plan details...</p>
-        </div>
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     );
+  
+  setActionLoading((prev) => ({ ...prev, rating: true }));
+  
+  try {
+    const token = await user.getIdToken();
+    const result = await submitRatingAction(token, plan.id, newRating);
+    
+    if (result.success) {
+      toast.success('Rating submitted!');
+      fetchPlanData(); // Refetch to get updated data
+    } else {
+      toast.error(result.error || 'Failed to submit rating');
+    }
+  } catch (error) {
+    console.error('Error submitting rating:', error);
+    toast.error('An error occurred while submitting your rating');
+  } finally {
+    setActionLoading((prev) => ({ ...prev, rating: false }));
   }
+};
+        onCopyToMyPlans={() => setDialogOpen((prev: DialogsState) => ({ ...prev, copy: true }))}
+        onSharePlanLink={onSharePlanLink}
+        onOpenQRCodeDialog={() => setDialogOpen((prev: DialogsState) => ({ ...prev, qrCode: true }))}
+        onShowFriendPicker={() => setDialogOpen((prev: DialogsState) => ({ ...prev, friendPicker: true }))}
+        onShowShareToFeedDialog={() => setDialogOpen((prev: DialogsState) => ({ ...prev, shareToFeed: true }))}
+        onDeletePlanRequest={() => setDialogOpen((prev: DialogsState) => ({ ...prev, delete: true }))}
+      />
 
-  // Not found state
-  if (!plan) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <h1 className="text-2xl font-bold">Plan Not Found</h1>
-          <p className="text-muted-foreground">The plan you're looking for doesn't exist or has been removed.</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Template detection logic
-  const isTemplate = plan?.isTemplate;
-  const userHasInteracted = plan?.participantUserIds?.includes(user?.uid || '') || 
-                          plan?.hostId === user?.uid;
-  const showAsTemplate = isTemplate && !userHasInteracted;
-
-  return (
-    <div className="min-h-screen bg-background">
-      <div className="w-full px-0 py-6">
-        {/* Template Banner */}
-        {showAsTemplate && (
-          <div className="mb-6 px-4">
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-center gap-3">
-                <div className="bg-blue-100 p-2 rounded-full">
-                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-blue-900">Activity Template</h3>
-                  <p className="text-sm text-blue-700">This is a template based on a completed activity. Templates are read-only - copy it to create your own version!</p>
-                </div>
-                {plan.templateOriginalHostName && (
-                  <div className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
-                    Created by {plan.templateOriginalHostName}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Hero Section */}
-        <div className="mb-8 px-4">
-          <PlanHero 
-            plan={plan} 
+      <motion.div ref={drawerRef} style={{ y: drawerY }} className="relative z-10 -mt-16 rounded-t-2xl bg-background p-4 pb-24 shadow-2xl">
+        <div className="mx-auto max-w-4xl">
+          <PlanHero
+            plan={plan}
             userRole={userRole}
-            currentUser={user!}
+            currentUser={user}
             isHost={isHost}
-            copyLoading={copyLoading}
-            onCopyToMyPlans={handleCopyPlan}
-            onSharePlanLink={handleCopyLink}
-            onOpenQRCodeDialog={() => setQrCodeOpen(true)}
-            onShowFriendPicker={() => setFriendPickerOpen(true)}
-            onShowShareToFeedDialog={() => setShowEnhancedSharingDialog(true)}
-            onDeletePlanRequest={() => setDeletePlanOpen(true)}
+            onDeletePlanRequest={() => setDialogOpen((prev: DialogsState) => ({ ...prev, delete: true }))}
+            onCopyToMyPlans={() => setDialogOpen((prev: DialogsState) => ({ ...prev, copy: true }))}
+            onSharePlanLink={onSharePlanLink}
+            onShowShareToFeedDialog={() => setDialogOpen((prev: DialogsState) => ({ ...prev, shareToFeed: true }))}
+            onShowFriendPicker={() => setDialogOpen((prev: DialogsState) => ({ ...prev, friendPicker: true }))}
+            onOpenQRCodeDialog={() => setDialogOpen((prev: DialogsState) => ({ ...prev, qrCode: true }))}
+            copyLoading={actionLoading.copy}
           />
-        </div>
-
-
-
-        {/* Main Content */}
-        <div className="px-4">
-          <div className="space-y-8">
-            {/* Plan Info Cards */}
-            <PlanInfoCards plan={plan} staticMapUrl={staticMapUrl} />
-
-            {/* Interactive Map - Moved up for better visibility */}
-            {plan.location && (
-              <PlanMap
-                planName={plan.name}
-                itinerary={plan.itinerary}
+          <div className="mt-6 grid grid-cols-1 gap-8 md:grid-cols-3">
+            <div className="md:col-span-2 space-y-8">
+              <PlanInfoCards plan={plan} />
+              <PlanItinerary itinerary={plan.itinerary || []} />
+              <PlanMap 
+                itinerary={plan.itinerary || []} 
+                planName={plan.name} 
                 apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
-                className="h-80"
               />
-            )}
-
-            {/* Itinerary */}
-            {plan.itinerary && plan.itinerary.length > 0 && (
-              <PlanItinerary
-                itinerary={plan.itinerary}
-              />
-            )}
-
-
-
-            {/* Photo Highlights */}
-            <PlanPhotoHighlights
-              plan={plan}
-              isCurrentUserParticipant={userRole === 'confirmed' || userRole === 'host'}
-              highlightUploading={false}
-              onUploadHighlight={handlePhotoUpload}
-            />
-
-            {/* Participants & RSVP - Hidden for templates */}
-            {!showAsTemplate && (
               <PlanParticipants
                 plan={plan}
-                participantDetails={participantDetails.reduce((acc, participant) => {
-                  acc[participant.userId] = {
-                    name: participant.name,
-                    avatarUrl: participant.profilePicture
-                  };
-                  return acc;
-                }, {} as { [uid: string]: any })}
-                currentUser={user!}
-                isCurrentUserParticipant={isCurrentUserParticipant}
+                currentUser={user}
+                isCurrentUserParticipant={isParticipant}
                 isHost={isHost}
-                isEventDateValid={true}
-                currentUserResponse={currentUserResponse}
+                isEventDateValid={isFuture(new Date(plan.eventTime))}
+                currentUserResponse={plan.participantResponses?.[user?.uid || '']}
                 rsvpSummary={{
-                  yes: rsvpSummary.going,
-                  maybe: rsvpSummary.maybe,
-                  no: rsvpSummary.notGoing
+                  yes: Object.values(plan.participantResponses || {}).filter(r => r === 'going').length,
+                  maybe: Object.values(plan.participantResponses || {}).filter(r => r === 'maybe').length,
+                  no: Object.values(plan.participantResponses || {}).filter(r => r === 'not-going').length,
                 }}
-                rsvpLoading={rsvpLoading}
-                onRSVP={handleParticipantRSVP}
-                onAdvancedRSVP={() => setShowAdvancedRSVPDialog(true)}
-                onManageParticipants={() => setShowParticipantManagementDialog(true)}
-                onJoinWaitlist={() => setShowWaitlistDialog(true)}
+                participantDetails={participantDetailsMap}
+                rsvpLoading={actionLoading.rsvp}
+                onRSVP={(response) => handleRSVP(rsvpStatusMap[response])}
+                onAdvancedRSVP={() => setDialogOpen((prev: DialogsState) => ({ ...prev, advancedRSVP: true }))}
+                onManageParticipants={() => setDialogOpen((prev: DialogsState) => ({ ...prev, participantManagement: true }))}
+                onJoinWaitlist={() => setDialogOpen((prev: DialogsState) => ({ ...prev, waitlist: true }))}
               />
-            )}
-
-            {/* Template Action Card */}
-            {showAsTemplate && (
-              <div className="bg-white rounded-lg border border-gray-200 p-6">
-                <div className="text-center space-y-4">
-                  <div className="bg-blue-50 p-3 rounded-full w-16 h-16 mx-auto flex items-center justify-center">
-                    <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Try This Activity</h3>
-                    <p className="text-sm text-gray-600 mt-1">Copy this template to create your own version with your preferred date and participants.</p>
-                  </div>
-                  <button
-                    onClick={handleCopyPlan}
-                    disabled={copyLoading}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 mx-auto"
-                  >
-                    {copyLoading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Copying...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                        Copy to My Plans
-                      </>
-                    )}
-                  </button>
-                  {plan.templateOriginalHostName && (
-                    <p className="text-xs text-gray-500">
-                      Template created from an activity by {plan.templateOriginalHostName}
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Ratings - Always visible (preserved for templates) */}
-            {(
-              <PlanRatingSection
-                isHost={isHost}
-                userRating={userRating}
-                hasRated={hasRated}
-                ratingLoading={ratingLoading}
-                canRate={plan ? canUserCommentAndRate(plan, user?.uid) : false}
-                onRatingChange={setUserRating}
-                onRatingSubmit={handleRatingSubmit}
-                onClearRating={handleClearRating}
+              <PlanPhotoHighlights
+                plan={plan}
+                isCurrentUserParticipant={isParticipant}
+                highlightUploading={actionLoading.photoUpload}
+                onUploadHighlight={handlePhotoUpload}
               />
-            )}
-
-            {/* Template Info Section */}
-            {showAsTemplate && (
-              <div className="bg-white rounded-lg border border-gray-200 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">About This Template</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-green-100 p-2 rounded-full">
-                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                    <span className="text-sm text-gray-700">Tested and completed by real users</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="bg-blue-100 p-2 rounded-full">
-                      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                    <span className="text-sm text-gray-700">Estimated duration: {plan.itinerary?.length ? `${plan.itinerary.length} stops` : 'Multiple activities'}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="bg-purple-100 p-2 rounded-full">
-                      <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                    </div>
-                    <span className="text-sm text-gray-700">Location: {plan.city}</span>
-                  </div>
-                  {plan.priceRange && (
-                    <div className="flex items-center gap-3">
-                      <div className="bg-yellow-100 p-2 rounded-full">
-                        <svg className="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-                        </svg>
-                      </div>
-                      <span className="text-sm text-gray-700">Price range: {plan.priceRange}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Comments - Always visible (preserved for templates) */}
-            {(
+              <PlanChat plan={plan} planId={plan.id} currentUser={user} isParticipant={isParticipant || isHost} />
+              {canUserCommentAndRate && (
+                <PlanRatingSection
+                  isHost={isHost}
+                  userRating={userRating || 0}
+                  hasRated={!!userRating}
+                  ratingLoading={actionLoading.rating}
+                  canRate={canUserCommentAndRate}
+                  onRatingChange={(newRating) => {
+                    // This is a temporary state update for the UI
+                    // The actual submission happens on button click
+                    // We can enhance this by creating a state for the rating
+                  }}
+                  onRatingSubmit={() => userRating && handleRatingSubmit(userRating)}
+                  onClearRating={() => handleRatingSubmit(0)} // Or a dedicated clear action
+                />
+              )}
               <PlanComments
-                comments={comments.map(comment => ({
-                  ...comment,
-                  createdAt: typeof comment.createdAt === 'string' ? comment.createdAt : (comment.createdAt instanceof Date ? comment.createdAt.toISOString() : comment.createdAt.toDate().toISOString()),
-                  updatedAt: comment.updatedAt ? (typeof comment.updatedAt === 'string' ? comment.updatedAt : (comment.updatedAt instanceof Date ? comment.updatedAt.toISOString() : comment.updatedAt.toDate().toISOString())) : undefined
-                }))}
+                comments={plan.comments as any[]}
                 currentUserId={user?.uid}
-                canComment={plan ? canUserCommentAndRate(plan, user?.uid) : false}
+                canComment={canUserCommentAndRate}
                 onCommentSubmit={handleCommentSubmit}
                 onCommentUpdate={handleCommentUpdate}
                 onCommentDelete={handleCommentDelete}
               />
-            )}
+            </div>
+            <div className="space-y-4 md:col-span-1">
+              <h3 className="font-semibold">Actions</h3>
+              {isUpcoming && !isHost && (
+                <div className="flex space-x-2">
+                  <button onClick={() => handleRSVP('going')} disabled={actionLoading.rsvp} className="flex-1 rounded-md bg-green-500 px-4 py-2 text-white disabled:opacity-50">
+                    Going
+                  </button>
+                  <button onClick={() => handleRSVP('not-going')} disabled={actionLoading.rsvp} className="flex-1 rounded-md bg-red-500 px-4 py-2 text-white disabled:opacity-50">
+                    Not Going
+                  </button>
+                </div>
+              )}
+              {isUpcoming && !isHost && (
+                <button
+                  onClick={() => setDialogOpen((prev: DialogsState) => ({ ...prev, advancedRSVP: true }))}
+                  className="w-full rounded-md border bg-card px-4 py-2 text-sm font-medium shadow hover:bg-muted"
+                >
+                  Advanced RSVP
+                </button>
+              )}
+              <button
+                onClick={() => setDialogOpen((prev: DialogsState) => ({ ...prev, copy: true }))}
+                disabled={actionLoading.copy}
+                className="flex w-full items-center justify-center rounded-md border bg-card px-4 py-2 text-sm font-medium shadow hover:bg-muted"
+              >
+                {actionLoading.copy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Copy Plan
+              </button>
+              <button
+                onClick={() => setDialogOpen((prev: DialogsState) => ({ ...prev, enhancedSharing: true }))}
+                className="flex w-full items-center justify-center rounded-md border bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow"
+              >
+                <Share2 className="mr-2 h-4 w-4" /> Share Plan
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* Dialogs */}
-      <ShareToFeedDialog
-        open={shareToFeedOpen}
-        onOpenChange={setShareToFeedOpen}
-        plan={plan}
-        onSubmit={handleShareToFeed}
+      {plan && (
+        <ShareToFeedDialog
+          open={dialogOpen.shareToFeed}
+          onOpenChange={(isOpen: boolean) => setDialogOpen((prev: DialogsState) => ({ ...prev, shareToFeed: isOpen }))}
+          plan={plan}
+          onSubmit={handleShareToFeed}
+        />
+      )}
+      {plan && (
+        <QRCodeDialog
+          open={dialogOpen.qrCode}
+          onOpenChange={(isOpen) => setDialogOpen((prev: DialogsState) => ({ ...prev, qrCode: isOpen }))}
+          plan={plan}
+          planUrl={`${window.location.origin}/plans/${plan.id}`}
+        />
+      )}
+      {plan && (
+        <FriendPickerDialog
+          open={dialogOpen.friendPicker}
+          onOpenChange={(isOpen) => setDialogOpen((prev: DialogsState) => ({ ...prev, friendPicker: isOpen }))}
+          plan={plan}
+          onShare={async (friendIds: string[]) => {
+            console.log('Selected friends:', friendIds);
+            toast.info('Friend sharing not implemented yet.');
+          }}
+        />
+      )}
+      <DeletePlanDialog
+        open={dialogOpen.delete}
+        onOpenChange={(isOpen) => setDialogOpen((prev: DialogsState) => ({ ...prev, delete: isOpen }))}
+        onConfirm={handleDeletePlan}
+        loading={actionLoading.delete || false}
       />
-
-      <QRCodeDialog
-        open={qrCodeOpen}
-        onOpenChange={setQrCodeOpen}
-        plan={plan}
-        planUrl={planUrl}
-      />
-
-      <FriendPickerDialog
-        open={friendPickerOpen}
-        onOpenChange={setFriendPickerOpen}
-        plan={plan}
-        onShare={handleShareWithFriends}
-      />
-
-      <AdvancedRSVPDialog
-        open={showAdvancedRSVPDialog}
-        onOpenChange={setShowAdvancedRSVPDialog}
-        plan={plan}
-        currentUser={user!}
-        currentUserProfile={currentUserProfile}
-        currentRSVP={plan?.participantRSVPDetails?.[user?.uid || '']}
-        onSubmit={handleAdvancedRSVP}
-      />
-
-      <WaitlistDialog
-        open={showWaitlistDialog}
-        onOpenChange={setShowWaitlistDialog}
-        plan={plan}
-        currentUser={user!}
-        participantDetails={participantDetails.reduce((acc, participant) => {
-          acc[participant.userId] = {
-            name: participant.name,
-            avatarUrl: participant.profilePicture || undefined
-          };
-          return acc;
-        }, {} as { [uid: string]: { name?: string; avatarUrl?: string } })}
-        isOnWaitlist={plan?.waitlist?.includes(user?.uid || '') || false}
-        onJoinWaitlist={handleJoinWaitlist}
-        onLeaveWaitlist={handleLeaveWaitlist}
-      />
-
-      <CopyPlanDialog
-        open={showCopyPlanDialog}
-        onOpenChange={setShowCopyPlanDialog}
-        plan={plan}
-        currentUser={user}
-        onCopy={handleAdvancedCopyPlan}
-      />
-
-      <ParticipantManagementDialog
-        open={showParticipantManagementDialog}
-        onOpenChange={setShowParticipantManagementDialog}
-        plan={plan}
-        currentUser={user}
-        isHost={isHost}
-        onSendReminder={handleSendReminder}
-        onSendMessage={handleSendMessage}
-        onRemoveParticipant={handleRemoveParticipant}
-        onPromoteToHost={handlePromoteToHost}
-        onExportParticipants={handleExportParticipants}
-      />
-
-      <EnhancedPlanSharingDialog
-        open={showEnhancedSharingDialog}
-        onOpenChange={setShowEnhancedSharingDialog}
-        plan={plan}
-        currentUser={user}
-        isHost={isHost}
-        onShareToFeed={() => handleShareToFeed('')}
-        onShareWithFriends={handleShareWithFriends}
-        onUpdateShareSettings={handleUpdateShareSettings}
-      />
-
-      {/* Delete Plan Confirmation */}
-      <AlertDialog open={deletePlanOpen} onOpenChange={setDeletePlanOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Plan</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete "{plan.name}"? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteLoading}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeletePlan}
-              disabled={deleteLoading}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleteLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Deleting...
-                </>
-              ) : (
-                'Delete Plan'
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {user && plan && (
+        <AdvancedRSVPDialog
+          open={dialogOpen.advancedRSVP}
+          onOpenChange={(isOpen) => setDialogOpen((prev: DialogsState) => ({ ...prev, advancedRSVP: isOpen }))}
+          plan={plan}
+          currentUser={user}
+          onSubmit={async (details: any) => {
+            console.log('Advanced RSVP details:', details);
+            toast.info('Advanced RSVP not implemented yet.');
+          }}
+        />
+      )}
+      {user && plan && (
+        <WaitlistDialog
+          open={dialogOpen.waitlist}
+          onOpenChange={(isOpen) => setDialogOpen((prev: DialogsState) => ({ ...prev, waitlist: isOpen }))}
+          plan={plan}
+          currentUser={user}
+          participantDetails={participantDetailsMap}
+          isOnWaitlist={!!plan.waitlist?.includes(user.uid)}
+          onJoinWaitlist={async (notes?: string | undefined) => {
+            console.log('Joining waitlist with notes:', notes);
+            toast.info('Waitlist functionality not implemented yet.');
+          }}
+          onLeaveWaitlist={async () => {
+            console.log('Leaving waitlist');
+            toast.info('Waitlist functionality not implemented yet.');
+          }}
+        />
+      )}
+      {plan && user && (
+        <CopyPlanDialog
+          open={dialogOpen.copy}
+          onOpenChange={(isOpen) => setDialogOpen((prev: DialogsState) => ({ ...prev, copy: isOpen }))}
+          plan={plan}
+          currentUser={user}
+          onCopy={async (customizations: any) => {
+            console.log('Copying plan with customizations:', customizations);
+            await handleCopyPlan();
+          }}
+        />
+      )}
+      {user && plan && (
+        <ParticipantManagementDialog
+          open={dialogOpen.participantManagement}
+          onOpenChange={(isOpen) => setDialogOpen((prev: DialogsState) => ({ ...prev, participantManagement: isOpen }))}
+          plan={plan}
+          currentUser={user}
+          isHost={isHost}
+          onSendReminder={async () => { toast.info('Reminder functionality not implemented.'); }}
+          onSendMessage={async () => { toast.info('Send message functionality not implemented.'); }}
+          onRemoveParticipant={async () => { toast.info('Remove participant functionality not implemented.'); }}
+          onPromoteToHost={async () => { toast.info('Promote to host functionality not implemented.'); }}
+          onExportParticipants={async () => { toast.info('Export functionality not implemented.'); }}
+        />
+      )}
+      {user && plan && (
+        <EnhancedPlanSharingDialog
+          open={dialogOpen.enhancedSharing}
+          onOpenChange={(isOpen) => setDialogOpen((prev: DialogsState) => ({ ...prev, enhancedSharing: isOpen }))}
+          plan={plan}
+          currentUser={user}
+          isHost={isHost}
+          onShareToFeed={async () => setDialogOpen((prev: DialogsState) => ({ ...prev, shareToFeed: true, enhancedSharing: false }))}
+          onShareWithFriends={async () => setDialogOpen((prev: DialogsState) => ({ ...prev, friendPicker: true, enhancedSharing: false }))}
+          onUpdateShareSettings={async (settings: any) => {
+            console.log('Update share settings:', settings);
+            toast.info('Updating share settings not implemented yet.');
+          }}
+        />
+      )}
     </div>
   );
 }

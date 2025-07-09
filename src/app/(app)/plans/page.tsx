@@ -33,7 +33,7 @@ import {
   Edit3, Trash2, Share2, MapPin, Eye,
   Users as UsersIcon, MailQuestion, UserCheck, History, MoreVertical,
   ChevronDown, ChevronUp, Loader2, ListChecks, CheckCircle,
-  Users, Sparkles
+  Users, Sparkles, Clock
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -55,10 +55,10 @@ import { PlansPageHeader } from '@/components/plans/PlansPageHeader';
 import { PlansEmptyState } from '@/components/plans/PlansEmptyState';
 import { HorizontalPlanCards } from '@/components/plans/HorizontalPlanCards';
 import { HorizontalListPlanCard } from '@/components/plans/HorizontalListPlanCard';
+import { PlansWithTimelineTags } from '@/components/plans/TimelineTagsComponent';
 import { getPostComments, getUserProfile, getUserPlansSubscription, getUserSavedPlans } from '@/services/clientServices';
 import { FriendPickerDialog } from '@/components/messages/FriendPickerDialog';
 import { PlanDropdownMenu } from '@/components/plans/PlanDropdownMenu';
-import { PlanCard, UserPlanViewStatus, userPlanViewStatusConfig } from '@/components/plans/PlanCard';
 
 interface PlanStackSectionProps {
   title: string;
@@ -72,7 +72,7 @@ interface PlanStackSectionProps {
 }
 
 const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, plans, isExpanded, onToggleExpand, emptyMessage, currentUserUid, isLoading, children }) => {
-  const { handleDeleteRequest } = usePlansPageContext();
+  const { handleDeleteRequest, showTimelineTags, toggleTimelineTags } = usePlansPageContext();
   
   // Determine section type for ranking
   const sectionType = title.toLowerCase().includes('invitation') ? 'invitations' :
@@ -249,13 +249,31 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
           </span>
         </div>
         {plans.length > 0 && (
-           <Button
-            variant="ghost"
-            size="sm"
-            onClick={onToggleExpand}
-            className="h-8 px-3 text-xs text-primary hover:text-primary-foreground hover:bg-primary transition-all duration-300 rounded-full shadow-sm hover:shadow-md hover:scale-105 font-medium"
-            aria-label={isExpanded ? `Collapse ${title} section` : `View all ${plans.length} items in ${title}`}
-          >
+           <div className="flex items-center gap-2">
+             {/* Timeline tags toggle button - only show in Past tab for relevant sections */}
+             {isExpanded && 
+              (title.toLowerCase().includes('this week') || title.toLowerCase().includes('this month') || 
+              title.toLowerCase().includes('today') || title.toLowerCase().includes('earlier')) && (
+               <Button
+                 onClick={toggleTimelineTags}
+                 variant="ghost"
+                 size="sm"
+                 className={cn(
+                   "flex items-center gap-1 px-2 py-1 h-8 text-xs rounded-full",
+                   showTimelineTags ? "bg-yellow-500/20 text-yellow-600 hover:bg-yellow-500/30" : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                 )}
+               >
+                 <Clock className="h-3.5 w-3.5 mr-1" />
+                 Timeline
+               </Button>
+             )}
+             <Button
+              variant="ghost"
+              size="sm"
+              onClick={onToggleExpand}
+              className="h-8 px-3 text-xs text-primary hover:text-primary-foreground hover:bg-primary transition-all duration-300 rounded-full shadow-sm hover:shadow-md hover:scale-105 font-medium"
+              aria-label={isExpanded ? `Collapse ${title} section` : `View all ${plans.length} items in ${title}`}
+            >
             {isExpanded ? (
               <>
                 <ChevronUp className="h-4 w-4 mr-1" />
@@ -265,15 +283,11 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
               <>
                 <ChevronDown className="h-4 w-4 mr-1" />
                 View All
-                {extraCount > 0 && (
-                  <span className="ml-2 bg-accent text-accent-foreground px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm">
-                    +{formattedExtraCount} more!
-                  </span>
-                )}
               </>
             )}
 
           </Button>
+           </div>
         )}
       </div>
 
@@ -288,19 +302,28 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
             <p className="text-sm text-muted-foreground text-center py-3">{emptyMessage}</p>
           ) : (
             <>
-              <div className="space-y-3 mt-3 pb-2">
-                {plans.map((plan, index) => (
-                  <div
-                    key={plan.id}
-                    className="transform transition-all duration-300 ease-out"
-                    style={{
-                      transitionDelay: `${index * 50}ms`,
-                    }}
-                  >
-                    <HorizontalListPlanCard plan={plan} currentUserUid={currentUserUid} />
-                  </div>
-                ))}
-              </div>
+              {showTimelineTags && (title.toLowerCase().includes('this week') || title.toLowerCase().includes('this month') || title.toLowerCase().includes('today') || title.toLowerCase().includes('earlier')) ? (
+                <PlansWithTimelineTags
+                  plans={plans}
+                  sectionTitle={title}
+                  currentUserUid={currentUserUid}
+                  renderPlan={(plan) => <HorizontalListPlanCard plan={plan} currentUserUid={currentUserUid} />}
+                />
+              ) : (
+                <div className="space-y-3 mt-3 pb-2">
+                  {plans.map((plan, index) => (
+                    <div
+                      key={plan.id}
+                      className="transform transition-all duration-300 ease-out"
+                      style={{
+                        transitionDelay: `${index * 50}ms`,
+                      }}
+                    >
+                      <HorizontalListPlanCard plan={plan} currentUserUid={currentUserUid} />
+                    </div>
+                  ))}
+                </div>
+              )}
               {/* End of section message */}
               {plans.length > 0 && (
                 <div className="text-center py-4 mt-2 opacity-60 transition-opacity duration-300 hover:opacity-80">
@@ -1662,6 +1685,8 @@ export default function PlansPage() {
           handleConfirmCompletion={handleConfirmCompletion}
           isConfirmingCompletion={isConfirmingCompletion}
         >
+      {/* Gradient fade overlay to prevent harsh cutoffs at nav bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none h-36 md:hidden bg-gradient-to-b from-transparent via-background/90 to-background" />
       <div className="flex flex-col h-screen bg-background text-foreground">
         <PlansPageHeader
           activeTab={activeTab}

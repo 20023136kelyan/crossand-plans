@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -65,8 +65,11 @@ export function PlansPageHeader({
 
   // Calendar helper functions
   const getPlansForDay = (date: Date) => {
+    if (!Array.isArray(plansForDate) || !date) return [];
+    
     return plansForDate.filter(plan => {
-      if (!plan.eventTime) return false;
+      if (!plan || typeof plan !== 'object' || !plan.eventTime) return false;
+      
       try {
         const planDate = parseISO(plan.eventTime);
         return isValid(planDate) && isSameDay(planDate, date);
@@ -77,37 +80,45 @@ export function PlansPageHeader({
   };
 
   const getDaysWithPlans = () => {
-    console.log('🗓️ Calendar: Processing plans for dots:', plansForDate.length, 'plans');
+    // Skip if no plans data
+    if (!Array.isArray(plansForDate) || plansForDate.length === 0) {
+      return [];
+    }
     
     const daysWithPlans = new Set<string>();
-    plansForDate.forEach((plan, index) => {
-      if (plan.eventTime) {
-        try {
-          const date = parseISO(plan.eventTime);
-          if (isValid(date)) {
-            const dateStr = format(date, 'yyyy-MM-dd');
-            console.log(`🗓️ Plan ${index + 1}: "${plan.name}" → ${plan.eventTime} → ${format(date, 'MMM d, yyyy')} → ${dateStr}`);
-            daysWithPlans.add(dateStr);
-          } else {
-            console.log(`❌ Plan ${index + 1}: "${plan.name}" → Invalid date after parsing: ${plan.eventTime}`);
-          }
-        } catch (error) {
-          console.log(`❌ Plan ${index + 1}: "${plan.name}" → Invalid date: ${plan.eventTime}`, error);
+    
+    // Safely process each plan
+    plansForDate.forEach((plan) => {
+      if (!plan || typeof plan !== 'object') return;
+      
+      const eventTime = plan.eventTime;
+      if (!eventTime || typeof eventTime !== 'string') return;
+      
+      try {
+        const date = parseISO(eventTime);
+        if (isValid(date)) {
+          const dateStr = format(date, 'yyyy-MM-dd');
+          daysWithPlans.add(dateStr);
         }
-      } else {
-        console.log(`❌ Plan ${index + 1}: "${plan.name}" → No eventTime`);
+      } catch {
+        // Silently handle invalid dates
       }
     });
     
-    const result = Array.from(daysWithPlans).map(dateStr => {
-      return parseISO(`${dateStr}T12:00:00`);
+    // Convert date strings to Date objects
+    return Array.from(daysWithPlans).map(dateStr => {
+      try {
+        return parseISO(`${dateStr}T12:00:00`);
+      } catch {
+        return new Date(); // Fallback to today if parsing fails
+      }
     });
-    console.log('🗓️ Calendar: Final dates with dots:', result.map(d => format(d, 'MMM d, yyyy')));
-    
-    return result;
   };
 
-  const plansForSelectedDate = getPlansForDay(selectedDate);
+  // Safely get plans for the selected date
+  const plansForSelectedDate = useMemo(() => {
+    return getPlansForDay(selectedDate) || [];
+  }, [selectedDate, plansForDate]);
 
   return (
     <>
@@ -191,14 +202,23 @@ export function PlansPageHeader({
                   selected={selectedDate}
                   onSelect={(date) => {
                     if (date) {
-                      onDateSelect(date);
-                      setIsCalendarExpanded(false);
+                      // Prevent selection of invalid dates
+                      try {
+                        // Ensure it's a valid date
+                        const validDate = new Date(date);
+                        if (!isNaN(validDate.getTime())) {
+                          onDateSelect(validDate);
+                          setIsCalendarExpanded(false);
+                        }
+                      } catch {
+                        // Do nothing on invalid date
+                      }
                     }
                   }}
                   className="rounded-md border-0"
                   classNames={{
-                    day_selected: 'bg-primary text-primary-foreground hover:bg-primary/90 focus:bg-primary focus:text-primary-foreground',
-                    day_today: 'bg-accent text-accent-foreground font-bold',
+                    day_selected: 'bg-primary/40 text-primary-foreground hover:bg-primary/50 focus:bg-primary/50 focus:text-primary-foreground border-2 border-primary',
+                    day_today: 'bg-transparent text-accent-foreground font-bold ring-2 ring-accent ring-offset-1 ring-offset-background',
                     months: 'flex flex-col space-y-4 justify-center',
                     month: 'space-y-4 w-full',
                     caption_label: 'text-lg font-medium text-foreground/90',
@@ -210,7 +230,7 @@ export function PlansPageHeader({
                     hasPlans: getDaysWithPlans()
                   }}
                   modifiersClassNames={{ 
-                    hasPlans: 'after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:w-1 after:h-1 after:bg-primary after:rounded-full' 
+                    hasPlans: 'after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:w-1.5 after:h-1.5 after:bg-amber-500 after:rounded-full' 
                   }}
                 />
                 

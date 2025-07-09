@@ -1,1 +1,0 @@
-const fs = require('fs'); let content = fs.readFileSync('src/app/u/[profileId]/page.tsx', 'utf8'); content = content.replace('from \\'@/services/userService\\';', 'from \\'@/services/clientServices\\';'); fs.writeFileSync('src/app/u/[profileId]/page.tsx', content); console.log('Fixed!');

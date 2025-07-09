@@ -7,10 +7,9 @@ import { Plan } from '@/types/plan';
 
 interface PlanInfoCardsProps {
   plan: Plan;
-  staticMapUrl: string | null;
 }
 
-export function PlanInfoCards({ plan, staticMapUrl }: PlanInfoCardsProps) {
+export function PlanInfoCards({ plan }: PlanInfoCardsProps) {
   return (
     <div className="space-y-6">
       {/* Plan Description */}

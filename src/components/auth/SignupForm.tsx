@@ -159,14 +159,19 @@ export function SignupForm() {
         console.log('[SignupForm] User created successfully, sending email verification...');
         // Send email verification
         try {
-          await sendEmailVerification(user);
+          // Configure verification email with redirect to onboarding
+          const actionCodeSettings = {
+            url: `${window.location.origin}/onboarding`,
+            handleCodeInApp: true
+          };
+          await sendEmailVerification(user, actionCodeSettings);
           console.log('[SignupForm] Email verification sent successfully');
           setUserEmail(data.email);
           setShowEmailVerification(true);
           console.log('[SignupForm] showEmailVerification set to true');
           toast({
             title: 'Account Created Successfully!',
-            description: 'Please check your email to verify your account.',
+            description: 'Please check your email and click the verification link to continue with your profile setup.'
           });
         } catch (verificationError) {
           console.error('[SignupForm] Email verification error:', verificationError);

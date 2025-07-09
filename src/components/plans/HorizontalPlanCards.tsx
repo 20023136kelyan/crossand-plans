@@ -2,13 +2,15 @@
 
 import { Plan } from '@/types/plan';
 import { format, parseISO, isValid, isPast, isFuture } from 'date-fns';
-import { MapPin, Star, Calendar, Users, CheckCircle, Edit3, UsersIcon, MailQuestion, History, MoreVertical, Eye, Trash2 } from 'lucide-react';
+import { MapPin, Calendar, Users, CheckCircle, Edit3, UsersIcon, MailQuestion, History, MoreVertical, Eye, Trash2, Play, HelpCircle, Check, X, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import Link from 'next/link';
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { Card } from '@/components/ui/card';
+import { BalancedText } from "@/components/ui/BalancedText";
 import { useRef, useEffect, useState } from 'react';
 import { PlanImageLoader } from './PlanImageLoader';
 import { usePlansPageContext } from '@/context/PlansPageContext';
@@ -141,101 +143,113 @@ function HorizontalPlanCard({ plan, currentUserUid }: HorizontalPlanCardProps) {
   // Count attendees
   const attendeeCount = plan.participantUserIds?.length || 0;
   const maxAttendees = plan.rsvpSettings?.maxParticipants;
-
-  // Determine plan status
-  const getPlanStatus = (): UserPlanViewStatus | null => {
-    if (!plan.eventTime || !isValid(parseISO(plan.eventTime))) {
-      return plan.status === 'draft' ? UserPlanViewStatus.MY_DRAFT_UPCOMING : null;
-    }
-
-    const planEventDate = parseISO(plan.eventTime);
-    const allRelevantUids = Array.from(new Set([plan.hostId, ...(plan.invitedParticipantUserIds || [])])).filter(Boolean);
-    const isEveryoneGoing = allRelevantUids.length > 0 && allRelevantUids.every(uid => plan.participantResponses?.[uid] === 'going');
-
-    if (isPast(planEventDate)) {
-      return UserPlanViewStatus.COMPLETED;
-    } else if (isFuture(planEventDate)) {
-      if (isHost) {
-        if (plan.status === 'draft') {
-          return UserPlanViewStatus.MY_DRAFT_UPCOMING;
-        } else if (plan.status === 'published') {
-          return isEveryoneGoing ? UserPlanViewStatus.MY_CONFIRMED_READY : UserPlanViewStatus.MY_AWAITING_RESPONSES;
-        }
-      } else if (isInvited && plan.status === 'published') {
-        const userRsvp = plan.participantResponses?.[currentUserUid || ''];
-        if (!userRsvp || userRsvp === 'pending' || userRsvp === 'maybe') {
-          return UserPlanViewStatus.INVITED_TO_PLAN;
-        } else if (userRsvp === 'going') {
-          return isEveryoneGoing ? UserPlanViewStatus.MY_CONFIRMED_READY : UserPlanViewStatus.MY_AWAITING_RESPONSES;
-        }
-      }
-    }
-    return null;
-  };
-
-  const planStatus = getPlanStatus();
-  const statusConfig = planStatus ? userPlanViewStatusConfig[planStatus] : null;
+  
+  // Get current time for status calculations
+  const currentTime = new Date();
+  const eventTime = plan.eventTime ? parseISO(plan.eventTime) : null;
+  
+  // Calculate the end time of the plan based on the last itinerary item or default to 90 minutes
+  const lastItineraryItem = plan.itinerary && plan.itinerary.length > 0 ? 
+    plan.itinerary[plan.itinerary.length - 1] : null;
+  
+  const estimatedEndTime = lastItineraryItem?.startTime ? 
+    parseISO(lastItineraryItem.startTime) : 
+    (eventTime ? new Date(eventTime.getTime() + 90 * 60000) : null);
+  
+  // Check if plan is explicitly completed
+  const isCompleted = plan.status === 'completed';
+  
+  // Check if plan time is in the past
+  const isPastTime = eventTime ? isPast(eventTime) : false;
+  
+  // Check if plan is currently ongoing (between start and end time)
+  const isOngoing = eventTime && estimatedEndTime && 
+    currentTime >= eventTime && 
+    currentTime <= estimatedEndTime;
+  
+  // Get the user's RSVP status - safely access participantResponses
+  // Define the type for ParticipantResponse since it's not exported from types
+  type ParticipantResponseType = 'going' | 'maybe' | 'declined';
+  
+  // Safely access and cast the response
+  const userResponse = currentUserUid && plan.participantResponses ? 
+    (plan.participantResponses[currentUserUid] as ParticipantResponseType) : undefined;
+  
+  // Check if the user has RSVP'd and what their response was
+  const isGoing = userResponse === 'going';
+  const isMaybe = userResponse === 'maybe';
+  const hasDeclined = userResponse === 'declined';
+  
+  // Determine the status to display based on priority
+  const statusType = isCompleted ? 'completed' : // Explicitly completed plans take highest priority
+    (isPastTime && isGoing) ? 'attended' : // Past plans you RSVP'd to but didn't mark complete
+    isOngoing && isGoing ? 'ongoing' : // Then ongoing plans you're attending
+    isGoing ? 'going' : // Then plans you're going to
+    isMaybe ? 'maybe' : // Then plans you might attend
+    hasDeclined ? 'declined' : // Then declined plans
+    'noresponse'; // Default - no response yet
 
   return (
-    <div className="flex-shrink-0 w-72 relative group">
+    <div className="flex-shrink-0 w-80 relative group">
       <Link href={`/plans/${plan.id}`} className="block">
-        <div className="bg-card rounded-xl overflow-hidden shadow-sm border border-border/50 group-hover:shadow-md transition-shadow h-80 flex flex-col">
-          {/* Image Section */}
-          <div className="relative h-40 overflow-hidden rounded-xl bg-muted m-3 mb-0">
+        <div className="bg-card rounded-xl overflow-hidden shadow-sm border border-border/50 group-hover:shadow-md transition-shadow flex flex-col h-[16rem] relative">
+          {/* Full-height Image Section */}
+          <div className="absolute inset-0 z-0 overflow-hidden rounded-xl bg-muted">
             <PlanImageLoader
               plan={plan}
-              width={300}
-              height={160}
-              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 rounded-xl plan-card-image"
+              width={400}
+              height={300}
+              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 plan-card-image"
               altText={plan.name || 'Plan image'}
               priority={false}
             />
             
-            {/* Status indicator */}
-            {statusConfig && (
-              <div className={cn(
-                "absolute top-3 right-3 h-8 w-8 rounded-full flex items-center justify-center shadow-sm z-10",
-                statusConfig.bgColor
-              )}>
-                <statusConfig.icon className={cn("h-4 w-4", statusConfig.color)} />
-              </div>
-            )}
+            {/* Gradient and blur overlay at bottom */}
+            <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/90 via-black/60 to-transparent z-10"></div>
+            <div className="absolute inset-x-0 bottom-0 h-1/3 backdrop-blur-[1.5px] z-10"></div>
+            
 
-            {/* Event Type Badge */}
-            {plan.eventType && (
-              <Badge variant="secondary" className="absolute top-3 left-3 text-xs px-2 py-1 bg-black/70 text-white border-0">
-                {plan.eventType}
-              </Badge>
-            )}
-
-            {/* Date overlay */}
-            {formattedDate && (
-              <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur-sm rounded-lg px-2 py-1 text-xs font-medium text-gray-900">
-                <div className="flex items-center gap-1">
-                  <Calendar className="h-3 w-3" />
-                  {formattedDate}
-                  {formattedTime && <span className="text-gray-600">• {formattedTime}</span>}
-                </div>
-              </div>
-            )}
           </div>
 
-          {/* Content Section */}
-          <div className="p-4 flex-1 flex flex-col">
-            <h3 className="font-semibold text-base leading-tight line-clamp-2 mb-2 group-hover:text-primary transition-colors" title={plan.name}>
-              {plan.name}
-            </h3>
+          {/* Content Section - Positioned over the gradient */}
+
+          {/* Event Type Badge */}
+          {plan.eventType && (
+            <Badge variant="secondary" className="absolute top-2 left-2 text-xs px-2 py-1 bg-black/70 text-white border-0 z-20 font-medium">
+              {plan.eventType}
+            </Badge>
+          )}
+
+          {/* Date overlay */}
+          {formattedDate && (
+            <div className="absolute bottom-24 left-2 bg-white/95 backdrop-blur-sm rounded-lg px-2 py-1 text-xs font-medium text-gray-900 z-20">
+              <div className="flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                {formattedDate}
+                {formattedTime && <span className="text-gray-600">• {formattedTime}</span>}
+              </div>
+            </div>
+          )}
+          
+          <div className="px-4 pt-[10rem] pb-10 flex-1 flex flex-col relative z-20 text-white">
+            <BalancedText 
+              text={plan.name} 
+              className="font-semibold text-lg leading-tight mb-1 group-hover:text-white/90 transition-colors min-h-[2.25rem] text-white drop-shadow-md" 
+              title={plan.name} 
+              maxLines={2} 
+              minCharsPerLine={15}
+            />
 
             {/* Location */}
-            <div className="flex items-center text-sm text-muted-foreground mb-2">
+            <div className="flex items-center gap-1 text-xs text-white/90 mb-1 drop-shadow-sm">
               <MapPin className="h-4 w-4 mr-1 flex-shrink-0" />
               <span className="truncate" title={`${plan.location}, ${plan.city}`}>
                 {plan.location}, {plan.city}
               </span>
             </div>
 
-            {/* Host/Author info - Fixed height container */}
-            <div className="h-6 mb-2">
+            {/* Host/Author info */}
+            <div className="mb-1 drop-shadow-sm">
               {plan.isTemplate ? (
                 // Template - show creator/original host info
                 plan.creatorName || plan.templateOriginalHostName ? (
@@ -258,7 +272,7 @@ function HorizontalPlanCard({ plan, currentUserUid }: HorizontalPlanCardProps) {
               ) : (
                 // Regular plan - show host info
                 plan.hostName ? (
-                  <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <div className="text-xs text-muted-foreground flex items-center gap-1.5 mb-0">
                     <Avatar className="h-4 w-4">
                       <AvatarImage 
                         src={plan.hostAvatarUrl || undefined} 
@@ -274,29 +288,10 @@ function HorizontalPlanCard({ plan, currentUserUid }: HorizontalPlanCardProps) {
               )}
             </div>
 
-            {/* Bottom row - Rating and Attendees - Push to bottom */}
-            <div className="flex items-center justify-between mt-auto">
-              {/* Rating */}
-              <div className="flex items-center">
-                {(plan.averageRating !== undefined && plan.averageRating !== null && typeof plan.averageRating === 'number') ? (
-                  <div className="flex items-center">
-                    <Star className="h-4 w-4 mr-1 text-amber-400 fill-amber-400" />
-                    <span className="text-sm font-medium">{plan.averageRating.toFixed(1)}</span>
-                    <span className="text-xs text-muted-foreground ml-1">
-                      ({plan.reviewCount || 0})
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex items-center">
-                    <Star className="h-4 w-4 mr-1 text-muted-foreground/50" />
-                    <span className="text-xs text-muted-foreground">No reviews</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Attendees */}
+            {/* Attendees */}
+            <div className="flex items-center mt-auto">
               {attendeeCount > 0 && (
-                <div className="flex items-center text-xs text-muted-foreground">
+                <div className="flex items-center text-xs text-white/90 drop-shadow-sm">
                   <Users className="h-3 w-3 mr-1" />
                   <span>
                     {attendeeCount}
@@ -308,9 +303,42 @@ function HorizontalPlanCard({ plan, currentUserUid }: HorizontalPlanCardProps) {
           </div>
         </div>
       </Link>
+      
+      {/* Status Indicator - Positioned in the top-right corner */}
+      <div className="absolute top-2 right-2 z-30">
+        <div 
+          className={cn(
+            "h-7 w-7 rounded-full flex items-center justify-center shadow-md border border-white/20",
+            {
+              "bg-emerald-500 text-white": statusType === 'completed',
+              "bg-zinc-400 text-white": statusType === 'attended',
+              "bg-blue-500 text-white": statusType === 'ongoing',
+              "bg-teal-500 text-white": statusType === 'going',
+              "bg-amber-500 text-white": statusType === 'maybe',
+              "bg-red-500/90 text-white": statusType === 'declined',
+              "bg-muted/50 text-muted-foreground/70 backdrop-blur-sm": statusType === 'noresponse',
+            }
+          )}
+          title={statusType === 'completed' ? "Plan completed" : 
+                 statusType === 'attended' ? "Attended but not marked complete" :
+                 statusType === 'ongoing' ? "Plan in progress" : 
+                 statusType === 'going' ? "You're attending" : 
+                 statusType === 'maybe' ? "Might attend" : 
+                 statusType === 'declined' ? "Declined" : 
+                 "No RSVP yet"}
+        >
+          {statusType === 'completed' && <CheckCircle className="h-4 w-4" />}
+          {statusType === 'attended' && <CheckCircle className="h-4 w-4" />}
+          {statusType === 'ongoing' && <Play className="h-3.5 w-3.5" />}
+          {statusType === 'going' && <Check className="h-4 w-4" />}
+          {statusType === 'maybe' && <HelpCircle className="h-3.5 w-3.5" />}
+          {statusType === 'declined' && <X className="h-4 w-4" />}
+          {statusType === 'noresponse' && <AlertCircle className="h-3.5 w-3.5" />}
+        </div>
+      </div>
 
-      {/* Dropdown Menu - Positioned absolutely over the card */}
-      <div className="absolute top-3 right-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* Dropdown Menu - Positioned at bottom-right */}
+      <div className="absolute bottom-2 right-2 z-30">
         <PlanDropdownMenu
           plan={plan}
           currentUserUid={currentUserUid}

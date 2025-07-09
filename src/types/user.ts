@@ -282,6 +282,8 @@ export interface Plan {
   averageRating: number | null;
   reviewCount: number;
   photoHighlights: string[];
+  images: { url: string; alt: string }[];
+  comments: Comment[];
   participantResponses: Record<string, ParticipantResponse>;
   participantRSVPDetails?: Record<string, RSVPDetails>;
   rsvpSettings?: PlanRSVPSettings;
@@ -293,6 +295,7 @@ export interface Plan {
   recentViews?: string[];
   recentCompletions?: string[];
   ratings?: Array<{
+    userId: string;
     value: number;
     isVerified: boolean;
   }>;

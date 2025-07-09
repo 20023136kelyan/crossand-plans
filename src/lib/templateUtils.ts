@@ -8,7 +8,7 @@ export interface TemplateCreationOptions {
 export interface TemplateData {
   id: string;
   isTemplate: true;
-  parentTemplateId: string;
+  parentTemplateId: string | null;
   authorId: string;
   templateOriginalHostId: string;
   templateOriginalHostName: string;
@@ -29,7 +29,7 @@ export interface TemplateData {
   priceRange: string;
   itinerary: any[];
   photoHighlights: any[];
-  averageRating?: number;
+  averageRating?: number | null;
   reviewCount?: number;
   createdAt: string;
   updatedAt: string;
@@ -46,7 +46,7 @@ export function createTemplateFromPlan(originalPlan: Plan): TemplateData {
   return {
     id: crypto.randomUUID(),
     isTemplate: true,
-    parentTemplateId: originalPlan.id,
+    parentTemplateId: originalPlan.id || null,
     authorId: originalPlan.hostId,
     templateOriginalHostId: originalPlan.hostId,
     templateOriginalHostName: originalPlan.hostName || '',
@@ -71,7 +71,7 @@ export function createTemplateFromPlan(originalPlan: Plan): TemplateData {
       endTime: item.endTime ? new Date(item.endTime).toTimeString().split(' ')[0] : null
     })),
     photoHighlights: originalPlan.photoHighlights || [],
-    averageRating: originalPlan.averageRating || undefined,
+    averageRating: originalPlan.averageRating || null,
     reviewCount: originalPlan.reviewCount || 0,
     createdAt: now,
     updatedAt: now,

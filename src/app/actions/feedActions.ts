@@ -16,7 +16,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
-interface CreateFeedPostData {
+export interface CreateFeedPostData {
   planId: string;
   planName: string;
   highlightImageUrl: string;

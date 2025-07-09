@@ -152,90 +152,94 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
 
   if (!isClient) {
     return (
-      <Card className="overflow-hidden shadow-md bg-card text-card-foreground flex flex-col h-full rounded-lg animate-pulse border border-border/30">
-        <div className="flex p-3 items-start gap-3 flex-grow">
-          <div className="flex flex-col items-center shrink-0 w-20">
-            <div className="bg-muted h-20 w-20 rounded-lg"></div>
-            <div className="bg-card border border-border/50 shadow-sm rounded-md p-1 text-center w-full mt-2 min-h-[60px]">
-              <div className="h-6 bg-muted rounded-sm w-1/2 mx-auto mb-1"></div>
-              <div className="h-3 bg-muted rounded-sm w-1/3 mx-auto mb-1"></div>
-              <div className="h-3 bg-muted rounded-sm w-1/4 mx-auto"></div>
+      <Link href={`/plans/${plan.id}`} className="block h-full">
+        <Card className="overflow-hidden shadow-md bg-card text-card-foreground flex flex-col h-full rounded-lg animate-pulse border border-border/30">
+          <div className="flex p-3 items-start gap-3 flex-grow">
+            <div className="flex flex-col items-center shrink-0 w-20">
+              <div className="bg-muted h-20 w-20 rounded-lg"></div>
+              <div className="bg-card border border-border/50 shadow-sm rounded-md p-1 text-center w-full mt-2 min-h-[60px]">
+                <div className="h-6 bg-muted rounded-sm w-1/2 mx-auto mb-1"></div>
+                <div className="h-3 bg-muted rounded-sm w-1/3 mx-auto mb-1"></div>
+                <div className="h-3 bg-muted rounded-sm w-1/4 mx-auto"></div>
+              </div>
+            </div>
+            <div className="flex-grow min-w-0">
+              <div className="h-4 bg-muted rounded-sm w-3/4 mb-2"></div>
+              <div className="h-3 bg-muted rounded-sm w-1/2 mb-1"></div>
+              <div className="h-3 bg-muted rounded-sm w-2/3"></div>
             </div>
           </div>
-          <div className="flex-grow min-w-0">
-            <div className="h-4 bg-muted rounded-sm w-3/4 mb-2"></div>
-            <div className="h-3 bg-muted rounded-sm w-1/2 mb-1"></div>
-            <div className="h-3 bg-muted rounded-sm w-2/3"></div>
-          </div>
-        </div>
-      </Card>
+        </Card>
+      </Link>
     );
   }
 
   return (
-    <Card className="overflow-hidden shadow-md bg-card text-card-foreground flex flex-col h-full rounded-lg border border-border/30 hover:shadow-lg transition-shadow">
-      <div className="flex p-3 items-start gap-3 flex-grow">
-        <div className="flex flex-col items-center shrink-0 w-20">
-          <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-gradient-to-br from-primary/20 to-secondary/20 border border-border/50">
-            <PlanImageLoader plan={plan} className="w-full h-full object-cover" />
+    <Link href={`/plans/${plan.id}`} className="block h-full">
+      <Card className="overflow-hidden shadow-md bg-card text-card-foreground flex flex-col h-full rounded-lg border border-border/30 hover:shadow-lg transition-shadow hover:border-primary/30 transition-all duration-300 hover:scale-[1.01] cursor-pointer">
+        <div className="flex p-3 items-start gap-3 flex-grow">
+          <div className="flex flex-col items-center shrink-0 w-20">
+            <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-gradient-to-br from-primary/20 to-secondary/20 border border-border/50">
+              <PlanImageLoader plan={plan} className="w-full h-full object-cover" />
+            </div>
+            <div className="bg-card border border-border/50 shadow-sm rounded-md p-1 text-center w-full mt-2 min-h-[60px]">
+              <div className="text-lg font-bold text-foreground">{formattedDay}</div>
+              <div className="text-xs text-muted-foreground">{formattedMonth}</div>
+              <div className="text-xs text-muted-foreground">{formattedTime}</div>
+            </div>
           </div>
-          <div className="bg-card border border-border/50 shadow-sm rounded-md p-1 text-center w-full mt-2 min-h-[60px]">
-            <div className="text-lg font-bold text-foreground">{formattedDay}</div>
-            <div className="text-xs text-muted-foreground">{formattedMonth}</div>
-            <div className="text-xs text-muted-foreground">{formattedTime}</div>
-          </div>
-        </div>
         
-        <div className="flex-grow min-w-0">
-          <div className="flex items-start justify-between mb-1">
-            <h3 className="font-semibold text-sm leading-tight line-clamp-2 text-foreground">
-              {plan.name}
-            </h3>
-            <PlanDropdownMenu plan={plan} currentUserUid={currentUserUid} isHost={isHost} />
-          </div>
-          
-          {displayStatus && (
-            <div className="flex items-center gap-1 mb-1">
-              <Badge variant={userPlanViewStatusConfig[displayStatus].badgeVariant} className="text-xs px-1.5 py-0.5">
-                {React.createElement(userPlanViewStatusConfig[displayStatus].icon, { className: "h-3 w-3 mr-1" })}
-                {userPlanViewStatusConfig[displayStatus].label}
-              </Badge>
-              {timeUrgency === 'urgent' && (
-                <Badge variant="destructive" className="text-xs px-1.5 py-0.5">
-                  <Sparkles className="h-3 w-3 mr-1" />
-                  Urgent
+          <div className="flex-grow min-w-0">
+            <div className="flex items-start justify-between mb-1">
+              <h3 className="font-semibold text-sm leading-tight line-clamp-2 text-foreground">
+                {plan.name}
+              </h3>
+              <PlanDropdownMenu plan={plan} currentUserUid={currentUserUid} isHost={isHost} />
+            </div>
+            
+            {displayStatus && (
+              <div className="flex items-center gap-1 mb-1">
+                <Badge variant={userPlanViewStatusConfig[displayStatus].badgeVariant} className="text-xs px-1.5 py-0.5">
+                  {React.createElement(userPlanViewStatusConfig[displayStatus].icon, { className: "h-3 w-3 mr-1" })}
+                  {userPlanViewStatusConfig[displayStatus].label}
                 </Badge>
-              )}
+                {timeUrgency === 'urgent' && (
+                  <Badge variant="destructive" className="text-xs px-1.5 py-0.5">
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    Urgent
+                  </Badge>
+                )}
+              </div>
+            )}
+            
+            {itineraryBrief && (
+              <p className="text-xs text-muted-foreground line-clamp-2 mb-1">
+                {itineraryBrief}
+              </p>
+            )}
+            
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <MapPin className="h-3 w-3" />
+              <span className="truncate">{plan.location}</span>
             </div>
-          )}
-          
-          {itineraryBrief && (
-            <p className="text-xs text-muted-foreground line-clamp-2 mb-1">
-              {itineraryBrief}
-            </p>
-          )}
-          
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <MapPin className="h-3 w-3" />
-            <span className="truncate">{plan.location}</span>
+            
+            {plan.status === 'draft' && (
+              <div className="mt-2">
+                <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
+                  <ListChecks className="h-3 w-3" />
+                  <span>Completion: {completionPercentage}%</span>
+                </div>
+                <div className="w-full bg-muted rounded-full h-1.5">
+                  <div 
+                    className="bg-primary h-1.5 rounded-full transition-all duration-300" 
+                    style={{ width: `${completionPercentage}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
-          
-          {plan.status === 'draft' && (
-            <div className="mt-2">
-              <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
-                <ListChecks className="h-3 w-3" />
-                <span>Completion: {completionPercentage}%</span>
-              </div>
-              <div className="w-full bg-muted rounded-full h-1.5">
-                <div 
-                  className="bg-primary h-1.5 rounded-full transition-all duration-300" 
-                  style={{ width: `${completionPercentage}%` }}
-                />
-              </div>
-            </div>
-          )}
         </div>
-      </div>
-    </Card>
+      </Card>
+    </Link>
   );
 }); 
