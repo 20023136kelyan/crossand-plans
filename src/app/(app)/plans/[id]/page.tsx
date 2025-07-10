@@ -215,7 +215,7 @@ export default function PlanDetailPage() {
   return (
     <div className="min-h-screen flex flex-col relative">
       {/* Full screen background image with gradient overlay */}
-      <div className="fixed top-0 left-0 right-0 h-[40vh] z-0 overflow-hidden">
+      <div className="fixed top-0 left-0 right-0 h-[45vh] z-0 overflow-hidden">
         {planImages.length > 0 ? (
           <>
             {/* Image slideshow */}
@@ -260,12 +260,12 @@ export default function PlanDetailPage() {
           </div>
         )}
         
-        {/* Gradient overlay - subtle at top, stronger fade at bottom */}
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/90 to-transparent" />
+        {/* Gradient overlay - very subtle fade */}
+        <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-background/30 to-transparent" />
       </div>
       
       {/* Shadow gradient to connect image to content seamlessly */}
-      <div className="fixed top-[40vh] left-0 right-0 h-16 z-0 bg-gradient-to-b from-background/90 to-transparent pointer-events-none" />
+      <div className="fixed top-[45vh] left-0 right-0 h-16 z-0 bg-gradient-to-b from-background/60 to-transparent pointer-events-none" />
       
       {/* Header with back button - now transparent on top of image */}
       <div className="fixed top-0 left-0 right-0 z-20 bg-black/30 backdrop-blur-md p-2 flex items-center">
@@ -281,7 +281,7 @@ export default function PlanDetailPage() {
       </div>
       
       {/* Empty space to push content below the full-bleed image */}
-      <div className="h-[30vh]" />
+      <div className="h-[35vh]" />
 
       {/* Event Type Badge */}
       {plan?.eventType && (
