@@ -215,7 +215,7 @@ export default function PlanDetailPage() {
   return (
     <div className="min-h-screen flex flex-col relative">
       {/* Full screen background image with gradient overlay */}
-      <div className="fixed inset-0 z-0">
+      <div className="fixed top-0 left-0 right-0 h-[40vh] z-0 overflow-hidden">
         {planImages.length > 0 ? (
           <>
             {/* Image slideshow */}
@@ -224,26 +224,28 @@ export default function PlanDetailPage() {
                 key={index}
                 className={`absolute inset-0 transition-opacity duration-1000 ${index === activeImageIndex ? 'opacity-100' : 'opacity-0'}`}
               >
-                <Image
-                  src={image.url}
-                  alt={image.alt || plan?.name || 'Plan'}
-                  fill
-                  className="object-cover"
-                  priority={index === 0}
-                  quality={85}
-                  unoptimized={image.url.startsWith('http')}
-                />
+                <div className="relative w-full h-full">
+                  <Image
+                    src={image.url}
+                    alt={image.alt || plan?.name || 'Plan'}
+                    fill
+                    className="object-contain object-top"
+                    priority={index === 0}
+                    quality={85}
+                    unoptimized={image.url.startsWith('http')}
+                  />
+                </div>
               </div>
             ))}
             
             {/* Image navigation dots if multiple images */}
             {planImages.length > 1 && (
-              <div className="absolute bottom-[33%] left-1/2 transform -translate-x-1/2 flex space-x-1 z-10">
+              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-1.5 z-10">
                 {planImages.map((_, index) => (
                   <button 
                     key={index}
                     onClick={() => setActiveImageIndex(index)}
-                    className={`w-2 h-2 rounded-full ${index === activeImageIndex ? 'bg-white' : 'bg-white/50'}`}
+                    className={`w-2.5 h-2.5 rounded-full ${index === activeImageIndex ? 'bg-white' : 'bg-white/50'}`}
                     aria-label={`Go to image ${index + 1}`}
                   />
                 ))}
@@ -258,9 +260,12 @@ export default function PlanDetailPage() {
           </div>
         )}
         
-        {/* Gradient overlay - stronger fade at bottom */}
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/95 to-transparent" />
+        {/* Gradient overlay - subtle at top, stronger fade at bottom */}
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/90 to-transparent" />
       </div>
+      
+      {/* Shadow gradient to connect image to content seamlessly */}
+      <div className="fixed top-[40vh] left-0 right-0 h-16 z-0 bg-gradient-to-b from-background/90 to-transparent pointer-events-none" />
       
       {/* Header with back button - now transparent on top of image */}
       <div className="fixed top-0 left-0 right-0 z-20 bg-black/30 backdrop-blur-md p-2 flex items-center">
@@ -276,12 +281,12 @@ export default function PlanDetailPage() {
       </div>
       
       {/* Empty space to push content below the full-bleed image */}
-      <div className="h-[35vh]" />
+      <div className="h-[30vh]" />
 
       {/* Event Type Badge */}
       {plan?.eventType && (
-        <div className="px-4 z-10 relative">
-          <Badge className="bg-primary text-white hover:bg-primary">{plan.eventType}</Badge>
+        <div className="px-4 z-10 relative mb-2">
+          <Badge className="bg-primary text-white hover:bg-primary">{plan?.eventType || plan?.type || 'Event'}</Badge>
         </div>
       )}
 
