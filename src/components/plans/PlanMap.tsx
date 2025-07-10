@@ -259,41 +259,8 @@ export function PlanMap({ itinerary, planName, apiKey, className }: PlanMapProps
 
   return (
     <Card className={`bg-background/30 backdrop-blur-sm border border-border/30 ${className || ''} ${isFullscreen ? 'fixed inset-4 z-50' : ''}`}>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-        <CardTitle className="text-xl font-semibold flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-primary/10">
-            <Map className="h-4 w-4 text-primary" />
-          </div>
-          Interactive Map
-        </CardTitle>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="bg-background/50">
-            {itinerary.length} {itinerary.length === 1 ? 'location' : 'locations'}
-          </Badge>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={openInGoogleMaps}
-            className="text-xs"
-          >
-            <Navigation className="h-3 w-3 mr-1" />
-            Directions
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={toggleFullscreen}
-          >
-            {isFullscreen ? (
-              <Minimize2 className="h-4 w-4" />
-            ) : (
-              <Maximize2 className="h-4 w-4" />
-            )}
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="p-0 pb-4">
-        <div className={`relative ${isFullscreen ? 'h-full' : 'h-96'} w-full rounded-b-lg overflow-hidden`}>
+      <CardContent className="p-0">
+        <div className={`relative ${isFullscreen ? 'h-full' : 'h-48'} w-full rounded-lg overflow-hidden`}>
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center bg-muted">
               <div className="text-center">

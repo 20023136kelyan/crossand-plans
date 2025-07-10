@@ -133,6 +133,7 @@ export async function generateDeepPlan(input: GenerateDeepPlanInput): Promise<Ge
          - Include price information in your research when available to verify budget alignment.
       3.  **Generate Suggestions**: Based on your research from the search tool, create 2-3 specific, creative, and actionable \`suggestedActivities\`. DO NOT use generic suggestions. Your suggestions must be directly informed by the information you found online.
          - For activities with costs, favor those that align with the user's budget.
+         - **INCLUDE EMOJIS**: Add relevant emojis to make suggestions more engaging. Examples: "🍽️ Try their signature dishes", "📸 Take photos of the view", "🎭 Enjoy the live performance".
       4.  **Assemble the Stop**: Combine the venue name, your reasoning, the search query you used, and your research-backed suggestions into a single itinerary item.
       5.  **Repeat**: Repeat this process for 2 to 5 stops to build a full, cohesive plan.
 
@@ -282,6 +283,8 @@ export async function generateDeepPlan(input: GenerateDeepPlanInput): Promise<Ge
     sharedByUid: null,
     originalPlanId: null,
     photoHighlights: [],
+    images: [], // Add required images array
+    comments: [], // Add required comments array
     invitedParticipantUserIds: [],
     participantResponses: {},
     stopCountReasoning: null,

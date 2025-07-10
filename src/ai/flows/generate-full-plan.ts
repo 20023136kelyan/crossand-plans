@@ -1,3 +1,4 @@
+'use server';
 /**
  * @fileOverview AI-powered full plan generator with standard place discovery.
  * Completely rewritten with a cleaner architecture based on the deep plan flow.
@@ -7,7 +8,7 @@
 
 import { z } from 'zod';
 import { ai } from '../genkit';
-import { findPlacesNearbyTool, fetchPlaceDetailsTool } from '../tools';
+import { webSearchTool, fetchPlaceDetailsTool } from '../tools';
 import type { Plan, ItineraryItem, PriceRangeType } from '@/types/user';
 import type { UserProfile } from '@/types/user';
 import { generateUUID } from '@/lib/utils';
@@ -15,17 +16,15 @@ import { processAIGeneratedPlan } from '@/lib/planUtils';
 import { formatISO, parseISO, isValid } from 'date-fns';
 import { 
   GeneratePlanInputSchema, 
-  PlanOutputSchema,
-  ItineraryItemSchema
+  PlanOutputSchema
 } from '@/ai/schemas/shared';
 
 // Define the input and output types for the plan generation flow
 export type GenerateFullPlanInput = z.infer<typeof GeneratePlanInputSchema>;
 export type GenerateFullPlanOutput = Plan;
 
-// Export the schemas for external use
-export const GenerateFullPlanInput = GeneratePlanInputSchema;
-export const GenerateFullPlanOutput = PlanOutputSchema;
+// Note: Schema objects cannot be exported from 'use server' files
+// Import GeneratePlanInputSchema and PlanOutputSchema directly from '@/ai/schemas/shared' if needed
 
 /**
  * Helper function to ensure date strings have timezone information
@@ -91,15 +90,11 @@ export async function generateFullPlan(input: GenerateFullPlanInput): Promise<Pl
     const hour = planDate.getHours();
     const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
     
-    // Prioritize user-set price range, then fall back to profile budget preferences
-    const budget = input.priceRange 
-      ? input.priceRange // Use explicitly set price range if available
-      : input.hostProfile?.budgetFlexibilityNotes || 'moderate';
+    // Use budget information from profile or default to moderate
+    const budget = input.hostProfile?.budgetFlexibilityNotes || 'moderate';
     
     // Use transportation preferences or default to walking
-    const transportation = (input.hostProfile as any)?.preferredTransitModes?.length 
-      ? (input.hostProfile as any).preferredTransitModes[0]
-      : 'walking';
+    const transportation = 'walking'; // Default to walking since preferredTransitModes doesn't exist in the schema
       
     // Calculate recommended stops for this plan
     const stopCountReasoning = calculateRecommendedStops(
@@ -108,8 +103,7 @@ export async function generateFullPlan(input: GenerateFullPlanInput): Promise<Pl
       activityType,
       timeOfDay,
       budget,
-      transportation,
-      input.planTypeHint // Pass user-set plan type hint to prioritize it
+      transportation
     );
     
     console.log('[generateFullPlan] Using parameters:', {
@@ -120,8 +114,6 @@ export async function generateFullPlan(input: GenerateFullPlanInput): Promise<Pl
       timeOfDay,
       budget,
       transportation,
-      planTypeHint: input.planTypeHint || 'ai-decide',
-      priceRange: input.priceRange,
       recommendedStops: stopCountReasoning.recommendedStops
     });
 
@@ -129,13 +121,13 @@ export async function generateFullPlan(input: GenerateFullPlanInput): Promise<Pl
     console.log('[generateFullPlan] Calling AI prompt with input');
     
     // Define the prompt template 
-    const generatePlanPrompt = ai.definePrompt({
+      const generatePlanPrompt = ai.definePrompt({
       name: "generatePlanPrompt",
       description: "Generate a comprehensive plan based on user input",
-      input: {
+        input: {
         schema: GeneratePlanInputSchema
-      },
-      output: {
+        },
+        output: {
         schema: PlanOutputSchema
       },
       prompt: `
@@ -151,6 +143,7 @@ You are creating a personalized plan for the user based on their input. This pla
 - Provide sufficient detail for each stop (what to do, see, or eat).
 - Include realistic timing that accounts for travel between places.
 - Design the plan to fit within the specified duration, budget, and group size.
+- **ACTIVITY SUGGESTIONS**: For each itinerary item's activitySuggestions, include relevant emojis to make them more engaging and visually appealing. Examples: "🍽️ Try their signature dishes", "📸 Take photos of the view", "🎭 Enjoy the live performance".
 
 **USER PROFILE:**
 ${JSON.stringify(input.hostProfile, null, 2)}
@@ -176,186 +169,218 @@ ${JSON.stringify(input.invitedFriendProfiles, null, 2)}` : ''}
 All date and time fields MUST use ISO 8601 format WITH timezone information. Example: "2025-07-07T15:30:00-07:00" not "2025-07-07T15:30:00".
 This applies to eventTime, startTime, endTime, createdAt, and updatedAt fields.
 
-**IMPORTANT: USING THE TOOLS**
-When calling the findPlacesNearbyTool, ALWAYS pass the user's price range as the "priceRange" parameter (e.g., '$', '$$', '$$$', '$$$$' or 'Free'). This ensures all suggested places match the user's budget before being included in the plan.
+**CRITICAL ID FIELD HANDLING:**
+DO NOT generate or include "id" fields in itinerary items. The system will automatically generate proper UUIDs for each itinerary item. Your itinerary items should NOT have an "id" field.
 
-**ACTIVITY SUGGESTIONS:**
-For each itinerary item, include 2-3 activity suggestions in the activitySuggestions array. EACH suggestion MUST begin with a relevant emoji followed by a space, then a brief, creative activity suggestion. For example: "🍷 Sample local wines", "🤳 Take selfies with the skyline view", "🧘‍♀️ Join a meditation session".
+**IMPORTANT PLACE ID HANDLING:**
+- Only include googlePlaceId if you obtained it from the fetchPlaceDetailsTool
+- Do NOT make up or guess Place IDs
+- If you don't have a valid Place ID from the tool, set googlePlaceId to null
+- Place IDs must start with "ChIJ" to be valid
 
 **RESPONSE FORMAT:**
 You must return ONLY raw JSON without any markdown formatting. DO NOT wrap your response in code block tags.
 `
     });
 
-    // Create a custom itinerary item schema that doesn't require UUID validation for the ID field
-    const ItineraryItemSchemaWithoutUUIDValidation = ItineraryItemSchema.extend({
-      // Override the id field to accept any string, not just UUIDs
-      id: z.string().optional(),
-      // Override activitySuggestions to explicitly require emoji-prefixed suggestions
-      activitySuggestions: z.array(z.string()).nullable().describe("A list of 2-3 specific and creative activities. Each suggestion MUST begin with a relevant emoji.")
-    });
-    
-    // Use the original PlanOutputSchema but replace the itinerary validation
-    const CustomPlanOutputSchema = PlanOutputSchema.extend({
-      // Replace only the itinerary field with our more permissive version
-      itinerary: z.array(ItineraryItemSchemaWithoutUUIDValidation)
-    });
-
     // Execute the AI call with the prepared prompt and tools
     console.log('[generateFullPlan] Executing AI call');
-    const result = await generatePlanPrompt(input, {
-      tools: [
-        findPlacesNearbyTool,
-        fetchPlaceDetailsTool
-      ],
-      output: {
-        schema: CustomPlanOutputSchema
-      }
-    });
+    let result;
+    let planData;
+    let attempts = 0;
+    const maxAttempts = 3;
     
-    // Process the raw plan data from the result
-    let planData = result?.output;
+    while (attempts < maxAttempts) {
+      try {
+        result = await generatePlanPrompt(input, {
+          model: 'googleai/gemini-2.5-pro',
+          tools: [webSearchTool, fetchPlaceDetailsTool],
+        });
+        
+        planData = result?.output;
+        if (planData) {
+          break; // Success, exit the retry loop
+        }
+        
+        attempts++;
+        if (attempts < maxAttempts) {
+          console.log(`[generateFullPlan] AI returned null, retrying in 5 seconds... (attempt ${attempts + 1}/${maxAttempts})`);
+          await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+        }
+      } catch (error) {
+        attempts++;
+        if (attempts < maxAttempts) {
+          console.log(`[generateFullPlan] AI call failed, retrying in 5 seconds... (attempt ${attempts + 1}/${maxAttempts})`);
+          await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+        } else {
+          throw error;
+        }
+      }
+    }
+    
     if (!planData) {
-      throw new Error('AI returned empty plan data');
+      throw new Error('AI returned empty plan data after multiple attempts. Please try again.');
     }
     
     console.log('[generateFullPlan] Raw AI plan received, processing...');
-    
-    // Ensure all required timestamps and fields are present
-    if (!planData.eventTime) {
-      planData.eventTime = formattedDateTime;
-    }
-    
-    // Ensure the planType matches user's planTypeHint if specified (and not 'ai-decide')
-    if (input.planTypeHint && input.planTypeHint !== 'ai-decide') {
-      if (input.planTypeHint === 'single-stop' && planData.planType !== 'single-stop') {
-        console.log('[generateFullPlan] Overriding AI-selected plan type to match user preference: single-stop');
-        planData.planType = 'single-stop';
-      } else if (input.planTypeHint === 'multi-stop' && planData.planType !== 'multi-stop') {
-        console.log('[generateFullPlan] Overriding AI-selected plan type to match user preference: multi-stop');
-        planData.planType = 'multi-stop';
-      }
-    }
-    
-    // Ensure all itinerary items have proper UUIDs
-    if (planData.itinerary && Array.isArray(planData.itinerary)) {
-      planData.itinerary = planData.itinerary.map(item => ({
-        ...item,
-        id: generateUUID() // Replace any existing ID with a proper UUID
-      }));
-      
-      console.log('[generateFullPlan] Assigned UUIDs to all itinerary items');
-    }
+    console.log('[generateFullPlan] Plan data type:', typeof planData);
+    console.log('[generateFullPlan] Plan data:', planData);
 
-    // Prioritize user-set price range if available, otherwise use AI-generated value
-    if (input.priceRange) {
-      console.log('[generateFullPlan] Using user-specified price range:', input.priceRange);
-      planData.priceRange = input.priceRange;
-    } 
-    // Otherwise, ensure the AI-generated price range is valid
-    else if (planData.priceRange && typeof planData.priceRange === 'string') {
-      // Ensure it's a valid enum value
-      if (['$', '$$', '$$$', '$$$$', 'Free'].includes(planData.priceRange)) {
-        planData.priceRange = planData.priceRange as any;
-      } else {
-        // Default to moderate if invalid
-        planData.priceRange = '$$';
-      }
+    // Validate that planData is an object
+    if (typeof planData !== 'object' || planData === null) {
+      console.error('[generateFullPlan] Invalid plan data type:', typeof planData);
+      throw new Error('AI returned invalid plan data format. Please try again.');
     }
 
     // Create a complete UserProfile object from the hostProfile with all required fields
-    const enhancedProfile: UserProfile = {
+    const userProfile: UserProfile = {
       uid: input.hostProfile.uid,
-      name: input.hostProfile.name || 'Anonymous',
-      username: (input.hostProfile as any).username || 'user_' + input.hostProfile.uid.substring(0, 8),
-      name_lowercase: (input.hostProfile.name || 'Anonymous').toLowerCase(),
-      email: (input.hostProfile as any).email || null,
-      bio: (input.hostProfile as any).bio || null,
-      countryDialCode: (input.hostProfile as any).countryDialCode || null,
-      phoneNumber: (input.hostProfile as any).phoneNumber || null,
-      birthDate: (input.hostProfile as any).birthDate || null,
-      physicalAddress: (input.hostProfile as any).physicalAddress || null,
-      avatarUrl: (input.hostProfile as any).avatarUrl || null,
-      
-      preferences: input.hostProfile.preferences || [],
+      name: input.hostProfile.name || null,
+      username: null, // Not available in hostProfile schema
+      name_lowercase: input.hostProfile.name ? input.hostProfile.name.toLowerCase() : null,
+      email: null, // Not available in hostProfile schema
+      bio: null,
+      countryDialCode: null,
+      phoneNumber: null,
+      birthDate: null,
+      physicalAddress: null,
+      avatarUrl: null, // Not available in hostProfile schema
       allergies: input.hostProfile.allergies || [],
       dietaryRestrictions: input.hostProfile.dietaryRestrictions || [],
+      generalPreferences: input.hostProfile.generalPreferences || '',
       favoriteCuisines: input.hostProfile.favoriteCuisines || [],
+      physicalLimitations: input.hostProfile.physicalLimitations || [],
       activityTypePreferences: input.hostProfile.activityTypePreferences || [],
       activityTypeDislikes: input.hostProfile.activityTypeDislikes || [],
-      physicalLimitations: input.hostProfile.physicalLimitations || [],
       environmentalSensitivities: input.hostProfile.environmentalSensitivities || [],
-      travelTolerance: input.hostProfile.travelTolerance || "",
-      budgetFlexibilityNotes: input.hostProfile.budgetFlexibilityNotes || "",
-      socialPreferences: input.hostProfile.socialPreferences || {
-        preferredGroupSize: null,
-        interactionLevel: null
-      },
-      // Required fields for UserProfile that might be missing
-      generalPreferences: input.hostProfile.generalPreferences || "",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      
-      // Availability
-      availabilityNotes: "",
-      
-      // Gamification elements
+      preferredTransitModes: undefined, // Not available in hostProfile schema
+      travelTolerance: input.hostProfile.travelTolerance || '',
+      budgetFlexibilityNotes: input.hostProfile.budgetFlexibilityNotes || '',
+      socialPreferences: input.hostProfile.socialPreferences || null,
+      availabilityNotes: input.hostProfile.availabilityNotes || '',
       eventAttendanceScore: 0,
-      levelTitle: "Newcomer",
+      levelTitle: 'Beginner',
       levelStars: 1,
-      
-      // Status/role
       role: null,
       isVerified: false,
-      isAdmin: false,
-      
-      // Social graph
       followers: [],
       following: [],
-      followersCount: 0,
-      ratingsCount: 0,
-      
-      // Saved content
       savedPlans: [],
-      
-      // Google data
-      googleUserData: null
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      preferences: input.hostProfile.preferences || []
     };
 
-    // Process the raw plan data into a validated Plan object
-    try {
-      
-      // Create a complete plan object with an ID before processing
-      const planWithId = {
-        ...planData,
-        id: generateUUID()
-      };
-      
-      // Process the AI generated plan with the correct arguments
-      const processedResult = await processAIGeneratedPlan(planWithId as Plan, input.planDateTime, enhancedProfile, input.userPrompt);
-      
-      // Log any warnings from the processing
-      if (processedResult.warnings.length > 0) {
-        console.warn('[generateFullPlan] Plan processing warnings:', processedResult.warnings);
-      }
-      
-      // Log any validation errors from the processing
-      if (processedResult.validationErrors.length > 0) {
-        console.error('[generateFullPlan] Plan validation errors:', processedResult.validationErrors);
-      }
-      
-      console.log('[generateFullPlan] Generation complete!');
-      
-      // Return the processed plan object, not the entire ProcessedPlanData
-      return processedResult.plan;
-    } catch (processingError) {
-      console.error('[generateFullPlan] Error processing plan:', processingError);
-      throw processingError;
+    // Validate required fields exist
+    if (!planData.name || !planData.itinerary || !Array.isArray(planData.itinerary) || planData.itinerary.length === 0) {
+      console.error('[generateFullPlan] Missing required fields in plan data:', {
+        hasName: !!planData.name,
+        hasItinerary: !!planData.itinerary,
+        itineraryType: typeof planData.itinerary,
+        itineraryLength: planData.itinerary?.length
+      });
+      throw new Error('AI returned incomplete plan data. Please try again.');
     }
+
+    // Create the final plan object with all required fields
+    const finalPlan: Plan = {
+      id: generateUUID(), // Add required id field
+      name: planData.name,
+      status: planData.status || 'draft',
+      priceRange: planData.priceRange,
+      description: planData.description,
+      eventTime: planData.eventTime,
+      location: planData.location,
+      city: planData.city,
+      eventType: planData.eventType,
+      eventTypeLowercase: planData.eventTypeLowercase,
+      hostId: planData.hostId,
+      invitedParticipantUserIds: planData.invitedParticipantUserIds || [],
+      participantUserIds: planData.participantUserIds || [],
+      itinerary: planData.itinerary.map((item, index) => {
+        // Validate Google Place ID
+        let validPlaceId = null;
+        if (item.googlePlaceId) {
+          if (typeof item.googlePlaceId === 'string' && item.googlePlaceId.startsWith('ChIJ')) {
+            validPlaceId = item.googlePlaceId;
+          } else {
+            console.warn(`[generateFullPlan] Invalid Place ID detected for ${item.placeName}: ${item.googlePlaceId}`);
+          }
+        }
+
+        return {
+          ...item,
+          id: generateUUID(), // Always generate a fresh UUID, ignoring any AI-generated id
+          priceLevel: item.priceLevel ?? null, // Convert undefined to null for TypeScript compatibility
+          googlePlaceId: validPlaceId // Only use validated Place IDs
+        };
+      }),
+      planType: planData.planType,
+      originalPlanId: planData.originalPlanId,
+      sharedByUid: planData.sharedByUid,
+      averageRating: planData.averageRating,
+      reviewCount: planData.reviewCount,
+      photoHighlights: planData.photoHighlights,
+      images: [], // Add required images field
+      comments: [], // Add required comments field
+      participantResponses: planData.participantResponses,
+      createdAt: planData.createdAt,
+      updatedAt: planData.updatedAt,
+      stopCountReasoning: planData.stopCountReasoning
+    };
+
+    // Additional validation and cleanup for Place IDs
+    await validateAndCleanPlaceIds(finalPlan);
+
+    // Process the plan with our post-processing utilities
+    const processedPlanData = await processAIGeneratedPlan(
+      finalPlan,
+      input.planDateTime,
+      userProfile,
+      input.userPrompt
+    );
+    
+    // Log any validation issues but don't fail
+    if (processedPlanData.validationErrors.length > 0) {
+      console.warn('[generateFullPlan] Plan validation warnings:', processedPlanData.validationErrors);
+    }
+    
+    if (processedPlanData.warnings.length > 0) {
+      console.info('[generateFullPlan] Plan minor warnings:', processedPlanData.warnings);
+    }
+    
+    console.log('[generateFullPlan] Generation complete!');
+    return processedPlanData.plan;
   } catch (error) {
     console.error('[generateFullPlan] Error generating plan:', error);
     throw error;
   }
+}
+
+/**
+ * Validates and cleans Place IDs in a plan, removing invalid ones to prevent frontend errors
+ * @param plan The plan to validate and clean
+ */
+async function validateAndCleanPlaceIds(plan: Plan): Promise<void> {
+  console.log('[validateAndCleanPlaceIds] Validating Place IDs in plan...');
+  
+  let invalidCount = 0;
+  let validCount = 0;
+  
+  plan.itinerary.forEach((item, index) => {
+    if (item.googlePlaceId) {
+      // Basic format validation - Google Place IDs should start with ChIJ
+      if (typeof item.googlePlaceId === 'string' && item.googlePlaceId.startsWith('ChIJ')) {
+        validCount++;
+      } else {
+        console.warn(`[validateAndCleanPlaceIds] Removing invalid Place ID for ${item.placeName}: ${item.googlePlaceId}`);
+        item.googlePlaceId = null;
+        invalidCount++;
+      }
+    }
+  });
+  
+  console.log(`[validateAndCleanPlaceIds] Validation complete: ${validCount} valid, ${invalidCount} invalid Place IDs cleaned`);
 }
 
 /**
@@ -374,8 +399,7 @@ function calculateRecommendedStops(
   activityType: string,
   timeOfDay: string,
   budget: string,
-  transportation: string,
-  planTypeHint?: 'ai-decide' | 'single-stop' | 'multi-stop' | undefined | null
+  transportation: string
 ): { recommendedStops: number, factors: Record<string, string>, explanation: string } {
   // Initialize base values
   let baseStopCount = 3;
@@ -388,7 +412,7 @@ function calculateRecommendedStops(
   } else if (duration.toLowerCase().includes('half day')) {
     baseStopCount += 0;
     factors.duration = 'Half day is good for standard stop count';
-  } else {
+    } else {
     // Assume shorter duration
     baseStopCount -= 1;
     factors.duration = 'Short duration means fewer stops';
@@ -414,7 +438,7 @@ function calculateRecommendedStops(
   } else if (activityLower.includes('sightseeing') || activityLower.includes('tour')) {
     baseStopCount += 1;
     factors.activityType = 'Sightseeing can accommodate more quick stops';
-  } else {
+    } else {
     factors.activityType = 'Activity type has no special impact on stop count';
   }
   
@@ -433,28 +457,16 @@ function calculateRecommendedStops(
   } else if (transportation.toLowerCase().includes('public')) {
     // No change
     factors.transportation = 'Public transit is moderately efficient for moving between venues';
-  } else {
+    } else {
     factors.transportation = 'Transportation mode has no special impact on stop count';
-  }
-  
-  // Explicitly honor user's plan type preference if specified
-  if (planTypeHint) {
-    if (planTypeHint === 'single-stop') {
-      baseStopCount = 1;
-      factors.userPreference = 'User explicitly requested a single-stop plan';
-    } else if (planTypeHint === 'multi-stop' && baseStopCount < 2) {
-      // Force at least 2 stops for multi-stop plans
-      baseStopCount = 2;
-      factors.userPreference = 'User explicitly requested a multi-stop plan';
-    }
   }
   
   // Ensure we don't go below 1 or above 7 stops
   let finalStopCount = Math.max(1, Math.min(7, baseStopCount));
   
   // Create explanation
-  const explanation = `Based on a ${duration} plan for ${groupSize} people using ${transportation} for ${activityType} activities during the ${timeOfDay}${planTypeHint && planTypeHint !== 'ai-decide' ? ` with explicit ${planTypeHint} preference` : ''}, I recommend ${finalStopCount} stops. ${Object.values(factors).join('. ')}.`;
-  
+  const explanation = `Based on a ${duration} plan for ${groupSize} people using ${transportation} for ${activityType} activities during the ${timeOfDay}, I recommend ${finalStopCount} stops. ${Object.values(factors).join('. ')}.`;
+
   return {
     recommendedStops: finalStopCount,
     factors,

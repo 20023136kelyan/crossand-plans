@@ -1134,12 +1134,18 @@ function GeneratePlanPage() {
                       const timeOffset = 1000 * 60 * (5 + Math.floor(Math.random() * 25));
                       form.reset({
                         ...currentValues,
-                        userPrompt: '',
-                        planTypeHint: 'ai-decide',
+                        // Preserve all user settings for easier re-generation
+                        userPrompt: currentValues.userPrompt,
+                        planTypeHint: currentValues.planTypeHint,
                         searchRadius: currentValues.searchRadius,
+                        priceRange: currentValues.priceRange,
+                        invitedParticipantUserIds: currentValues.invitedParticipantUserIds,
+                        locationQuery: currentValues.locationQuery,
+                        latitude: currentValues.latitude,
+                        longitude: currentValues.longitude,
+                        useDeepPlanner: currentValues.useDeepPlanner,
+                        // Only update the time to avoid conflicts
                         planDateTime: new Date(currentValues.planDateTime.getTime() + timeOffset),
-                        invitedParticipantUserIds: [],
-                        priceRange: null,
                       });
                       setIsExpanded(false);
                     }}

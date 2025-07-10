@@ -297,7 +297,7 @@ export async function generatePlanWithAIAction(
     const additionalFields = deriveAdditionalPlanFields(clientInput);
 
     // Prepare AI input
-    const aiFlowInput: z.infer<typeof GenerateFullPlanInput> = {
+    const aiFlowInput = {
       hostProfile: hostProfileForAI,
       invitedFriendProfiles: invitedFriendProfilesForAI,
       planDateTime: clientInput.planDateTime,

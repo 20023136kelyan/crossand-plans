@@ -12,7 +12,9 @@ import {
   Share2, 
   ThumbsUp, 
   ChevronLeft,
-  Loader2
+  Loader2,
+  X,
+  Clock
 } from 'lucide-react';
 
 import { useAuth } from '@/context/AuthContext';
@@ -24,7 +26,12 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { Card, CardContent } from '@/components/ui/card';
+import { PlanMap } from '@/components/plans/PlanMap';
+import { PlanPhotos } from '@/components/plans/PlanPhotos';
+import PlanComments from '@/components/plans/PlanComments';
+import { PlanRatingSection } from '@/components/plans/PlanRatingSection';
 import toast from 'react-hot-toast';
+import { LinearBlur } from "progressive-blur";
 
 export default function PlanDetailPage() {
   const { id } = useParams() as { id: string };
@@ -35,6 +42,8 @@ export default function PlanDetailPage() {
   const [rsvpLoading, setRsvpLoading] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const slideInterval = useRef<NodeJS.Timeout>();
+  const [selectedItineraryItem, setSelectedItineraryItem] = useState<any>(null);
+  const [isItineraryModalOpen, setIsItineraryModalOpen] = useState(false);
   
   // Extract image data from plan using similar logic as PlanImageLoader component
   const planImages = useMemo(() => {
@@ -52,55 +61,115 @@ export default function PlanDetailPage() {
       });
     }
     
-    // Priority 2: Itinerary items with images
-    if (images.length === 0 && plan.itinerary?.length > 0) {
+    // Priority 2: Collect from ALL itinerary items with images
+    if (plan.itinerary?.length > 0) {
       for (const item of plan.itinerary) {
-        // Add items with Google photo references
+        let imageUrl = null;
+        
         if (item.googlePhotoReference) {
-          // This URL would normally be constructed with your backend API endpoint
-          // that handles Google Places photo references and API keys securely
           const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
           if (apiKey) {
-            images.push({
-              url: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=1200&photo_reference=${item.googlePhotoReference}&key=${apiKey}`,
-              alt: item.placeName || plan.name || 'Plan location'
-            });
+            // Check if it's already a direct URL
+            if (item.googlePhotoReference.startsWith('http://') || item.googlePhotoReference.startsWith('https://')) {
+              imageUrl = item.googlePhotoReference;
+            } else {
+              // Construct URL from reference
+              imageUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=1200&photo_reference=${item.googlePhotoReference}&key=${apiKey}`;
+            }
           }
+        } else if (item.googleMapsImageUrl) {
+          imageUrl = item.googleMapsImageUrl;
         }
-        // Add Google Maps image URLs as fallback
-        else if (item.googleMapsImageUrl) {
+        
+        if (imageUrl) {
           images.push({
-            url: item.googleMapsImageUrl,
+            url: imageUrl,
             alt: item.placeName || plan.name || 'Plan location'
           });
         }
-        
-        // Break after finding first image
-        if (images.length > 0) break;
       }
     }
     
-    // Priority 3: Static map for first location if we have coordinates
-    if (images.length === 0 && plan.itinerary?.[0]?.lat && plan.itinerary[0].lng) {
+    // Fallback: If no images found, use a static map from first itinerary item if possible
+    if (images.length === 0 && plan.itinerary?.[0]) {
       const firstItem = plan.itinerary[0];
+      if (firstItem.lat && firstItem.lng) {
       const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-      
       if (apiKey) {
         images.push({
-          url: `https://maps.googleapis.com/maps/api/staticmap?center=${firstItem.lat},${firstItem.lng}&zoom=15&size=1200x1200&markers=color:red%7C${firstItem.lat},${firstItem.lng}&key=${apiKey}`,
-          alt: firstItem.placeName || plan.name || 'Plan location map'
+            url: `https://maps.googleapis.com/maps/api/staticmap?center=${firstItem.lat},${firstItem.lng}&zoom=15&size=1200x800&markers=color:red%7C${firstItem.lat},${firstItem.lng}&key=${apiKey}`,
+            alt: firstItem.placeName || plan.name || 'Plan location'
         });
+        }
       }
     }
     
     return images;
   }, [plan]);
+
+const [fitModes, setFitModes] = useState<string[]>([]);
+  const topContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (planImages.length > 0) {
+      setFitModes(new Array(planImages.length).fill('contain'));
+    }
+  }, [planImages]);
+
+  useEffect(() => {
+    const observer = new ResizeObserver(() => {
+      // Trigger re-calculation for visible image
+      if (topContainerRef.current && planImages.length > 0) {
+        const currentImg = document.querySelector(`[data-image-index="${activeImageIndex}"]`) as HTMLImageElement;
+        if (currentImg) {
+          calculateFit(currentImg, activeImageIndex);
+        }
+      }
+    });
+
+    if (topContainerRef.current) {
+      observer.observe(topContainerRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [activeImageIndex, planImages]);
+
+  const calculateFit = (img: HTMLImageElement, index: number) => {
+    if (!topContainerRef.current) return;
+
+    const containerWidth = topContainerRef.current.clientWidth;
+    const containerHeight = topContainerRef.current.clientHeight;
+    const containerAspect = containerWidth / containerHeight;
+
+    const naturalAspect = img.naturalWidth / img.naturalHeight;
+
+    // Skip for static maps (they are generated to fit)
+    if (planImages[index].url.includes('staticmap')) {
+      setFitModes(prev => {
+        const newModes = [...prev];
+        newModes[index] = 'contain';
+        return newModes;
+      });
+      return;
+    }
+
+    // If image is much narrower (tall portrait) or much wider (short landscape) than container, use cover to avoid bars
+    const isTooNarrow = naturalAspect < containerAspect * 0.8;
+    const isTooWide = naturalAspect > containerAspect * 1.2;
+    const fitMode = (isTooNarrow || isTooWide) ? 'cover' : 'contain';
+
+    setFitModes(prev => {
+      const newModes = [...prev];
+      newModes[index] = fitMode;
+      return newModes;
+    });
+  };
   
   useEffect(() => {
     if (planImages.length > 1) {
       slideInterval.current = setInterval(() => {
-        setActiveImageIndex(prev => (prev + 1) % planImages.length);
-      }, 5000); // Change image every 5 seconds
+        setActiveImageIndex((prev) => (prev + 1) % planImages.length);
+      }, 25000);  // Changed from 5000 to 25000 for 25-second duration
     }
 
     return () => {
@@ -184,7 +253,190 @@ export default function PlanDetailPage() {
 
   const formatDate = (dateString?: string) => {
     if (!dateString || !isValid(parseISO(dateString))) return 'Date not set';
-    return format(parseISO(dateString), 'EEEE, MMMM d, yyyy • h:mm a');
+    return format(parseISO(dateString), 'MMM d • h:mm a');
+  };
+
+  // Compact Itinerary Component
+  const CompactItinerary = ({ itinerary }: { itinerary: any[] }) => {
+    const formatTime = (timeString?: string | null) => {
+      if (!timeString) return 'TBD';
+      try {
+        const parsedTime = parseISO(String(timeString));
+        if (isValid(parsedTime)) {
+          return format(parsedTime, 'h:mm a');
+        }
+      } catch (error) {
+        console.warn('Invalid time format:', timeString);
+      }
+      return timeString;
+    };
+
+    const getItemImageUrl = (item: any) => {
+      if (item.googlePhotoReference) {
+        const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+        if (apiKey) {
+          if (item.googlePhotoReference.startsWith('http://') || item.googlePhotoReference.startsWith('https://')) {
+            return item.googlePhotoReference;
+          } else {
+            return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${item.googlePhotoReference}&key=${apiKey}`;
+          }
+        }
+      } else if (item.googleMapsImageUrl) {
+        return item.googleMapsImageUrl;
+      }
+      return `https://placehold.co/80x80.png?text=${encodeURIComponent(item.placeName || 'Location')}`;
+    };
+
+    const openItineraryModal = (item: any) => {
+      setSelectedItineraryItem(item);
+      setIsItineraryModalOpen(true);
+    };
+
+    const closeItineraryModal = () => {
+      setIsItineraryModalOpen(false);
+      setSelectedItineraryItem(null);
+    };
+
+    return (
+      <>
+        <div className="space-y-4">
+          {itinerary.map((item, index) => (
+            <div 
+              key={index}
+              className="flex items-start gap-4 relative cursor-pointer group"
+              onClick={() => openItineraryModal(item)}
+            >
+              {/* Timeline Line */}
+              <div className="flex flex-col items-center">
+                <div className="w-3 h-3 bg-primary rounded-full border-2 border-background shadow-sm z-10" />
+                {index < itinerary.length - 1 && (
+                  <div className="w-0.5 h-12 bg-dashed border-l-2 border-dashed border-muted-foreground/30 mt-2" />
+                )}
+              </div>
+
+              {/* Time */}
+              <div className="flex-shrink-0 w-20 text-sm font-medium text-muted-foreground">
+                {formatTime(item.startTime)}
+              </div>
+
+              {/* Image */}
+              <div className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden bg-muted">
+                <Image
+                  src={getItemImageUrl(item)}
+                  alt={item.placeName}
+                  width={48}
+                  height={48}
+                  className="object-cover w-full h-full"
+                  unoptimized={getItemImageUrl(item).includes('maps.googleapis.com')}
+                />
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 min-w-0">
+                <h4 className="font-semibold text-foreground text-sm mb-1 group-hover:text-primary transition-colors">
+                  {item.placeName}
+                </h4>
+                <p className="text-xs text-muted-foreground line-clamp-2">
+                  {item.description || 'No description available'}
+                </p>
+
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Full Screen Modal */}
+        {isItineraryModalOpen && selectedItineraryItem && (
+          <div className="fixed inset-0 z-50 bg-background">
+            <div className="h-full flex flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b border-border">
+                <h2 className="text-lg font-semibold">Itinerary Details</h2>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={closeItineraryModal}
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="space-y-6">
+                  {/* Image */}
+                  <div className="relative h-48 rounded-lg overflow-hidden bg-muted">
+                    <Image
+                      src={getItemImageUrl(selectedItineraryItem)}
+                      alt={selectedItineraryItem.placeName}
+                      fill
+                      className="object-cover"
+                      unoptimized={getItemImageUrl(selectedItineraryItem).includes('maps.googleapis.com')}
+                    />
+                  </div>
+
+                  {/* Details */}
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-xl font-bold mb-2">{selectedItineraryItem.placeName}</h3>
+                      {selectedItineraryItem.description && (
+                        <p className="text-muted-foreground">{selectedItineraryItem.description}</p>
+                      )}
+                    </div>
+
+                    {/* Time */}
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">
+                        {formatTime(selectedItineraryItem.startTime)} - {formatTime(selectedItineraryItem.endTime)}
+                      </span>
+                    </div>
+
+
+
+                    {/* Rating */}
+                    {selectedItineraryItem.rating && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">⭐ {selectedItineraryItem.rating.toFixed(1)}</span>
+                        {selectedItineraryItem.reviewCount && (
+                          <span className="text-sm text-muted-foreground">
+                            ({selectedItineraryItem.reviewCount} reviews)
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Status */}
+                    {selectedItineraryItem.isOperational !== null && (
+                      <div className="flex items-center gap-2">
+                        <Badge variant={selectedItineraryItem.isOperational ? "default" : "destructive"}>
+                          {selectedItineraryItem.isOperational ? "Open" : "Closed"}
+                        </Badge>
+                        {selectedItineraryItem.statusText && (
+                          <span className="text-sm text-muted-foreground">{selectedItineraryItem.statusText}</span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Activity Suggestions */}
+                    {selectedItineraryItem.activitySuggestions && selectedItineraryItem.activitySuggestions.length > 0 && (
+                      <div>
+                        <h4 className="font-medium mb-2">Suggested Activities</h4>
+                        <ul className="space-y-1">
+                          {selectedItineraryItem.activitySuggestions.map((suggestion: string, idx: number) => (
+                            <li key={idx} className="text-sm text-muted-foreground">• {suggestion}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
   };
 
   if (loading) {
@@ -214,29 +466,62 @@ export default function PlanDetailPage() {
 
   return (
     <div className="min-h-screen flex flex-col relative">
-      {/* Full screen background image with gradient overlay */}
-      <div className="fixed top-0 left-0 right-0 h-[45vh] z-0 overflow-hidden">
+      {/* Full-screen image container for both top and bottom images */}
+      <div className="fixed top-0 left-0 right-0 bottom-0 z-0 overflow-hidden">
+        {/* Progressive Blur Overlay */}
+        <LinearBlur
+          steps={2.5}
+          strength={64}
+          falloffPercentage={50}
+          side="bottom"
+          style={{ position: 'absolute', inset: 0, zIndex: 9, pointerEvents: 'none' }}
+        />
+        {/* Gradual blur overlay that starts at 38.5% and gets stronger to the bottom */}
+        <div
+          className="absolute inset-0 backdrop-blur-md"
+          style={{ maskImage: 'linear-gradient(to bottom, transparent 38.5%, black 100%)' }}
+        />
+        {/* Progressive gradient overlay that adapts to color scheme - spans entire page with stronger bottom effect */}
+        {/* Strong continuous gradient overlay that spans both images with high opacity */}
+        <div className="absolute inset-0 z-[8] pointer-events-none">
+          {/* Dark mode gradient - completely opaque black at bottom */}
+          <div className="hidden dark:block absolute inset-0 bg-gradient-to-b from-black/0 from-0% via-black/30 via-25% via-black/70 via-60% via-black/90 via-85% to-black"></div>
+          
+          {/* Light mode gradient - nearly opaque white at bottom */}
+          <div className="dark:hidden absolute inset-0 bg-gradient-to-b from-white/0 from-0% via-white/30 via-25% via-white/60 via-60% via-white/85 via-85% to-white"></div>
+        </div>
+        
         {planImages.length > 0 ? (
           <>
-            {/* Image slideshow */}
-            {planImages.map((image, index) => (
-              <div 
-                key={index}
-                className={`absolute inset-0 transition-opacity duration-1000 ${index === activeImageIndex ? 'opacity-100' : 'opacity-0'}`}
-              >
-                <div className="relative w-full h-full">
-                  <Image
-                    src={image.url}
-                    alt={image.alt || plan?.name || 'Plan'}
-                    fill
-                    className="object-contain object-top"
-                    priority={index === 0}
-                    quality={85}
-                    unoptimized={image.url.startsWith('http')}
+            {/* Single full viewport image container */}
+            <div ref={topContainerRef} className="absolute top-0 left-0 right-0 bottom-0 overflow-hidden" style={{ boxShadow: 'none', filter: 'none' }}>
+              {planImages.map((image, index) => (
+                <div 
+                  key={`image-${index}`}
+                  className={`absolute inset-0 transition-opacity duration-1000 ${index === activeImageIndex ? 'opacity-100' : 'opacity-0'}`}
+                >
+                  {/* Single full viewport image with mosaic-style tiling */}
+                  <div 
+                    className="absolute inset-0"
+                    style={{
+                      backgroundImage: `url(${image.url})`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                      backgroundRepeat: 'repeat',
+                      filter: 'blur(0px)',
+                      boxShadow: 'none'
+                    }}
+                  />
+                  {/* Overlay to reduce the tiling effect and create a more natural look */}
+                  <div 
+                    className="absolute inset-0"
+                    style={{ 
+                      background: 'linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.05) 50%, rgba(0,0,0,0.1) 100%)'
+                    }}
                   />
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
             
             {/* Image navigation dots if multiple images */}
             {planImages.length > 1 && (
@@ -253,22 +538,16 @@ export default function PlanDetailPage() {
             )}
           </>
         ) : (
-          <div className="absolute inset-0 bg-gradient-to-b from-purple-800 to-blue-900">
+          <div className="h-full w-full bg-gradient-to-b from-purple-800 to-blue-900">
             <div className="absolute inset-0 flex items-center justify-center">
               <CalendarDays className="h-20 w-20 text-white/30" />
             </div>
           </div>
         )}
-        
-        {/* Gradient overlay - very subtle fade */}
-        <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-background/30 to-transparent" />
       </div>
       
-      {/* Shadow gradient to connect image to content seamlessly */}
-      <div className="fixed top-[45vh] left-0 right-0 h-16 z-0 bg-gradient-to-b from-background/60 to-transparent pointer-events-none" />
-      
-      {/* Header with back button - now transparent on top of image */}
-      <div className="fixed top-0 left-0 right-0 z-20 bg-black/30 backdrop-blur-md p-2 flex items-center">
+      {/* Header with back button - completely transparent */}
+      <div className="fixed top-0 left-0 right-0 z-20 p-2 flex items-center">
         <Button 
           variant="ghost" 
           size="icon"
@@ -277,26 +556,35 @@ export default function PlanDetailPage() {
         >
           <ChevronLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-lg font-semibold truncate flex-1 text-white drop-shadow-md">Plan Details</h1>
       </div>
       
-      {/* Empty space to push content below the full-bleed image */}
-      <div className="h-[35vh]" />
-
-      {/* Event Type Badge */}
-      {plan?.eventType && (
-        <div className="px-4 z-10 relative mb-2">
-          <Badge className="bg-primary text-white hover:bg-primary">{plan?.eventType || plan?.type || 'Event'}</Badge>
-        </div>
-      )}
+      {/* Space to allow header to clear but still let content overlay images */}
+      <div className="h-[30vh]" />
 
       {/* Plan name and host info */}
-      <div className="px-4 relative z-10">
-        <Card className="shadow-lg border-border/50 backdrop-blur-sm bg-background/80">
+      <div className="mt-4 px-2 relative z-10">
+        <Card className="border-border/0 backdrop-blur-none bg-transparent relative z-20 drop-shadow-lg" style={{ boxShadow: 'none' }}>
           <CardContent className="p-4">
-            <h1 className="text-2xl font-bold">{plan?.name || 'Unnamed Plan'}</h1>
+            {/* Event Type Badge moved inside the card */}
+      {plan?.eventType && (
+          <Badge 
+                className="bg-primary text-white hover:bg-primary mb-2" 
+            style={{ filter: 'none', boxShadow: 'none', textShadow: 'none' }}
+          >
+            {plan?.eventType || plan?.type || 'Event'}
+          </Badge>
+      )}
+
+            <h1 className="text-3xl font-bold mb-4 text-white/75">{plan?.name || 'Unnamed Plan'}</h1>
             
-            <div className="flex items-center mt-2">
+            <div className="flex items-center gap-2 text-base text-muted-foreground">
+              <CalendarDays className="h-5 w-5" />
+              <span>{formatDate(plan?.eventTime)}</span>
+              <MapPin className="h-5 w-5 ml-2" />
+              <span>{plan?.location || 'Location not set'}</span>
+            </div>
+
+            <div className="flex items-center mt-4">
               <Avatar className="h-6 w-6 mr-2">
                 <AvatarImage src={plan?.hostAvatarUrl || undefined} alt={plan?.hostName || 'Host'} />
                 <AvatarFallback>{(plan?.hostName?.[0] || '?').toUpperCase()}</AvatarFallback>
@@ -305,26 +593,14 @@ export default function PlanDetailPage() {
                 Hosted by <span className="font-medium">{plan?.creatorUsername || plan?.hostName || 'Unknown host'}</span>
               </span>
             </div>
-
-            {/* Date/time and location */}
-            <div className="mt-4 space-y-2">
-              <div className="flex items-center text-sm">
-                <CalendarDays className="h-4 w-4 mr-2 text-muted-foreground" />
-                <span>{formatDate(plan?.eventTime)}</span>
-              </div>
-              <div className="flex items-center text-sm">
-                <MapPin className="h-4 w-4 mr-2 text-muted-foreground" />
-                <span>{plan?.location || 'Location not set'}</span>
-              </div>
-            </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Plan description */}
       {plan?.description && (
-        <div className="px-4 mt-4">
-          <Card className="backdrop-blur-sm bg-background/80">
+        <div className="px-2 mt-4">
+          <Card className="backdrop-blur-sm bg-transparent border-0 shadow-none outline-none">
             <CardContent className="p-4">
               <h2 className="font-medium mb-2">About this plan</h2>
               <p className="text-sm text-muted-foreground whitespace-pre-wrap">{plan?.description}</p>
@@ -334,45 +610,14 @@ export default function PlanDetailPage() {
       )}
 
       {/* Participants */}
-      <div className="px-4 mt-4">
-        <Card className="backdrop-blur-sm bg-background/80">
+      <div className="px-2 mt-4">
+        <Card className="backdrop-blur-sm bg-transparent border-0 shadow-none outline-none">
           <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="font-medium">Participants</h2>
-              <div className="flex items-center">
-                <Users className="h-4 w-4 mr-1 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">
-                  {(plan?.participantUserIds?.length || 0) + (isHost ? 0 : 1)}
-                </span>
-              </div>
-            </div>
 
-            <div className="flex -space-x-2 overflow-hidden my-2">
-              {/* Host avatar */}
-              <Avatar className="h-8 w-8 border-2 border-background">
-                <AvatarImage src={plan?.hostAvatarUrl || undefined} alt={plan?.hostName || 'Host'} />
-                <AvatarFallback>{(plan?.hostName?.[0] || '?').toUpperCase()}</AvatarFallback>
-              </Avatar>
-
-              {/* Only show up to 5 participants for simplicity */}
-              {(plan.participantUserIds || []).slice(0, 4).map((participantId, index) => (
-                <Avatar key={participantId} className="h-8 w-8 border-2 border-background">
-                  <AvatarFallback>{index + 1}</AvatarFallback>
-                </Avatar>
-              ))}
-
-              {/* Show count if there are more */}
-              {(plan.participantUserIds?.length || 0) > 4 && (
-                <Avatar className="h-8 w-8 border-2 border-background bg-muted">
-                  <AvatarFallback>+{(plan.participantUserIds?.length || 0) - 4}</AvatarFallback>
-                </Avatar>
-              )}
-            </div>
 
             {/* RSVP section for invited users */}
             {(isInvited || isHost) && (
               <>
-                <Separator className="my-3" />
                 <div className="flex flex-wrap gap-2 mt-2">
                   <Button
                     size="sm"
@@ -389,8 +634,9 @@ export default function PlanDetailPage() {
                     variant={isMaybe ? "default" : "outline"}
                     onClick={() => handleRSVP('maybe')}
                     disabled={rsvpLoading || isHost}
-                    className={isMaybe ? "bg-amber-500 hover:bg-amber-600" : ""}
+                    className={isMaybe ? "bg-yellow-600 hover:bg-yellow-700" : ""}
                   >
+                    {rsvpLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <MessageSquare className="h-4 w-4 mr-2" />}
                     Maybe
                   </Button>
                   <Button
@@ -398,9 +644,10 @@ export default function PlanDetailPage() {
                     variant={hasDeclined ? "default" : "outline"}
                     onClick={() => handleRSVP('not-going')}
                     disabled={rsvpLoading || isHost}
-                    className={hasDeclined ? "bg-red-500 hover:bg-red-600" : ""}
+                    className={hasDeclined ? "bg-red-600 hover:bg-red-700" : ""}
                   >
-                    Decline
+                    {rsvpLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ThumbsUp className="h-4 w-4 mr-2 rotate-180" />}
+                    Not Going
                   </Button>
                 </div>
               </>
@@ -409,8 +656,91 @@ export default function PlanDetailPage() {
         </Card>
       </div>
 
+      {/* Plan Itinerary */}
+      {plan?.itinerary && plan.itinerary.length > 0 && (
+        <div className="px-2 mt-4">
+          <CompactItinerary itinerary={plan.itinerary} />
+        </div>
+      )}
+
+      {/* Plan Map */}
+      {plan?.itinerary && plan.itinerary.length > 0 && (
+        <div className="px-2 mt-4">
+          <PlanMap 
+            itinerary={plan.itinerary} 
+            planName={plan.name || 'Plan'}
+            apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
+          />
+        </div>
+      )}
+
+      {/* Plan Photos */}
+      {plan?.photoHighlights && plan.photoHighlights.length > 0 && (
+        <div className="px-2 mt-4">
+          <PlanPhotos 
+            highlights={plan.photoHighlights} 
+            itinerary={plan.itinerary || []}
+            planName={plan.name || 'Plan'}
+            className="backdrop-blur-sm bg-background/80"
+          />
+        </div>
+      )}
+
+      {/* Plan Comments */}
+      {plan?.id && (
+        <div className="px-2 mt-4">
+          <PlanComments 
+            comments={(plan.comments || []) as any}
+            currentUserId={user?.uid}
+            canComment={isHost || isInvited}
+            onCommentSubmit={async (content: string) => {
+              // TODO: Implement comment submission
+              console.log('Submit comment:', content);
+              toast.success('Comment posted!');
+            }}
+            onCommentUpdate={async (commentId: string, content: string) => {
+              // TODO: Implement comment update
+              console.log('Update comment:', commentId, content);
+              toast.success('Comment updated!');
+            }}
+            onCommentDelete={async (commentId: string) => {
+              // TODO: Implement comment deletion
+              console.log('Delete comment:', commentId);
+              toast.success('Comment deleted!');
+            }}
+          />
+        </div>
+      )}
+
+      {/* Plan Rating Section */}
+      {plan?.id && (
+        <div className="px-2 mt-4">
+          <PlanRatingSection 
+            isHost={isHost}
+            userRating={0} // TODO: Get from plan ratings
+            hasRated={false} // TODO: Check if user has rated
+            ratingLoading={false} // TODO: Add loading state
+            canRate={!isHost && (isInvited || isGoing)} // Only non-hosts who are invited or going can rate
+            onRatingChange={(rating: number) => {
+              // TODO: Handle rating change
+              console.log('Rating changed:', rating);
+            }}
+            onRatingSubmit={() => {
+              // TODO: Implement rating submission
+              console.log('Submit rating');
+              toast.success('Rating submitted!');
+            }}
+            onClearRating={() => {
+              // TODO: Implement rating deletion
+              console.log('Clear rating');
+              toast.success('Rating cleared!');
+            }}
+          />
+        </div>
+      )}
+
       {/* Mobile action buttons - fixed at bottom */}
-      <div className="fixed bottom-0 left-0 right-0 p-3 bg-black/40 backdrop-blur-md border-t border-white/10 flex justify-around">
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/70 backdrop-blur-lg border-t border-border/50 flex justify-between z-30" style={{ boxShadow: 'none' }}>
         <Button variant="ghost" className="flex flex-col items-center text-xs w-16 text-white hover:bg-white/20">
           <MessageSquare className="h-5 w-5 mb-1" />
           Chat
