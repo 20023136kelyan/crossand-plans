@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useRef, useMemo, useCallback, memo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { format, parseISO, isValid } from 'date-fns';
@@ -11,10 +11,12 @@ import {
   MessageSquare, 
   Share2, 
   ThumbsUp, 
+  ThumbsDown, 
   ChevronLeft,
   Loader2,
-  X,
-  Clock
+  Clock,
+  HelpCircle,
+  X
 } from 'lucide-react';
 
 import { useAuth } from '@/context/AuthContext';
@@ -36,14 +38,14 @@ import { useSwipeable } from 'react-swipeable';
 import { motion, AnimatePresence } from 'framer-motion';
 import React from 'react';
 
-// Helper to chunk itinerary into groups of 3
-function chunkArray<T>(arr: T[], size: number): T[][] {
+// Helper to chunk itinerary into groups of 3 - memoized to prevent recreation
+const chunkArray = <T,>(arr: T[], size: number): T[][] => {
   const result: T[][] = [];
   for (let i = 0; i < arr.length; i += size) {
     result.push(arr.slice(i, i + size));
   }
   return result;
-}
+};
 
 export default function PlanDetailPage() {
   const { id } = useParams() as { id: string };
@@ -57,17 +59,20 @@ export default function PlanDetailPage() {
   const [selectedItineraryItem, setSelectedItineraryItem] = useState<any>(null);
   const [isItineraryModalOpen, setIsItineraryModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState(0); // 0 = Overview, 1 = Plan Details
+  const planDetailsRef = useRef<HTMLDivElement | null>(null);
 
-  // Swipe gesture handlers
+  // Memoized swipe gesture handlers to prevent recreation on every render
+  const handleSwipeUp = useCallback(() => {
+    setActiveTab(1);
+  }, []);
+
+  const handleSwipeDown = useCallback(() => {
+    setActiveTab(0);
+  }, []);
+
   const swipeHandlers = useSwipeable({
-    onSwipedUp: () => {
-      console.log('Swiped up detected');
-      setActiveTab(1);
-    },
-    onSwipedDown: () => {
-      console.log('Swiped down detected');
-      setActiveTab(0);
-    },
+    onSwipedUp: handleSwipeUp,
+    onSwipedDown: handleSwipeDown,
     delta: 50, // Minimum distance(px) for a swipe
     trackTouch: true,
     trackMouse: false,
@@ -135,14 +140,15 @@ export default function PlanDetailPage() {
     return images;
   }, [plan]);
 
-const [fitModes, setFitModes] = useState<string[]>([]);
+  const [fitModes, setFitModes] = useState<string[]>([]);
   const topContainerRef = useRef<HTMLDivElement>(null);
 
+  // Memoize fit modes initialization
   useEffect(() => {
     if (planImages.length > 0) {
       setFitModes(new Array(planImages.length).fill('contain'));
     }
-  }, [planImages]);
+  }, [planImages.length]); // Only depend on length, not the entire array
 
   useEffect(() => {
     const observer = new ResizeObserver(() => {
@@ -162,7 +168,8 @@ const [fitModes, setFitModes] = useState<string[]>([]);
     return () => observer.disconnect();
   }, [activeImageIndex, planImages]);
 
-  const calculateFit = (img: HTMLImageElement, index: number) => {
+  // Memoized calculateFit function to prevent recreation
+  const calculateFit = useCallback((img: HTMLImageElement, index: number) => {
     if (!topContainerRef.current) return;
 
     const containerWidth = topContainerRef.current.clientWidth;
@@ -191,7 +198,7 @@ const [fitModes, setFitModes] = useState<string[]>([]);
       newModes[index] = fitMode;
       return newModes;
     });
-  };
+  }, [planImages]);
   
   useEffect(() => {
     if (planImages.length > 1) {
@@ -240,7 +247,8 @@ const [fitModes, setFitModes] = useState<string[]>([]);
   const isMaybe = userResponse === 'maybe';
   const hasDeclined = userResponse === 'not-going';
 
-  const handleRSVP = async (response: ParticipantResponse) => {
+  // Memoized RSVP handler to prevent recreation
+  const handleRSVP = useCallback(async (response: ParticipantResponse) => {
     if (!user || !plan) return;
 
     try {
@@ -277,53 +285,63 @@ const [fitModes, setFitModes] = useState<string[]>([]);
     } finally {
       setRsvpLoading(false);
     }
-  };
+  }, [user, plan]);
 
-  const formatDate = (dateString?: string) => {
+  // Memoized date formatting function
+  const formatDate = useCallback((dateString?: string) => {
     if (!dateString || !isValid(parseISO(dateString))) return 'Date not set';
     return format(parseISO(dateString), 'MMM d • h:mm a');
-  };
+  }, []);
 
-  // Compact Itinerary Component
-  const CompactItinerary = ({ itinerary }: { itinerary: any[] }) => {
-    const formatTime = (timeString?: string | null) => {
-      if (!timeString) return 'TBD';
-      try {
-        const parsedTime = parseISO(String(timeString));
-        if (isValid(parsedTime)) {
-          return format(parsedTime, 'h:mm a');
-        }
-      } catch (error) {
-        console.warn('Invalid time format:', timeString);
+  // Memoized callback functions to prevent recreation
+  const closeItineraryModal = useCallback(() => {
+    setIsItineraryModalOpen(false);
+    setSelectedItineraryItem(null);
+  }, []);
+
+  // Helper functions for modal - memoized to prevent recreation
+  const formatTime = useCallback((timeString?: string | null) => {
+    if (!timeString) return 'TBD';
+    try {
+      const parsedTime = parseISO(String(timeString));
+      if (isValid(parsedTime)) {
+        return format(parsedTime, 'h:mm a');
       }
-      return timeString;
-    };
+    } catch (error) {
+      console.warn('Invalid time format:', timeString);
+    }
+    return timeString;
+  }, []);
 
-    const getItemImageUrl = (item: any) => {
-      if (item.googlePhotoReference) {
-        const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-        if (apiKey) {
-          if (item.googlePhotoReference.startsWith('http://') || item.googlePhotoReference.startsWith('https://')) {
-            return item.googlePhotoReference;
-          } else {
-            return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${item.googlePhotoReference}&key=${apiKey}`;
-          }
+  const getItemImageUrl = useCallback((item: any) => {
+    if (item.googlePhotoReference) {
+      const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+      if (apiKey) {
+        if (item.googlePhotoReference.startsWith('http://') || item.googlePhotoReference.startsWith('https://')) {
+          return item.googlePhotoReference;
+        } else {
+          return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${item.googlePhotoReference}&key=${apiKey}`;
         }
-      } else if (item.googleMapsImageUrl) {
-        return item.googleMapsImageUrl;
       }
-      return `https://placehold.co/80x80.png?text=${encodeURIComponent(item.placeName || 'Location')}`;
-    };
+    } else if (item.googleMapsImageUrl) {
+      return item.googleMapsImageUrl;
+    }
+    return `https://placehold.co/80x80.png?text=${encodeURIComponent(item.placeName || 'Location')}`;
+  }, []);
 
-    const openItineraryModal = (item: any) => {
-      setSelectedItineraryItem(item);
-      setIsItineraryModalOpen(true);
-    };
+  // Memoized itinerary item click handler
+  const handleItineraryItemClick = useCallback((item: any, index: number) => {
+    setSelectedItineraryItem({ ...item, index });
+    setIsItineraryModalOpen(true);
+  }, []);
 
-    const closeItineraryModal = () => {
-      setIsItineraryModalOpen(false);
-      setSelectedItineraryItem(null);
-    };
+  // Memoize itinerary chunks to prevent recalculation
+  const itineraryChunks = useMemo(() => {
+    return plan?.itinerary ? chunkArray(plan.itinerary, 3) : [];
+  }, [plan?.itinerary]);
+
+  // Compact Itinerary Component - memoized to prevent unnecessary re-renders
+  const CompactItinerary = memo(({ itinerary }: { itinerary: any[] }) => {
 
     return (
       <>
@@ -332,7 +350,7 @@ const [fitModes, setFitModes] = useState<string[]>([]);
             <React.Fragment key={item.id || index}>
               <div 
                 className="flex items-center gap-3 py-1 relative cursor-pointer group h-20"
-                onClick={() => openItineraryModal(item)}
+                onClick={() => handleItineraryItemClick(item, index)}
               >
               {/* Timeline removed; only polaroid and content remain */}
 
@@ -340,7 +358,7 @@ const [fitModes, setFitModes] = useState<string[]>([]);
               <div className="flex-shrink-0 flex flex-col items-center ml-2">
                 <div className="relative rounded-xl bg-muted shadow-md flex flex-col items-center" style={{ width: 68, height: 84 }}>
                   {/* Stop number indicator in top left */}
-                  <span className="absolute -top-2 -left-2 w-6 h-6 flex items-center justify-center rounded-full bg-background text-xs font-semibold text-muted-foreground border border-border/60 z-20" style={{ opacity: 1, boxShadow: '0 1px 4px 0 rgba(0,0,0,0.06)' }}>
+                  <span className="absolute -top-2 -left-2 w-6 h-6 flex items-center justify-center rounded-full bg-background text-xs font-semibold text-muted-foreground border border-border/60 z-50" style={{ opacity: 1, boxShadow: '0 1px 4px 0 rgba(0,0,0,0.06)' }}>
                     {index + 1}
                   </span>
                   <div className="w-full h-14 overflow-hidden rounded-t-xl">
@@ -407,101 +425,17 @@ const [fitModes, setFitModes] = useState<string[]>([]);
         ))}
       </div>
 
-        {/* Full Screen Modal */}
-        {isItineraryModalOpen && selectedItineraryItem && (
-          <div className="fixed inset-0 z-[999] bg-background/80 flex items-center justify-center">
-            <div className="w-full max-w-md mx-auto rounded-2xl bg-background shadow-2xl flex flex-col overflow-hidden">
-              {/* Header */}
-              <div className="flex items-center justify-between p-4 border-b border-border">
-                <h2 className="text-lg font-semibold">Itinerary Details</h2>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={closeItineraryModal}
-                  className="border border-border rounded-full shadow-sm hover:bg-muted/40"
-                  style={{ boxShadow: '0 1px 4px 0 rgba(0,0,0,0.06)' }}
-                >
-                  <X className="h-5 w-5" />
-                </Button>
-              </div>
 
-              {/* Content */}
-              <div className="flex-1 overflow-y-auto p-4">
-                <div className="space-y-6">
-                  {/* Large Image */}
-                  <div className="relative h-72 rounded-xl overflow-hidden bg-muted">
-                    <Image
-                      src={getItemImageUrl(selectedItineraryItem)}
-                      alt={selectedItineraryItem.placeName}
-                      fill
-                      className="object-cover"
-                      unoptimized={getItemImageUrl(selectedItineraryItem).includes('maps.googleapis.com')}
-                    />
-                  </div>
-
-                  {/* Details */}
-                  <div className="space-y-4">
-                    <div>
-                      <h3 className="text-xl font-bold mb-2">{selectedItineraryItem.placeName}</h3>
-                      {selectedItineraryItem.description && (
-                        <p className="text-muted-foreground">{selectedItineraryItem.description}</p>
-                      )}
-                    </div>
-
-                    {/* Time */}
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">
-                        {formatTime(selectedItineraryItem.startTime)} - {formatTime(selectedItineraryItem.endTime)}
-                      </span>
-                    </div>
-
-
-
-                    {/* Rating */}
-                    {selectedItineraryItem.rating && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">⭐ {selectedItineraryItem.rating.toFixed(1)}</span>
-                        {selectedItineraryItem.reviewCount && (
-                          <span className="text-sm text-muted-foreground">
-                            ({selectedItineraryItem.reviewCount} reviews)
-                          </span>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Status */}
-                    {selectedItineraryItem.isOperational !== null && (
-                      <div className="flex items-center gap-2">
-                        <Badge variant={selectedItineraryItem.isOperational ? "default" : "destructive"}>
-                          {selectedItineraryItem.isOperational ? "Open" : "Closed"}
-                        </Badge>
-                        {selectedItineraryItem.statusText && (
-                          <span className="text-sm text-muted-foreground">{selectedItineraryItem.statusText}</span>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Activity Suggestions */}
-                    {selectedItineraryItem.activitySuggestions && selectedItineraryItem.activitySuggestions.length > 0 && (
-                      <div>
-                        <h4 className="font-medium mb-2">Suggested Activities</h4>
-                        <ul className="space-y-1">
-                          {selectedItineraryItem.activitySuggestions.map((suggestion: string, idx: number) => (
-                            <li key={idx} className="text-sm text-muted-foreground">• {suggestion}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </>
     );
-  };
+  });
+
+  // Scroll to top when switching to Plan Details tab
+  useEffect(() => {
+    if (activeTab === 1 && planDetailsRef.current) {
+      planDetailsRef.current.scrollTop = 0;
+    }
+  }, [activeTab]);
 
   if (loading) {
     return (
@@ -594,14 +528,13 @@ const [fitModes, setFitModes] = useState<string[]>([]);
                 </div>
               ))}
             </div>
-            {/* Image navigation dots if multiple images */}
-            {planImages.length > 1 && (
-              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-1.5 z-10">
+            {activeTab === 0 && planImages.length > 1 && (
+  <div className="z-30 absolute top-4 left-1/2 -translate-x-1/2 bg-black/40 backdrop-blur-md rounded-full px-2 py-1 border border-white/20 flex gap-2 items-center">
                 {planImages.map((_, index) => (
                   <button 
                     key={index}
                     onClick={() => setActiveImageIndex(index)}
-                    className={`w-2.5 h-2.5 rounded-full ${index === activeImageIndex ? 'bg-white' : 'bg-white/50'}`}
+        className={`w-2 h-2 rounded-full transition-colors duration-200 ${index === activeImageIndex ? 'bg-white' : 'bg-white/40'}`}
                     aria-label={`Go to image ${index + 1}`}
                   />
                 ))}
@@ -627,12 +560,11 @@ const [fitModes, setFitModes] = useState<string[]>([]);
           <ChevronLeft className="h-5 w-5" />
         </Button>
       </div>
-      {/* Space to allow header to clear but still let content overlay images */}
       <div className="h-[30vh]" />
             {/* Plan name and host info */}
-            <div className="mt-4 px-2 relative z-10">
-              <Card className="border-border/0 backdrop-blur-none bg-transparent relative z-20 drop-shadow-lg" style={{ boxShadow: 'none' }}>
-                <CardContent className="p-4">
+            <div className="mt-4 px-2 relative z-10 w-full max-w-full">
+              <Card className="w-full max-w-full border-border/0 backdrop-blur-none bg-transparent relative z-20 drop-shadow-lg" style={{ boxShadow: 'none' }}>
+                <CardContent className="w-full max-w-full p-2">
                   {/* Event Type Badge moved inside the card */}
       {plan?.eventType && (
           <Badge 
@@ -643,7 +575,7 @@ const [fitModes, setFitModes] = useState<string[]>([]);
           </Badge>
       )}
                   <h1 className="text-3xl font-bold mb-4 text-white/75">{plan?.name || 'Unnamed Plan'}</h1>
-            <div className="flex items-center gap-2 text-base text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <CalendarDays className="h-5 w-5" />
                     <span>{formatDate(plan?.eventTime)}</span>
               <MapPin className="h-5 w-5 ml-2" />
@@ -668,41 +600,67 @@ const [fitModes, setFitModes] = useState<string[]>([]);
           </CardContent>
         </Card>
       </div>
-            {/* RSVP Buttons (floating) */}
-            <div className="px-2 mt-4 relative z-20">
-              <div className="flex flex-wrap gap-2 mt-2 justify-center w-full">
-                  <Button
-                    size="sm"
-                    variant={isGoing ? "default" : "outline"}
-                    onClick={() => handleRSVP('going')}
-                    disabled={rsvpLoading || isHost}
-                  className={(isGoing ? "bg-green-600 hover:bg-green-700" : "") + " !opacity-100"}
-                  >
-                    {rsvpLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ThumbsUp className="h-4 w-4 mr-2" />}
-                    Going
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={isMaybe ? "default" : "outline"}
-                    onClick={() => handleRSVP('maybe')}
-                    disabled={rsvpLoading || isHost}
-                  className={(isMaybe ? "bg-yellow-600 hover:bg-yellow-700" : "") + " !opacity-100"}
-                  >
-                  {rsvpLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <MessageSquare className="h-4 w-4 mr-2" />}
-                    Maybe
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={hasDeclined ? "default" : "outline"}
-                    onClick={() => handleRSVP('not-going')}
-                    disabled={rsvpLoading || isHost}
-                  className={(hasDeclined ? "bg-red-600 hover:bg-red-700" : "") + " !opacity-100"}
-                  >
-                  {rsvpLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ThumbsUp className="h-4 w-4 mr-2 rotate-180" />}
-                  Not Going
-                  </Button>
-                </div>
-            </div>
+            {/* RSVP Buttons (segmented control) */}
+            <div className="w-full max-w-md mx-auto mt-4 relative z-20">
+  <div className="flex flex-row items-center justify-center rounded-full bg-black/40 backdrop-blur-md border border-white/20 overflow-visible shadow-sm px-0.5 py-0.5 relative" style={{minHeight:'38px', height:'38px'}}>
+    {/* Going */}
+    <button
+      onClick={() => handleRSVP('going')}
+      disabled={rsvpLoading || isHost}
+      className={`relative flex-1 flex items-center justify-center transition-all duration-150 text-center focus:outline-none px-2 sm:px-3 py-0.5 font-medium rounded-full whitespace-nowrap
+        ${isGoing ? 'z-10' : ''} ${rsvpLoading || isHost ? 'opacity-60 cursor-not-allowed' : ''}`}
+      style={{ minWidth: 0, height: '32px', minHeight: '32px', maxHeight: '32px' }}
+    >
+      {isGoing && (
+        <span className="absolute inset-y-0 left-0.5 right-0.5 my-auto h-7 bg-white shadow-md rounded-full z-[-1]" style={{top:'1px',bottom:'1px'}} />
+      )}
+      <span className={`flex items-center gap-1.5 text-sm ${isGoing ? 'text-green-600' : 'text-white/90'} whitespace-nowrap`}> 
+        <ThumbsUp className="h-4 w-4" fill={isGoing ? 'currentColor' : 'none'} />
+        Going
+      </span>
+    </button>
+    {/* Divider */}
+    <div className="flex items-center justify-center" style={{height:'60%'}}>
+      <div className="w-px h-4 mx-1 rounded-full" style={{background: 'linear-gradient(180deg, transparent 0%, rgba(255,255,255,0.18) 40%, rgba(255,255,255,0.18) 60%, transparent 100%)'}} />
+    </div>
+    {/* Not Going */}
+    <button
+      onClick={() => handleRSVP('not-going')}
+      disabled={rsvpLoading || isHost}
+      className={`relative flex-1 flex items-center justify-center transition-all duration-150 text-center focus:outline-none px-2 sm:px-3 py-0.5 font-medium rounded-full whitespace-nowrap
+        ${hasDeclined ? 'z-10' : ''} ${rsvpLoading || isHost ? 'opacity-60 cursor-not-allowed' : ''}`}
+      style={{ minWidth: 0, height: '32px', minHeight: '32px', maxHeight: '32px' }}
+    >
+      {hasDeclined && (
+        <span className="absolute inset-y-0 left-0.5 right-0.5 my-auto h-7 bg-white shadow-md rounded-full z-[-1]" style={{top:'1px',bottom:'1px'}} />
+      )}
+      <span className={`flex items-center gap-1.5 text-sm ${hasDeclined ? 'text-red-600' : 'text-white/90'} whitespace-nowrap`}> 
+        <ThumbsDown className="h-4 w-4" fill={hasDeclined ? 'currentColor' : 'none'} />
+        Not Going
+      </span>
+    </button>
+    {/* Divider */}
+    <div className="flex items-center justify-center" style={{height:'60%'}}>
+      <div className="w-px h-4 mx-1 rounded-full" style={{background: 'linear-gradient(180deg, transparent 0%, rgba(255,255,255,0.18) 40%, rgba(255,255,255,0.18) 60%, transparent 100%)'}} />
+        </div>
+    {/* Maybe */}
+    <button
+      onClick={() => handleRSVP('maybe')}
+      disabled={rsvpLoading || isHost}
+      className={`relative flex-1 flex items-center justify-center transition-all duration-150 text-center focus:outline-none px-2 sm:px-3 py-0.5 font-medium rounded-full whitespace-nowrap
+        ${isMaybe ? 'z-10' : ''} ${rsvpLoading || isHost ? 'opacity-60 cursor-not-allowed' : ''}`}
+      style={{ minWidth: 0, height: '32px', minHeight: '32px', maxHeight: '32px' }}
+    >
+      {isMaybe && (
+        <span className="absolute inset-y-0 left-0.5 right-0.5 my-auto h-7 bg-white shadow-md rounded-full z-[-1]" style={{top:'1px',bottom:'1px'}} />
+      )}
+      <span className={`flex items-center gap-1.5 text-sm ${isMaybe ? 'text-yellow-600' : 'text-white/90'} whitespace-nowrap`}> 
+        <HelpCircle className="h-4 w-4" />
+        Maybe
+                </span>
+    </button>
+  </div>
+</div>
             {/* Swipe up prompt */}
             <div className="flex justify-center mt-6">
               <span className="text-xs text-white/70 animate-bounce">Swipe up for plan details</span>
@@ -714,8 +672,9 @@ const [fitModes, setFitModes] = useState<string[]>([]);
             initial={{ y: 50, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 50, opacity: 0 }}
-            className="absolute inset-0 z-10 overflow-y-auto"
+            className="absolute inset-0 z-10"
             style={{ pointerEvents: activeTab === 1 ? 'auto' : 'none' }}
+            ref={planDetailsRef}
           >
             {/* Plan Details Tab Background: Image slideshow, gradient, and LinearBlur overlays */}
             <div className="fixed top-0 left-0 right-0 bottom-0 z-0 overflow-hidden">
@@ -765,7 +724,7 @@ const [fitModes, setFitModes] = useState<string[]>([]);
                             background: 'linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.05) 50%, rgba(0,0,0,0.1) 100%)'
                           }}
                         />
-                      </div>
+            </div>
                     ))}
                 </div>
               </>
@@ -777,21 +736,10 @@ const [fitModes, setFitModes] = useState<string[]>([]);
                 </div>
               )}
             </div>
-            {/* Header with back button - completely transparent */}
-            <div className="fixed top-0 left-0 right-0 z-20 p-2 flex items-center">
-              <Button 
-                variant="ghost" 
-                size="icon"
-                onClick={() => router.push('/plans')}
-                className="mr-2 text-white hover:bg-white/20"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </Button>
-            </div>
+            {/* No back button in the second tab */}
             {/* Space to allow header to clear but still let content overlay images */}
-            <div className="h-[30vh]" />
             {/* Plan Details Tab Header */}
-            <div className="px-4 mb-6 relative z-30">
+            <div className="px-4 mb-6 pt-8 relative z-30">
               <h1 className="text-2xl md:text-3xl font-bold text-foreground drop-shadow-lg">Plan Details</h1>
             </div>
             {/* Add soft shadow to all main content elements */}
@@ -799,13 +747,13 @@ const [fitModes, setFitModes] = useState<string[]>([]);
             {plan?.itinerary && plan.itinerary.length > 0 && (
               <div className="px-2 mt-4">
                 {/* Swipeable Itinerary Cards: each card contains 3 items with the full timeline design */}
-                <div className="shadow-lg shadow-black/10 rounded-3xl bg-black/40 backdrop-blur-sm pr-6 py-6 pl-4 pt-4 flex flex-col justify-center" style={{ overflow: 'visible' }}>
+                <div className="shadow-lg shadow-black/10 rounded-3xl bg-black/40 backdrop-blur-sm pr-6 pb-3 pl-4 pt-4 flex flex-col justify-center" style={{ overflow: 'visible' }}>
                   <div
-                    className="relative overflow-x-auto snap-x snap-mandatory scroll-smooth hide-scrollbar w-full"
+                    className="relative overflow-x-auto overflow-y-visible snap-x snap-mandatory scroll-smooth hide-scrollbar w-full pt-2"
                     style={{ WebkitOverflowScrolling: 'touch', msOverflowStyle: 'none', scrollbarWidth: 'none' }}
                   >
                     <div className="flex w-full">
-                      {chunkArray(plan.itinerary, 3).map((group, cardIdx) => (
+                      {itineraryChunks.map((group, cardIdx) => (
                         <div
                           key={`itinerary-card-${cardIdx}`}
                           className="w-full flex-shrink-0 snap-center"
@@ -818,8 +766,8 @@ const [fitModes, setFitModes] = useState<string[]>([]);
                     </div>
                   </div>
                   {/* Navigation dots */}
-                  <div className="flex justify-center gap-2 mt-4">
-                    {chunkArray(plan.itinerary, 3).map((_, idx) => (
+                  <div className="flex justify-center gap-2 mt-2">
+                    {itineraryChunks.map((_, idx) => (
                       <span key={idx} className="w-2 h-2 rounded-full bg-muted-foreground/30 inline-block" />
                     ))}
                   </div>
@@ -846,7 +794,7 @@ const [fitModes, setFitModes] = useState<string[]>([]);
               </div>
             )}
             {plan?.id && (
-              <div className="px-2 mt-4 shadow-lg shadow-black/10 rounded-2xl bg-background/80">
+              <div className="px-2 mt-4 mb-2 shadow-lg shadow-black/10 rounded-2xl bg-background/80">
                 <PlanComments 
                   comments={(plan.comments || []) as any}
                   currentUserId={user?.uid}
@@ -895,30 +843,189 @@ const [fitModes, setFitModes] = useState<string[]>([]);
               </div>
             )}
             {/* Swipe down prompt */}
-            <div className="flex justify-center mt-6 mb-4">
+            <div className="flex justify-center mt-6 mb-10">
               <span className="text-xs text-muted-foreground animate-bounce">Swipe down to return</span>
             </div>
       </div>
           </motion.div>
         )}
       </AnimatePresence>
-      {/* Mobile action buttons - fixed at bottom */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/70 backdrop-blur-lg border-t border-border/50 flex justify-between z-30" style={{ boxShadow: 'none' }}>
-        <Button variant="ghost" className="flex flex-col items-center text-xs w-16 text-white hover:bg-white/20">
-          <MessageSquare className="h-5 w-5 mb-1" />
-          Chat
-        </Button>
-        <Button variant="ghost" className="flex flex-col items-center text-xs w-16 text-white hover:bg-white/20">
-          <Share2 className="h-5 w-5 mb-1" />
-          Share
-        </Button>
-        {isHost && (
-          <Button variant="ghost" className="flex flex-col items-center text-xs w-16 text-white hover:bg-white/20">
-            <Users className="h-5 w-5 mb-1" />
-            Manage
-          </Button>
+      {/* Full Screen Modal - Outside all containers */}
+      <AnimatePresence>
+        {isItineraryModalOpen && selectedItineraryItem && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="absolute inset-0 bg-background flex flex-col"
+            >
+              {/* Content - Full Screen Layout */}
+              <div className="flex flex-col overflow-hidden">
+                {/* Image Section - Top Half with Overlaid Header */}
+                <div className="relative h-[50vh] bg-muted overflow-hidden">
+                  {/* Header Overlay */}
+                  <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-4 bg-gradient-to-b from-black/60 via-black/30 to-transparent">
+                    <div className="bg-black/40 backdrop-blur-md rounded-full px-4 py-2 border border-white/20">
+                      <h2 className="text-base font-bold text-white">Stop {selectedItineraryItem.index + 1}</h2>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={closeItineraryModal}
+                      className="rounded-full bg-black/40 backdrop-blur-md hover:bg-black/60 text-white border border-white/20 transition-all duration-200"
+                    >
+                      <X className="h-5 w-5" />
+                    </Button>
+                  </div>
+                  <Image
+                    src={getItemImageUrl(selectedItineraryItem)}
+                    alt={selectedItineraryItem.placeName}
+                    fill
+                    className="object-cover"
+                    unoptimized={getItemImageUrl(selectedItineraryItem).includes('maps.googleapis.com')}
+                  />
+                  {/* Gradient overlay for text readability */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                  
+                  {/* Linear blur at bottom of image container */}
+                  <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-black/80 to-transparent backdrop-blur-sm" />
+                  
+
+                  
+                  {/* Stop name overlay */}
+                  <div className="absolute bottom-0 left-0 right-0 p-4 pt-8 bg-gradient-to-t from-black/70 via-black/40 to-transparent">
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-3 mb-2">
+                        {/* Stop name */}
+                        <h3 className="text-2xl font-bold text-white drop-shadow-lg">
+                          {selectedItineraryItem.placeName}
+                        </h3>
+                        
+                        {/* Rating badge */}
+                        {typeof selectedItineraryItem.rating === 'number' && (
+                          <div className="flex-shrink-0 bg-amber-500/10 backdrop-blur-md text-amber-500 dark:text-amber-400 flex items-center gap-1 text-sm px-3 py-1 rounded-full border border-amber-500/20">
+                            <span>⭐</span>
+                            <span className="font-medium">{selectedItineraryItem.rating.toFixed(1)}</span>
+                            {selectedItineraryItem.reviewCount && (
+                              <span className="text-white/70">({abbreviateNumber(selectedItineraryItem.reviewCount)})</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Location and Time - positioned to the left */}
+                    <div className="flex justify-start mt-2">
+                      <div className="flex items-center gap-2 text-sm text-white/90">
+                        {selectedItineraryItem.address && (
+                          <span className="truncate max-w-[200px]" title={selectedItineraryItem.address}>
+                            📍 {selectedItineraryItem.address.split(',').slice(0, 2).join(', ')}
+                          </span>
+                        )}
+                        
+                        {selectedItineraryItem.startTime && (
+                          <span>
+                            🕒 {formatTime(selectedItineraryItem.startTime)}-{formatTime(selectedItineraryItem.endTime)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Text content container with background - Bottom Half */}
+                <div className="flex-1 bg-black/80 backdrop-blur-sm px-2 pt-3 pb-3 relative">
+                  {/* Static map background at bottom */}
+                  {selectedItineraryItem.lat && selectedItineraryItem.lng && (
+                    <div className="absolute bottom-0 left-0 right-0 h-32 bg-muted overflow-hidden">
+                      <Image
+                        src={`https://maps.googleapis.com/maps/api/staticmap?center=${selectedItineraryItem.lat},${selectedItineraryItem.lng}&zoom=15&size=600x200&markers=color:red%7C${selectedItineraryItem.lat},${selectedItineraryItem.lng}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`}
+                        alt="Location map"
+                        fill
+                        className="object-cover"
+                        unoptimized
+                      />
+                      {/* Gradient overlay to blend with content */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+                      {/* Top gradient for smooth transition */}
+                      <div className="absolute inset-0 bg-gradient-to-b from-black/90 via-black/70 to-transparent" />
+                      {/* Linear blur starting from top */}
+                      <div className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-black/80 to-transparent backdrop-blur-sm" />
+                    </div>
+                  )}
+                  {/* Description */}
+                  <div className="mt-1" style={{maxWidth: '340px', margin: '0 auto'}}>
+                    <div className="space-y-6">
+                      {selectedItineraryItem.description && (
+                        <p className="text-sm text-white/90 leading-relaxed">
+                          {selectedItineraryItem.description}
+                        </p>
+                      )}
+                      {/* Activity Suggestions */}
+                      {selectedItineraryItem.activitySuggestions && selectedItineraryItem.activitySuggestions.length > 0 && (
+                        <div className="bg-white/10 backdrop-blur-sm p-3 pt-4 rounded-lg border border-white/10">
+                          <div className="flex items-center text-sm font-semibold text-white mb-2.5">
+                            <span className="mr-1.5">🎯</span>
+                            Suggested activities
+                          </div>
+                          <ul className="space-y-1.5">
+                            {selectedItineraryItem.activitySuggestions.map((activity: string, idx: number) => {
+                              // Extract the first emoji from the activity text
+                              const emojiMatch = activity.match(/^([\p{Emoji}\p{Emoji_Modifier_Base}\p{Emoji_Component}]+)/u);
+                              const emoji = emojiMatch ? emojiMatch[0] : '•';
+                              const text = emojiMatch ? activity.slice(emojiMatch[0].length).trim() : activity;
+                              
+                              return (
+                                <li 
+                                  key={idx}
+                                  className="flex items-start group"
+                                >
+                                  <span className="mr-2 mt-0.5 flex-shrink-0">{emoji}</span>
+                                  <span className="text-sm text-white/80 leading-tight">
+                                    {text}
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* View on Maps CTA */}
+                  <div className="mt-3 pt-2">
+                    <button 
+                      onClick={() => {
+                        if (selectedItineraryItem.lat && selectedItineraryItem.lng) {
+                          // Universal URL that works on both iOS and Android
+                          const url = `https://www.google.com/maps/search/?api=1&query=${selectedItineraryItem.lat},${selectedItineraryItem.lng}`;
+                          window.open(url, '_blank');
+                        }
+                      }}
+                      disabled={!selectedItineraryItem.lat || !selectedItineraryItem.lng}
+                      className="w-full bg-black/40 backdrop-blur-md rounded-full border border-white/20 p-3 flex items-center justify-between text-xs font-medium text-blue-400 hover:text-blue-300 hover:bg-black/60 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <span className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4" />
+                        <span>View on Maps</span>
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
-      </div>
+      </AnimatePresence>
     </div>
   );
 }

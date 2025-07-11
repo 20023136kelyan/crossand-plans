@@ -517,7 +517,7 @@ export default function AppLayout({
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const isOnboardingPage = pathname === '/onboarding';
   const isIndividualChatPage = pathname.startsWith('/messages/') && pathname !== '/messages';
-  const isPlanDetailPage = pathname.startsWith('/plans/') && pathname.split('/').length > 3 && !pathname.includes('/create') && !pathname.includes('/generate') && !pathname.includes('/category/') && !pathname.includes('/city/');
+  const isPlanDetailPage = pathname.startsWith('/plans/') && pathname.split('/').length === 3 && !pathname.includes('/create') && !pathname.includes('/generate') && !pathname.includes('/category/') && !pathname.includes('/city/');
   const isPlanCategoryPage = pathname.startsWith('/plans/category/');
   const isPlanCityPage = pathname.startsWith('/plans/city/');
   const isPlanGeneratePage = pathname === '/plans/generate';
