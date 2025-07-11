@@ -19,7 +19,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription as DialogDescriptionComponent,
+  DialogDescription as DialogDescriptionComponent, // Aliased to avoid conflict
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -33,18 +33,24 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   MessageSquare,
+  ThumbsUp,
   Heart,
+  Share2,
+  Send,
   Loader2,
   X as XIcon,
   UserCircle as UserCircleIcon,
+  ExternalLink,
   MoreVertical,
   Trash2,
   CheckCircle,
   ShieldCheck as AdminIcon,
   Lock as LockIcon,
   EyeOff,
+  AlertTriangle,
+  Edit3,
   PackageOpen,
-  AlertTriangle
+  Globe
 } from "lucide-react";
 import Link from "next/link";
 import Image from 'next/image';
@@ -53,16 +59,22 @@ import {
   fetchFeedPostsAction,
   toggleLikePostServerAction,
   addCommentToPostServerAction,
+  incrementPostSharesAction,
   deleteFeedPostAction,
   deleteFeedCommentAction
 } from '@/app/actions/feedActions';
-import type { FeedPost, UserRoleType, FeedPostVisibility, FeedComment, UserProfile, Plan } from '@/types/user';
+import { createPlanShareInviteAction } from '@/app/actions/planActions';
+import type { FeedPost, UserRoleType, FeedPostVisibility, FeedComment, UserProfile, FriendEntry, AppTimestamp } from '@/types/user';
 import { formatDistanceToNowStrict, parseISO, isValid } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+// Removed Tabs, TabsContent, TabsList, TabsTrigger from here as they move to AppLayout
+// import { ExploreContent } from '@/components/explore/ExploreContent'; // Removed ExploreContent
 import { cn } from "@/lib/utils";
-import { getPostComments, getUserProfile, getPlanById } from '@/services/clientServices';
+// TEMP: getPostComments moved to clientServices for real-time updates
+import { getPostComments, getUserProfile } from '@/services/clientServices';
+import { FriendPickerDialog } from '@/components/messages/FriendPickerDialog';
 import { PostDetailModal } from '@/components/feed/PostDetailModal';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { extractImageGradientCached } from '@/lib/colorExtraction';
@@ -97,10 +109,9 @@ interface FeedPostCardProps {
   onHidePost: (postId: string) => void;
   onRequestDeletePost: (post: FeedPost) => void;
   onOpenDetailModal: (post: FeedPost) => void;
-  plan?: { city?: string; location?: string; } | null;
 }
 
-const FeedPostCard = React.memo(({ 
+const FeedPostCard = React.memo(({
   item,
   currentUserId,
   currentUserProfile,
@@ -109,19 +120,10 @@ const FeedPostCard = React.memo(({
   onHidePost,
   onRequestDeletePost,
   onOpenDetailModal,
-  plan
 }: FeedPostCardProps) => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const locationText = useMemo(() => {
-    if (!plan) return "No location";
-    const city = plan.city;
-    const location = plan.location;
-    if (city && location) return `${city}, ${location}`;
-    if (city) return city;
-    if (location) return location;
-    return "No location";
-  }, [plan]);
+  const [postedAtRelative, setPostedAtRelative] = useState('just now');
   const [isCaptionExpanded, setIsCaptionExpanded] = useState(false);
   const [canShowMoreCaption, setCanShowMoreCaption] = useState(false);
   const captionRef = useRef<HTMLParagraphElement>(null);
@@ -130,16 +132,28 @@ const FeedPostCard = React.memo(({
   const [optimisticLikedByCurrentUser, setOptimisticLikedByCurrentUser] = useState(item.likedBy?.includes(currentUserId || "") || false);
   const [optimisticLikesCount, setOptimisticLikesCount] = useState(item.likesCount || 0);
   const [optimisticCommentsCount, setOptimisticCommentsCount] = useState(item.commentsCount || 0);
+  const [optimisticSharesCount, setOptimisticSharesCount] = useState(item.sharesCount || 0);
+  const [newCommentText, setNewCommentText] = useState('');
+  const [isSubmittingCardComment, setIsSubmittingCardComment] = useState(false);
+  const [isFriendPickerOpen, setIsFriendPickerOpen] = useState(false);
+  const [isReporting, setIsReporting] = useState(false);
+  const [gradientClass, setGradientClass] = useState('bg-gradient-to-br from-gray-400/30 via-gray-500/15 to-transparent');
 
   useEffect(() => {
     setOptimisticLikedByCurrentUser(item.likedBy?.includes(currentUserId || "") || false);
     setOptimisticLikesCount(item.likesCount || 0);
     setOptimisticCommentsCount(item.commentsCount || 0);
-  }, [item.likedBy, item.likesCount, item.commentsCount, currentUserId]);
-  const [newCommentText, setNewCommentText] = useState('');
-  const [isSubmittingCardComment, setIsSubmittingCardComment] = useState(false);
+    setOptimisticSharesCount(item.sharesCount || 0);
+  }, [item.likedBy, item.likesCount, item.commentsCount, item.sharesCount, currentUserId]);
 
-
+  useEffect(() => {
+    if (item.createdAt) {
+      const dateValue = parseISO(item.createdAt as string);
+      if (isValid(dateValue)) {
+        setPostedAtRelative(formatDistanceToNowStrict(dateValue, { addSuffix: true }));
+      }
+    }
+  }, [item.createdAt]);
 
   useEffect(() => {
     if (captionRef.current) {
@@ -251,106 +265,325 @@ const FeedPostCard = React.memo(({
     }
   };
 
+  const handleSharePost = async () => {
+    if (!user || !currentUserId || !item) {
+      toast({ title: "Error", description: "Cannot share post. User or post data missing.", variant: "destructive" });
+      return;
+    }
+    setOptimisticSharesCount(prev => (prev || 0) + 1);
+    let serverIncremented = false;
+    try {
+      await user.getIdToken(true);
+      const idToken = await user.getIdToken();
+      if (!idToken) throw new Error("Authentication token missing for share action.");
+      const result = await incrementPostSharesAction(item.id, idToken);
+      if (result.success && result.updatedPostFields) {
+        onUpdatePostInList({ id: item.id, sharesCount: result.updatedPostFields.sharesCount });
+        serverIncremented = true;
+      } else {
+        setOptimisticSharesCount(prev => Math.max(0, (prev || 1) - 1)); 
+        serverIncremented = false;
+        console.error(`[handleSharePost] Failed to increment share count on server for post ${item.id}. Code: ${result.errorCode}, Message: ${result.error}, Original: ${result.originalError}`);
+      }
+    } catch (error: any) {
+      setOptimisticSharesCount(prev => Math.max(0, (prev || 1) - 1));
+      serverIncremented = false;
+      console.error("[handleSharePost] Client-side error calling incrementPostSharesAction:", error);
+    }
+    const planUrl = `${window.location.origin}/p/${item.planId}`;
+    const shareTitle = `Macaroom: ${item.planName || 'a great plan'} by ${item.username || item.userName || 'a user'}`;
+    const shareText = item.text ? item.text.substring(0, 150) + (item.text.length > 150 ? '...' : '') : `Check out this experience from "${item.planName || 'a great plan'}"!`;
+    const shareData = { title: shareTitle, text: shareText, url: planUrl };
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+        toast({ title: "Shared successfully!" });
+      } catch (error: any) {
+        if (!serverIncremented) { setOptimisticSharesCount(prev => Math.max(0, (prev || 1) - 1)); }
+        let description = "Could not share using native share feature.";
+        const errorObj = error as any;
+        if (errorObj?.name === 'AbortError') { description = "Share cancelled by user."; }
+        else if (errorObj?.code === 20 || errorObj?.name === 'NotAllowedError' || (errorObj?.message && typeof errorObj.message === 'string' && errorObj.message.toLowerCase().includes('permission denied'))) {
+            description = "Could not share. Please ensure your browser has permission to share, you are in a secure (HTTPS) environment, and pop-ups are not blocked. This feature might also be restricted by your current browsing environment (e.g., if embedded in an iframe).";
+        } else if (errorObj?.message) { description = `Could not share: ${errorObj.message}`; }
+        toast({ title: "Share Error", description, variant: "destructive", duration: (errorObj?.name === 'AbortError' ? 3000 : ((errorObj?.code === 20 || errorObj?.name === 'NotAllowedError') ? 10000 : 5000)) });
+        console.error("[handleSharePost] Native share error:", error);
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareText}\n${planUrl}`);
+        toast({ title: "Plan Link Copied!", description: "Plan details & link copied to clipboard." });
+      } catch (err) {
+        if (!serverIncremented) { setOptimisticSharesCount(prev => Math.max(0, (prev || 1) - 1)); }
+        const errorObj = err as any;
+        let copyErrorDescription = "Could not copy link to clipboard.";
+        if (errorObj?.message) { copyErrorDescription = `Copy failed: ${errorObj.message}`; }
+        toast({ title: "Copy Failed", description: copyErrorDescription, variant: "destructive" });
+        console.error("[handleSharePost] Clipboard copy error:", err);
+      }
+    }
+  };
+
+  const handleReportPost = async (postId: string) => {
+    if (!user || !currentUserId || isReporting) {
+      return;
+    }
+    
+    setIsReporting(true);
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/reports/post', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({
+          postId,
+          reason: 'inappropriate_content',
+          description: 'Reported from feed'
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok) {
+        toast({ title: "Post Reported", description: "Thank you for your report. We'll review it shortly." });
+      } else {
+        toast({ title: "Report Failed", description: result.error || "Could not report post", variant: "destructive" });
+      }
+    } catch (error: any) {
+      toast({ title: "Report Error", description: "An error occurred while reporting the post", variant: "destructive" });
+      console.error('Error reporting post:', error);
+    } finally {
+      setIsReporting(false);
+    }
+  };
+
+  const handleSharePlanWithFriendFromPost = async (selectedFriend: FriendEntry) => {
+    if (!user || !currentUserId || !currentUserProfile || !item) {
+      toast({ title: "Action Failed", description: "User not authenticated or post data missing.", variant: "destructive" });
+      return;
+    }
+    setIsFriendPickerOpen(false);
+    try {
+      await user.getIdToken(true);
+      const idToken = await user.getIdToken();
+      if (!idToken) throw new Error("Authentication token missing for sharing plan with friend.");
+      const result = await createPlanShareInviteAction(item.planId, item.planName, selectedFriend.friendUid, idToken);
+      if (result.success) {
+        toast({ title: "Plan Shared!", description: `Invitation for "${item.planName}" sent to ${selectedFriend.name}.` });
+      } else {
+        throw new Error(result.error || "Failed to share plan with friend.");
+      }
+    } catch (error: any) {
+      toast({ title: "Share Error", description: error.message || "Could not share plan with friend.", variant: "destructive" });
+    }
+  };
+
+  // Load gradient from image asynchronously
+  useEffect(() => {
+    if (item.mediaUrl) {
+      const loadGradient = async () => {
+        try {
+          const gradient = await extractImageGradientCached(
+            item.mediaUrl,
+            'bg-gradient-to-br from-gray-400/30 via-gray-500/15 to-transparent'
+          );
+          setGradientClass(gradient);
+        } catch (error) {
+          console.warn('Failed to extract gradient from image:', error);
+          // Fallback to plan-based gradient
+          const planBasedGradients = [
+            'bg-gradient-to-br from-orange-400/30 via-red-400/15 to-transparent',
+            'bg-gradient-to-br from-cyan-400/30 via-blue-400/15 to-transparent', 
+            'bg-gradient-to-br from-green-400/30 via-teal-400/15 to-transparent',
+            'bg-gradient-to-br from-purple-400/30 via-indigo-400/15 to-transparent',
+            'bg-gradient-to-br from-pink-400/30 via-purple-400/15 to-transparent',
+            'bg-gradient-to-br from-yellow-400/30 via-orange-400/15 to-transparent',
+            'bg-gradient-to-br from-indigo-400/30 via-purple-400/15 to-transparent',
+            'bg-gradient-to-br from-emerald-400/30 via-green-400/15 to-transparent',
+            'bg-gradient-to-br from-amber-400/30 via-yellow-400/15 to-transparent',
+            'bg-gradient-to-br from-rose-400/30 via-pink-400/15 to-transparent',
+            'bg-gradient-to-br from-teal-400/30 via-cyan-400/15 to-transparent',
+            'bg-gradient-to-br from-violet-400/30 via-purple-400/15 to-transparent'
+          ];
+          const baseString = item.planName + 'media';
+          const hash = baseString.split('').reduce((a, b) => {
+            a = ((a << 5) - a) + b.charCodeAt(0);
+            return a & a;
+          }, 0);
+          const fallback = planBasedGradients[Math.abs(hash) % planBasedGradients.length];
+          setGradientClass(fallback);
+        }
+      };
+      loadGradient();
+    } else {
+      // No media, use plan-based gradient
+      const planBasedGradients = [
+        'bg-gradient-to-br from-orange-400/30 via-red-400/15 to-transparent',
+        'bg-gradient-to-br from-cyan-400/30 via-blue-400/15 to-transparent', 
+        'bg-gradient-to-br from-green-400/30 via-teal-400/15 to-transparent',
+        'bg-gradient-to-br from-purple-400/30 via-indigo-400/15 to-transparent',
+        'bg-gradient-to-br from-pink-400/30 via-purple-400/15 to-transparent',
+        'bg-gradient-to-br from-yellow-400/30 via-orange-400/15 to-transparent',
+        'bg-gradient-to-br from-indigo-400/30 via-purple-400/15 to-transparent',
+        'bg-gradient-to-br from-emerald-400/30 via-green-400/15 to-transparent',
+        'bg-gradient-to-br from-amber-400/30 via-yellow-400/15 to-transparent',
+        'bg-gradient-to-br from-rose-400/30 via-pink-400/15 to-transparent',
+        'bg-gradient-to-br from-teal-400/30 via-cyan-400/15 to-transparent',
+        'bg-gradient-to-br from-violet-400/30 via-purple-400/15 to-transparent'
+      ];
+      const baseString = item.planName + 'text';
+      const hash = baseString.split('').reduce((a, b) => {
+        a = ((a << 5) - a) + b.charCodeAt(0);
+        return a & a;
+      }, 0);
+      const fallback = planBasedGradients[Math.abs(hash) % planBasedGradients.length];
+      setGradientClass(fallback);
+    }
+  }, [item.mediaUrl, item.planName]);
+
   return (
-    <Card className="overflow-hidden rounded-3xl w-full max-w-md h-[600px] relative transform-gpu bg-black" onClick={() => onOpenDetailModal(item)}>
+    <>
+    <Card className={cn("overflow-hidden border border-white/20 shadow-2xl rounded-3xl w-full max-w-md transition-all duration-500 hover:shadow-3xl hover:scale-[1.03] cursor-pointer relative transform-gpu backdrop-blur-xl bg-transparent", gradientClass)} onClick={() => onOpenDetailModal(item)}>
+      {/* Light-infused glass gradient radiating from media center */}
+      <div className="absolute inset-0 bg-gradient-to-t from-transparent via-transparent to-transparent rounded-3xl transition-opacity duration-500 group-hover:opacity-70" style={{background: 'radial-gradient(ellipse at center, transparent 0%, rgba(255,255,255,0.05) 40%, transparent 100%)'}} />
+      <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-transparent rounded-3xl transition-opacity duration-500 group-hover:opacity-60" style={{background: 'radial-gradient(ellipse at 50% 60%, transparent 20%, rgba(255,255,255,0.08) 50%, transparent 80%)'}} />
+      {/* Enhanced glass effect with transparency */}
+      <div className="absolute inset-0 backdrop-blur-md rounded-3xl transition-all duration-500 group-hover:backdrop-blur-lg" />
+      {/* Header with user info */}
+      <div className="relative px-3 pt-3 pb-2 z-10">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link href={`/users/${item.userId}`} className="flex-shrink-0 group/avatar" onClick={(e) => e.stopPropagation()}>
+              <Avatar className="h-10 w-10 border-2 border-white/50 shadow-lg group-hover/avatar:opacity-90 transition-all duration-300 group-hover/avatar:scale-110 ring-1 ring-white/20">
+                <AvatarImage src={item.userAvatarUrl || undefined} alt={item.userName} data-ai-hint="person avatar" />
+                <AvatarFallback className="bg-white/95 text-gray-800 text-sm font-semibold shadow-lg">{userInitial}</AvatarFallback>
+              </Avatar>
+            </Link>
+            <div className="space-y-0.5">
+              <Link href={`/users/${item.userId}`} className="hover:underline transition-all duration-200" onClick={(e) => e.stopPropagation()}>
+                <span className="font-bold text-sm text-white/80 drop-shadow-lg hover:text-white/90 tracking-tight">{item.username || item.userName}</span>
+              </Link>
+              <VerificationBadge role={item.userRole} isVerified={item.userIsVerified} />
+            </div>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-white/70 hover:text-white hover:bg-white/25 backdrop-blur-md transition-all duration-300 hover:scale-110" onClick={(e) => e.stopPropagation()}>
+                <span className="sr-only">More options</span>
+                <MoreVertical className="h-4 w-4 drop-shadow-md" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onSelect={() => onHidePost(item.id)} className="cursor-pointer text-xs"><EyeOff className="mr-2 h-3.5 w-3.5"/> Hide Post</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => handleReportPost(item.id)} className="cursor-pointer text-xs"><AlertTriangle className="mr-2 h-3.5 w-3.5 text-destructive/70"/> Report Post</DropdownMenuItem>
+              {isOwnPost && (<><DropdownMenuSeparator /><DropdownMenuItem onSelect={() => toast({ title: "Edit Post", description: "Edit feature is coming soon!", duration: 3000 })} className="cursor-pointer text-xs"><Edit3 className="mr-2 h-3.5 w-3.5"/> Edit Post</DropdownMenuItem><DropdownMenuItem onSelect={() => onRequestDeletePost(item)} className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer text-xs"><Trash2 className="mr-2 h-3.5 w-3.5"/> Delete Post</DropdownMenuItem></>)}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      {/* Plan name with icon */}
+      <div className="relative px-3 pb-2 z-10">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 bg-white/95 backdrop-blur-md rounded-lg flex items-center justify-center shadow-md border border-white/40 transition-transform duration-300 hover:scale-110">
+            <span className="text-orange-600 text-sm">📅</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <Link href={`/p/${item.planId}`} className="text-white/80 font-bold text-base hover:underline drop-shadow-lg hover:text-white/90 transition-all duration-200 tracking-tight block truncate" onClick={(e) => e.stopPropagation()}>
+              {item.planName}
+            </Link>
+            <p className="text-white/60 text-xs drop-shadow-md font-medium">{postedAtRelative}</p>
+          </div>
+        </div>
+      </div>
+
       {/* Main content area with image */}
-      <div className="relative h-full w-full">
+      <div className={cn("relative mx-3 rounded-xl overflow-hidden z-10 shadow-2xl ring-1 ring-white/20", item.mediaUrl ? "aspect-auto" : "h-72")}>
+        {/* Subtle light glow radiating from media */}
+        <div className="absolute -inset-3 opacity-25 blur-xl -z-10" style={{background: `radial-gradient(ellipse at center, ${gradientClass.includes('orange') ? 'rgba(251, 146, 60, 0.12)' : gradientClass.includes('blue') ? 'rgba(59, 130, 246, 0.12)' : gradientClass.includes('cyan') ? 'rgba(34, 211, 238, 0.12)' : gradientClass.includes('green') ? 'rgba(34, 197, 94, 0.12)' : gradientClass.includes('purple') ? 'rgba(147, 51, 234, 0.12)' : gradientClass.includes('pink') ? 'rgba(236, 72, 153, 0.12)' : gradientClass.includes('yellow') ? 'rgba(234, 179, 8, 0.12)' : gradientClass.includes('indigo') ? 'rgba(99, 102, 241, 0.12)' : gradientClass.includes('emerald') ? 'rgba(16, 185, 129, 0.12)' : gradientClass.includes('amber') ? 'rgba(245, 158, 11, 0.12)' : gradientClass.includes('rose') ? 'rgba(244, 63, 94, 0.12)' : gradientClass.includes('teal') ? 'rgba(20, 184, 166, 0.12)' : gradientClass.includes('violet') ? 'rgba(139, 92, 246, 0.12)' : 'rgba(99, 102, 241, 0.12)'} 40%, transparent 80%)`}} />
         {item.mediaUrl ? (
           <>
             <Image 
               src={item.mediaUrl} 
               alt={item.text || `Highlight from ${item.planName}`} 
               width={400} 
-              height={600} 
+              height={400} 
               style={{ 
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                objectPosition: 'center'
+                width: '100%', 
+                height: 'auto',
+                maxHeight: '600px',
+                objectFit: 'contain'
               }} 
               data-ai-hint="feed post image" 
               priority={true} 
-              className="w-full h-full" 
+              className="w-full h-auto drop-shadow-2xl" 
               sizes="(max-width: 639px) 100vw, (max-width: 1023px) 336px, 384px" 
             />
-            {/* Top overlay with user info and plan name */}
-            <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/70 via-black/30 to-transparent z-20">
-              <div className="flex items-center gap-3 mb-3">
-                <Link href={`/users/${item.userId}`} className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                  <Avatar className="h-10 w-10 border-2 border-white/50">
-                    <AvatarImage src={item.userAvatarUrl || undefined} alt={item.userName} />
-                    <AvatarFallback className="bg-white/95 text-gray-800 text-sm font-semibold">{userInitial}</AvatarFallback>
-                  </Avatar>
-                </Link>
-                <div>
-                  <Link href={`/users/${item.userId}`} className="hover:underline" onClick={(e) => e.stopPropagation()}>
-                    <span className="font-bold text-sm text-white">{item.username || item.userName}</span>
-                  </Link>
-                  <VerificationBadge role={item.userRole} isVerified={item.userIsVerified} />
-                  <p className="text-white/60 text-xs">{locationText}</p>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-white hover:bg-white/10 ml-auto" onClick={(e) => e.stopPropagation()}>
-                      <span className="sr-only">More options</span>
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48 bg-background">
-                    <DropdownMenuItem onSelect={() => onHidePost(item.id)} className="cursor-pointer text-xs"><EyeOff className="mr-2 h-3.5 w-3.5"/> Hide Post</DropdownMenuItem>
-                    <DropdownMenuItem className="cursor-pointer text-xs text-destructive focus:text-destructive focus:bg-destructive/10"><AlertTriangle className="mr-2 h-3.5 w-3.5"/> Report Post</DropdownMenuItem>
-                    {isOwnPost && (
-                      <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onSelect={() => onRequestDeletePost(item)} className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer text-xs">
-                          <Trash2 className="mr-2 h-3.5 w-3.5"/> Delete Post
-                        </DropdownMenuItem>
-                      </>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-
-            </div>
-            {/* Bottom overlay with like and comment counts */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black via-black/70 to-transparent z-20">
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn("p-0 h-auto flex items-center gap-1.5 text-white hover:text-red-400", 
-                    optimisticLikedByCurrentUser ? "text-red-400" : "")}
-                  onClick={(e) => { e.stopPropagation(); handleLikeClick(); }}
-                  disabled={!currentUserId}
-                >
-                  <Heart className={cn("h-10 w-10", optimisticLikedByCurrentUser && "fill-red-400")} />
-                  <span className="text-sm">{optimisticLikesCount || 0}</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="p-0 h-auto flex items-center gap-1.5 text-white"
-                  onClick={(e) => { e.stopPropagation(); onOpenCommentsModal(item); }}
-                >
-                  <MessageSquare className="h-10 w-10" />
-                  <span className="text-sm">{optimisticCommentsCount || 0}</span>
-                </Button>
-              </div>
-
-            </div>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent pointer-events-none" />
+            <div className="absolute -inset-1 bg-black/20 blur-xl -z-10" />
           </>
         ) : (
-          <div className="h-full w-full flex items-center justify-center bg-black">
-            <div className="text-center space-y-4">
-              <div className="w-24 h-24 bg-white/95 rounded-3xl flex items-center justify-center mx-auto">
-                <span className="text-4xl">📝</span>
+          <>
+            {/* Enhanced placeholder for posts without media */}
+            <div className={cn("absolute inset-0", gradientClass.replace('/60', '/30').replace('/20', '/15'))} />
+            <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center space-y-4">
+                <div className="w-24 h-24 bg-white/95 backdrop-blur-md rounded-3xl flex items-center justify-center mx-auto shadow-2xl border border-white/50 transition-transform duration-300 hover:scale-110">
+                  <span className="text-4xl">📝</span>
+                </div>
+                <p className="text-white/80 font-bold text-lg drop-shadow-lg tracking-tight">Text Post</p>
               </div>
-              <p className="text-white/80 font-bold text-lg">Text Post</p>
             </div>
-          </div>
+          </>
         )}
       </div>
+
+      {/* Caption below media */}
+      {item.text && (
+        <div className="relative px-3 py-2 z-10">
+          <p className="text-white/75 text-xs leading-snug line-clamp-2 font-medium drop-shadow-lg">{item.text}</p>
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div className="relative px-3 pb-3 pt-1 z-10">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" className={cn("hover:text-red-400 p-0 h-auto flex items-center gap-1.5 text-white/90 hover:bg-white/30 backdrop-blur-lg rounded-full px-2.5 py-1.5 transition-all duration-300 drop-shadow-lg hover:scale-105 border border-white/30 ring-1 ring-white/20", optimisticLikedByCurrentUser ? "text-red-400 bg-white/30 scale-105" : "")} onClick={(e) => { e.stopPropagation(); handleLikeClick(); }} disabled={!currentUserId} aria-pressed={optimisticLikedByCurrentUser ? true : false} aria-label={optimisticLikedByCurrentUser ? "Unlike post" : "Like post"}>
+               <Heart className={cn("h-4 w-4 drop-shadow-lg transition-transform duration-300", optimisticLikedByCurrentUser && "fill-red-400 scale-110")} />
+               <span className="text-xs font-semibold tabular-nums drop-shadow-lg">{optimisticLikesCount || 0}</span>
+             </Button>
+             <Button variant="ghost" size="sm" className="text-white/90 hover:text-white hover:bg-white/30 backdrop-blur-lg p-0 h-auto flex items-center gap-1.5 rounded-full px-2.5 py-1.5 transition-all duration-300 drop-shadow-lg hover:scale-105 border border-white/30 ring-1 ring-white/20" onClick={(e) => { e.stopPropagation(); onOpenCommentsModal(item); }}>
+               <MessageSquare className="h-4 w-4 drop-shadow-lg" fill="none" />
+               <span className="text-xs font-semibold tabular-nums drop-shadow-lg">{optimisticCommentsCount || 0}</span>
+             </Button>
+          </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="sm" className="text-white/90 hover:text-white hover:bg-white/30 backdrop-blur-lg p-1.5 h-auto rounded-full transition-all duration-300 drop-shadow-lg hover:scale-110 border border-white/30 ring-1 ring-white/20" onClick={(e) => e.stopPropagation()}>
+                  <Share2 className="h-4 w-4 drop-shadow-lg" fill="none" />
+                </Button>
+             </PopoverTrigger>
+            <PopoverContent className="w-56 p-2">
+              <div className="grid gap-1">
+                <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() => { handleSharePost(); }}>
+                  <ExternalLink className="mr-2 h-4 w-4"/> Share via Link/Native
+                </Button>
+                <Button variant="ghost" className="w-full justify-start text-sm h-9" onClick={() => setIsFriendPickerOpen(true)}>
+                  <Send className="mr-2 h-4 w-4"/> Share Plan with Friend
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
+      </div>
     </Card>
+    <FriendPickerDialog open={isFriendPickerOpen} onOpenChange={setIsFriendPickerOpen} onFriendSelect={handleSharePlanWithFriendFromPost} title={`Share "${item.planName}" with a Friend`} description="Select a friend to send this plan to." />
+    </>
   );
 });
 FeedPostCard.displayName = 'FeedPostCard';
@@ -376,8 +609,30 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ post, commentsData: initi
 
   const sortedCommentsData = useMemo(() => {
     return [...(initialCommentsData || [])].sort((a, b) => {
-      const timeA = a.createdAt && isValid(parseISO(a.createdAt as string)) ? parseISO(a.createdAt as string).getTime() : 0;
-      const timeB = b.createdAt && isValid(parseISO(b.createdAt as string)) ? parseISO(b.createdAt as string).getTime() : 0;
+      // Safely parse dates, handle different timestamp formats
+      const getTimeFromTimestamp = (timestamp: any): number => {
+        if (!timestamp) return 0;
+        
+        // Handle Firebase Timestamp objects that might be serialized differently
+        if (typeof timestamp === 'object' && timestamp.seconds) {
+          return timestamp.seconds * 1000;
+        }
+        
+        // Handle ISO string dates
+        if (typeof timestamp === 'string') {
+          try {
+            const date = parseISO(timestamp);
+            return isValid(date) ? date.getTime() : 0;
+          } catch (e) {
+            return 0;
+          }
+        }
+        
+        return 0;
+      };
+      
+      const timeA = getTimeFromTimestamp(a.createdAt);
+      const timeB = getTimeFromTimestamp(b.createdAt);
       return timeA - timeB;
     });
   }, [initialCommentsData]);
@@ -440,7 +695,36 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ post, commentsData: initi
             : sortedCommentsData.length === 0 ? (<p className="text-sm text-muted-foreground text-center py-8">No comments yet. Be the first!</p>)
             : (<div className="space-y-3 pb-2">{sortedCommentsData.map((comment) => {
                 let commentTimestampRelative = 'just now';
-                if (comment.createdAt) { const dateValue = parseISO(comment.createdAt as string); if (isValid(dateValue)) { commentTimestampRelative = formatDistanceToNowStrict(dateValue, { addSuffix: true }); }}
+                if (comment.createdAt) { 
+                  try {
+                    // Handle different timestamp formats
+                    let dateValue;
+                    if (typeof comment.createdAt === 'object' && comment.createdAt !== null) {
+                      // Handle Firebase Timestamp objects
+                      if ('seconds' in comment.createdAt && typeof comment.createdAt.seconds === 'number') {
+                        dateValue = new Date(comment.createdAt.seconds * 1000);
+                      } else if (comment.createdAt instanceof Date) {
+                        dateValue = comment.createdAt;
+                      } else {
+                        // Default case - try to create a date
+                        dateValue = new Date();
+                      }
+                    } else if (typeof comment.createdAt === 'string') {
+                      // Handle ISO string dates
+                      dateValue = parseISO(comment.createdAt);
+                    } else {
+                      // Fallback
+                      dateValue = new Date();
+                    }
+                    
+                    if (isValid(dateValue)) { 
+                      commentTimestampRelative = formatDistanceToNowStrict(dateValue, { addSuffix: true }); 
+                    }
+                  } catch (e) {
+                    console.error('Error parsing comment date:', e);
+                    // Keep default 'just now' value
+                  }
+                }
                 const commenterInitial = comment.username ? comment.username.charAt(0).toUpperCase() : (comment.userName ? comment.userName.charAt(0).toUpperCase() : 'U');
                 const isCommentOwner = user?.uid === comment.userId;
                 return (<div key={comment.id} className="flex flex-col mt-0 mb-0 relative">
@@ -462,7 +746,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ post, commentsData: initi
               onChange={(e) => { setNewModalComment(e.target.value); if (commentInputRef.current) { commentInputRef.current.style.height = 'auto'; commentInputRef.current.style.height = `${Math.max(28, Math.min(120, commentInputRef.current.scrollHeight))}px`; }}}
               className="min-h-[28px] h-[28px] w-full rounded-full border border-transparent bg-muted/50 px-3.5 py-1 text-sm focus:border-primary placeholder:text-muted-foreground/70 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden flex-1"
               disabled={isSubmittingModalComment} />
-            {newModalComment.trim() && (<Button type="submit" variant="ghost" size="icon" className="text-primary h-9 w-9 flex-shrink-0 hover:bg-primary/10" disabled={isSubmittingModalComment} aria-label="Post comment">{isSubmittingModalComment ? <Loader2 className="h-4 w-4 animate-spin"/> : "Post"}</Button>)}
+            {newModalComment.trim() && (<Button type="submit" variant="ghost" size="icon" className="text-primary h-9 w-9 flex-shrink-0 hover:bg-primary/10" disabled={isSubmittingModalComment} aria-label="Post comment">{isSubmittingModalComment ? <Loader2 className="h-4 w-4 animate-spin"/> : <Send className="h-4 w-4"/>}</Button>)}
           </form>
         )}
       </DialogContent>
@@ -481,7 +765,6 @@ export default function FeedPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [hiddenPostIds, setHiddenPostIds] = useState<Set<string>>(new Set());
-  const [planData, setPlanData] = useState<Record<string, { city?: string; location?: string; } | null>>({});
   const [postToDelete, setPostToDelete] = useState<FeedPost | null>(null);
   const [isDeletingPost, setIsDeletingPost] = useState(false);
   const [activePostForCommentsModal, setActivePostForCommentsModal] = useState<FeedPost | null>(null);
@@ -493,30 +776,13 @@ export default function FeedPage() {
   const [authorForDetailModal, setAuthorForDetailModal] = useState<UserProfile | null>(null);
   const [loadingAuthorForDetailModal, setLoadingAuthorForDetailModal] = useState(false);
 
-  const fetchPlanData = useCallback(async (posts: FeedPost[]) => {
-    const newPlanData: Record<string, { city?: string; location?: string; } | null> = {};
-    await Promise.all(posts.map(async (post) => {
-      try {
-        const plan = await getPlanById(post.planId);
-        newPlanData[post.planId] = plan ? { city: plan.city, location: plan.location } : null;
-      } catch (error) {
-        console.error(`Error fetching plan data for post ${post.id}:`, error);
-        newPlanData[post.planId] = null;
-      }
-    }));
-    setPlanData(prev => ({ ...prev, ...newPlanData }));
-  }, []);
-
   const fetchFeedData = useCallback(async () => {
     if (authLoading) { setLoadingFeed(true); return; }
     setLoadingFeed(true);
     try {
       const result = await fetchFeedPostsAction(user?.uid, 20); 
       if (result.success && result.posts) {
-        setFeedPosts(result.posts);
-        setNextCursor(result.nextCursor || null);
-        setHasMore(!!result.nextCursor);
-        await fetchPlanData(result.posts);
+        setFeedPosts(result.posts); setNextCursor(result.nextCursor || null); setHasMore(!!result.nextCursor);
       } else {
         toast({ title: "Error Loading Feed", description: result.error || "Could not load feed content.", variant: "destructive" });
         setFeedPosts([]); setHasMore(false);
@@ -525,7 +791,7 @@ export default function FeedPage() {
       toast({ title: "Error", description: error.message || "An unexpected error occurred while loading the feed.", variant: "destructive" });
       setFeedPosts([]); setHasMore(false);
     } finally { setLoadingFeed(false); }
-  }, [user?.uid, authLoading, toast, fetchPlanData]);
+  }, [user?.uid, authLoading, toast]);
 
   const loadMorePosts = async () => {
     if (loadingMore || !hasMore || !nextCursor) return;
@@ -533,10 +799,7 @@ export default function FeedPage() {
     try {
       const result = await fetchFeedPostsAction(user?.uid, 20, nextCursor);
       if (result.success && result.posts) {
-        setFeedPosts(prevPosts => [...prevPosts, ...result.posts!]);
-        setNextCursor(result.nextCursor || null);
-        setHasMore(!!result.nextCursor);
-        await fetchPlanData(result.posts);
+        setFeedPosts(prevPosts => [...prevPosts, ...result.posts!]); setNextCursor(result.nextCursor || null); setHasMore(!!result.nextCursor);
       } else {
         toast({ title: "Error Loading More Posts", description: result.error || "Could not load more content.", variant: "destructive" }); setHasMore(false);
       }
@@ -693,7 +956,7 @@ export default function FeedPage() {
         {visibleFeedPosts.length > 0 && (
           <>
             <div className="grid grid-cols-1 gap-6 justify-items-center">
-              {visibleFeedPosts.map(item => (<FeedPostCard key={item.id} item={item} currentUserId={user?.uid} currentUserProfile={currentUserProfile} onOpenCommentsModal={openCommentsModal} onUpdatePostInList={updateFeedPostInList} onHidePost={hidePostLocally} onRequestDeletePost={handleRequestDeletePost} onOpenDetailModal={handleOpenPostDetailModal} plan={planData[item.planId]} />))}
+              {visibleFeedPosts.map(item => (<FeedPostCard key={item.id} item={item} currentUserId={user?.uid} currentUserProfile={currentUserProfile} onOpenCommentsModal={openCommentsModal} onUpdatePostInList={updateFeedPostInList} onHidePost={hidePostLocally} onRequestDeletePost={handleRequestDeletePost} onOpenDetailModal={handleOpenPostDetailModal} />))}
             </div>
             {hasMore && (<div className="flex justify-center mt-8 mb-4"><Button onClick={loadMorePosts} disabled={loadingMore} className="bg-primary text-primary-foreground hover:bg-primary/90">{loadingMore ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading...</>) : ("Load More Posts")}</Button></div>)}
             {!hasMore && (<p className="text-center text-gray-500 mt-8 mb-4">You've reached the end of the feed.</p>)}

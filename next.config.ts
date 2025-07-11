@@ -1,5 +1,10 @@
 import type {NextConfig} from 'next';
 
+const withPWA = require('next-pwa')({
+  dest: 'public',
+  // You can add runtimeCaching or other options here if needed
+});
+
 const nextConfig: NextConfig = {
   /* config options here */
   typescript: {
@@ -60,6 +65,6 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+module.exports = withPWA(nextConfig);
 
     
