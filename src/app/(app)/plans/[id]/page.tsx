@@ -32,6 +32,18 @@ import PlanComments from '@/components/plans/PlanComments';
 import { PlanRatingSection } from '@/components/plans/PlanRatingSection';
 import toast from 'react-hot-toast';
 import { LinearBlur } from "progressive-blur";
+import { useSwipeable } from 'react-swipeable';
+import { motion, AnimatePresence } from 'framer-motion';
+import React from 'react';
+
+// Helper to chunk itinerary into groups of 3
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    result.push(arr.slice(i, i + size));
+  }
+  return result;
+}
 
 export default function PlanDetailPage() {
   const { id } = useParams() as { id: string };
@@ -44,6 +56,22 @@ export default function PlanDetailPage() {
   const slideInterval = useRef<NodeJS.Timeout>();
   const [selectedItineraryItem, setSelectedItineraryItem] = useState<any>(null);
   const [isItineraryModalOpen, setIsItineraryModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState(0); // 0 = Overview, 1 = Plan Details
+
+  // Swipe gesture handlers
+  const swipeHandlers = useSwipeable({
+    onSwipedUp: () => {
+      console.log('Swiped up detected');
+      setActiveTab(1);
+    },
+    onSwipedDown: () => {
+      console.log('Swiped down detected');
+      setActiveTab(0);
+    },
+    delta: 50, // Minimum distance(px) for a swipe
+    trackTouch: true,
+    trackMouse: false,
+  });
   
   // Extract image data from plan using similar logic as PlanImageLoader component
   const planImages = useMemo(() => {
@@ -299,56 +327,90 @@ const [fitModes, setFitModes] = useState<string[]>([]);
 
     return (
       <>
-        <div className="space-y-4">
+        <div className="flex flex-col gap-y-3 pt-0 pb-2">
           {itinerary.map((item, index) => (
-            <div 
-              key={index}
-              className="flex items-start gap-4 relative cursor-pointer group"
-              onClick={() => openItineraryModal(item)}
-            >
-              {/* Timeline Line */}
-              <div className="flex flex-col items-center">
-                <div className="w-3 h-3 bg-primary rounded-full border-2 border-background shadow-sm z-10" />
-                {index < itinerary.length - 1 && (
-                  <div className="w-0.5 h-12 bg-dashed border-l-2 border-dashed border-muted-foreground/30 mt-2" />
-                )}
-              </div>
+            <React.Fragment key={item.id || index}>
+              <div 
+                className="flex items-center gap-3 py-1 relative cursor-pointer group h-20"
+                onClick={() => openItineraryModal(item)}
+              >
+              {/* Timeline removed; only polaroid and content remain */}
 
-              {/* Time */}
-              <div className="flex-shrink-0 w-20 text-sm font-medium text-muted-foreground">
-                {formatTime(item.startTime)}
-              </div>
-
-              {/* Image */}
-              <div className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden bg-muted">
-                <Image
-                  src={getItemImageUrl(item)}
-                  alt={item.placeName}
-                  width={48}
-                  height={48}
-                  className="object-cover w-full h-full"
-                  unoptimized={getItemImageUrl(item).includes('maps.googleapis.com')}
-                />
+              {/* Polaroid-style Thumbnail with Time Tag */}
+              <div className="flex-shrink-0 flex flex-col items-center ml-2">
+                <div className="relative rounded-xl bg-muted shadow-md flex flex-col items-center" style={{ width: 68, height: 84 }}>
+                  {/* Stop number indicator in top left */}
+                  <span className="absolute -top-2 -left-2 w-6 h-6 flex items-center justify-center rounded-full bg-background text-xs font-semibold text-muted-foreground border border-border/60 z-20" style={{ opacity: 1, boxShadow: '0 1px 4px 0 rgba(0,0,0,0.06)' }}>
+                    {index + 1}
+                  </span>
+                  <div className="w-full h-14 overflow-hidden rounded-t-xl">
+                    <Image
+                      src={getItemImageUrl(item)}
+                      alt={item.placeName}
+                      width={68}
+                      height={56}
+                      className="object-cover w-full h-full"
+                      unoptimized={getItemImageUrl(item).includes('maps.googleapis.com')}
+                    />
+                  </div>
+                  {/* Time Tag in the 'polaroid' bottom */}
+                  <div className="w-full flex items-center justify-center pb-1 pt-0.5">
+                    <span className="rounded-full bg-transparent text-white text-xs px-2 py-0.5">
+                      {formatTime(item.startTime)}
+                    </span>
+                  </div>
+                </div>
               </div>
 
               {/* Content */}
-              <div className="flex-1 min-w-0">
-                <h4 className="font-semibold text-foreground text-sm mb-1 group-hover:text-primary transition-colors">
+              <div className="flex-1 min-w-0 pl-3 flex flex-col justify-center">
+                <h4 className="font-semibold text-foreground text-base mb-0 group-hover:text-primary transition-colors">
                   {item.placeName}
                 </h4>
+                {(item.address || typeof item.rating === 'number') && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground truncate mb-1">
+                    {item.address && (
+                      <span className="truncate">{item.address.split(',')[0]}</span>
+                    )}
+                    {typeof item.rating === 'number' && (
+                      <span className="flex items-center gap-1">
+                        <span className="text-yellow-400">★</span>
+                        <span>{item.rating.toFixed(1)}</span>
+                        {item.reviewCount && (
+                          <span className="ml-1">({abbreviateNumber(item.reviewCount)})</span>
+                        )}
+                      </span>
+                    )}
+                  </div>
+                )}
                 <p className="text-xs text-muted-foreground line-clamp-2">
                   {item.description || 'No description available'}
                 </p>
-
               </div>
             </div>
-          ))}
-        </div>
+            {/* Faint horizontal separator, except after last item */}
+            {index < itinerary.length - 1 && (
+              <div
+                className="w-full h-4 flex items-center"
+                aria-hidden="true"
+              >
+                <div
+                  className="w-full h-px mx-4"
+                  style={{
+                    background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.10) 20%, rgba(255,255,255,0.10) 80%, transparent 100%)',
+                    opacity: 0.5
+                  }}
+                />
+              </div>
+            )}
+          </React.Fragment>
+        ))}
+      </div>
 
         {/* Full Screen Modal */}
         {isItineraryModalOpen && selectedItineraryItem && (
-          <div className="fixed inset-0 z-50 bg-background">
-            <div className="h-full flex flex-col">
+          <div className="fixed inset-0 z-[999] bg-background/80 flex items-center justify-center">
+            <div className="w-full max-w-md mx-auto rounded-2xl bg-background shadow-2xl flex flex-col overflow-hidden">
               {/* Header */}
               <div className="flex items-center justify-between p-4 border-b border-border">
                 <h2 className="text-lg font-semibold">Itinerary Details</h2>
@@ -356,6 +418,8 @@ const [fitModes, setFitModes] = useState<string[]>([]);
                   variant="ghost"
                   size="icon"
                   onClick={closeItineraryModal}
+                  className="border border-border rounded-full shadow-sm hover:bg-muted/40"
+                  style={{ boxShadow: '0 1px 4px 0 rgba(0,0,0,0.06)' }}
                 >
                   <X className="h-5 w-5" />
                 </Button>
@@ -364,8 +428,8 @@ const [fitModes, setFitModes] = useState<string[]>([]);
               {/* Content */}
               <div className="flex-1 overflow-y-auto p-4">
                 <div className="space-y-6">
-                  {/* Image */}
-                  <div className="relative h-48 rounded-lg overflow-hidden bg-muted">
+                  {/* Large Image */}
+                  <div className="relative h-72 rounded-xl overflow-hidden bg-muted">
                     <Image
                       src={getItemImageUrl(selectedItineraryItem)}
                       alt={selectedItineraryItem.placeName}
@@ -465,7 +529,18 @@ const [fitModes, setFitModes] = useState<string[]>([]);
   }
 
   return (
-    <div className="min-h-screen flex flex-col relative">
+    <div className="min-h-screen flex flex-col relative" {...swipeHandlers}>
+      <AnimatePresence initial={false} mode="wait">
+        {activeTab === 0 ? (
+          <motion.div
+            key="overview"
+            initial={{ y: 0, opacity: 1 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -50, opacity: 0 }}
+            transition={{ duration: 0.4, ease: 'easeInOut' }}
+            className="absolute inset-0 z-10 bg-transparent"
+            style={{ pointerEvents: activeTab === 0 ? 'auto' : 'none' }}
+          >
       {/* Full-screen image container for both top and bottom images */}
       <div className="fixed top-0 left-0 right-0 bottom-0 z-0 overflow-hidden">
         {/* Progressive Blur Overlay */}
@@ -482,47 +557,43 @@ const [fitModes, setFitModes] = useState<string[]>([]);
           style={{ maskImage: 'linear-gradient(to bottom, transparent 38.5%, black 100%)' }}
         />
         {/* Progressive gradient overlay that adapts to color scheme - spans entire page with stronger bottom effect */}
-        {/* Strong continuous gradient overlay that spans both images with high opacity */}
         <div className="absolute inset-0 z-[8] pointer-events-none">
           {/* Dark mode gradient - completely opaque black at bottom */}
           <div className="hidden dark:block absolute inset-0 bg-gradient-to-b from-black/0 from-0% via-black/30 via-25% via-black/70 via-60% via-black/90 via-85% to-black"></div>
-          
           {/* Light mode gradient - nearly opaque white at bottom */}
           <div className="dark:hidden absolute inset-0 bg-gradient-to-b from-white/0 from-0% via-white/30 via-25% via-white/60 via-60% via-white/85 via-85% to-white"></div>
         </div>
-        
         {planImages.length > 0 ? (
           <>
-            {/* Single full viewport image container */}
-            <div ref={topContainerRef} className="absolute top-0 left-0 right-0 bottom-0 overflow-hidden" style={{ boxShadow: 'none', filter: 'none' }}>
+                  {/* Single full viewport image container */}
+                  <div ref={topContainerRef} className="absolute top-0 left-0 right-0 bottom-0 overflow-hidden" style={{ boxShadow: 'none', filter: 'none' }}>
               {planImages.map((image, index) => (
                 <div 
-                  key={`image-${index}`}
+                        key={`image-${index}`}
                   className={`absolute inset-0 transition-opacity duration-1000 ${index === activeImageIndex ? 'opacity-100' : 'opacity-0'}`}
                 >
-                  {/* Single full viewport image with mosaic-style tiling */}
-                  <div 
-                    className="absolute inset-0"
-                    style={{
-                      backgroundImage: `url(${image.url})`,
-                      backgroundSize: 'cover',
-                      backgroundPosition: 'center',
-                      backgroundRepeat: 'repeat',
-                      filter: 'blur(0px)',
-                      boxShadow: 'none'
-                    }}
+                        {/* Single full viewport image with mosaic-style tiling */}
+                        <div 
+                          className="absolute inset-0"
+                          style={{
+                            backgroundImage: `url(${image.url})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                            backgroundRepeat: 'repeat',
+                            filter: 'blur(0px)',
+                            boxShadow: 'none'
+                          }}
                   />
-                  {/* Overlay to reduce the tiling effect and create a more natural look */}
+                        {/* Overlay to reduce the tiling effect and create a more natural look */}
                   <div 
-                    className="absolute inset-0"
+                          className="absolute inset-0"
                     style={{ 
-                      background: 'linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.05) 50%, rgba(0,0,0,0.1) 100%)'
+                            background: 'linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.05) 50%, rgba(0,0,0,0.1) 100%)'
                     }}
                   />
                 </div>
               ))}
             </div>
-            
             {/* Image navigation dots if multiple images */}
             {planImages.length > 1 && (
               <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-1.5 z-10">
@@ -545,7 +616,6 @@ const [fitModes, setFitModes] = useState<string[]>([]);
           </div>
         )}
       </div>
-      
       {/* Header with back button - completely transparent */}
       <div className="fixed top-0 left-0 right-0 z-20 p-2 flex items-center">
         <Button 
@@ -557,33 +627,35 @@ const [fitModes, setFitModes] = useState<string[]>([]);
           <ChevronLeft className="h-5 w-5" />
         </Button>
       </div>
-      
       {/* Space to allow header to clear but still let content overlay images */}
       <div className="h-[30vh]" />
-
-      {/* Plan name and host info */}
-      <div className="mt-4 px-2 relative z-10">
-        <Card className="border-border/0 backdrop-blur-none bg-transparent relative z-20 drop-shadow-lg" style={{ boxShadow: 'none' }}>
-          <CardContent className="p-4">
-            {/* Event Type Badge moved inside the card */}
+            {/* Plan name and host info */}
+            <div className="mt-4 px-2 relative z-10">
+              <Card className="border-border/0 backdrop-blur-none bg-transparent relative z-20 drop-shadow-lg" style={{ boxShadow: 'none' }}>
+                <CardContent className="p-4">
+                  {/* Event Type Badge moved inside the card */}
       {plan?.eventType && (
           <Badge 
-                className="bg-primary text-white hover:bg-primary mb-2" 
+                      className="bg-primary text-white hover:bg-primary mb-2" 
             style={{ filter: 'none', boxShadow: 'none', textShadow: 'none' }}
           >
             {plan?.eventType || plan?.type || 'Event'}
           </Badge>
       )}
-
-            <h1 className="text-3xl font-bold mb-4 text-white/75">{plan?.name || 'Unnamed Plan'}</h1>
-            
+                  <h1 className="text-3xl font-bold mb-4 text-white/75">{plan?.name || 'Unnamed Plan'}</h1>
             <div className="flex items-center gap-2 text-base text-muted-foreground">
               <CalendarDays className="h-5 w-5" />
-              <span>{formatDate(plan?.eventTime)}</span>
+                    <span>{formatDate(plan?.eventTime)}</span>
               <MapPin className="h-5 w-5 ml-2" />
               <span>{plan?.location || 'Location not set'}</span>
             </div>
-
+                  {/* Plan Description (Overview tab) */}
+                  {plan?.description && (
+                    <div className="mt-4">
+                      <h2 className="font-medium mb-2">About this plan</h2>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{plan.description}</p>
+                    </div>
+                  )}
             <div className="flex items-center mt-4">
               <Avatar className="h-6 w-6 mr-2">
                 <AvatarImage src={plan?.hostAvatarUrl || undefined} alt={plan?.hostName || 'Host'} />
@@ -596,35 +668,15 @@ const [fitModes, setFitModes] = useState<string[]>([]);
           </CardContent>
         </Card>
       </div>
-
-      {/* Plan description */}
-      {plan?.description && (
-        <div className="px-2 mt-4">
-          <Card className="backdrop-blur-sm bg-transparent border-0 shadow-none outline-none">
-            <CardContent className="p-4">
-              <h2 className="font-medium mb-2">About this plan</h2>
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{plan?.description}</p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Participants */}
-      <div className="px-2 mt-4">
-        <Card className="backdrop-blur-sm bg-transparent border-0 shadow-none outline-none">
-          <CardContent className="p-4">
-
-
-            {/* RSVP section for invited users */}
-            {(isInvited || isHost) && (
-              <>
-                <div className="flex flex-wrap gap-2 mt-2">
+            {/* RSVP Buttons (floating) */}
+            <div className="px-2 mt-4 relative z-20">
+              <div className="flex flex-wrap gap-2 mt-2 justify-center w-full">
                   <Button
                     size="sm"
                     variant={isGoing ? "default" : "outline"}
                     onClick={() => handleRSVP('going')}
                     disabled={rsvpLoading || isHost}
-                    className={isGoing ? "bg-green-600 hover:bg-green-700" : ""}
+                  className={(isGoing ? "bg-green-600 hover:bg-green-700" : "") + " !opacity-100"}
                   >
                     {rsvpLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ThumbsUp className="h-4 w-4 mr-2" />}
                     Going
@@ -634,9 +686,9 @@ const [fitModes, setFitModes] = useState<string[]>([]);
                     variant={isMaybe ? "default" : "outline"}
                     onClick={() => handleRSVP('maybe')}
                     disabled={rsvpLoading || isHost}
-                    className={isMaybe ? "bg-yellow-600 hover:bg-yellow-700" : ""}
+                  className={(isMaybe ? "bg-yellow-600 hover:bg-yellow-700" : "") + " !opacity-100"}
                   >
-                    {rsvpLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <MessageSquare className="h-4 w-4 mr-2" />}
+                  {rsvpLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <MessageSquare className="h-4 w-4 mr-2" />}
                     Maybe
                   </Button>
                   <Button
@@ -644,101 +696,212 @@ const [fitModes, setFitModes] = useState<string[]>([]);
                     variant={hasDeclined ? "default" : "outline"}
                     onClick={() => handleRSVP('not-going')}
                     disabled={rsvpLoading || isHost}
-                    className={hasDeclined ? "bg-red-600 hover:bg-red-700" : ""}
+                  className={(hasDeclined ? "bg-red-600 hover:bg-red-700" : "") + " !opacity-100"}
                   >
-                    {rsvpLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ThumbsUp className="h-4 w-4 mr-2 rotate-180" />}
-                    Not Going
+                  {rsvpLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ThumbsUp className="h-4 w-4 mr-2 rotate-180" />}
+                  Not Going
                   </Button>
                 </div>
+            </div>
+            {/* Swipe up prompt */}
+            <div className="flex justify-center mt-6">
+              <span className="text-xs text-white/70 animate-bounce">Swipe up for plan details</span>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="details"
+            initial={{ y: 50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 50, opacity: 0 }}
+            className="absolute inset-0 z-10 overflow-y-auto"
+            style={{ pointerEvents: activeTab === 1 ? 'auto' : 'none' }}
+          >
+            {/* Plan Details Tab Background: Image slideshow, gradient, and LinearBlur overlays */}
+            <div className="fixed top-0 left-0 right-0 bottom-0 z-0 overflow-hidden">
+              {/* Progressive Blur Overlay */}
+              <LinearBlur
+                steps={20}
+                strength={64}
+                falloffPercentage={27}
+                side="bottom"
+                style={{ position: 'absolute', inset: 0, zIndex: 9, pointerEvents: 'none' }}
+              />
+              {/* Gradual blur overlay that starts at 38.5% and gets stronger to the bottom */}
+              <div
+                className="absolute inset-0 backdrop-blur-md"
+                style={{ maskImage: 'linear-gradient(to bottom, transparent 38.5%, black 100%)' }}
+              />
+              {/* Progressive gradient overlay that adapts to color scheme - spans entire page with stronger bottom effect */}
+              <div className="absolute inset-0 z-[8] pointer-events-none">
+                {/* Dark mode gradient - completely opaque black at bottom */}
+                <div className="hidden dark:block absolute inset-0 bg-gradient-to-b from-black/0 from-0% via-black/30 via-25% via-black/70 via-60% via-black/90 via-85% to-black"></div>
+                {/* Light mode gradient - nearly opaque white at bottom */}
+                <div className="dark:hidden absolute inset-0 bg-gradient-to-b from-white/0 from-0% via-white/30 via-25% via-white/60 via-60% via-white/85 via-85% to-white"></div>
+              </div>
+              {planImages.length > 0 ? (
+                <>
+                  {/* Single full viewport image container */}
+                  <div className="absolute top-0 left-0 right-0 bottom-0 overflow-hidden" style={{ boxShadow: 'none', filter: 'none' }}>
+                    {planImages.map((image, index) => (
+                      <div 
+                        key={`details-image-${index}`}
+                        className={`absolute inset-0 transition-opacity duration-1000 ${index === activeImageIndex ? 'opacity-100' : 'opacity-0'}`}
+                      >
+                        <div 
+                          className="absolute inset-0"
+                          style={{
+                            backgroundImage: `url(${image.url})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                            backgroundRepeat: 'repeat',
+                            filter: 'blur(0px)',
+                            boxShadow: 'none'
+                          }}
+                        />
+                        <div 
+                          className="absolute inset-0"
+                          style={{ 
+                            background: 'linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.05) 50%, rgba(0,0,0,0.1) 100%)'
+                          }}
+                        />
+                      </div>
+                    ))}
+                </div>
               </>
+              ) : (
+                <div className="h-full w-full bg-gradient-to-b from-purple-800 to-blue-900">
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <CalendarDays className="h-20 w-20 text-white/30" />
+                  </div>
+                </div>
+              )}
+            </div>
+            {/* Header with back button - completely transparent */}
+            <div className="fixed top-0 left-0 right-0 z-20 p-2 flex items-center">
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={() => router.push('/plans')}
+                className="mr-2 text-white hover:bg-white/20"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+            </div>
+            {/* Space to allow header to clear but still let content overlay images */}
+            <div className="h-[30vh]" />
+            {/* Plan Details Tab Header */}
+            <div className="px-4 mb-6 relative z-30">
+              <h1 className="text-2xl md:text-3xl font-bold text-foreground drop-shadow-lg">Plan Details</h1>
+            </div>
+            {/* Add soft shadow to all main content elements */}
+            <div className="space-y-8">
+            {plan?.itinerary && plan.itinerary.length > 0 && (
+              <div className="px-2 mt-4">
+                {/* Swipeable Itinerary Cards: each card contains 3 items with the full timeline design */}
+                <div className="shadow-lg shadow-black/10 rounded-3xl bg-black/40 backdrop-blur-sm pr-6 py-6 pl-4 pt-4 flex flex-col justify-center" style={{ overflow: 'visible' }}>
+                  <div
+                    className="relative overflow-x-auto snap-x snap-mandatory scroll-smooth hide-scrollbar w-full"
+                    style={{ WebkitOverflowScrolling: 'touch', msOverflowStyle: 'none', scrollbarWidth: 'none' }}
+                  >
+                    <div className="flex w-full">
+                      {chunkArray(plan.itinerary, 3).map((group, cardIdx) => (
+                        <div
+                          key={`itinerary-card-${cardIdx}`}
+                          className="w-full flex-shrink-0 snap-center"
+                        >
+                          <div className="flex flex-col justify-center h-full">
+                            <CompactItinerary itinerary={group} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Navigation dots */}
+                  <div className="flex justify-center gap-2 mt-4">
+                    {chunkArray(plan.itinerary, 3).map((_, idx) => (
+                      <span key={idx} className="w-2 h-2 rounded-full bg-muted-foreground/30 inline-block" />
+                    ))}
+                  </div>
+                </div>
+              </div>
             )}
-          </CardContent>
-        </Card>
+            {plan?.itinerary && plan.itinerary.length > 0 && (
+              <div className="px-2 mt-4 shadow-lg shadow-black/10 rounded-2xl bg-background/80">
+                <PlanMap 
+                  itinerary={plan.itinerary} 
+                  planName={plan.name || 'Plan'}
+                  apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
+                />
+              </div>
+            )}
+            {plan?.photoHighlights && plan.photoHighlights.length > 0 && (
+              <div className="px-2 mt-4 shadow-lg shadow-black/10 rounded-2xl bg-background/80">
+                <PlanPhotos 
+                  highlights={plan.photoHighlights} 
+                  itinerary={plan.itinerary || []}
+                  planName={plan.name || 'Plan'}
+                  className="backdrop-blur-sm bg-background/80"
+                />
+              </div>
+            )}
+            {plan?.id && (
+              <div className="px-2 mt-4 shadow-lg shadow-black/10 rounded-2xl bg-background/80">
+                <PlanComments 
+                  comments={(plan.comments || []) as any}
+                  currentUserId={user?.uid}
+                  canComment={isHost || isInvited}
+                  onCommentSubmit={async (content: string) => {
+                    // TODO: Implement comment submission
+                    console.log('Submit comment:', content);
+                    toast.success('Comment posted!');
+                  }}
+                  onCommentUpdate={async (commentId: string, content: string) => {
+                    // TODO: Implement comment update
+                    console.log('Update comment:', commentId, content);
+                    toast.success('Comment updated!');
+                  }}
+                  onCommentDelete={async (commentId: string) => {
+                    // TODO: Implement comment deletion
+                    console.log('Delete comment:', commentId);
+                    toast.success('Comment deleted!');
+                  }}
+                />
+              </div>
+            )}
+            {plan?.id && (
+              <div className="px-2 mt-4 shadow-lg shadow-black/10 rounded-2xl bg-background/80">
+                <PlanRatingSection 
+                  isHost={isHost}
+                  userRating={0} // TODO: Get from plan ratings
+                  hasRated={false} // TODO: Check if user has rated
+                  ratingLoading={false} // TODO: Add loading state
+                  canRate={!isHost && (isInvited || isGoing)} // Only non-hosts who are invited or going can rate
+                  onRatingChange={(rating: number) => {
+                    // TODO: Handle rating change
+                    console.log('Rating changed:', rating);
+                  }}
+                  onRatingSubmit={() => {
+                    // TODO: Implement rating submission
+                    console.log('Submit rating');
+                    toast.success('Rating submitted!');
+                  }}
+                  onClearRating={() => {
+                    // TODO: Implement rating deletion
+                    console.log('Clear rating');
+                    toast.success('Rating cleared!');
+                  }}
+                />
+              </div>
+            )}
+            {/* Swipe down prompt */}
+            <div className="flex justify-center mt-6 mb-4">
+              <span className="text-xs text-muted-foreground animate-bounce">Swipe down to return</span>
+            </div>
       </div>
-
-      {/* Plan Itinerary */}
-      {plan?.itinerary && plan.itinerary.length > 0 && (
-        <div className="px-2 mt-4">
-          <CompactItinerary itinerary={plan.itinerary} />
-        </div>
-      )}
-
-      {/* Plan Map */}
-      {plan?.itinerary && plan.itinerary.length > 0 && (
-        <div className="px-2 mt-4">
-          <PlanMap 
-            itinerary={plan.itinerary} 
-            planName={plan.name || 'Plan'}
-            apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
-          />
-        </div>
-      )}
-
-      {/* Plan Photos */}
-      {plan?.photoHighlights && plan.photoHighlights.length > 0 && (
-        <div className="px-2 mt-4">
-          <PlanPhotos 
-            highlights={plan.photoHighlights} 
-            itinerary={plan.itinerary || []}
-            planName={plan.name || 'Plan'}
-            className="backdrop-blur-sm bg-background/80"
-          />
-        </div>
-      )}
-
-      {/* Plan Comments */}
-      {plan?.id && (
-        <div className="px-2 mt-4">
-          <PlanComments 
-            comments={(plan.comments || []) as any}
-            currentUserId={user?.uid}
-            canComment={isHost || isInvited}
-            onCommentSubmit={async (content: string) => {
-              // TODO: Implement comment submission
-              console.log('Submit comment:', content);
-              toast.success('Comment posted!');
-            }}
-            onCommentUpdate={async (commentId: string, content: string) => {
-              // TODO: Implement comment update
-              console.log('Update comment:', commentId, content);
-              toast.success('Comment updated!');
-            }}
-            onCommentDelete={async (commentId: string) => {
-              // TODO: Implement comment deletion
-              console.log('Delete comment:', commentId);
-              toast.success('Comment deleted!');
-            }}
-          />
-        </div>
-      )}
-
-      {/* Plan Rating Section */}
-      {plan?.id && (
-        <div className="px-2 mt-4">
-          <PlanRatingSection 
-            isHost={isHost}
-            userRating={0} // TODO: Get from plan ratings
-            hasRated={false} // TODO: Check if user has rated
-            ratingLoading={false} // TODO: Add loading state
-            canRate={!isHost && (isInvited || isGoing)} // Only non-hosts who are invited or going can rate
-            onRatingChange={(rating: number) => {
-              // TODO: Handle rating change
-              console.log('Rating changed:', rating);
-            }}
-            onRatingSubmit={() => {
-              // TODO: Implement rating submission
-              console.log('Submit rating');
-              toast.success('Rating submitted!');
-            }}
-            onClearRating={() => {
-              // TODO: Implement rating deletion
-              console.log('Clear rating');
-              toast.success('Rating cleared!');
-            }}
-          />
-        </div>
-      )}
-
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Mobile action buttons - fixed at bottom */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/70 backdrop-blur-lg border-t border-border/50 flex justify-between z-30" style={{ boxShadow: 'none' }}>
         <Button variant="ghost" className="flex flex-col items-center text-xs w-16 text-white hover:bg-white/20">
@@ -758,4 +921,11 @@ const [fitModes, setFitModes] = useState<string[]>([]);
       </div>
     </div>
   );
+}
+
+// Helper to abbreviate numbers (e.g., 1200 -> 1.2k)
+function abbreviateNumber(value: number) {
+  if (value >= 1000000) return (value / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (value >= 1000) return (value / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  return value;
 }
