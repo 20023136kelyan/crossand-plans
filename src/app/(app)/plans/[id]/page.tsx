@@ -492,8 +492,8 @@ export default function PlanDetailPage() {
             key="overview"
             initial={{ y: 0, opacity: 1 }}
             animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -50, opacity: 0 }}
-            transition={{ duration: 0.4, ease: 'easeInOut' }}
+            exit={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0, ease: 'linear' }}
             className="absolute inset-0 z-10 bg-transparent"
             style={{ pointerEvents: activeTab === 0 ? 'auto' : 'none' }}
           >
@@ -695,10 +695,10 @@ export default function PlanDetailPage() {
         ) : (
           <motion.div
             key="details"
-            initial={{ y: '100%' }}
+            initial={{ y: 0 }}
             animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ duration: 0.4, ease: 'easeInOut' }}
+            exit={{ y: 0 }}
+            transition={{ duration: 0, ease: 'linear' }}
             className="absolute inset-0 z-10"
             style={{ pointerEvents: activeTab === 1 ? 'auto' : 'none' }}
             ref={planDetailsRef}

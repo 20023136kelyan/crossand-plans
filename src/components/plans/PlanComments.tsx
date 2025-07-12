@@ -211,12 +211,12 @@ export default function PlanComments({
           size="sm"
           className="relative bg-gradient-to-br from-background via-muted/5 to-muted/10 border border-border/50 shadow-lg backdrop-blur-sm hover:shadow-xl transition-all duration-200"
         >
-          <MessageCircle className="h-4 w-4 mr-2" />
-          <span className="text-sm font-medium">Comments</span>
+          <MessageCircle className="h-3.5 w-3.5 mr-1.5" />
+          <span className="text-xs font-medium">Comments</span>
           {comments.length > 0 && (
             <Badge 
               variant="default" 
-              className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center text-xs font-bold bg-primary text-primary-foreground"
+              className="absolute -top-1.5 -right-1.5 h-4 w-4 p-0 flex items-center justify-center text-xs font-bold bg-primary text-primary-foreground"
             >
               {comments.length > 99 ? '99+' : comments.length}
             </Badge>
@@ -253,7 +253,7 @@ export default function PlanComments({
             </div>
 
             {/* Comments List (scrollable, with bottom padding for input) */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-28">
+            <div className="flex-1 overflow-y-auto p-3 space-y-4 pb-28">
               {/* Comments List */}
               <div className="space-y-0">
                 {loading ? (
@@ -281,20 +281,20 @@ export default function PlanComments({
                       <div
                         key={comment.id}
                         className={cn(
-                          "group relative rounded-xl shadow-sm border border-border/10 px-5 py-4 mb-4 flex gap-4 bg-transparent",
-                          index === 0 ? "mt-0" : "mt-2"
+                          "group relative rounded-lg shadow-sm border border-border/10 px-3 py-2 mb-2 flex gap-3 bg-transparent",
+                          index === 0 ? "mt-0" : "mt-1"
                         )}
                       >
-                        <Avatar className="h-10 w-10 flex-shrink-0 mt-1">
+                        <Avatar className="h-7 w-7 flex-shrink-0 mt-0.5">
                           <AvatarImage src={comment.userAvatarUrl || undefined} className="object-cover" />
-                          <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-semibold text-sm">
+                          <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-semibold text-xs">
                             {comment.username?.charAt(0)?.toUpperCase() || "?"}
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-semibold text-base text-foreground">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-medium text-sm text-foreground">
                                 @{comment.username || 'user'}
                               </span>
                               {comment.role || comment.isVerified ? (
@@ -305,16 +305,16 @@ export default function PlanComments({
                               {formatDistanceToNow(convertTimestampToDate(comment.createdAt), { addSuffix: true })}
                             </span>
                           </div>
-                          <div className="mt-1">
-                            <p className="text-[15px] leading-relaxed text-foreground break-words">{comment.text}</p>
+                          <div className="mt-0.5">
+                            <p className="text-sm leading-relaxed text-foreground break-words">{comment.text}</p>
                           </div>
-                          <div className="flex items-center gap-6 mt-2 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-4 mt-1.5 text-xs text-muted-foreground">
                             <button className="flex items-center gap-1 hover:text-primary transition-colors">
-                              <Heart className="h-4 w-4" />
+                              <Heart className="h-3 w-3" />
                               <span className="font-medium">Like</span>
                             </button>
                             <button className="flex items-center gap-1 hover:text-primary transition-colors">
-                              <Reply className="h-4 w-4" />
+                              <Reply className="h-3 w-3" />
                               <span className="font-medium">Reply</span>
                             </button>
                             {/* Add more actions if needed */}
