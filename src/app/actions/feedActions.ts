@@ -156,7 +156,13 @@ export async function toggleLikePostServerAction(
 export async function addCommentToPostServerAction(
   postId: string,
   text: string,
-  idToken: string
+  idToken: string,
+  profileInfo?: {
+    username?: string | null;
+    userAvatarUrl?: string | null;
+    userRole?: UserRoleType | null;
+    userIsVerified?: boolean;
+  }
 ): Promise<{ 
   success: boolean; 
   comment?: FeedComment; 
@@ -189,8 +195,10 @@ export async function addCommentToPostServerAction(
       postId,
       userId,
       userName: userProfile.name,
-      username: userProfile.username || null,
-      userAvatarUrl: userProfile.avatarUrl,
+      username: profileInfo?.username ?? userProfile.username ?? null,
+      userAvatarUrl: profileInfo?.userAvatarUrl ?? userProfile.avatarUrl ?? null,
+      userRole: profileInfo?.userRole ?? userProfile.role ?? 'user',
+      userIsVerified: profileInfo?.userIsVerified ?? userProfile.isVerified ?? false,
       text: text.trim(),
     };
     
@@ -200,16 +208,13 @@ export async function addCommentToPostServerAction(
       return { 
         success: true, 
         comment: result.comment, 
-        updatedPostFields: { // Return only necessary fields
-          commentsCount: result.updatedPost.commentsCount,
-          // updatedAt: result.updatedPost.updatedAt // If needed by client
-        }
+        updatedPostFields: { commentsCount: result.updatedPost.commentsCount }
       };
     }
-    return result; // Propagate error details from service
-  } catch (error: any) { // Should ideally not be reached
-    console.error("[addCommentToPostServerAction] Unexpected error:", error);
-    return { success: false, error: "An unexpected server error occurred while adding comment.", errorCode: "UNEXPECTED_SERVER_ERROR", originalError: error.message || String(error) };
+    return { success: false, error: result.error || "Could not add comment.", errorCode: result.errorCode, originalError: result.originalError };
+  } catch (error: any) {
+    console.error("[addCommentToPostServerAction] Error adding comment:", error);
+    return { success: false, error: error.message || "Could not add comment.", errorCode: "SERVER_ERROR", originalError: error.message || String(error) };
   }
 }
 

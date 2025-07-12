@@ -2,7 +2,7 @@
 
 import { Plan } from '@/types/plan';
 import { parseISO, isValid, isPast } from 'date-fns';
-import { MoreVertical, Eye, Edit3, CheckCircle, Trash2, Share2, QrCode, Link as LinkIcon, Users, MessageSquare, Download, Flag, Bookmark, Settings, UserPlus } from 'lucide-react';
+import { MoreHorizontal, Eye, Edit3, CheckCircle, Trash2, Share2, QrCode, Link as LinkIcon, Users, MessageSquare, Download, Flag, Bookmark, Settings, UserPlus } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import {
@@ -46,6 +46,8 @@ interface PlanDropdownMenuProps {
   size?: 'sm' | 'default';
   // Variants
   variant?: 'basic' | 'enhanced' | 'hero' | 'actions';
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function PlanDropdownMenu({
@@ -80,7 +82,9 @@ export function PlanDropdownMenu({
   triggerClassName = "h-6 w-6",
   size = 'default',
   // Variants
-  variant = 'basic'
+  variant = 'basic',
+  open,
+  onOpenChange
 }: PlanDropdownMenuProps) {
   
   // Check if plan can be marked as completed (host only, past event time, not already completed)
@@ -103,15 +107,16 @@ export function PlanDropdownMenu({
   const canManage = isHost;
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
         <Button 
           variant="ghost" 
           size="icon" 
-          className={`text-muted-foreground hover:text-foreground ${triggerClassName}`}
+          className={`rounded-full bg-black/40 backdrop-blur-md hover:bg-black/60 text-white border border-white/20 transition-all duration-200 ${triggerClassName}`}
+          style={{ width: 40, height: 40, minWidth: 40, minHeight: 40 }}
           disabled={isLoading}
         >
-          <MoreVertical className="h-4 w-4" />
+          <MoreHorizontal className="h-6 w-6" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className={className}>

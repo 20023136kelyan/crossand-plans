@@ -26,6 +26,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/components/ui/use-toast";
 import { deleteFeedCommentAction, toggleLikePostServerAction, addCommentToPostServerAction } from "@/app/actions/feedActions";
 import { getPostComments } from "@/services/clientServices";
+import { VerificationBadge } from '@/components/ui/verification-badge';
 
 interface PostDetailModalProps {
   post: FeedPost;
@@ -231,19 +232,17 @@ const CommentsList = ({ post }: { post: FeedPost }) => {
           } else if (comment.createdAt instanceof Date) {
             dateValue = comment.createdAt;
           } else if (comment.createdAt && typeof comment.createdAt.toDate === 'function') {
-            // Handle Firestore Timestamp
             dateValue = comment.createdAt.toDate();
           } else {
             dateValue = new Date();
           }
-          
           if (isValid(dateValue)) {
             commentTimestampRelative = formatDistanceToNowStrict(dateValue, { addSuffix: true });
           }
         }
-        const commenterInitial = comment.username 
-          ? comment.username.charAt(0).toUpperCase() 
-          : (comment.userName ? comment.userName.charAt(0).toUpperCase() : 'U');
+        const commenterInitial = comment.username
+          ? comment.username.charAt(0).toUpperCase()
+          : 'U';
         const isCommentOwner = user?.uid === comment.userId;
 
         return (
@@ -255,15 +254,19 @@ const CommentsList = ({ post }: { post: FeedPost }) => {
                   <Avatar className="h-8 w-8 border-2 border-border/30">
                     <AvatarImage 
                       src={comment.userAvatarUrl || undefined} 
-                      alt={comment.username || comment.userName || 'User'} 
+                      alt={comment.username || 'User'} 
                       data-ai-hint="person avatar"
                     />
                     <AvatarFallback className="text-xs font-semibold">{commenterInitial}</AvatarFallback>
                   </Avatar>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-foreground">
-                      {comment.username || comment.userName || 'User'}
+                      @{comment.username || 'user'}
                     </span>
+                    {/* Verification badge for commenter */}
+                    {comment.userRole || comment.userIsVerified ? (
+                      <VerificationBadge role={comment.userRole} isVerified={comment.userIsVerified} />
+                    ) : null}
                     <span className="text-xs text-muted-foreground/70">•</span>
                     <span className="text-xs text-muted-foreground">{commentTimestampRelative}</span>
                   </div>
@@ -293,7 +296,6 @@ const CommentsList = ({ post }: { post: FeedPost }) => {
                   </DropdownMenu>
                 )}
               </div>
-              
               {/* Comment Content */}
               <div className="pl-11">
                 <p className="text-sm text-foreground leading-relaxed whitespace-pre-line break-words">{comment.text}</p>
@@ -318,14 +320,22 @@ const CommentForm = ({ post, onCommentAdded }: { post: FeedPost, onCommentAdded?
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !commentText.trim()) return;
-    
     setIsSubmitting(true);
     try {
       const idToken = await user.getIdToken(true);
       if (!idToken) throw new Error("Authentication token not available.");
-      
-      const result = await addCommentToPostServerAction(post.id, commentText.trim(), idToken);
-      
+      // Add user profile info to comment
+      const result = await addCommentToPostServerAction(
+        post.id,
+        commentText.trim(),
+        idToken,
+        {
+          username: currentUserProfile?.username || null,
+          userAvatarUrl: currentUserProfile?.avatarUrl || null,
+          userRole: currentUserProfile?.role || null,
+          userIsVerified: currentUserProfile?.isVerified || false,
+        }
+      );
       if (result.success) {
         setCommentText("");
         if (onCommentAdded) onCommentAdded();

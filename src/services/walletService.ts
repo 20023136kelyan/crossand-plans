@@ -94,12 +94,13 @@ export async function getUserWalletData(userId: string): Promise<WalletData> {
   });
 
   // Get available rewards using QueryBuilder
-  const rewardsQuery = FirebaseQueryBuilder.getFilteredQuery(
-    COLLECTIONS.REWARDS,
-    { available: true },
-    { timeField: 'cost' }
-  );
-  const rewardsSnapshot = await rewardsQuery.orderBy('cost', 'asc').get();
+  const rewardsQuery = FirebaseQueryBuilder.buildQuery({
+    collection: COLLECTIONS.REWARDS,
+    filters: [{ field: 'available', operator: '==', value: true }],
+    orderBy: [{ field: 'cost', direction: 'asc' }],
+    limit: 50
+  });
+  const rewardsSnapshot = await rewardsQuery.get();
 
   const rewards = rewardsSnapshot.docs.map(doc => ({
     id: doc.id,

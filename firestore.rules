@@ -206,7 +206,6 @@ service cloud.firestore {
         allow read: if true; // Comments are public
         allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid &&
                         isPlanParticipant(planId, request.auth.uid) &&
-                        isPlanPast(planId) &&
                         request.resource.data.text.size() > 0 &&
                         request.resource.data.createdAt == request.time;
         allow update: if isSignedIn() && request.auth.uid == resource.data.userId && // Owner can edit their comment

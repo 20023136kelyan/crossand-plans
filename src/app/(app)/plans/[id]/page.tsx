@@ -37,6 +37,7 @@ import { LinearBlur } from "progressive-blur";
 import { useSwipeable } from 'react-swipeable';
 import { motion, AnimatePresence } from 'framer-motion';
 import React from 'react';
+import { PlanDropdownMenu } from '@/components/plans/PlanDropdownMenu';
 
 // Helper to chunk itinerary into groups of 3 - memoized to prevent recreation
 const chunkArray = <T,>(arr: T[], size: number): T[][] => {
@@ -60,6 +61,7 @@ export default function PlanDetailPage() {
   const [isItineraryModalOpen, setIsItineraryModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState(0); // 0 = Overview, 1 = Plan Details
   const planDetailsRef = useRef<HTMLDivElement | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // Memoized swipe gesture handlers to prevent recreation on every render
   const handleSwipeUp = useCallback(() => {
@@ -246,6 +248,26 @@ export default function PlanDetailPage() {
   const isGoing = userResponse === 'going';
   const isMaybe = userResponse === 'maybe';
   const hasDeclined = userResponse === 'not-going';
+
+  // Debug logging for comment permissions
+  useEffect(() => {
+    if (plan && user) {
+      console.log('Plan comment debugging:', {
+        planId: plan.id,
+        currentUserId: user.uid,
+        isHost,
+        isInvited,
+        userResponse,
+        isGoing,
+        isMaybe,
+        planEventTime: plan.eventTime,
+        currentTime: new Date().toISOString(),
+        isEventPast: plan.eventTime ? new Date(plan.eventTime) < new Date() : false,
+        invitedParticipants: plan.invitedParticipantUserIds,
+        participantResponses: plan.participantResponses
+      });
+    }
+  }, [plan, user, isHost, isInvited, userResponse, isGoing, isMaybe]);
 
   // Memoized RSVP handler to prevent recreation
   const handleRSVP = useCallback(async (response: ParticipantResponse) => {
@@ -575,11 +597,15 @@ export default function PlanDetailPage() {
           </Badge>
       )}
                   <h1 className="text-3xl font-bold mb-4 text-white/75">{plan?.name || 'Unnamed Plan'}</h1>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex flex-col items-start gap-1 text-sm text-muted-foreground mt-2 mb-2">
+              <div className="flex items-center gap-2">
               <CalendarDays className="h-5 w-5" />
-                    <span>{formatDate(plan?.eventTime)}</span>
-              <MapPin className="h-5 w-5 ml-2" />
+                <span>{formatDate(plan?.eventTime)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <MapPin className="h-5 w-5" />
               <span>{plan?.location || 'Location not set'}</span>
+              </div>
             </div>
                   {/* Plan Description (Overview tab) */}
                   {plan?.description && (
@@ -669,9 +695,10 @@ export default function PlanDetailPage() {
         ) : (
           <motion.div
             key="details"
-            initial={{ y: 50, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 50, opacity: 0 }}
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ duration: 0.4, ease: 'easeInOut' }}
             className="absolute inset-0 z-10"
             style={{ pointerEvents: activeTab === 1 ? 'auto' : 'none' }}
             ref={planDetailsRef}
@@ -739,8 +766,29 @@ export default function PlanDetailPage() {
             {/* No back button in the second tab */}
             {/* Space to allow header to clear but still let content overlay images */}
             {/* Plan Details Tab Header */}
-            <div className="px-4 mb-6 pt-8 relative z-30">
-              <h1 className="text-2xl md:text-3xl font-bold text-foreground drop-shadow-lg">Plan Details</h1>
+            <div className="px-4 mb-6 pt-8 relative z-30 flex items-center justify-between">
+               <h1 className="text-2xl md:text-3xl font-bold text-foreground drop-shadow-lg">Plan Details</h1>
+               {plan && (
+                 <PlanDropdownMenu
+                   plan={plan}
+                   currentUserUid={user?.uid}
+                   isHost={isHost}
+                   onCopyLink={() => {}}
+                   onQRCode={() => {}}
+                   onShareWithFriends={() => {}}
+                   onShareToFeed={() => {}}
+                   onEdit={() => router.push(`/plans/create?editId=${plan.id}`)}
+                   onDeleteRequest={() => {}}
+                   variant="hero"
+                   triggerClassName="h-8 w-8"
+                   className="w-48"
+                   open={menuOpen}
+                   onOpenChange={setMenuOpen}
+                 />
+               )}
+               {menuOpen && (
+                 <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-all" />
+               )}
             </div>
             {/* Add soft shadow to all main content elements */}
             <div className="space-y-8">
@@ -796,24 +844,9 @@ export default function PlanDetailPage() {
             {plan?.id && (
               <div className="px-2 mt-4 mb-2 shadow-lg shadow-black/10 rounded-2xl bg-background/80">
                 <PlanComments 
-                  comments={(plan.comments || []) as any}
+                  planId={plan.id}
                   currentUserId={user?.uid}
                   canComment={isHost || isInvited}
-                  onCommentSubmit={async (content: string) => {
-                    // TODO: Implement comment submission
-                    console.log('Submit comment:', content);
-                    toast.success('Comment posted!');
-                  }}
-                  onCommentUpdate={async (commentId: string, content: string) => {
-                    // TODO: Implement comment update
-                    console.log('Update comment:', commentId, content);
-                    toast.success('Comment updated!');
-                  }}
-                  onCommentDelete={async (commentId: string) => {
-                    // TODO: Implement comment deletion
-                    console.log('Delete comment:', commentId);
-                    toast.success('Comment deleted!');
-                  }}
                 />
               </div>
             )}
@@ -865,10 +898,10 @@ export default function PlanDetailPage() {
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: "100%", opacity: 0 }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="absolute inset-0 bg-background flex flex-col"
+              className="absolute inset-0 bg-background flex flex-col h-screen"
             >
               {/* Content - Full Screen Layout */}
-              <div className="flex flex-col overflow-hidden">
+              <div className="flex flex-col overflow-hidden h-full">
                 {/* Image Section - Top Half with Overlaid Header */}
                 <div className="relative h-[50vh] bg-muted overflow-hidden">
                   {/* Header Overlay */}
@@ -942,7 +975,7 @@ export default function PlanDetailPage() {
                 </div>
 
                 {/* Text content container with background - Bottom Half */}
-                <div className="flex-1 bg-black/80 backdrop-blur-sm px-2 pt-3 pb-3 relative">
+                <div className="flex-1 bg-black/80 backdrop-blur-sm px-2 pt-3 pb-3 relative min-h-0">
                   {/* Static map background at bottom */}
                   {selectedItineraryItem.lat && selectedItineraryItem.lng && (
                     <div className="absolute bottom-0 left-0 right-0 h-32 bg-muted overflow-hidden">
@@ -1002,7 +1035,7 @@ export default function PlanDetailPage() {
                   </div>
 
                   {/* View on Maps CTA */}
-                  <div className="mt-3 pt-2">
+                  <div className="mt-3 pt-2 pb-4">
                     <button 
                       onClick={() => {
                         if (selectedItineraryItem.lat && selectedItineraryItem.lng) {

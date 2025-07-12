@@ -411,6 +411,8 @@ export interface FeedComment {
   userName: string | null;
   username: string | null;
   userAvatarUrl: string | null;
+  userRole: UserRoleType | null;
+  userIsVerified: boolean;
   text: string;
   createdAt: AppTimestamp;
 }
