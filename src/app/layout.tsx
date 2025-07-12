@@ -6,6 +6,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/context/AuthContext'; // Import AuthProvider
 import { SettingsProvider } from '@/context/SettingsContext'; // Import SettingsProvider
 import { ThemeProvider } from '@/components/theme-provider';
+import { ThemeColorManager } from '@/components/theme-color-manager';
 import Script from 'next/script';
 import { firestoreAdmin } from '@/lib/firebaseAdmin';
 
@@ -103,8 +104,7 @@ export default function RootLayout({
     <html lang="en" className="h-full" suppressHydrationWarning>
       <head>
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#ff9800" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <link rel="apple-touch-icon" href="/images/icon-192x192.png" />
       </head>
@@ -120,6 +120,7 @@ export default function RootLayout({
         >
           <SettingsProvider>
             <AuthProvider> {/* Wrap children with AuthProvider */}
+              <ThemeColorManager />
               {children}
               <Toaster />
             </AuthProvider>

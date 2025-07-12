@@ -148,7 +148,9 @@ export function PlanMap({ itinerary, planName, apiKey, className }: PlanMapProps
               lng: item.lng
             };
 
-            const marker = new window.google.maps.Marker({
+            // Use regular Marker (still supported, just deprecated)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const marker = new (window.google.maps as any).Marker({
               position,
               map: mapInstance,
               title: item.placeName,

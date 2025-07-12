@@ -16,22 +16,43 @@ import {
   Loader2,
   Clock,
   HelpCircle,
-  X
+  X,
+  Check,
+  Star
 } from 'lucide-react';
 
 import { useAuth } from '@/context/AuthContext';
 import { getPlanById } from '@/services/clientServices';
-import { Plan, ParticipantResponse } from '@/types/user';
+import { Plan, ParticipantResponse, RSVPStatusType } from '@/types/user';
+import { updateMyRSVPAction, submitRatingAction, deleteRatingAction } from '@/app/actions/planActions';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { Card, CardContent } from '@/components/ui/card';
-import { PlanMap } from '@/components/plans/PlanMap';
-import { PlanPhotos } from '@/components/plans/PlanPhotos';
-import PlanComments from '@/components/plans/PlanComments';
-import { PlanRatingSection } from '@/components/plans/PlanRatingSection';
+import dynamic from 'next/dynamic';
+
+// Lazy load heavy components for better performance
+const PlanMap = dynamic(() => import('@/components/plans/PlanMap').then(mod => ({ default: mod.PlanMap })), {
+  loading: () => <div className="h-48 bg-muted animate-pulse rounded-lg" />,
+  ssr: false
+});
+
+const PlanPhotos = dynamic(() => import('@/components/plans/PlanPhotos').then(mod => ({ default: mod.PlanPhotos })), {
+  loading: () => <div className="h-48 bg-muted animate-pulse rounded-lg" />,
+  ssr: false
+});
+
+const PlanComments = dynamic(() => import('@/components/plans/PlanComments'), {
+  loading: () => <div className="h-32 bg-muted animate-pulse rounded-lg" />,
+  ssr: false
+});
+
+const PlanRatingSection = dynamic(() => import('@/components/plans/PlanRatingSection').then(mod => ({ default: mod.PlanRatingSection })), {
+  loading: () => <div className="h-24 bg-muted animate-pulse rounded-lg" />,
+  ssr: false
+});
 import toast from 'react-hot-toast';
 import { LinearBlur } from "progressive-blur";
 import { useSwipeable } from 'react-swipeable';
@@ -62,6 +83,13 @@ export default function PlanDetailPage() {
   const [activeTab, setActiveTab] = useState(0); // 0 = Overview, 1 = Plan Details
   const planDetailsRef = useRef<HTMLDivElement | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [ratingModalOpen, setRatingModalOpen] = useState(false);
+  const [userRating, setUserRating] = useState(0);
+  const [ratingLoading, setRatingLoading] = useState(false);
+  const [hasRated, setHasRated] = useState(false);
+
+  // Force dark mode for plan detail page - using local wrapper instead of global
+  const [isDarkMode, setIsDarkMode] = useState(true);
 
   // Memoized swipe gesture handlers to prevent recreation on every render
   const handleSwipeUp = useCallback(() => {
@@ -86,9 +114,9 @@ export default function PlanDetailPage() {
     
     const images: {url: string; alt: string}[] = [];
     
-    // Priority 1: Photo highlights (uploaded by users)
+    // Priority 1: Photo highlights (uploaded by users) - limit to first 3 for performance
     if (plan.photoHighlights?.length > 0) {
-      plan.photoHighlights.forEach(url => {
+      plan.photoHighlights.slice(0, 3).forEach(url => {
         images.push({
           url, 
           alt: plan.name || 'Plan image'
@@ -96,9 +124,11 @@ export default function PlanDetailPage() {
       });
     }
     
-    // Priority 2: Collect from ALL itinerary items with images
-    if (plan.itinerary?.length > 0) {
+    // Priority 2: Collect from itinerary items with images - limit to first 5 for performance
+    if (plan.itinerary?.length > 0 && images.length < 5) {
       for (const item of plan.itinerary) {
+        if (images.length >= 5) break; // Limit total images
+        
         let imageUrl = null;
         
         if (item.googlePhotoReference) {
@@ -108,8 +138,8 @@ export default function PlanDetailPage() {
             if (item.googlePhotoReference.startsWith('http://') || item.googlePhotoReference.startsWith('https://')) {
               imageUrl = item.googlePhotoReference;
             } else {
-              // Construct URL from reference
-              imageUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=1200&photo_reference=${item.googlePhotoReference}&key=${apiKey}`;
+              // Construct URL from reference with smaller size for performance
+              imageUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference=${item.googlePhotoReference}&key=${apiKey}`;
             }
           }
         } else if (item.googleMapsImageUrl) {
@@ -132,7 +162,7 @@ export default function PlanDetailPage() {
       const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
       if (apiKey) {
         images.push({
-            url: `https://maps.googleapis.com/maps/api/staticmap?center=${firstItem.lat},${firstItem.lng}&zoom=15&size=1200x800&markers=color:red%7C${firstItem.lat},${firstItem.lng}&key=${apiKey}`,
+            url: `https://maps.googleapis.com/maps/api/staticmap?center=${firstItem.lat},${firstItem.lng}&zoom=15&size=800x600&markers=color:red%7C${firstItem.lat},${firstItem.lng}&key=${apiKey}`,
             alt: firstItem.placeName || plan.name || 'Plan location'
         });
         }
@@ -152,13 +182,33 @@ export default function PlanDetailPage() {
     }
   }, [planImages.length]); // Only depend on length, not the entire array
 
+  // Check if user has already rated this plan
   useEffect(() => {
+    if (plan && user?.uid) {
+      const userRating = plan.ratings?.find(rating => rating.userId === user.uid);
+      if (userRating) {
+        setUserRating(userRating.value);
+        setHasRated(true);
+      } else {
+        setUserRating(0);
+        setHasRated(false);
+      }
+    }
+  }, [plan, user?.uid]);
+
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    
     const observer = new ResizeObserver(() => {
-      // Trigger re-calculation for visible image
+      // Trigger re-calculation for visible image with debouncing
       if (topContainerRef.current && planImages.length > 0) {
         const currentImg = document.querySelector(`[data-image-index="${activeImageIndex}"]`) as HTMLImageElement;
         if (currentImg) {
-          calculateFit(currentImg, activeImageIndex);
+          // Debounce the calculation to prevent excessive calls
+          clearTimeout(timeoutId);
+          timeoutId = setTimeout(() => {
+            calculateFit(currentImg, activeImageIndex);
+          }, 100);
         }
       }
     });
@@ -167,7 +217,10 @@ export default function PlanDetailPage() {
       observer.observe(topContainerRef.current);
     }
 
-    return () => observer.disconnect();
+    return () => {
+      clearTimeout(timeoutId);
+      observer.disconnect();
+    };
   }, [activeImageIndex, planImages]);
 
   // Memoized calculateFit function to prevent recreation
@@ -206,7 +259,7 @@ export default function PlanDetailPage() {
     if (planImages.length > 1) {
       slideInterval.current = setInterval(() => {
         setActiveImageIndex((prev) => (prev + 1) % planImages.length);
-      }, 25000);  // Changed from 5000 to 25000 for 25-second duration
+      }, 30000);  // Increased to 30 seconds for better performance
     }
 
     return () => {
@@ -216,42 +269,76 @@ export default function PlanDetailPage() {
     };
   }, [planImages.length]);
 
+  // Pause slideshow when tab is not visible
   useEffect(() => {
-    const fetchPlanData = async () => {
-      try {
-        setLoading(true);
-        const fetchedPlan = await getPlanById(id);
-        if (fetchedPlan) {
-          setPlan(fetchedPlan);
-        } else {
-          toast.error('Plan not found');
-          router.push('/plans');
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (slideInterval.current) {
+          clearInterval(slideInterval.current);
+          slideInterval.current = undefined;
         }
-      } catch (error) {
-        console.error('Error fetching plan:', error);
-        toast.error('Error loading plan details');
-      } finally {
-        setLoading(false);
+      } else if (planImages.length > 1 && !slideInterval.current) {
+        slideInterval.current = setInterval(() => {
+          setActiveImageIndex((prev) => (prev + 1) % planImages.length);
+        }, 30000);
       }
     };
 
-    if (id) {
-      fetchPlanData();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [planImages.length]);
+
+  // Memoized function to fetch plan data
+  const fetchPlanData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const fetchedPlan = await getPlanById(id);
+      if (fetchedPlan) {
+        setPlan(fetchedPlan);
+      } else {
+        toast.error('Plan not found');
+        router.push('/plans');
+      }
+    } catch (error) {
+      console.error('Error fetching plan:', error);
+      toast.error('Error loading plan details');
+    } finally {
+      setLoading(false);
     }
   }, [id, router]);
 
-  const isHost = user?.uid === plan?.hostId;
-  const isInvited = plan?.invitedParticipantUserIds?.includes(user?.uid || '') || false;
-  const userResponse = user?.uid && plan?.participantResponses ? 
-    plan.participantResponses[user.uid] : undefined;
-  
-  const isGoing = userResponse === 'going';
-  const isMaybe = userResponse === 'maybe';
-  const hasDeclined = userResponse === 'not-going';
-
-  // Debug logging for comment permissions
   useEffect(() => {
-    if (plan && user) {
+    if (id) {
+      fetchPlanData();
+    }
+  }, [id, fetchPlanData]);
+
+  // Memoize user permissions and responses to prevent unnecessary re-renders
+  const userPermissions = useMemo(() => {
+    const isHost = user?.uid === plan?.hostId;
+    const isInvited = plan?.invitedParticipantUserIds?.includes(user?.uid || '') || false;
+    const userResponse = user?.uid && plan?.participantResponses ? 
+      plan.participantResponses[user.uid] : undefined;
+    
+    const isGoing = userResponse === 'going';
+    const isMaybe = userResponse === 'maybe';
+    const hasDeclined = userResponse === 'not-going';
+
+    return {
+      isHost,
+      isInvited,
+      userResponse,
+      isGoing,
+      isMaybe,
+      hasDeclined
+    };
+  }, [user?.uid, plan?.hostId, plan?.invitedParticipantUserIds, plan?.participantResponses]);
+
+  const { isHost, isInvited, userResponse, isGoing, isMaybe, hasDeclined } = userPermissions;
+
+  // Debug logging for comment permissions - only in development
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development' && plan && user) {
       console.log('Plan comment debugging:', {
         planId: plan.id,
         currentUserId: user.uid,
@@ -275,32 +362,43 @@ export default function PlanDetailPage() {
 
     try {
       setRsvpLoading(true);
-      // In real implementation, call your API to update RSVP status
-      // await updateRsvpStatus(plan.id, user.uid, response);
-      toast.success(`RSVP updated to ${response}`);
       
-      // Update local state to reflect the change
-      setPlan(prev => {
-        if (!prev) return prev;
+      // Convert ParticipantResponse to RSVPStatusType
+      const rsvpStatus: RSVPStatusType = response === 'going' ? 'going' : 
+                                        response === 'not-going' ? 'not-going' : 'maybe';
+      
+      // Call the actual API to update RSVP status
+      const idToken = await user.getIdToken();
+      const result = await updateMyRSVPAction(plan.id, idToken, rsvpStatus);
+      
+      if (result.success) {
+        toast.success(`RSVP updated to ${response}`);
         
-        // Create new plan object with updated responses
-        const updatedPlan = { ...prev };
-        
-        // Update the participant responses
-        updatedPlan.participantResponses = {
-          ...updatedPlan.participantResponses,
-          [user.uid]: response
-        };
-        
-        // Update participant user IDs list based on response
-        if (response === 'going' && !updatedPlan.participantUserIds.includes(user.uid)) {
-          updatedPlan.participantUserIds = [...updatedPlan.participantUserIds, user.uid];
-        } else if (response !== 'going') {
-          updatedPlan.participantUserIds = updatedPlan.participantUserIds.filter(id => id !== user.uid);
-        }
-        
-        return updatedPlan;
-      });
+        // Update local state to reflect the change
+        setPlan(prev => {
+          if (!prev) return prev;
+          
+          // Create new plan object with updated responses
+          const updatedPlan = { ...prev };
+          
+          // Update the participant responses
+          updatedPlan.participantResponses = {
+            ...updatedPlan.participantResponses,
+            [user.uid]: response
+          };
+          
+          // Update participant user IDs list based on response
+          if (response === 'going' && !updatedPlan.participantUserIds.includes(user.uid)) {
+            updatedPlan.participantUserIds = [...updatedPlan.participantUserIds, user.uid];
+          } else if (response !== 'going') {
+            updatedPlan.participantUserIds = updatedPlan.participantUserIds.filter(id => id !== user.uid);
+          }
+          
+          return updatedPlan;
+        });
+      } else {
+        toast.error(result.error || 'Failed to update RSVP');
+      }
     } catch (error) {
       console.error('Error updating RSVP:', error);
       toast.error('Failed to update RSVP');
@@ -313,6 +411,14 @@ export default function PlanDetailPage() {
   const formatDate = useCallback((dateString?: string) => {
     if (!dateString || !isValid(parseISO(dateString))) return 'Date not set';
     return format(parseISO(dateString), 'MMM d • h:mm a');
+  }, []);
+
+  // Helper function to check if plan is past
+  const isPlanPast = useCallback((eventTime?: string) => {
+    if (!eventTime) return false;
+    const eventDate = new Date(eventTime);
+    const now = new Date();
+    return eventDate < now;
   }, []);
 
   // Memoized callback functions to prevent recreation
@@ -357,18 +463,23 @@ export default function PlanDetailPage() {
     setIsItineraryModalOpen(true);
   }, []);
 
-  // Memoize itinerary chunks to prevent recalculation
+  // Memoize itinerary chunks to prevent recalculation - limit to first 9 items for performance
   const itineraryChunks = useMemo(() => {
-    return plan?.itinerary ? chunkArray(plan.itinerary, 3) : [];
+    if (!plan?.itinerary) return [];
+    const limitedItinerary = plan.itinerary.slice(0, 9); // Limit to first 9 items
+    return chunkArray(limitedItinerary, 3);
   }, [plan?.itinerary]);
 
   // Compact Itinerary Component - memoized to prevent unnecessary re-renders
   const CompactItinerary = memo(({ itinerary }: { itinerary: any[] }) => {
+    // Only render first 6 items for performance, show "view more" if needed
+    const displayItems = itinerary.slice(0, 6);
+    const hasMoreItems = itinerary.length > 6;
 
     return (
       <>
         <div className="flex flex-col gap-y-3 pt-0 pb-2">
-          {itinerary.map((item, index) => (
+          {displayItems.map((item, index) => (
             <React.Fragment key={item.id || index}>
               <div 
                 className="flex items-center gap-3 py-1 relative cursor-pointer group h-20"
@@ -391,6 +502,7 @@ export default function PlanDetailPage() {
                       height={56}
                       className="object-cover w-full h-full"
                       unoptimized={getItemImageUrl(item).includes('maps.googleapis.com')}
+                      loading="lazy"
                     />
                   </div>
                   {/* Time Tag in the 'polaroid' bottom */}
@@ -429,7 +541,7 @@ export default function PlanDetailPage() {
               </div>
             </div>
             {/* Faint horizontal separator, except after last item */}
-            {index < itinerary.length - 1 && (
+            {index < displayItems.length - 1 && (
               <div
                 className="w-full h-4 flex items-center"
                 aria-hidden="true"
@@ -445,9 +557,16 @@ export default function PlanDetailPage() {
             )}
           </React.Fragment>
         ))}
+        
+        {/* Show "view more" if there are more items */}
+        {hasMoreItems && (
+          <div className="flex justify-center pt-2">
+            <span className="text-xs text-muted-foreground">
+              +{itinerary.length - 6} more stops
+            </span>
+          </div>
+        )}
       </div>
-
-
       </>
     );
   });
@@ -485,7 +604,7 @@ export default function PlanDetailPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col relative" {...swipeHandlers}>
+    <div className={`min-h-screen flex flex-col relative ${isDarkMode ? 'dark' : ''}`} {...swipeHandlers}>
       <AnimatePresence initial={false} mode="wait">
         {activeTab === 0 ? (
           <motion.div
@@ -571,16 +690,18 @@ export default function PlanDetailPage() {
           </div>
         )}
       </div>
-      {/* Header with back button - completely transparent */}
+      {/* Header with back button - always visible container */}
       <div className="fixed top-0 left-0 right-0 z-20 p-2 flex items-center">
-        <Button 
-          variant="ghost" 
-          size="icon"
-          onClick={() => router.push('/plans')}
-          className="mr-2 text-white hover:bg-white/20"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </Button>
+        <div className="bg-black/40 backdrop-blur-md rounded-full border border-white/20 shadow-lg">
+          <Button 
+            variant="ghost" 
+            size="icon"
+            onClick={() => router.push('/plans')}
+            className="text-white hover:bg-white/20 rounded-full"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+        </div>
       </div>
       <div className="h-[30vh]" />
             {/* Plan name and host info */}
@@ -590,13 +711,49 @@ export default function PlanDetailPage() {
                   {/* Event Type Badge moved inside the card */}
       {plan?.eventType && (
           <Badge 
-                      className="bg-primary text-white hover:bg-primary mb-2" 
+            className="bg-black/40 text-white hover:bg-black/60 mb-2" 
             style={{ filter: 'none', boxShadow: 'none', textShadow: 'none' }}
           >
             {plan?.eventType || plan?.type || 'Event'}
           </Badge>
       )}
-                  <h1 className="text-3xl font-bold mb-4 text-white/75">{plan?.name || 'Unnamed Plan'}</h1>
+                  <div className="flex items-center gap-3 mb-4">
+  <div className="relative inline-block w-max align-bottom mb-4" style={{minHeight: '2.5rem'}}>
+    <h1 className="text-3xl font-bold text-white/75 block">{plan?.name || 'Unnamed Plan'}</h1>
+    {/* Status indicators */}
+    {plan?.status === 'completed' && (
+      <div className="absolute right-0 top-1/2 -translate-y-1/2 -translate-x-4 translate-y-1 flex items-center justify-center w-8 h-8 aspect-square flex-shrink-0 bg-green-500 rounded-full shadow-lg">
+        <Check className="h-5 w-5 text-white" strokeWidth={3} />
+      </div>
+    )}
+    {plan?.status !== 'completed' && isPlanPast(plan?.eventTime) && (
+      <div className="absolute right-0 top-1/2 -translate-y-1/2 -translate-x-4 translate-y-1 flex items-center justify-center w-8 h-8 aspect-square flex-shrink-0 bg-white/20 backdrop-blur-sm rounded-full border border-white/30">
+        <Check className="h-5 w-5 text-white/80" strokeWidth={3} />
+      </div>
+    )}
+  </div>
+</div>
+                  
+                  {/* Rating Display for completed plans */}
+                  {plan?.status === 'completed' && (plan.averageRating || plan.reviewCount > 0) && (
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Star
+                            key={star}
+                            className={`h-4 w-4 ${
+                              star <= (plan.averageRating || 0)
+                                ? "fill-orange-400 text-orange-400"
+                                : "text-white/30"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-sm text-white/70">
+                        {plan.averageRating?.toFixed(1) || '0.0'} ({plan.reviewCount || 0} reviews)
+                      </span>
+                    </div>
+                  )}
             <div className="flex flex-col items-start gap-1 text-sm text-muted-foreground mt-2 mb-2">
               <div className="flex items-center gap-2">
               <CalendarDays className="h-5 w-5" />
@@ -626,67 +783,69 @@ export default function PlanDetailPage() {
           </CardContent>
         </Card>
       </div>
-            {/* RSVP Buttons (segmented control) */}
-            <div className="w-full max-w-md mx-auto mt-4 relative z-20">
-  <div className="flex flex-row items-center justify-center rounded-full bg-black/40 backdrop-blur-md border border-white/20 overflow-visible shadow-sm px-0.5 py-0.5 relative" style={{minHeight:'38px', height:'38px'}}>
-    {/* Going */}
-    <button
-      onClick={() => handleRSVP('going')}
-      disabled={rsvpLoading || isHost}
-      className={`relative flex-1 flex items-center justify-center transition-all duration-150 text-center focus:outline-none px-2 sm:px-3 py-0.5 font-medium rounded-full whitespace-nowrap
-        ${isGoing ? 'z-10' : ''} ${rsvpLoading || isHost ? 'opacity-60 cursor-not-allowed' : ''}`}
-      style={{ minWidth: 0, height: '32px', minHeight: '32px', maxHeight: '32px' }}
-    >
-      {isGoing && (
-        <span className="absolute inset-y-0 left-0.5 right-0.5 my-auto h-7 bg-white shadow-md rounded-full z-[-1]" style={{top:'1px',bottom:'1px'}} />
-      )}
-      <span className={`flex items-center gap-1.5 text-sm ${isGoing ? 'text-green-600' : 'text-white/90'} whitespace-nowrap`}> 
-        <ThumbsUp className="h-4 w-4" fill={isGoing ? 'currentColor' : 'none'} />
-        Going
-      </span>
-    </button>
-    {/* Divider */}
-    <div className="flex items-center justify-center" style={{height:'60%'}}>
-      <div className="w-px h-4 mx-1 rounded-full" style={{background: 'linear-gradient(180deg, transparent 0%, rgba(255,255,255,0.18) 40%, rgba(255,255,255,0.18) 60%, transparent 100%)'}} />
-    </div>
-    {/* Not Going */}
-    <button
-      onClick={() => handleRSVP('not-going')}
-      disabled={rsvpLoading || isHost}
-      className={`relative flex-1 flex items-center justify-center transition-all duration-150 text-center focus:outline-none px-2 sm:px-3 py-0.5 font-medium rounded-full whitespace-nowrap
-        ${hasDeclined ? 'z-10' : ''} ${rsvpLoading || isHost ? 'opacity-60 cursor-not-allowed' : ''}`}
-      style={{ minWidth: 0, height: '32px', minHeight: '32px', maxHeight: '32px' }}
-    >
-      {hasDeclined && (
-        <span className="absolute inset-y-0 left-0.5 right-0.5 my-auto h-7 bg-white shadow-md rounded-full z-[-1]" style={{top:'1px',bottom:'1px'}} />
-      )}
-      <span className={`flex items-center gap-1.5 text-sm ${hasDeclined ? 'text-red-600' : 'text-white/90'} whitespace-nowrap`}> 
-        <ThumbsDown className="h-4 w-4" fill={hasDeclined ? 'currentColor' : 'none'} />
-        Not Going
-      </span>
-    </button>
-    {/* Divider */}
-    <div className="flex items-center justify-center" style={{height:'60%'}}>
-      <div className="w-px h-4 mx-1 rounded-full" style={{background: 'linear-gradient(180deg, transparent 0%, rgba(255,255,255,0.18) 40%, rgba(255,255,255,0.18) 60%, transparent 100%)'}} />
-        </div>
-    {/* Maybe */}
-    <button
-      onClick={() => handleRSVP('maybe')}
-      disabled={rsvpLoading || isHost}
-      className={`relative flex-1 flex items-center justify-center transition-all duration-150 text-center focus:outline-none px-2 sm:px-3 py-0.5 font-medium rounded-full whitespace-nowrap
-        ${isMaybe ? 'z-10' : ''} ${rsvpLoading || isHost ? 'opacity-60 cursor-not-allowed' : ''}`}
-      style={{ minWidth: 0, height: '32px', minHeight: '32px', maxHeight: '32px' }}
-    >
-      {isMaybe && (
-        <span className="absolute inset-y-0 left-0.5 right-0.5 my-auto h-7 bg-white shadow-md rounded-full z-[-1]" style={{top:'1px',bottom:'1px'}} />
-      )}
-      <span className={`flex items-center gap-1.5 text-sm ${isMaybe ? 'text-yellow-600' : 'text-white/90'} whitespace-nowrap`}> 
-        <HelpCircle className="h-4 w-4" />
-        Maybe
-                </span>
-    </button>
-  </div>
-</div>
+            {/* RSVP Buttons (segmented control) - Only show if plan is not completed */}
+            {plan?.status !== 'completed' && (
+              <div className="mt-4 px-2 relative z-20 w-full max-w-full">
+                <div className="flex flex-row items-center justify-center rounded-full bg-black/40 backdrop-blur-md border border-white/20 overflow-visible shadow-sm px-0.5 py-0.5 relative" style={{minHeight:'38px', height:'38px'}}>
+                  {/* Going */}
+                  <button
+                    onClick={() => handleRSVP('going')}
+                    disabled={rsvpLoading || isHost}
+                    className={`relative flex-1 flex items-center justify-center transition-all duration-150 text-center focus:outline-none px-2 sm:px-3 py-0.5 font-medium rounded-full whitespace-nowrap
+                      ${isGoing ? 'z-10' : ''} ${rsvpLoading || isHost ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    style={{ minWidth: 0, height: '32px', minHeight: '32px', maxHeight: '32px' }}
+                  >
+                    {isGoing && (
+                      <span className="absolute inset-y-0 left-0.5 right-0.5 my-auto h-7 bg-white shadow-md rounded-full z-[-1]" style={{top:'1px',bottom:'1px'}} />
+                    )}
+                    <span className={`flex items-center gap-1.5 text-sm ${isGoing ? 'text-green-600' : 'text-white/90'} whitespace-nowrap`}> 
+                      <ThumbsUp className="h-4 w-4" fill={isGoing ? 'currentColor' : 'none'} />
+                      Going
+                    </span>
+                  </button>
+                  {/* Divider */}
+                  <div className="flex items-center justify-center" style={{height:'60%'}}>
+                    <div className="w-px h-4 mx-1 rounded-full" style={{background: 'linear-gradient(180deg, transparent 0%, rgba(255,255,255,0.18) 40%, rgba(255,255,255,0.18) 60%, transparent 100%)'}} />
+                  </div>
+                  {/* Not Going */}
+                  <button
+                    onClick={() => handleRSVP('not-going')}
+                    disabled={rsvpLoading || isHost}
+                    className={`relative flex-1 flex items-center justify-center transition-all duration-150 text-center focus:outline-none px-2 sm:px-3 py-0.5 font-medium rounded-full whitespace-nowrap
+                      ${hasDeclined ? 'z-10' : ''} ${rsvpLoading || isHost ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    style={{ minWidth: 0, height: '32px', minHeight: '32px', maxHeight: '32px' }}
+                  >
+                    {hasDeclined && (
+                      <span className="absolute inset-y-0 left-0.5 right-0.5 my-auto h-7 bg-white shadow-md rounded-full z-[-1]" style={{top:'1px',bottom:'1px'}} />
+                    )}
+                    <span className={`flex items-center gap-1.5 text-sm ${hasDeclined ? 'text-red-600' : 'text-white/90'} whitespace-nowrap`}> 
+                      <ThumbsDown className="h-4 w-4" fill={hasDeclined ? 'currentColor' : 'none'} />
+                      Not Going
+                    </span>
+                  </button>
+                  {/* Divider */}
+                  <div className="flex items-center justify-center" style={{height:'60%'}}>
+                    <div className="w-px h-4 mx-1 rounded-full" style={{background: 'linear-gradient(180deg, transparent 0%, rgba(255,255,255,0.18) 40%, rgba(255,255,255,0.18) 60%, transparent 100%)'}} />
+                  </div>
+                  {/* Maybe */}
+                  <button
+                    onClick={() => handleRSVP('maybe')}
+                    disabled={rsvpLoading || isHost}
+                    className={`relative flex-1 flex items-center justify-center transition-all duration-150 text-center focus:outline-none px-2 sm:px-3 py-0.5 font-medium rounded-full whitespace-nowrap
+                      ${isMaybe ? 'z-10' : ''} ${rsvpLoading || isHost ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    style={{ minWidth: 0, height: '32px', minHeight: '32px', maxHeight: '32px' }}
+                  >
+                    {isMaybe && (
+                      <span className="absolute inset-y-0 left-0.5 right-0.5 my-auto h-7 bg-white shadow-md rounded-full z-[-1]" style={{top:'1px',bottom:'1px'}} />
+                    )}
+                    <span className={`flex items-center gap-1.5 text-sm ${isMaybe ? 'text-yellow-600' : 'text-white/90'} whitespace-nowrap`}> 
+                      <HelpCircle className="h-4 w-4" />
+                      Maybe
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
             {/* Swipe up prompt */}
             <div className="flex justify-center mt-6">
               <span className="text-xs text-white/70 animate-bounce">Swipe up for plan details</span>
@@ -707,7 +866,7 @@ export default function PlanDetailPage() {
             <div className="fixed top-0 left-0 right-0 bottom-0 z-0 overflow-hidden">
               {/* Progressive Blur Overlay */}
               <LinearBlur
-                steps={20}
+                steps={5}
                 strength={64}
                 falloffPercentage={27}
                 side="bottom"
@@ -766,7 +925,7 @@ export default function PlanDetailPage() {
             {/* No back button in the second tab */}
             {/* Space to allow header to clear but still let content overlay images */}
             {/* Plan Details Tab Header */}
-            <div className="px-4 mb-6 pt-8 relative z-30 flex items-center justify-between">
+            <div className="px-4 mb-6 pt-16 relative z-30 flex items-center justify-between">
                <h1 className="text-2xl md:text-3xl font-bold text-foreground drop-shadow-lg">Plan Details</h1>
                {plan && (
                  <PlanDropdownMenu
@@ -822,7 +981,7 @@ export default function PlanDetailPage() {
                 </div>
               </div>
             )}
-            {plan?.itinerary && plan.itinerary.length > 0 && (
+            {plan?.itinerary && plan.itinerary.length > 0 && activeTab === 1 && (
               <div className="px-2 mt-4 shadow-lg shadow-black/10 rounded-2xl bg-background/80">
                 <PlanMap 
                   itinerary={plan.itinerary} 
@@ -831,7 +990,7 @@ export default function PlanDetailPage() {
                 />
               </div>
             )}
-            {plan?.photoHighlights && plan.photoHighlights.length > 0 && (
+            {plan?.photoHighlights && plan.photoHighlights.length > 0 && activeTab === 1 && (
               <div className="px-2 mt-4 shadow-lg shadow-black/10 rounded-2xl bg-background/80">
                 <PlanPhotos 
                   highlights={plan.photoHighlights} 
@@ -841,16 +1000,8 @@ export default function PlanDetailPage() {
                 />
               </div>
             )}
-            {plan?.id && (
-              <div className="px-2 mt-4 mb-2 shadow-lg shadow-black/10 rounded-2xl bg-background/80">
-                <PlanComments 
-                  planId={plan.id}
-                  currentUserId={user?.uid}
-                  canComment={isHost || isInvited}
-                />
-              </div>
-            )}
-            {plan?.id && (
+
+            {plan?.id && activeTab === 1 && (
               <div className="px-2 mt-4 shadow-lg shadow-black/10 rounded-2xl bg-background/80">
                 <PlanRatingSection 
                   isHost={isHost}
@@ -1059,6 +1210,226 @@ export default function PlanDetailPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Rating Modal */}
+      <AnimatePresence>
+        {ratingModalOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="absolute inset-0 bg-background flex flex-col h-screen"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 bg-gradient-to-b from-black/60 via-black/30 to-transparent">
+                <div className="bg-black/40 backdrop-blur-md rounded-full px-4 py-2 border border-white/20">
+                  <h2 className="text-base font-bold text-white">Rate This Plan</h2>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setRatingModalOpen(false)}
+                  className="rounded-full bg-black/40 backdrop-blur-md hover:bg-black/60 text-white border border-white/20 transition-all duration-200"
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 flex flex-col items-center justify-center px-6">
+                <div className="w-full max-w-md space-y-8">
+                  {/* Plan Info */}
+                  <div className="text-center space-y-4">
+                    <div className="w-20 h-20 mx-auto bg-gradient-to-br from-orange-400 to-orange-600 rounded-full flex items-center justify-center">
+                      <Star className="h-10 w-10 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-foreground mb-2">{plan?.name}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {hasRated ? 'Update your rating for this plan' : 'How was your experience with this plan?'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Rating Stars */}
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-center gap-3">
+                      {[1, 2, 3, 4, 5].map((star) => {
+                        const isFilled = star <= userRating;
+                        return (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setUserRating(star)}
+                            className="group relative p-3 rounded-full transition-all duration-200 ease-out hover:scale-110 hover:bg-orange-50 dark:hover:bg-orange-950/20"
+                          >
+                            <Star
+                              className={`h-12 w-12 transition-all duration-200 ease-out ${
+                                isFilled
+                                  ? "fill-orange-400 text-orange-400 drop-shadow-sm"
+                                  : "text-gray-300 hover:text-orange-300 dark:text-gray-600 dark:hover:text-orange-400"
+                              } group-hover:scale-110`}
+                            />
+                            {isFilled && (
+                              <div className="absolute inset-0 rounded-full bg-orange-400/20 animate-ping" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    
+                    {userRating > 0 && (
+                      <div className="text-center">
+                        <p className="text-lg font-medium text-orange-600 dark:text-orange-400">
+                          {userRating === 1 ? 'Poor' : 
+                           userRating === 2 ? 'Fair' : 
+                           userRating === 3 ? 'Good' : 
+                           userRating === 4 ? 'Very Good' : 'Excellent'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Submit Button */}
+                  <div className="space-y-3">
+                    <Button
+                      onClick={async () => {
+                        if (userRating === 0) return;
+                        
+                        setRatingLoading(true);
+                        try {
+                          const idToken = await user?.getIdToken();
+                          if (!idToken) {
+                            toast.error('Authentication required');
+                            return;
+                          }
+
+                          const result = await submitRatingAction(plan!.id, idToken, userRating);
+                          
+                          if (result.success) {
+                            toast.success('Rating submitted successfully!');
+                            setHasRated(true);
+                            setRatingModalOpen(false);
+                            // Refresh plan data to get updated ratings
+                            await fetchPlanData();
+                            console.log('Rating submitted successfully:', result);
+                          } else {
+                            console.error('Rating submission failed:', result.error);
+                            toast.error(result.error || 'Failed to submit rating');
+                          }
+                        } catch (error) {
+                          console.error('Rating submission error:', error);
+                          toast.error('Failed to submit rating');
+                        } finally {
+                          setRatingLoading(false);
+                        }
+                      }}
+                      disabled={userRating === 0 || ratingLoading}
+                      size="lg"
+                      className="w-full bg-gradient-primary hover:bg-gradient-primary-hover text-primary-foreground font-medium transition-all duration-200"
+                    >
+                      {ratingLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          {hasRated ? 'Updating...' : 'Submitting...'}
+                        </>
+                      ) : (
+                        <>
+                          <Star className="h-4 w-4 mr-2" />
+                          {hasRated ? 'Update Rating' : 'Submit Rating'}
+                        </>
+                      )}
+                    </Button>
+                    
+                                         {hasRated && (
+                       <Button
+                         onClick={async () => {
+                           setRatingLoading(true);
+                           try {
+                             const idToken = await user?.getIdToken();
+                             if (!idToken) {
+                               toast.error('Authentication required');
+                               return;
+                             }
+
+                             const result = await deleteRatingAction(plan!.id, idToken);
+                             
+                             if (result.success) {
+                               toast.success('Rating removed successfully!');
+                               setHasRated(false);
+                               setUserRating(0);
+                               setRatingModalOpen(false);
+                               // Refresh plan data to get updated ratings
+                               await fetchPlanData();
+                             } else {
+                               toast.error(result.error || 'Failed to remove rating');
+                             }
+                           } catch (error) {
+                             console.error('Rating deletion error:', error);
+                             toast.error('Failed to remove rating');
+                           } finally {
+                             setRatingLoading(false);
+                           }
+                         }}
+                         disabled={ratingLoading}
+                         variant="outline"
+                         size="lg"
+                         className="w-full text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-950/20"
+                       >
+                         {ratingLoading ? (
+                           <>
+                             <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                             Removing...
+                           </>
+                         ) : (
+                           <>
+                             <X className="h-4 w-4 mr-2" />
+                             Remove Rating
+                           </>
+                         )}
+                       </Button>
+                     )}
+                     
+                     <Button
+                       onClick={() => setRatingModalOpen(false)}
+                       variant="outline"
+                       size="lg"
+                       className="w-full"
+                     >
+                       Cancel
+                     </Button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {activeTab === 0 && (
+        <div className="fixed bottom-6 right-6 z-50 flex gap-2">
+          {/* Rating Button - Only show for completed plans */}
+          {plan?.status === 'completed' && (
+            <Button
+              onClick={() => setRatingModalOpen(true)}
+              variant="outline"
+              size="icon"
+              className="relative w-12 h-12 rounded-full bg-gradient-to-br from-background via-muted/5 to-muted/10 border border-border/50 shadow-lg backdrop-blur-sm hover:shadow-xl transition-all duration-200 hover:scale-110"
+            >
+              <Star className="h-6 w-6 text-white" />
+            </Button>
+          )}
+          <PlanComments planId={plan.id} currentUserId={user?.uid} canComment={isHost || isInvited} />
+        </div>
+      )}
     </div>
   );
 }

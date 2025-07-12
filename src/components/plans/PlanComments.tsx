@@ -203,20 +203,19 @@ export default function PlanComments({
 
   return (
     <>
-      {/* Small Comment Button */}
-      <div className="flex justify-center">
+      {/* Floating Comment Button */}
+      <div className="flex justify-end">
         <Button
           onClick={() => setIsModalOpen(true)}
           variant="outline"
-          size="sm"
-          className="relative bg-gradient-to-br from-background via-muted/5 to-muted/10 border border-border/50 shadow-lg backdrop-blur-sm hover:shadow-xl transition-all duration-200"
+          size="icon"
+          className="relative w-12 h-12 rounded-full bg-gradient-to-br from-background via-muted/5 to-muted/10 border border-border/50 shadow-lg backdrop-blur-sm hover:shadow-xl transition-all duration-200 hover:scale-110"
         >
-          <MessageCircle className="h-3.5 w-3.5 mr-1.5" />
-          <span className="text-xs font-medium">Comments</span>
+          <MessageCircle className="h-6 w-6" />
           {comments.length > 0 && (
             <Badge 
               variant="default" 
-              className="absolute -top-1.5 -right-1.5 h-4 w-4 p-0 flex items-center justify-center text-xs font-bold bg-primary text-primary-foreground"
+              className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-xs font-bold bg-red-500 text-white"
             >
               {comments.length > 99 ? '99+' : comments.length}
             </Badge>

@@ -66,6 +66,7 @@ import { getPostComments, getUserProfile, getPlanById } from '@/services/clientS
 import { PostDetailModal } from '@/components/feed/PostDetailModal';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { extractImageGradientCached } from '@/lib/colorExtraction';
+import { LinearBlur } from "progressive-blur";
 
 const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, isVerified: boolean }) => {
   if (role === 'admin') {
@@ -117,10 +118,11 @@ const FeedPostCard = React.memo(({
     if (!plan) return "No location";
     const city = plan.city;
     const location = plan.location;
-    if (city && location) return `${city}, ${location}`;
+    const country = location?.split(',').pop()?.trim() || null;
+    if (city && country) return `${city}, ${country}`;
     if (city) return city;
-    if (location) return location;
-    return "No location";
+    if (country) return country;
+    return 'No location';
   }, [plan]);
   const [isCaptionExpanded, setIsCaptionExpanded] = useState(false);
   const [canShowMoreCaption, setCanShowMoreCaption] = useState(false);
@@ -252,7 +254,7 @@ const FeedPostCard = React.memo(({
   };
 
   return (
-    <Card className="overflow-hidden rounded-3xl w-full max-w-md h-[600px] relative transform-gpu bg-black" onClick={() => onOpenDetailModal(item)}>
+    <Card className="overflow-hidden rounded-3xl w-full max-w-md h-[600px] relative transform-gpu" onClick={() => onOpenDetailModal(item)}>
       {/* Main content area with image */}
       <div className="relative h-full w-full">
         {item.mediaUrl ? (
@@ -274,7 +276,19 @@ const FeedPostCard = React.memo(({
               sizes="(max-width: 639px) 100vw, (max-width: 1023px) 336px, 384px" 
             />
             {/* Top overlay with user info and plan name */}
-            <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/70 via-black/30 to-transparent z-20">
+            <div className="absolute top-0 left-0 right-0 p-4 z-20">
+              <LinearBlur
+                steps={8}
+                strength={64}
+                falloffPercentage={100}
+                tint="rgba(0, 0, 0, 0.7)"
+                side="top"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  zIndex: -1
+                }}
+              />
               <div className="flex items-center gap-3 mb-3">
                 <Link href={`/users/${item.userId}`} className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                   <Avatar className="h-10 w-10 border-2 border-white/50">
@@ -283,11 +297,13 @@ const FeedPostCard = React.memo(({
                   </Avatar>
                 </Link>
                 <div>
-                  <Link href={`/users/${item.userId}`} className="hover:underline" onClick={(e) => e.stopPropagation()}>
-                    <span className="font-bold text-sm text-white">{item.username || item.userName}</span>
-                  </Link>
-                  <VerificationBadge role={item.userRole} isVerified={item.userIsVerified} />
-                  <p className="text-white/60 text-xs">{locationText}</p>
+                  <div className="flex items-center">
+                    <Link href={`/users/${item.userId}`} className="hover:underline" onClick={(e) => e.stopPropagation()}>
+                      <span className="font-bold text-sm text-white">{item.username || item.userName}</span>
+                    </Link>
+                    <VerificationBadge role={item.userRole} isVerified={item.userIsVerified} />
+                  </div>
+                  <p className="text-white/60 text-xs mt-0.3">{locationText}</p>
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -313,27 +329,38 @@ const FeedPostCard = React.memo(({
 
             </div>
             {/* Bottom overlay with like and comment counts */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black via-black/70 to-transparent z-20">
-              <div className="flex items-center gap-3">
+            <div className="absolute bottom-0 left-0 right-0 p-4 z-20">
+              <LinearBlur
+                steps={8}
+                strength={64}
+                falloffPercentage={100}
+                tint="rgba(0, 0, 0, 0.7)"
+                side="bottom"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  zIndex: -1
+                }}
+              />
+              <div className="flex items-center gap-4 p-1">
                 <Button
                   variant="ghost"
                   size="sm"
-                  className={cn("p-0 h-auto flex items-center gap-1.5 text-white hover:text-red-400", 
-                    optimisticLikedByCurrentUser ? "text-red-400" : "")}
+                  className="p-1 h-auto flex items-center gap-2 text-white"
                   onClick={(e) => { e.stopPropagation(); handleLikeClick(); }}
                   disabled={!currentUserId}
                 >
-                  <Heart className={cn("h-10 w-10", optimisticLikedByCurrentUser && "fill-red-400")} />
-                  <span className="text-sm">{optimisticLikesCount || 0}</span>
+                  <Heart className= "h-20 w-20" />
+                  <span className="text-base">{optimisticLikesCount || 0}</span>
                 </Button>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="p-0 h-auto flex items-center gap-1.5 text-white"
+                  className="p-1 h-auto flex items-center gap-2 text-white"
                   onClick={(e) => { e.stopPropagation(); onOpenCommentsModal(item); }}
                 >
-                  <MessageSquare className="h-10 w-10" />
-                  <span className="text-sm">{optimisticCommentsCount || 0}</span>
+                  <MessageSquare className="h-20 w-20" />
+                  <span className="text-base">{optimisticCommentsCount || 0}</span>
                 </Button>
               </div>
 
