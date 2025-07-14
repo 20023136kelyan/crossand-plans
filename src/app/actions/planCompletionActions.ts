@@ -195,49 +195,8 @@ export async function markPlanAsCompletedAction(
     let sanitizedUpdateData;
     
     if (shouldCreateNewTemplate) {
-      // Create a new template from this completed plan
-      sanitizedUpdateData = {
-        ...baseUpdateData,
-        status: 'published' as const, // ✅ CRITICAL FIX: Templates need 'published' status to be discoverable
-        isTemplate: true, // Make completed plans available as templates
-        // Clear personal data for template use
-        participantUserIds: [],
-        invitedParticipantUserIds: [],
-        participantResponses: {},
-        // Keep original creator info for attribution (not host, as templates have no hosts)
-        templateOriginalHostId: planData.hostId,
-        templateOriginalHostName: planData.hostName,
-        // Ensure proper user attribution for user-generated templates
-        creatorName: planData.hostName, // Credit the original host as the creator
-        creatorAvatarUrl: planData.hostAvatarUrl, // ✅ Preserve original host avatar
-        creatorIsVerified: false, // ✅ User templates are not verified by default
-        authorId: planData.hostId, // New field for explicit author linkage
-        // Clear waitlist and other personal data
-        waitlistUserIds: [],
-        privateNotes: null,
-        // Remove specific date but preserve time information in itinerary
-        eventTime: null, // Templates don't have specific dates
-        // Preserve essential template data
-        name: planData.name,
-        description: planData.description,
-        location: planData.location,
-        city: planData.city,
-        eventType: planData.eventType,
-        priceRange: planData.priceRange,
-        // Preserve itinerary with time slots but remove specific dates
-        itinerary: planData.itinerary.map(item => ({
-          ...item,
-          // Keep time information but remove date specificity
-          startTime: item.startTime ? new Date(item.startTime).toTimeString().split(' ')[0] : null,
-          endTime: item.endTime ? new Date(item.endTime).toTimeString().split(' ')[0] : null
-        })),
-        photoHighlights: planData.photoHighlights || [],
-        // Preserve ratings and comments for templates
-        averageRating: planData.averageRating,
-        reviewCount: planData.reviewCount,
-        // New field for lineage
-        parentTemplateId: planData.originalPlanId || null,
-      };
+      // Just mark as completed - template will be created separately
+      sanitizedUpdateData = baseUpdateData;
     } else {
       // Just mark as completed without converting to template
       sanitizedUpdateData = baseUpdateData;

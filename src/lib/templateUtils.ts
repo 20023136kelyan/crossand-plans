@@ -46,7 +46,7 @@ export function createTemplateFromPlan(originalPlan: Plan): TemplateData {
   return {
     id: crypto.randomUUID(),
     isTemplate: true,
-    parentTemplateId: originalPlan.id || null,
+    parentTemplateId: originalPlan.id, // This should be the ID of the plan being converted to template
     authorId: originalPlan.hostId,
     templateOriginalHostId: originalPlan.hostId,
     templateOriginalHostName: originalPlan.hostName || '',

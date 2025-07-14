@@ -692,3 +692,77 @@ export async function getUserPlans(userId: string): Promise<Plan[]> {
     return [];
   }
 }
+
+/**
+ * Get templates by original plan ID
+ * Fetches templates that were created from a specific plan
+ */
+export async function getTemplatesByOriginalPlanId(originalPlanId: string): Promise<Plan[]> {
+  if (!originalPlanId) return [];
+
+  try {
+    console.log('🔍 Querying templates for originalPlanId:', originalPlanId);
+    
+    const templatesQuery = query(
+      collection(getDb(), 'plans'),
+      where('isTemplate', '==', true),
+      where('parentTemplateId', '==', originalPlanId),
+      orderBy('createdAt', 'desc')
+    );
+
+    const snapshot = await getDocs(templatesQuery);
+    console.log('📊 Query result - found', snapshot.size, 'templates');
+    
+    const templates: Plan[] = [];
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      console.log('📄 Template data:', { id: doc.id, name: data.name, isTemplate: data.isTemplate, parentTemplateId: data.parentTemplateId });
+      templates.push({
+        id: doc.id,
+        name: data.name || 'Untitled Template',
+        description: data.description || null,
+        eventTime: data.eventTime || '',
+        location: data.location || '',
+        city: data.city || '',
+        eventType: data.eventType || null,
+        eventTypeLowercase: data.eventTypeLowercase || (data.eventType || '').toLowerCase(),
+        priceRange: data.priceRange || '$',
+        hostId: data.hostId || '',
+        hostName: data.hostName || null,
+        hostAvatarUrl: data.hostAvatarUrl || null,
+        creatorName: data.creatorName || data.hostName || null,
+        creatorAvatarUrl: data.creatorAvatarUrl || data.hostAvatarUrl || null,
+        creatorIsVerified: data.creatorIsVerified || false,
+        invitedParticipantUserIds: data.invitedParticipantUserIds || [],
+        participantUserIds: data.participantUserIds || [],
+        participantResponses: data.participantResponses || {},
+        waitlistUserIds: data.waitlistUserIds || [],
+        itinerary: data.itinerary?.map((item: any) => ({
+          ...item,
+          startTime: item.startTime || null,
+          endTime: item.endTime || null,
+        })) || [],
+        status: data.status || 'published',
+        planType: data.planType || 'single-stop',
+        originalPlanId: data.originalPlanId || null,
+        sharedByUid: data.sharedByUid || null,
+        averageRating: data.averageRating === undefined ? null : data.averageRating,
+        reviewCount: data.reviewCount === undefined ? 0 : data.reviewCount,
+        photoHighlights: data.photoHighlights || [],
+        images: data.images || [],
+        comments: data.comments || [],
+        isTemplate: data.isTemplate || false,
+        templateOriginalHostId: data.templateOriginalHostId || null,
+        templateOriginalHostName: data.templateOriginalHostName || null,
+        createdAt: data.createdAt || new Date().toISOString(),
+        updatedAt: data.updatedAt || new Date().toISOString(),
+      } as Plan);
+    });
+
+    console.log('✅ Returning', templates.length, 'templates');
+    return templates;
+  } catch (error) {
+    console.error('Error fetching templates by original plan ID:', error);
+    return [];
+  }
+}

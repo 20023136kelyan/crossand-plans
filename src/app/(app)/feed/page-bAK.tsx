@@ -44,14 +44,7 @@ import {
   Lock as LockIcon,
   EyeOff,
   PackageOpen,
-  AlertTriangle,
-  MapPin,
-  Clock,
-  Users,
-  Star,
-  ArrowLeft,
-  ArrowRight,
-  Eye
+  AlertTriangle
 } from "lucide-react";
 import Link from "next/link";
 import Image from 'next/image';
@@ -69,7 +62,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
-import { getPostComments, getUserProfile, getPlanById, getTemplatesByOriginalPlanId } from '@/services/clientServices';
+import { getPostComments, getUserProfile, getPlanById } from '@/services/clientServices';
 import { PostDetailModal } from '@/components/feed/PostDetailModal';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { extractImageGradientCached } from '@/lib/colorExtraction';
@@ -140,15 +133,6 @@ const FeedPostCard = React.memo(({
   const [optimisticLikesCount, setOptimisticLikesCount] = useState(item.likesCount || 0);
   const [optimisticCommentsCount, setOptimisticCommentsCount] = useState(item.commentsCount || 0);
 
-  // Swipe and template state
-  const [isFlipped, setIsFlipped] = useState(false);
-  const [templateData, setTemplateData] = useState<Plan | null>(null);
-  const [loadingTemplate, setLoadingTemplate] = useState(false);
-  const [swipeStartX, setSwipeStartX] = useState<number | null>(null);
-  const [swipeDistance, setSwipeDistance] = useState(0);
-  const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     setOptimisticLikedByCurrentUser(item.likedBy?.includes(currentUserId || "") || false);
     setOptimisticLikesCount(item.likesCount || 0);
@@ -157,90 +141,7 @@ const FeedPostCard = React.memo(({
   const [newCommentText, setNewCommentText] = useState('');
   const [isSubmittingCardComment, setIsSubmittingCardComment] = useState(false);
 
-  // Fetch template data when card is flipped
-  const fetchTemplateData = useCallback(async () => {
-    if (templateData || loadingTemplate) return;
-    
-    setLoadingTemplate(true);
-    try {
-      console.log('🔍 Fetching template data for planId:', item.planId);
-      
-      // First, try to fetch templates that were created from this plan
-      const templates = await getTemplatesByOriginalPlanId(item.planId);
-      console.log('📋 Found templates:', templates.length, templates.map(t => ({ id: t.id, name: t.name, isTemplate: t.isTemplate })));
-      
-      if (templates.length > 0) {
-        // Use the first (most recent) template
-        console.log('✅ Using template:', templates[0].name);
-        setTemplateData(templates[0]);
-        return;
-      }
-      
-      // If no templates found, check if the plan itself is a template
-      const plan = await getPlanById(item.planId);
-      console.log('📄 Plan data:', plan ? { id: plan.id, name: plan.name, isTemplate: plan.isTemplate } : 'null');
-      
-      if (plan && plan.isTemplate) {
-        console.log('✅ Plan is itself a template:', plan.name);
-        setTemplateData(plan);
-      } else {
-        console.log('❌ No templates found for planId:', item.planId);
-      }
-    } catch (error) {
-      console.error('Error fetching template data:', error);
-    } finally {
-      setLoadingTemplate(false);
-    }
-  }, [item.planId, templateData, loadingTemplate]);
 
-  // Handle swipe gestures
-  const handleTouchStart = (e: React.TouchEvent) => {
-    setSwipeStartX(e.touches[0].clientX);
-    setSwipeDistance(0);
-    setSwipeDirection(null);
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (swipeStartX === null) return;
-    
-    const currentX = e.touches[0].clientX;
-    const distance = currentX - swipeStartX;
-    
-    // Track direction and distance
-    if (Math.abs(distance) > 0) {
-      setSwipeDistance(Math.abs(distance));
-      setSwipeDirection(distance < 0 ? 'left' : 'right');
-    }
-  };
-
-  const handleTouchEnd = () => {
-    if (swipeStartX === null) return;
-    
-    // If swipe distance is significant
-    if (swipeDistance > 50) {
-      if (swipeDirection === 'left') {
-        // Left swipe - flip to template
-        setIsFlipped(true);
-        fetchTemplateData();
-      } else if (swipeDirection === 'right' && isFlipped) {
-        // Right swipe when flipped - return to front
-        setIsFlipped(false);
-      }
-    }
-    
-    setSwipeStartX(null);
-    setSwipeDistance(0);
-    setSwipeDirection(null);
-  };
-
-  // Calculate swipe progress for visual feedback
-  const swipeProgress = Math.min(swipeDistance / 100, 1);
-
-  // Handle flip back
-  const handleFlipBack = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsFlipped(false);
-  };
 
   useEffect(() => {
     if (captionRef.current) {
@@ -264,10 +165,6 @@ const FeedPostCard = React.memo(({
     }
   }, [item.text, isCaptionExpanded, captionRef]);
 
-  // Debug template data changes
-  useEffect(() => {
-    console.log('🔄 Template data changed:', templateData ? { id: templateData.id, name: templateData.name } : 'null');
-  }, [templateData]);
 
   const toggleCaptionExpansion = (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -357,390 +254,130 @@ const FeedPostCard = React.memo(({
   };
 
   return (
-    <div 
-      ref={cardRef}
-      className="relative w-full max-w-md h-[600px] perspective-1000"
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-    >
-              <div 
-          className={cn(
-            "relative w-full h-full transition-transform duration-500 transform-style-preserve-3d",
-            isFlipped && "rotate-y-180"
-          )}
-          style={{
-            transformStyle: 'preserve-3d',
-            transform: isFlipped 
-              ? 'rotateY(180deg)' 
-              : swipeDistance > 0 
-                ? `rotateY(${swipeProgress * 15}deg)` 
-                : 'rotateY(0deg)',
-          }}
-        >
-        {/* Front side - Original post */}
-        <Card 
-          className={cn(
-            "overflow-hidden rounded-3xl w-full h-full absolute backface-hidden transition-shadow duration-200",
-            swipeDistance > 0 && "shadow-2xl"
-          )} 
-          onClick={() => onOpenDetailModal(item)}
-        >
-          <div className="relative h-full w-full">
-            {item.mediaUrl ? (
-              <>
-                <Image 
-                  src={item.mediaUrl} 
-                  alt={item.text || `Highlight from ${item.planName}`} 
-                  width={400} 
-                  height={600} 
-                  style={{ 
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                    objectPosition: 'center'
-                  }} 
-                  data-ai-hint="feed post image" 
-                  priority={true} 
-                  className="w-full h-full" 
-                  sizes="(max-width: 639px) 100vw, (max-width: 1023px) 336px, 384px" 
-                />
-                {/* Top overlay with user info and plan name */}
-                <div className="absolute top-0 left-0 right-0 p-4 z-20">
-                  <LinearBlur
-                    steps={8}
-                    strength={64}
-                    falloffPercentage={100}
-                    tint="rgba(0, 0, 0, 0.7)"
-                    side="top"
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      zIndex: -1
-                    }}
-                  />
-                  <div className="flex items-center gap-3 mb-3">
-                    <Link href={`/users/${item.userId}`} className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <Avatar className="h-10 w-10 border-2 border-white/50">
-                        <AvatarImage src={item.userAvatarUrl || undefined} alt={item.userName} />
-                        <AvatarFallback className="bg-white/95 text-gray-800 text-sm font-semibold">{userInitial}</AvatarFallback>
-                      </Avatar>
+    <Card className="overflow-hidden rounded-3xl w-full max-w-md h-[600px] relative transform-gpu" onClick={() => onOpenDetailModal(item)}>
+      {/* Main content area with image */}
+      <div className="relative h-full w-full">
+        {item.mediaUrl ? (
+          <>
+            <Image 
+              src={item.mediaUrl} 
+              alt={item.text || `Highlight from ${item.planName}`} 
+              width={400} 
+              height={600} 
+              style={{ 
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                objectPosition: 'center'
+              }} 
+              data-ai-hint="feed post image" 
+              priority={true} 
+              className="w-full h-full" 
+              sizes="(max-width: 639px) 100vw, (max-width: 1023px) 336px, 384px" 
+            />
+            {/* Top overlay with user info and plan name */}
+            <div className="absolute top-0 left-0 right-0 p-4 z-20">
+              <LinearBlur
+                steps={8}
+                strength={64}
+                falloffPercentage={100}
+                tint="rgba(0, 0, 0, 0.7)"
+                side="top"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  zIndex: -1
+                }}
+              />
+              <div className="flex items-center gap-3 mb-3">
+                <Link href={`/users/${item.userId}`} className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <Avatar className="h-10 w-10 border-2 border-white/50">
+                    <AvatarImage src={item.userAvatarUrl || undefined} alt={item.userName} />
+                    <AvatarFallback className="bg-white/95 text-gray-800 text-sm font-semibold">{userInitial}</AvatarFallback>
+                  </Avatar>
+                </Link>
+                <div>
+                  <div className="flex items-center">
+                    <Link href={`/users/${item.userId}`} className="hover:underline" onClick={(e) => e.stopPropagation()}>
+                      <span className="font-bold text-sm text-white">{item.username || item.userName}</span>
                     </Link>
-                    <div>
-                      <div className="flex items-center">
-                        <Link href={`/users/${item.userId}`} className="hover:underline" onClick={(e) => e.stopPropagation()}>
-                          <span className="font-bold text-sm text-white">{item.username || item.userName}</span>
-                        </Link>
-                        <VerificationBadge role={item.userRole} isVerified={item.userIsVerified} />
-                      </div>
-                      <p className="text-white/60 text-xs mt-0.3">{locationText}</p>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-white hover:bg-white/10 ml-auto" onClick={(e) => e.stopPropagation()}>
-                          <span className="sr-only">More options</span>
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48 bg-background">
-                        <DropdownMenuItem onSelect={() => onHidePost(item.id)} className="cursor-pointer text-xs"><EyeOff className="mr-2 h-3.5 w-3.5"/> Hide Post</DropdownMenuItem>
-                        <DropdownMenuItem className="cursor-pointer text-xs text-destructive focus:text-destructive focus:bg-destructive/10"><AlertTriangle className="mr-2 h-3.5 w-3.5"/> Report Post</DropdownMenuItem>
-                        {isOwnPost && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onSelect={() => onRequestDeletePost(item)} className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer text-xs">
-                              <Trash2 className="mr-2 h-3.5 w-3.5"/> Delete Post
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <VerificationBadge role={item.userRole} isVerified={item.userIsVerified} />
                   </div>
-
+                  <p className="text-white/60 text-xs mt-0.3">{locationText}</p>
                 </div>
-                {/* Bottom overlay with like and comment counts */}
-                <div className="absolute bottom-0 left-0 right-0 p-4 z-20">
-                  <LinearBlur
-                    steps={8}
-                    strength={64}
-                    falloffPercentage={100}
-                    tint="rgba(0, 0, 0, 0.7)"
-                    side="bottom"
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      zIndex: -1
-                    }}
-                  />
-                  <div className="flex items-center gap-4 p-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="p-1 h-auto flex items-center gap-2 text-white"
-                      onClick={(e) => { e.stopPropagation(); handleLikeClick(); }}
-                      disabled={!currentUserId}
-                    >
-                      <Heart className= "h-20 w-20" />
-                      <span className="text-base">{optimisticLikesCount || 0}</span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-white hover:bg-white/10 ml-auto" onClick={(e) => e.stopPropagation()}>
+                      <span className="sr-only">More options</span>
+                      <MoreVertical className="h-4 w-4" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="p-1 h-auto flex items-center gap-2 text-white"
-                      onClick={(e) => { e.stopPropagation(); onOpenCommentsModal(item); }}
-                    >
-                      <MessageSquare className="h-20 w-20" />
-                      <span className="text-base">{optimisticCommentsCount || 0}</span>
-                    </Button>
-                  </div>
-                  
-                  {/* Swipe hint */}
-                  <div className="absolute bottom-4 right-4 flex items-center gap-1 text-white/60 text-xs">
-                    <ArrowLeft className="h-3 w-3" />
-                    <span>Swipe left for template</span>
-                  </div>
-                  
-                  {/* Swipe progress indicator */}
-                  {swipeDistance > 0 && (
-                    <div className="absolute top-1/2 right-4 transform -translate-y-1/2">
-                      <div className="w-1 h-16 bg-white/20 rounded-full overflow-hidden">
-                        <div 
-                          className="bg-white/80 rounded-full transition-all duration-150"
-                          style={{ 
-                            height: `${swipeProgress * 100}%`,
-                            transform: 'translateY(100%)'
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Swipe progress indicator for back side */}
-                  {isFlipped && swipeDistance > 0 && swipeDirection === 'right' && (
-                    <div className="absolute top-1/2 left-4 transform -translate-y-1/2">
-                      <div className="w-1 h-16 bg-gray-300/20 rounded-full overflow-hidden">
-                        <div 
-                          className="bg-gray-600/80 rounded-full transition-all duration-150"
-                          style={{ 
-                            height: `${swipeProgress * 100}%`,
-                            transform: 'translateY(100%)'
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Swipe hint overlay */}
-                  {swipeDistance > 10 && swipeDistance < 50 && (
-                    <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                      <div className="bg-white/90 rounded-lg px-4 py-2 text-sm font-medium text-gray-800">
-                        {isFlipped ? "Keep swiping right to return" : "Keep swiping left to reveal template"}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="h-full w-full flex items-center justify-center bg-black">
-                <div className="text-center space-y-4">
-                  <div className="w-24 h-24 bg-white/95 rounded-3xl flex items-center justify-center mx-auto">
-                    <span className="text-4xl">📝</span>
-                  </div>
-                  <p className="text-white/80 font-bold text-lg">Text Post</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </Card>
-
-        {/* Back side - Template information */}
-        <Card className="overflow-hidden rounded-3xl w-full h-full absolute backface-hidden rotate-y-180 animate-in fade-in duration-500" style={{ background: 'hsl(35, 15%, 94%)' }}>
-          <div className="relative h-full w-full p-6 flex flex-col">
-            {/* Header with back button */}
-            <div className="flex items-center justify-between mb-4">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-full"
-                onClick={handleFlipBack}
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <div className="text-center">
-                <h3 className="font-semibold text-lg text-gray-800">Plan Snippet</h3>
-                <p className="text-sm text-gray-600">Swipe right to return</p>
-              </div>
-              <div className="w-8" /> {/* Spacer for centering */}
-            </div>
-
-                        {/* Template content */}
-            <div className="flex-1 overflow-y-auto">
-              {loadingTemplate ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-                </div>
-              ) : templateData ? (
-                <div className="space-y-4 animate-in slide-in-from-bottom duration-300">
-                  {/* Template header */}
-                  <div className="text-center mb-6">
-                    <h2 className="text-base font-bold text-gray-800 mb-2">{templateData.name}</h2>
-                    <p className="text-sm text-gray-600 mb-3">{templateData.description}</p>
-                    
-                    {/* Creator info */}
-                    <div className="flex items-center justify-center gap-2 mb-4">
-                      <Avatar className="h-6 w-6">
-                        <AvatarImage src={templateData.creatorAvatarUrl || undefined} alt={templateData.creatorName || ''} />
-                        <AvatarFallback className="text-xs">
-                          {(templateData.creatorName || templateData.templateOriginalHostName || 'U').charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm text-gray-700">
-                        by {templateData.creatorName || templateData.templateOriginalHostName || 'Unknown'}
-                      </span>
-                      {templateData.creatorIsVerified && (
-                        <CheckCircle className="h-4 w-4 text-blue-500" />
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Template details */}
-                  <div className="space-y-3">
-                    {/* City, Category, Price - single row */}
-                    <div className="flex items-center justify-center gap-2 text-sm text-gray-700 mb-2">
-                      <MapPin className="h-4 w-4 text-gray-500" />
-                      <span>{templateData.city}</span>
-                      <span className="mx-1">•</span>
-                      <span>{templateData.eventType || 'Event'}</span>
-                      <span className="mx-1">•</span>
-                      <span>{templateData.priceRange || 'Free'}</span>
-                    </div>
-
-                    {/* Rating */}
-                    {templateData.averageRating && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                        <span className="text-gray-700">
-                          {templateData.averageRating.toFixed(1)} ({templateData.reviewCount || 0} reviews)
-                        </span>
-                      </div>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48 bg-background">
+                    <DropdownMenuItem onSelect={() => onHidePost(item.id)} className="cursor-pointer text-xs"><EyeOff className="mr-2 h-3.5 w-3.5"/> Hide Post</DropdownMenuItem>
+                    <DropdownMenuItem className="cursor-pointer text-xs text-destructive focus:text-destructive focus:bg-destructive/10"><AlertTriangle className="mr-2 h-3.5 w-3.5"/> Report Post</DropdownMenuItem>
+                    {isOwnPost && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onSelect={() => onRequestDeletePost(item)} className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer text-xs">
+                          <Trash2 className="mr-2 h-3.5 w-3.5"/> Delete Post
+                        </DropdownMenuItem>
+                      </>
                     )}
-
-                    {/* Itinerary preview */}
-                    {templateData.itinerary && templateData.itinerary.length > 0 && (
-                      <div className="mt-4">
-                        <h4 className="font-semibold text-gray-800 mb-2">Itinerary</h4>
-                        <div className="space-y-2">
-                          {templateData.itinerary.slice(0, 3).map((item, index) => (
-                            <div key={index} className="flex items-start gap-2 text-sm">
-                              <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 flex-shrink-0" />
-                              <div>
-                                <p className="font-medium text-gray-800">{item.placeName}</p>
-                                {item.description && (
-                                  <p className="text-gray-600 text-xs">{item.description}</p>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                          {templateData.itinerary.length > 3 && (
-                            <p className="text-xs text-gray-500 mt-2">
-                              +{templateData.itinerary.length - 3} more stops
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <PackageOpen className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                    <p className="text-gray-600">No template available</p>
-                    <p className="text-sm text-gray-500">This post doesn't have an associated template</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-                        {/* Action buttons */}
-            {templateData && (
-              <div className="absolute bottom-4 left-4 flex flex-row items-center gap-3 z-20">
-                <Eye
-                  className="h-6 w-6 text-blue-600 cursor-pointer hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-400 rounded transition"
-                  aria-label="View Template"
-                  tabIndex={0}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    window.open(`/p/${templateData.id}`, '_blank');
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      window.open(`/p/${templateData.id}`, '_blank');
-                    }
-                  }}
-                />
-                <Star
-                  className="h-6 w-6 text-yellow-500 cursor-pointer hover:text-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-400 rounded transition"
-                  aria-label="Copy to My Plans"
-                  tabIndex={0}
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    if (!user || !currentUserId) {
-                      toast({ title: "Login Required", description: "Please log in to copy templates.", variant: "destructive" });
-                      return;
-                    }
-                    try {
-                      const idToken = await user.getIdToken();
-                      if (!idToken) throw new Error("Authentication token not available.");
-                      const { copyPlanToMyAccountAction } = await import('@/app/actions/planActions');
-                      const result = await copyPlanToMyAccountAction(templateData.id, idToken);
-                      if (result.success) {
-                        toast({ title: "Template Copied!", description: "The template has been added to your plans." });
-                        window.open(`/plans/${result.newPlanId}`, '_blank');
-                      } else {
-                        toast({ title: "Copy Failed", description: result.error || "Could not copy template.", variant: "destructive" });
-                      }
-                    } catch (error: any) {
-                      toast({ title: "Copy Error", description: error.message || "An unexpected error occurred.", variant: "destructive" });
-                    }
-                  }}
-                  onKeyDown={async (e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      if (!user || !currentUserId) {
-                        toast({ title: "Login Required", description: "Please log in to copy templates.", variant: "destructive" });
-                        return;
-                      }
-                      try {
-                        const idToken = await user.getIdToken();
-                        if (!idToken) throw new Error("Authentication token not available.");
-                        const { copyPlanToMyAccountAction } = await import('@/app/actions/planActions');
-                        const result = await copyPlanToMyAccountAction(templateData.id, idToken);
-                        if (result.success) {
-                          toast({ title: "Template Copied!", description: "The template has been added to your plans." });
-                          window.open(`/plans/${result.newPlanId}`, '_blank');
-                        } else {
-                          toast({ title: "Copy Failed", description: result.error || "Could not copy template.", variant: "destructive" });
-                        }
-                      } catch (error: any) {
-                        toast({ title: "Copy Error", description: error.message || "An unexpected error occurred.", variant: "destructive" });
-                      }
-                    }
-                  }}
-                />
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
-            )}
-            
-            {/* Swipe hint for back side */}
-            <div className="absolute bottom-4 right-4 flex items-center gap-1 text-gray-600 text-xs">
-              <ArrowRight className="h-3 w-3" />
-              <span>Swipe right to return</span>
+
+            </div>
+            {/* Bottom overlay with like and comment counts */}
+            <div className="absolute bottom-0 left-0 right-0 p-4 z-20">
+              <LinearBlur
+                steps={8}
+                strength={64}
+                falloffPercentage={100}
+                tint="rgba(0, 0, 0, 0.7)"
+                side="bottom"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  zIndex: -1
+                }}
+              />
+              <div className="flex items-center gap-4 p-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="p-1 h-auto flex items-center gap-2 text-white"
+                  onClick={(e) => { e.stopPropagation(); handleLikeClick(); }}
+                  disabled={!currentUserId}
+                >
+                  <Heart className= "h-20 w-20" />
+                  <span className="text-base">{optimisticLikesCount || 0}</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="p-1 h-auto flex items-center gap-2 text-white"
+                  onClick={(e) => { e.stopPropagation(); onOpenCommentsModal(item); }}
+                >
+                  <MessageSquare className="h-20 w-20" />
+                  <span className="text-base">{optimisticCommentsCount || 0}</span>
+                </Button>
+              </div>
+
+            </div>
+          </>
+        ) : (
+          <div className="h-full w-full flex items-center justify-center bg-black">
+            <div className="text-center space-y-4">
+              <div className="w-24 h-24 bg-white/95 rounded-3xl flex items-center justify-center mx-auto">
+                <span className="text-4xl">📝</span>
+              </div>
+              <p className="text-white/80 font-bold text-lg">Text Post</p>
             </div>
           </div>
-        </Card>
+        )}
       </div>
-    </div>
+    </Card>
   );
 });
 FeedPostCard.displayName = 'FeedPostCard';
@@ -1075,8 +712,8 @@ export default function FeedPage() {
   if (authLoading && !user) { return (<div className="flex min-h-[calc(100vh-10rem)] items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>); }
 
   return (
-    <div className="min-h-screen">
-      <div className="mx-auto max-w-7xl pb-20 px-4">
+    <div className="min-h-screen"> {/* Removed Tabs container as it's now in AppLayout */}
+      <div className="mx-auto max-w-7xl pt-6 pb-20 px-4">
         {/* This is where the "For You" content will now directly live */}
         {loadingFeed && visibleFeedPosts.length === 0 && (<div className="flex min-h-[calc(100vh-15rem)] items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-gray-600" /></div>)}
         {!loadingFeed && visibleFeedPosts.length === 0 && (<div className="text-center py-10 text-gray-600 min-h-[calc(100vh-15rem)] flex flex-col justify-center items-center"><PackageOpen className="mx-auto h-12 w-12 mb-4 opacity-70" /><p className="text-lg font-semibold">Your feed is looking a bit quiet.</p><p>Share your plan highlights or explore to find content!</p></div>)}
@@ -1098,5 +735,4 @@ export default function FeedPage() {
     </div>
   );
 }
-    
     

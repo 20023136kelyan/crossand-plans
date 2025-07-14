@@ -710,27 +710,29 @@ export default function PlanDetailPage() {
                 <CardContent className="w-full max-w-full p-2">
                   {/* Event Type Badge moved inside the card */}
       {plan?.eventType && (
+        <span className="flex items-center gap-2 mb-2">
           <Badge 
-            className="bg-black/40 text-white hover:bg-black/60 mb-2" 
+            className="bg-black/40 text-white hover:bg-black/60" 
             style={{ filter: 'none', boxShadow: 'none', textShadow: 'none' }}
           >
             {plan?.eventType || plan?.type || 'Event'}
           </Badge>
+          {/* Status indicators - moved next to category tag */}
+          {plan?.status === 'completed' && (
+            <span className="flex items-center justify-center w-7 h-7 bg-green-500 rounded-full shadow-lg">
+              <Check className="h-4 w-4 text-white" strokeWidth={3} />
+            </span>
+          )}
+          {plan?.status !== 'completed' && isPlanPast(plan?.eventTime) && (
+            <span className="flex items-center justify-center w-7 h-7 bg-white/20 backdrop-blur-sm rounded-full border border-white/30">
+              <Check className="h-4 w-4 text-white/80" strokeWidth={3} />
+            </span>
+          )}
+        </span>
       )}
                   <div className="flex items-center gap-3 mb-4">
   <div className="relative inline-block w-max align-bottom mb-4" style={{minHeight: '2.5rem'}}>
     <h1 className="text-3xl font-bold text-white/75 block">{plan?.name || 'Unnamed Plan'}</h1>
-    {/* Status indicators */}
-    {plan?.status === 'completed' && (
-      <div className="absolute right-0 top-1/2 -translate-y-1/2 -translate-x-4 translate-y-1 flex items-center justify-center w-8 h-8 aspect-square flex-shrink-0 bg-green-500 rounded-full shadow-lg">
-        <Check className="h-5 w-5 text-white" strokeWidth={3} />
-      </div>
-    )}
-    {plan?.status !== 'completed' && isPlanPast(plan?.eventTime) && (
-      <div className="absolute right-0 top-1/2 -translate-y-1/2 -translate-x-4 translate-y-1 flex items-center justify-center w-8 h-8 aspect-square flex-shrink-0 bg-white/20 backdrop-blur-sm rounded-full border border-white/30">
-        <Check className="h-5 w-5 text-white/80" strokeWidth={3} />
-      </div>
-    )}
   </div>
 </div>
                   
