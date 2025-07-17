@@ -5,6 +5,18 @@ export interface ClientNotification extends NotificationData {
   createdAt: Date;
   isRead: boolean;
   readAt?: Date;
+  // Actionable notification fields
+  status?: 'pending' | 'approved' | 'denied' | 'accepted' | 'declined';
+  handled?: boolean;
+  // User action fields
+  userName?: string;
+  // Chat message fields
+  chatId?: string;
+  senderId?: string;
+  senderName?: string;
+  senderAvatarUrl?: string;
+  messagePreview?: string;
+  // Description is now optional from NotificationData
 }
 
 export async function fetchNotifications(idToken: string): Promise<ClientNotification[]> {

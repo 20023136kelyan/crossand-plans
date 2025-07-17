@@ -11,6 +11,7 @@ import { convertTimestampToISO } from '@/lib/data/core/TimestampUtils.server';
 import { mapDocumentToPlan } from '@/lib/data/mappers/PlanMapper.server';
 import { BaseService } from '@/lib/data/core/BaseService';
 import { FirebaseQueryBuilder, COLLECTIONS, SUBCOLLECTIONS } from '@/lib/data/core/QueryBuilder';
+import { createNotification, createNotificationForMultipleUsers } from './notificationService.server';
 
 const PLANS_COLLECTION = 'plans';
 const RATINGS_SUBCOLLECTION = 'ratings';
@@ -80,6 +81,22 @@ export const updatePlanAdmin = async (
     const planDocRef = firestoreAdmin.collection(PLANS_COLLECTION).doc(planId);
     
     let finalParticipantResponses = dataToUpdate.participantResponses || currentPlanData?.participantResponses || {};
+    // --- Notification logic: track changes ---
+    const oldInvitedIds = currentPlanData?.invitedParticipantUserIds || [];
+    const newInvitedIds = dataToUpdate.invitedParticipantUserIds || oldInvitedIds;
+    const newlyInvited = newInvitedIds.filter(uid => !oldInvitedIds.includes(uid));
+    const hostId = currentPlanData?.hostId;
+    const updaterId = (dataToUpdate as any)?.updaterId || null; // If available
+    // Accept/decline logic: find status changes
+    const oldResponses = currentPlanData?.participantResponses || {};
+    const newResponses = dataToUpdate.participantResponses || oldResponses;
+    const statusChanged: Array<{uid: string, oldStatus: string, newStatus: string}> = [];
+    Object.keys(newResponses).forEach(uid => {
+      if (oldResponses[uid] && newResponses[uid] && oldResponses[uid] !== newResponses[uid]) {
+        statusChanged.push({uid, oldStatus: oldResponses[uid], newStatus: newResponses[uid]});
+      }
+    });
+    // --- End notification logic tracking ---
 
     if (dataToUpdate.invitedParticipantUserIds && currentPlanData) {
       const newInvitedIds = dataToUpdate.invitedParticipantUserIds;
@@ -123,7 +140,65 @@ export const updatePlanAdmin = async (
     if (dataToUpdate.reviewCount !== undefined) updatePayload.reviewCount = dataToUpdate.reviewCount;
 
 
-    await planDocRef.update(updatePayload);
+    await planDocRef.update({
+      ...dataToUpdate,
+      participantResponses: finalParticipantResponses,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    // --- Send notifications ---
+    // 1. Notify newly invited users
+    if (newlyInvited.length > 0 && hostId) {
+      // Get host profile for notification
+      const hostProfile = await getUserProfileAdmin(hostId);
+      await createNotificationForMultipleUsers(newlyInvited, {
+        type: 'plan_invitation',
+        title: 'invited you to a plan',
+        description: currentPlanData?.name || 'A plan',
+        userName: hostProfile?.name || hostProfile?.username || 'Someone',
+        avatarUrl: hostProfile?.avatarUrl || undefined,
+        actionUrl: `/plans/${planId}`,
+        isRead: false,
+        metadata: { planId },
+      });
+    }
+    // 2. Notify host when someone accepts/declines
+    if (hostId && statusChanged.length > 0) {
+      for (const change of statusChanged) {
+        if (change.newStatus === 'going' || change.newStatus === 'declined') {
+          // Get participant profile for notification
+          const participantProfile = await getUserProfileAdmin(change.uid);
+          await createNotification(hostId, {
+            type: 'plan_invitation',
+            title: `${change.newStatus === 'going' ? 'accepted' : 'declined'} your invitation`,
+            description: `to your plan`,
+            userName: participantProfile?.name || participantProfile?.username || 'Someone',
+            avatarUrl: participantProfile?.avatarUrl || undefined,
+            actionUrl: `/plans/${planId}`,
+            isRead: false,
+            metadata: { planId, participantId: change.uid, status: change.newStatus },
+          });
+        }
+      }
+    }
+    // 3. Notify all participants (except updater) when plan details are changed
+    if (currentPlanData && updaterId) {
+      const allParticipants = [hostId, ...(currentPlanData.invitedParticipantUserIds || [])].filter((uid): uid is string => typeof uid === 'string');
+      const notifyUsers = allParticipants.filter(uid => uid !== updaterId);
+      if (notifyUsers.length > 0) {
+        // Get updater profile for notification
+        const updaterProfile = await getUserProfileAdmin(updaterId);
+        await createNotificationForMultipleUsers(notifyUsers, {
+          type: 'plan_share',
+          title: 'updated the plan',
+          description: 'Event details, location, or participants have been modified',
+          userName: updaterProfile?.name || updaterProfile?.username || 'Someone',
+          avatarUrl: updaterProfile?.avatarUrl || undefined,
+          actionUrl: `/plans/${planId}`,
+          isRead: false,
+          metadata: { planId },
+        });
+      }
+    }
   } catch (error) {
     console.error(`[updatePlanAdmin] Error updating plan ${planId} (Admin SDK):`, error);
     throw error;
@@ -285,6 +360,20 @@ export const setRatingAdmin = async (
       });
     });
     
+    // Notify plan host if rater is not the host
+    if (currentPlan.hostId && userId !== currentPlan.hostId) {
+      // Get rater profile for notification
+      const raterProfile = await getUserProfileAdmin(userId);
+      await createNotification(currentPlan.hostId, {
+        type: 'plan_completion',
+        title: 'rated your plan',
+        description: `${ratingValue} stars`,
+        userName: raterProfile?.name || raterProfile?.username || 'Someone',
+        actionUrl: `/plans/${planId}`,
+        isRead: false,
+        metadata: { planId, raterId: userId, ratingValue },
+      });
+    }
     return { 
       success: true, 
       newAverageRating: finalAverageRating, 

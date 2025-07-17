@@ -4,6 +4,9 @@ import { firestoreAdmin } from '@/lib/firebaseAdmin';
 import type { Chat, ChatMessage, ChatMessageCreate, ChatParticipantInfo, ChatType, UserProfile, UserRoleType } from '@/types/user';
 import { FieldValue, Timestamp as AdminTimestamp } from 'firebase-admin/firestore';
 import { FirebaseQueryBuilder, COLLECTIONS, SUBCOLLECTIONS } from '@/lib/data/core/QueryBuilder';
+import { getUserProfileAdmin } from '@/services/userService.server';
+import { createNotification } from '@/services/notificationService.server';
+import { markNotificationAsRead } from '@/services/notificationService.server';
 
 // Legacy constants for backward compatibility
 const CHATS_COLLECTION = COLLECTIONS.CHATS;
@@ -193,6 +196,38 @@ export const sendMessageAdmin = async (
 
     await batch.commit();
     console.log(`[sendMessageAdmin] Message successfully sent to chat ${chatId} by ${senderId}`);
+
+    // --- Notification logic ---
+    // Fetch chat participants
+    const chatDocSnap = await chatDocRef.get();
+    const chatData = chatDocSnap.data();
+    if (!chatData || !Array.isArray(chatData.participants)) return;
+    const recipients = chatData.participants.filter((uid: string) => uid !== senderId);
+    if (recipients.length === 0) return;
+
+    // Fetch sender profile
+    const senderProfile = await getUserProfileAdmin(senderId);
+    const senderName = senderProfile?.name || senderProfile?.username || 'Someone';
+    const senderAvatarUrl = senderProfile?.avatarUrl || undefined;
+    // Message preview
+    let messagePreview = text && text.trim() ? text.trim().slice(0, 50) : (mediaUrl ? '[Image]' : 'Message');
+
+    // Create notification for each recipient
+    await Promise.all(recipients.map(async (recipientId: string) => {
+      await createNotification(recipientId, {
+        type: 'chat_message',
+        title: 'sent you a message',
+        description: messagePreview,
+        userName: senderName,
+        chatId,
+        senderId,
+        senderName,
+        senderAvatarUrl,
+        messagePreview,
+        actionUrl: `/messages/${chatId}`,
+        isRead: false,
+      });
+    }));
   } catch (error) {
     console.error(`[sendMessageAdmin] Error sending message to chat ${chatId}:`, error);
     throw error;
@@ -211,6 +246,14 @@ export const markChatAsFullyReadAdmin = async (
       [`participantReadTimestamps.${userId}`]: now,
       updatedAt: now, 
     });
+    // Mark all chat_message notifications for this chat as read
+    const notificationsRef = FirebaseQueryBuilder.collection(COLLECTIONS.USERS).doc(userId).collection('notifications');
+    const chatNotifQuery = await notificationsRef
+      .where('type', '==', 'chat_message')
+      .where('chatId', '==', chatId)
+      .where('isRead', '==', false)
+      .get();
+    await Promise.all(chatNotifQuery.docs.map(doc => markNotificationAsRead(userId, doc.id)));
     console.log(`[markChatAsFullyReadAdmin] Chat ${chatId} marked as read for user ${userId} successfully.`);
   } catch (error) {
     console.error(`[markChatAsFullyReadAdmin] Error marking chat ${chatId} as read for user ${userId}:`, error);

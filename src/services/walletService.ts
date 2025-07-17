@@ -2,6 +2,7 @@ import 'server-only';
 import { firestoreAdmin } from '@/lib/firebaseAdmin';
 import { FirebaseQueryBuilder, COLLECTIONS } from '@/lib/data/core/QueryBuilder';
 import type { Firestore } from 'firebase-admin/firestore';
+import { createNotification } from './notificationService.server';
 
 export interface Transaction {
   id: string;
@@ -176,10 +177,8 @@ export async function addTransaction(
   if (!firestoreAdmin) {
     throw new Error('Firestore not initialized');
   }
-
   const batch = FirebaseQueryBuilder.createBatch();
   const now = new Date();
-
   // Create transaction record using QueryBuilder
   const transactionRef = FirebaseQueryBuilder.collection(COLLECTIONS.TRANSACTIONS).doc();
   batch.set(transactionRef, {
@@ -192,17 +191,14 @@ export async function addTransaction(
     updatedAt: now,
     metadata: metadata || {}
   });
-
   // Update wallet balance using QueryBuilder
   const walletRef = FirebaseQueryBuilder.doc(WALLETS_COLLECTION, userId);
   const walletDoc = await walletRef.get();
-  
   if (walletDoc.exists) {
     const currentData = walletDoc.data();
     const newBalance = (currentData?.balance || 0) + (type === 'credit' ? amount : -amount);
     const newCredits = type === 'credit' ? (currentData?.credits || 0) + amount : currentData?.credits || 0;
     const newRewardPoints = type === 'reward' ? (currentData?.rewardPoints || 0) + amount : currentData?.rewardPoints || 0;
-    
     batch.update(walletRef, {
       balance: Math.max(0, newBalance),
       credits: Math.max(0, newCredits),
@@ -210,8 +206,15 @@ export async function addTransaction(
       updatedAt: now
     });
   }
-
   await batch.commit();
+  // Notify user
+  await createNotification(userId, {
+    type: 'system',
+    title: 'Wallet Transaction',
+    description: description,
+    isRead: false,
+    metadata: { type, amount, transactionId: transactionRef.id },
+  });
   return transactionRef.id;
 }
 
@@ -226,7 +229,6 @@ export async function redeemReward(
   if (!firestoreAdmin) {
     throw new Error('Firestore not initialized');
   }
-
   // Get user's current wallet data using QueryBuilder
   const walletDoc = await FirebaseQueryBuilder.doc(WALLETS_COLLECTION, userId).get();
   
@@ -285,6 +287,14 @@ export async function redeemReward(
 
   try {
     await batch.commit();
+    // Notify user
+    await createNotification(userId, {
+      type: 'system',
+      title: 'Reward Redeemed',
+      description: `You redeemed a reward for ${pointsCost} points.`,
+      isRead: false,
+      metadata: { rewardId, pointsCost },
+    });
     return { 
       success: true, 
       message: `Successfully redeemed ${rewardData.name}!` 

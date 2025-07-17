@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Loader2, ArrowLeft, Users, Bell } from 'lucide-react';
+import { Loader2, ArrowLeft, Users, Bell, Clock } from 'lucide-react';
 import { formatDistanceToNow, format, isToday, isYesterday, isWithinInterval, subDays } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -13,7 +13,8 @@ export default function NotificationsPage() {
   const { user, currentUserProfile } = useAuth();
   const router = useRouter();
   const [isPrivate, setIsPrivate] = useState(false);
-  const [activeTab, setActiveTab] = useState<'requests' | 'other'>('requests');
+  // Add new tab for history
+  const [activeTab, setActiveTab] = useState<'requests' | 'other' | 'history'>('requests');
   
   // Update the type for pendingFollowRequests
   interface PendingFollowRequest {
@@ -67,21 +68,22 @@ export default function NotificationsPage() {
 
     otherNotifications.forEach(notification => {
       const notificationDate = notification.createdAt;
-      const now = new Date();
       
-      if (isToday(notificationDate)) {
+      const now = new Date();
+      const parsedDate = toDateSafe(notificationDate);
+      
+      if (isToday(parsedDate)) {
         today.push(notification);
-      } else if (isYesterday(notificationDate)) {
+      } else if (isYesterday(parsedDate)) {
         yesterday.push(notification);
-      } else if (isWithinInterval(notificationDate, { start: subDays(now, 7), end: subDays(now, 2) })) {
+      } else if (isWithinInterval(parsedDate, { start: subDays(now, 7), end: subDays(now, 2) })) {
         // Last 7 days, but exclude today and yesterday
         last7Days.push(notification);
-      } else if (isWithinInterval(notificationDate, { start: subDays(now, 30), end: subDays(now, 8) })) {
+      } else if (isWithinInterval(parsedDate, { start: subDays(now, 30), end: subDays(now, 8) })) {
         // Last 30 days, but exclude the last 7 days
         last30Days.push(notification);
       }
     });
-
     return { today, yesterday, last7Days, last30Days };
   }, [otherNotifications]);
 
@@ -113,9 +115,9 @@ export default function NotificationsPage() {
     fetchPendingRequests();
   }, [user, isPrivate]);
 
-  // Fetch other notifications from database
+  // Fetch all notifications (not just filter out friend_request)
   useEffect(() => {
-    const fetchOtherNotifications = async () => {
+    const fetchAllNotifications = async () => {
       if (!user) return;
       setIsLoadingOtherNotifications(true);
       try {
@@ -125,11 +127,7 @@ export default function NotificationsPage() {
         });
         if (response.ok) {
           const data = await response.json();
-          // Filter out friend requests (handled in the requests tab)
-          const filteredNotifications = data.notifications.filter((notification: any) => 
-            notification.type !== 'friend_request'
-          );
-          setOtherNotifications(filteredNotifications);
+          setOtherNotifications(data.notifications || []);
         }
       } catch (error) {
         console.error('Error fetching notifications:', error);
@@ -137,7 +135,7 @@ export default function NotificationsPage() {
         setIsLoadingOtherNotifications(false);
       }
     };
-    fetchOtherNotifications();
+    fetchAllNotifications();
   }, [user]);
 
   // Approve/Deny handlers
@@ -225,7 +223,259 @@ export default function NotificationsPage() {
     );
   };
 
-  const renderOtherNotificationItem = (notification: any) => (
+  const renderOtherNotificationItem = (notification: any) => {
+    // Chat message notification special handling
+    if (notification.type === 'chat_message') {
+      return (
+        <li key={notification.id} className="flex items-center justify-between cursor-pointer hover:bg-muted/30 rounded-lg transition"
+          onClick={async () => {
+            if (!user) return;
+            try {
+              const idToken = await user.getIdToken();
+              // Mark as read if not already
+              if (!notification.isRead) {
+                await fetch('/api/notifications/mark-as-read', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`
+                  },
+                  body: JSON.stringify({ notificationId: notification.id })
+                });
+              }
+              // Navigate to chat
+              router.push(notification.actionUrl || `/messages/${notification.chatId}`);
+            } catch (error) {
+              console.error('Error handling chat notification click:', error);
+            }
+          }}
+        >
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="relative">
+              {notification.senderAvatarUrl ? (
+                <img
+                  src={notification.senderAvatarUrl}
+                  alt={notification.senderName || 'User'}
+                  className="w-10 h-10 rounded-full object-cover border"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground border">
+                  {(notification.senderName || 'U')[0]?.toUpperCase()}
+                </div>
+              )}
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-background border border-border flex items-center justify-center">
+                <div className="w-2.5 h-2.5 text-blue-500">💬</div>
+              </div>
+            </div>
+            <div className="flex flex-col min-w-0 flex-1">
+              <div className="flex items-center gap-1">
+                <span className="truncate font-medium">{notification.senderName || 'Unknown User'}</span>
+                {notification.createdAt && (
+                  <>
+                    <span className="text-muted-foreground">•</span>
+                    <span className="text-xs text-muted-foreground" title={format(
+                      toDateSafe(notification.createdAt),
+                      'PPpp')
+                    }>
+                      {formatCompactTime(toDateSafe(notification.createdAt))}
+                    </span>
+                  </>
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground truncate">{notification.messagePreview || notification.description}</span>
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            {!notification.isRead && (
+              <div className="w-2 h-2 rounded-full bg-primary"></div>
+            )}
+          </div>
+        </li>
+      );
+    }
+    // Actionable notification types
+    if (notification.type === 'friend_request' || notification.type === 'follow_request' || notification.type === 'plan_invitation' || (notification.type === 'plan_share' && notification.status)) {
+      return (
+        <li key={notification.id} className="flex items-center justify-between cursor-pointer hover:bg-muted/30 rounded-lg transition"
+          onClick={async () => {
+            if (!user) return;
+            try {
+              const idToken = await user.getIdToken();
+              // Mark as read if not already
+              if (!notification.isRead) {
+                await fetch('/api/notifications/mark-as-read', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`
+                  },
+                  body: JSON.stringify({ notificationId: notification.id })
+                });
+              }
+              // Handle specific actions if needed
+              if (notification.type === 'friend_request') {
+                handleApproveRequest(notification.requesterId);
+              } else if (notification.type === 'plan_invitation') {
+                // Navigate to plan details or invite page
+                router.push(`/plans/${notification.planId}`);
+              } else if (notification.type === 'plan_share' && notification.status === 'pending') {
+                // Navigate to plan details or manage shares
+                router.push(`/plans/${notification.planId}`);
+              }
+            } catch (error) {
+              console.error('Error handling actionable notification click:', error);
+            }
+          }}
+        >
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            {/* User Avatar with Action Overlay */}
+            <div className="relative">
+              {notification.type !== 'system' && notification.avatarUrl ? (
+                <img
+                  src={notification.avatarUrl}
+                  alt={notification.userName || 'User'}
+                  className="w-10 h-10 rounded-full object-cover border"
+                />
+              ) : notification.type !== 'system' ? (
+                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground border">
+                  {(notification.userName || 'U')[0]?.toUpperCase()}
+                </div>
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground border">
+                  ⚙️
+                </div>
+              )}
+              
+              {/* Action Overlay Icon */}
+              {notification.type !== 'system' && (
+                <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-background border border-border flex items-center justify-center">
+                  {notification.type === 'post_interaction' && notification.action === 'like' ? (
+                    <div className="w-2.5 h-2.5 text-red-500">❤️</div>
+                  ) : notification.type === 'post_interaction' && notification.action === 'comment' ? (
+                    <div className="w-2.5 h-2.5 text-blue-500">💬</div>
+                  ) : notification.type === 'plan_share' ? (
+                    <div className="w-2.5 h-2.5 text-blue-500">📋</div>
+                  ) : notification.type === 'plan_invitation' ? (
+                    <div className="w-2.5 h-2.5 text-green-500">📅</div>
+                  ) : notification.type === 'plan_completion' ? (
+                    <div className="w-2.5 h-2.5 text-green-500">✅</div>
+                  ) : notification.type === 'friend_request' ? (
+                    <div className="w-2.5 h-2.5 text-purple-500">👥</div>
+                  ) : (
+                    <div className="w-2.5 h-2.5 text-muted-foreground">🔔</div>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            {/* User Info and Action */}
+            <div className="flex flex-col min-w-0 flex-1">
+              <div className="flex items-center gap-1">
+                <span className="truncate font-medium">
+                  {notification.type === 'system' ? notification.title : 
+                   (notification.userName || 
+                    // Fallback for old notifications: try to extract name from title
+                    (notification.title && notification.title.includes(' ') ? 
+                     notification.title.split(' ')[0] : 'Someone'))}
+                </span>
+                {notification.createdAt && (
+                  <>
+                    <span className="text-muted-foreground">•</span>
+                    <span className="text-xs text-muted-foreground" title={format(
+                      toDateSafe(notification.createdAt),
+                      'PPpp')
+                    }>
+                      {formatCompactTime(toDateSafe(notification.createdAt))}
+                    </span>
+                  </>
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground truncate">
+                {notification.type === 'system' ? notification.description :
+                 notification.description || notification.title}
+              </span>
+            </div>
+          </div>
+          
+          {/* Right side - Visual preview and actions */}
+          <div className="flex items-center gap-2">
+            {/* Visual preview of the interacted item */}
+            {notification.type !== 'system' && (
+              <div className="w-12 h-12 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
+                {notification.type === 'plan_share' || notification.type === 'plan_invitation' || notification.type === 'plan_completion' ? (
+                  notification.planImageUrl ? (
+                    <img
+                      src={notification.planImageUrl}
+                      alt="Plan"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs">
+                      📋
+                    </div>
+                  )
+                ) : notification.type === 'post_interaction' ? (
+                  notification.postImageUrl ? (
+                    <img
+                      src={notification.postImageUrl}
+                      alt="Post"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-green-500 to-blue-600 flex items-center justify-center text-white text-xs">
+                      📷
+                    </div>
+                  )
+                ) : (
+                  <div className="w-full h-full bg-muted flex items-center justify-center text-muted-foreground text-xs">
+                    📄
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Unread indicator and action button */}
+            <div className="flex flex-col items-end gap-1">
+              {!notification.isRead && (
+                <div className="w-2 h-2 rounded-full bg-primary"></div>
+              )}
+              <Button 
+                size="sm" 
+                variant="ghost" 
+                className="rounded-full h-6 px-2 text-xs"
+                onClick={async (e) => {
+                  e.stopPropagation(); // Prevent click from propagating to parent
+                  if (!user) return;
+                  try {
+                    const idToken = await user.getIdToken();
+                    const response = await fetch('/api/notifications/mark-as-read', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${idToken}`
+                      },
+                      body: JSON.stringify({ notificationId: notification.id })
+                    });
+                    if (response.ok) {
+                      // Update local state
+                      setOtherNotifications(prev => 
+                        prev.map(n => n.id === notification.id ? { ...n, isRead: true } : n)
+                      );
+                    }
+                  } catch (error) {
+                    console.error('Error marking notification as read:', error);
+                  }
+                }}
+              >
+                Mark Read
+              </Button>
+            </div>
+          </div>
+        </li>
+      );
+    }
+    // Informational notifications
+    return (
     <li key={notification.id} className="flex items-center justify-between">
       <div className="flex items-center gap-3 min-w-0 flex-1">
         {/* User Avatar with Action Overlay */}
@@ -272,7 +522,11 @@ export default function NotificationsPage() {
         <div className="flex flex-col min-w-0 flex-1">
           <div className="flex items-center gap-1">
             <span className="truncate font-medium">
-              {notification.type === 'system' ? notification.title : (notification.userName || 'Unknown User')}
+                {notification.type === 'system' ? notification.title : 
+                 (notification.userName || 
+                  // Fallback for old notifications: try to extract name from title
+                  (notification.title && notification.title.includes(' ') ? 
+                   notification.title.split(' ')[0] : 'Someone'))}
             </span>
             {notification.createdAt && (
               <>
@@ -287,12 +541,8 @@ export default function NotificationsPage() {
             )}
           </div>
           <span className="text-xs text-muted-foreground truncate">
-            {notification.type === 'plan_share' ? 'shared a plan with you' :
-             notification.type === 'plan_invitation' ? 'invited you to a plan' :
-             notification.type === 'post_interaction' ? 'interacted with your post' :
-             notification.type === 'plan_completion' ? 'marked a plan as completed' :
-             notification.type === 'system' ? 'system notification' :
-             notification.description}
+            {notification.type === 'system' ? notification.description :
+             notification.description || notification.title}
           </span>
         </div>
       </div>
@@ -343,7 +593,8 @@ export default function NotificationsPage() {
             size="sm" 
             variant="ghost" 
             className="rounded-full h-6 px-2 text-xs"
-            onClick={async () => {
+              onClick={async (e) => {
+                e.stopPropagation(); // Prevent click from propagating to parent
               if (!user) return;
               try {
                 const idToken = await user.getIdToken();
@@ -372,6 +623,28 @@ export default function NotificationsPage() {
       </div>
     </li>
   );
+    
+    // Fallback for any notification that doesn't match the above patterns
+    console.warn('Unhandled notification type:', notification);
+    return (
+      <li key={notification.id} className="flex items-center justify-between p-3 bg-muted/20 rounded-lg">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground border">
+            🔔
+          </div>
+          <div className="flex flex-col min-w-0 flex-1">
+            <span className="truncate font-medium">{notification.userName || 'Unknown User'}</span>
+            <span className="text-xs text-muted-foreground truncate">
+              {notification.description || `Unknown notification type: ${notification.type}`}
+            </span>
+          </div>
+        </div>
+        {!notification.isRead && (
+          <div className="w-2 h-2 rounded-full bg-primary"></div>
+        )}
+      </li>
+    );
+  };
 
   const renderOtherGroup = (title: string, notifications: any[]) => {
     if (notifications.length === 0) return null;
@@ -385,6 +658,29 @@ export default function NotificationsPage() {
       </div>
     );
   };
+
+  // Helper: actionable types
+  const isActionable = (n: any) =>
+    (n.type === 'friend_request' || n.type === 'follow_request' || n.type === 'plan_invitation' || (n.type === 'plan_share' && n.status))
+    && n.handled === false;
+  // Helper: informational types (show all, not just unread)
+  const isInformational = (n: any) =>
+    !isActionable(n);
+  // Helper: unread informational types (for badge count)
+  const isUnreadInformational = (n: any) =>
+    !isActionable(n) && !n.isRead;
+
+  // For type-safe group mapping
+  const notificationGroups: [string, keyof typeof groupedOtherNotifications][] = [
+    ['Today', 'today'],
+    ['Yesterday', 'yesterday'],
+    ['Last 7 days', 'last7Days'],
+    ['Last 30 days', 'last30Days'],
+  ];
+
+  // Compute actionable and informational notification counts
+  const actionableCount = otherNotifications.filter(isActionable).length + pendingFollowRequests.length;
+  const informationalCount = otherNotifications.filter(isUnreadInformational).length;
 
   return (
     <div className="fixed inset-0 z-30 bg-background w-full h-full pb-16">
@@ -409,11 +705,16 @@ export default function NotificationsPage() {
               "px-4 py-2 text-sm font-medium transition-colors relative flex items-center gap-2",
               activeTab === 'requests'
                 ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
-                : "text-muted-foreground hover:text-foreground"
+                : "text-muted-foreground"
             )}
           >
-            <Users className="h-4 w-4" />
-            Pending Requests
+            <Clock className="h-4 w-4" />
+            Pending
+            {actionableCount > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-semibold bg-primary text-white">
+                {actionableCount}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActiveTab('other')}
@@ -426,6 +727,21 @@ export default function NotificationsPage() {
           >
             <Bell className="h-4 w-4" />
             Other
+            {informationalCount > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold px-2 py-0.5 min-w-[1.5em]">{informationalCount}</span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={cn(
+              "px-4 py-2 text-sm font-medium transition-colors relative flex items-center gap-2",
+              activeTab === 'history'
+                ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Bell className="h-4 w-4" />
+            History
           </button>
         </div>
       </div>
@@ -501,6 +817,7 @@ export default function NotificationsPage() {
         
         {activeTab === 'other' && (
           <div className="flex-1 flex flex-col items-center justify-center px-4">
+            {/* Show only unread informational notifications */}
             {isLoadingOtherNotifications ? (
               <div className="text-center space-y-4 mt-32">
                 <div className="w-20 h-20 rounded-full bg-muted/20 flex items-center justify-center mx-auto">
@@ -511,22 +828,33 @@ export default function NotificationsPage() {
                   <p className="text-muted-foreground text-sm">Fetching your latest notifications</p>
                 </div>
               </div>
-            ) : otherNotifications.length === 0 ? (
+            ) : (
+              <div className="w-full max-w-md">
+                {notificationGroups.map(([label, key]) =>
+                  renderOtherGroup(label, groupedOtherNotifications[key].filter(isInformational))
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        {activeTab === 'history' && (
+          <div className="flex-1 flex flex-col items-center justify-center px-4">
+            {/* Show all notifications, grouped by date */}
+            {isLoadingOtherNotifications ? (
               <div className="text-center space-y-4 mt-32">
                 <div className="w-20 h-20 rounded-full bg-muted/20 flex items-center justify-center mx-auto">
-                  <Bell className="h-10 w-10 text-muted-foreground" />
+                  <Loader2 className="h-10 w-10 text-muted-foreground animate-spin" />
                 </div>
                 <div className="space-y-2">
-                  <h3 className="text-lg font-semibold text-foreground">No notifications yet</h3>
-                  <p className="text-muted-foreground text-sm">Stay tuned! 🔔 We'll notify you when something exciting happens.</p>
+                  <h3 className="text-lg font-semibold text-foreground">Loading notifications...</h3>
+                  <p className="text-muted-foreground text-sm">Fetching your latest notifications</p>
                 </div>
               </div>
             ) : (
               <div className="w-full max-w-md">
-                {renderOtherGroup('Today', groupedOtherNotifications.today)}
-                {renderOtherGroup('Yesterday', groupedOtherNotifications.yesterday)}
-                {renderOtherGroup('Last 7 days', groupedOtherNotifications.last7Days)}
-                {renderOtherGroup('Last 30 days', groupedOtherNotifications.last30Days)}
+                {notificationGroups.map(([label, key]) =>
+                  renderOtherGroup(label, groupedOtherNotifications[key])
+                )}
               </div>
             )}
           </div>
@@ -553,4 +881,12 @@ function formatCompactTime(date: Date): string {
   if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h`;
   if (diffInMinutes < 43200) return `${Math.floor(diffInMinutes / 1440)}d`;
   return `${Math.floor(diffInMinutes / 43200)}mo`;
+} 
+
+// Helper to get initials for fallback
+function getInitials(name?: string, username?: string, email?: string) {
+  if (name) return name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase();
+  if (username) return username[0]?.toUpperCase();
+  if (email) return email[0]?.toUpperCase();
+  return 'U';
 } 

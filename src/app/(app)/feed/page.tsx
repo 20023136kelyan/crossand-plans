@@ -372,7 +372,7 @@ const FeedPostCard = React.memo(({
           style={{
             transformStyle: 'preserve-3d',
             transform: isFlipped 
-              ? 'rotateY(180deg)' 
+              ? 'rotateY(-180deg)' 
               : swipeDistance > 0 
                 ? `rotateY(${swipeProgress * 15}deg)` 
                 : 'rotateY(0deg)',

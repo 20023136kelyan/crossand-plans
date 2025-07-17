@@ -6,6 +6,8 @@ import { Timestamp as AdminTimestamp, FieldValue, type DocumentData, type QueryD
 import { getFriendUidsAdmin } from '@/services/userService.server'; 
 import type { Firestore } from 'firebase-admin/firestore';
 import { FirebaseQueryBuilder, COLLECTIONS, SUBCOLLECTIONS } from '@/lib/data/core/QueryBuilder';
+import { createNotification } from './notificationService.server';
+import { getUserProfileAdmin } from './userService.server';
 
 // Legacy constants for backward compatibility
 const FEED_POSTS_COLLECTION = COLLECTIONS.FEED_POSTS;
@@ -239,26 +241,30 @@ export const toggleLikePostAdmin = async (postId: string, userId: string): Promi
   try {
     const postRef = FirebaseQueryBuilder.doc(COLLECTIONS.FEED_POSTS, postId);
     let finalUpdatedPost: FeedPost | undefined = undefined;
+    let isNewLike = false;
+    let postOwnerId: string | undefined;
+    let postText: string | undefined;
+    let postMediaUrl: string | undefined;
     await firestoreAdmin!.runTransaction(async (transaction) => {
       const postDoc = await transaction.get(postRef);
       if (!postDoc.exists) {
-        // This specific error will be caught by the outer catch and handled.
         throw { customError: true, message: "Post not found.", code: "POST_NOT_FOUND_IN_TRANSACTION" };
       }
       const postData = postDoc.data() as Omit<FeedPost, 'id' | 'createdAt'> & { createdAt: FirebaseFirestore.Timestamp };
       const likedByArray = postData.likedBy || [];
       let currentLikesCount = postData.likesCount || 0;
-      
+      postOwnerId = postData.userId;
+      postText = postData.text;
+      postMediaUrl = postData.mediaUrl;
       let newLikedBy = [...likedByArray];
       let newLikesCount = currentLikesCount;
-
       if (likedByArray.includes(userId)) {
         newLikedBy = likedByArray.filter((uid: string) => uid !== userId);
         newLikesCount = Math.max(0, currentLikesCount - 1);
         transaction.update(postRef, {
           likedBy: FieldValue.arrayRemove(userId),
           likesCount: FieldValue.increment(-1),
-          updatedAt: FieldValue.serverTimestamp() // Added
+          updatedAt: FieldValue.serverTimestamp()
         });
       } else {
         newLikedBy.push(userId);
@@ -266,17 +272,39 @@ export const toggleLikePostAdmin = async (postId: string, userId: string): Promi
         transaction.update(postRef, {
           likedBy: FieldValue.arrayUnion(userId),
           likesCount: FieldValue.increment(1),
-          updatedAt: FieldValue.serverTimestamp() // Added
+          updatedAt: FieldValue.serverTimestamp()
         });
+        isNewLike = true;
       }
       const mappedPost = mapDocToFeedPost(postDoc);
       finalUpdatedPost = {
         ...mappedPost,
-        likesCount: newLikesCount,    
-        likedBy: newLikedBy,          
+        likesCount: newLikesCount,
+        likedBy: newLikedBy,
       };
     });
-
+    // After transaction, send notification if this was a new like and not by the owner
+    if (isNewLike && postOwnerId && postOwnerId !== userId) {
+      // Fetch liker profile for name/avatar
+      let likerName = 'Someone';
+      let likerAvatarUrl = undefined;
+      try {
+        const likerProfile = await getUserProfileAdmin(userId);
+        likerName = likerProfile?.name ?? likerProfile?.username ?? 'Someone';
+        likerAvatarUrl = likerProfile?.avatarUrl ?? undefined;
+      } catch {}
+      await createNotification(postOwnerId, {
+        type: 'post_interaction',
+        title: 'liked your post',
+        description: postText ? postText.slice(0, 50) : 'Your post',
+        userName: likerName,
+        avatarUrl: likerAvatarUrl,
+        postImageUrl: postMediaUrl,
+        actionUrl: `/feed/${postId}`,
+        isRead: false,
+        metadata: { postId, likerId: userId },
+      });
+    }
     if (!finalUpdatedPost) {
         // This path should ideally not be hit if transaction succeeds and mappedPost is constructed.
         // However, if it is, it implies an issue with capturing the state post-transaction logic.
@@ -351,69 +379,56 @@ export const addCommentToPostAdmin = async (
     const newCommentRef = commentsRef.doc(); 
     let finalUpdatedPost: FeedPost | undefined = undefined;
     let finalCommentData: FeedComment | undefined = undefined;
-
+    let postOwnerId: string | undefined;
+    let postText: string | undefined;
+    let postMediaUrl: string | undefined;
     await firestoreAdmin!.runTransaction(async (transaction) => {
       const postDoc = await transaction.get(postRef);
       if (!postDoc.exists) {
         throw { customError: true, message: "Post not found to add comment.", code: "POST_NOT_FOUND_IN_TRANSACTION" };
       }
       const newCommentsCount = (postDoc.data()?.commentsCount || 0) + 1;
-      
+      postOwnerId = postDoc.data()?.userId;
+      postText = postDoc.data()?.text;
+      postMediaUrl = postDoc.data()?.mediaUrl;
       // Prepare comment data with server timestamp for transaction
       const fullCommentDataWithTimestamp = { ...commentData, createdAt: serverTimestamp };
       transaction.set(newCommentRef, fullCommentDataWithTimestamp);
       transaction.update(postRef, { commentsCount: FieldValue.increment(1), updatedAt: serverTimestamp });
-      
       const mappedPost = mapDocToFeedPost(postDoc);
       finalUpdatedPost = {
         ...mappedPost,
         commentsCount: newCommentsCount,
-        // Use a placeholder for updatedAt, as serverTimestamp is not resolved until commit.
-        // Actual value will be fetched or assumed from createdCommentDoc if needed.
-        // updatedAt is not part of FeedPost interface 
       };
     });
-    
     // Fetch the created comment to get its actual data including the server-generated timestamp
     const createdCommentDoc = await newCommentRef.get();
-    if (!createdCommentDoc.exists) { // Corrected
-        console.error(`[addCommentToPostAdmin] Comment document ${newCommentRef.id} not found after transaction for post ${postId}.`);
-        return { success: false, error: "Failed to retrieve comment after creation.", errorCode: "DATA_RETRIEVAL_ERROR" };
+    if (createdCommentDoc.exists) {
+      finalCommentData = { id: createdCommentDoc.id, ...createdCommentDoc.data() } as FeedComment;
     }
-    finalCommentData = {
-        id: createdCommentDoc.id,
-        postId: createdCommentDoc.data()!.postId,
-        userId: createdCommentDoc.data()!.userId,
-        userName: createdCommentDoc.data()!.userName,
-        username: createdCommentDoc.data()!.username || null,
-        userAvatarUrl: createdCommentDoc.data()!.userAvatarUrl,
-        text: createdCommentDoc.data()!.text,
-        createdAt: convertAdminTimestampToISO(createdCommentDoc.data()!.createdAt),
-    };
-    
-    // Ensure finalUpdatedPost is set, potentially re-fetching if necessary (though ideally transaction provides enough)
-    if (!finalUpdatedPost) { 
-        const postSnapshotAfter = await postRef.get(); // Re-fetch post to get its latest state
-        if(postSnapshotAfter.exists) { // Corrected
-            finalUpdatedPost = mapDocToFeedPost(postSnapshotAfter);
-        } else {
-            console.error(`[addCommentToPostAdmin] Post document ${postId} disappeared after comment transaction.`);
-            return { success: false, error: "Post not found after comment operation.", errorCode: "POST_NOT_FOUND" };
-        }
-    } else {
-        // If finalUpdatedPost was set in transaction, its updatedAt might be a client estimate.
-        // Re-fetch to get the actual server timestamp for updatedAt if critical,
-        // or rely on the fact that it was updated. For now, we'll assume the transaction update is sufficient.
-        // If a more accurate updatedAt is needed for the returned 'updatedPost', a re-fetch would be best.
-        const postSnapshotAfter = await postRef.get(); 
-        if(postSnapshotAfter.exists) finalUpdatedPost = mapDocToFeedPost(postSnapshotAfter); // Corrected
+    // After comment is added, send notification if commenter is not the owner
+    if (postOwnerId && postOwnerId !== commentData.userId) {
+      // Fetch commenter profile for name/avatar
+      let commenterName = 'Someone';
+      let commenterAvatarUrl = undefined;
+      try {
+        const commenterProfile = await getUserProfileAdmin(commentData.userId);
+        commenterName = commenterProfile?.name ?? commenterProfile?.username ?? 'Someone';
+        commenterAvatarUrl = commenterProfile?.avatarUrl ?? undefined;
+      } catch {}
+      await createNotification(postOwnerId, {
+        type: 'post_interaction',
+        title: 'commented on your post',
+        description: finalCommentData?.text ? finalCommentData.text.slice(0, 50) : 'Your post',
+        userName: commenterName,
+        avatarUrl: commenterAvatarUrl,
+        postImageUrl: postMediaUrl,
+        actionUrl: `/feed/${postId}`,
+        isRead: false,
+        metadata: { postId, commenterId: commentData.userId },
+      });
     }
-    
-    return { 
-      success: true, 
-      comment: finalCommentData,
-      updatedPost: finalUpdatedPost
-    };
+    return { success: true, updatedPost: finalUpdatedPost, comment: finalCommentData };
   } catch (error: any) {
     console.error(`[addCommentToPostAdmin] Firestore Error adding comment to post ${postId}:`, error);
     if (error.customError && error.code === "POST_NOT_FOUND_IN_TRANSACTION") {

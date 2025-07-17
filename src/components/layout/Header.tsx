@@ -29,13 +29,15 @@ interface HeaderProps {
 
 interface NotificationItem {
   id: string;
-  type: 'friend_request' | 'plan_share' | 'plan_invitation' | 'plan_completion' | 'system';
+  type: 'friend_request' | 'follow_request' | 'plan_share' | 'plan_invitation' | 'plan_completion' | 'system' | 'post_interaction' | 'chat_message';
   title: string;
   description: string;
   timestamp: Date;
   isRead: boolean;
   actionUrl?: string;
   avatarUrl?: string;
+  handled?: boolean; // Added for new logic
+  status?: string; // Added for new logic
 }
 
 export function Header({ messagesNotificationCount }: HeaderProps) {
@@ -46,7 +48,7 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
   const isMobile = useIsMobile();
   const isOnFeedOrExplore = pathname === '/feed' || pathname === '/explore';
   
-  const siteName = settings?.siteName || 'Macaroom';
+  const siteName = settings?.siteName || 'Crossand';
   
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationCount, setNotificationCount] = useState(0);
@@ -259,6 +261,17 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
     return `${Math.floor(diffInMinutes / 1440)}d ago`;
   };
 
+  // Helper functions for notification counts
+  const isActionable = (n: NotificationItem) =>
+    (n.type === 'friend_request' || n.type === 'follow_request' || n.type === 'plan_invitation' || (n.type === 'plan_share' && n.status)) && n['handled'] === false;
+  const isInformational = (n: NotificationItem) =>
+    !isActionable(n) && !n.isRead;
+
+  // Compute total notification count for badge
+  const actionableCount = notifications.filter(isActionable).length;
+  const informationalCount = notifications.filter(isInformational).length;
+  const totalNotificationCount = actionableCount + informationalCount;
+
   return (
     <header className="sticky md:fixed top-0 z-40 w-full border-b bg-background/80 backdrop-blur-sm">
       <div className="container flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -294,7 +307,7 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  For you
+                  Explore
                 </Link>
               </div>
             </div>
@@ -307,9 +320,9 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
             <Button variant="ghost" size="icon">
               <div className="relative">
                 <Bell className="h-6 w-6 text-foreground/80 hover:text-primary transition-colors" />
-                {notificationCount > 0 && (
+                {totalNotificationCount > 0 && (
                   <span className="absolute -top-1 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-destructive-foreground shadow-md"> 
-                    {notificationCount > 9 ? '9+' : notificationCount}
+                    {totalNotificationCount > 9 ? '9+' : totalNotificationCount}
                   </span>
                 )}
               </div>

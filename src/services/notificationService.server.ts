@@ -4,17 +4,35 @@ import { sendFCMToUser, getFcmTokensForUser } from './fcmService.server';
 
 export interface NotificationData {
   id?: string;
-  type: 'friend_request' | 'plan_share' | 'plan_invitation' | 'plan_completion' | 'post_interaction' | 'plan_join' | 'system';
+  type:
+    | 'friend_request'
+    | 'follow_request'
+    | 'plan_share'
+    | 'plan_invitation'
+    | 'plan_completion'
+    | 'post_interaction'
+    | 'plan_join'
+    | 'system'
+    | 'chat_message';
   title: string;
-  description: string;
+  description?: string; // Made optional since not all notifications need it
   actionUrl?: string;
   avatarUrl?: string;
   planImageUrl?: string;
   postImageUrl?: string;
+  userName?: string; // User who performed the action
+  chatId?: string; // for chat_message
+  senderId?: string; // for chat_message
+  senderName?: string; // for chat_message
+  senderAvatarUrl?: string; // for chat_message
+  messagePreview?: string; // for chat_message
   metadata?: Record<string, any>;
   createdAt?: any;
   isRead?: boolean;
   readAt?: any;
+  // Actionable notification fields
+  status?: 'pending' | 'approved' | 'denied' | 'accepted' | 'declined';
+  handled?: boolean;
 }
 
 export async function createNotification(
@@ -31,12 +49,30 @@ export async function createNotification(
     .collection('notifications')
     .doc();
 
-  const notification = {
+  // Set default fields based on type
+  let notification: any = {
     ...notificationData,
     id: notificationRef.id,
     createdAt: FieldValue.serverTimestamp(),
-    isRead: false,
   };
+  // Remove undefined fields (especially avatarUrl)
+  Object.keys(notification).forEach(key => {
+    if (notification[key] === undefined) {
+      delete notification[key];
+    }
+  });
+  if (
+    notificationData.type === 'friend_request' ||
+    notificationData.type === 'follow_request' ||
+    notificationData.type === 'plan_invitation' ||
+    (notificationData.type === 'plan_share' && notificationData.status)
+  ) {
+    notification.status = notificationData.status || 'pending';
+    notification.handled = false;
+    notification.isRead = false;
+  } else {
+    notification.isRead = false;
+  }
 
   await notificationRef.set(notification);
 
@@ -44,7 +80,7 @@ export async function createNotification(
   await sendFCMToUser(userId, {
     notification: {
       title: notificationData.title,
-      body: notificationData.description,
+      body: notificationData.description || notificationData.title,
       image: notificationData.avatarUrl || notificationData.planImageUrl,
     },
     data: {
@@ -75,13 +111,29 @@ export async function createNotificationForMultipleUsers(
       .collection('notifications')
       .doc();
 
-    const notification = {
+    let notification: any = {
       ...notificationData,
       id: notificationRef.id,
       createdAt: FieldValue.serverTimestamp(),
-      isRead: false,
     };
-
+    // Remove undefined fields
+    Object.keys(notification).forEach(key => {
+      if (notification[key] === undefined) {
+        delete notification[key];
+      }
+    });
+    if (
+      notificationData.type === 'friend_request' ||
+      notificationData.type === 'follow_request' ||
+      notificationData.type === 'plan_invitation' ||
+      (notificationData.type === 'plan_share' && notificationData.status)
+    ) {
+      notification.status = notificationData.status || 'pending';
+      notification.handled = false;
+      notification.isRead = false;
+    } else {
+      notification.isRead = false;
+    }
     batch.set(notificationRef, notification);
     notificationIds.push(notificationRef.id);
   });

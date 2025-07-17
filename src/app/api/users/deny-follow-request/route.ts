@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authAdmin } from '@/lib/firebaseAdmin';
 import { denyFollowRequestAdmin } from '@/services/userService.server';
+import { firestoreAdmin } from '@/lib/firebaseAdmin';
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,6 +42,24 @@ export async function POST(request: NextRequest) {
 
     // Deny the follow request
     await denyFollowRequestAdmin(currentUserId, requesterId);
+
+    // Mark the related follow_request notification as handled and status 'denied'
+    if (firestoreAdmin) {
+      const notificationsRef = firestoreAdmin
+        .collection('users')
+        .doc(currentUserId)
+        .collection('notifications');
+      const notifQuery = await notificationsRef
+        .where('type', 'in', ['friend_request', 'follow_request'])
+        .where('fromUserId', '==', requesterId)
+        .where('handled', '==', false)
+        .limit(1)
+        .get();
+      if (!notifQuery.empty) {
+        const notifDoc = notifQuery.docs[0];
+        await notifDoc.ref.update({ handled: true, status: 'denied' });
+      }
+    }
 
     return NextResponse.json({ 
       success: true, 

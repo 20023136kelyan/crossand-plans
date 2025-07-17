@@ -5,6 +5,7 @@ import { addHours } from 'date-fns';
 import * as crypto from 'crypto';
 import { Firestore } from 'firebase-admin/firestore';
 import { FirebaseQueryBuilder, COLLECTIONS } from '../lib/data/core/QueryBuilder';
+import { createNotificationForMultipleUsers } from './notificationService.server';
 
 // Legacy constants for backward compatibility
 const PLANS_COLLECTION = COLLECTIONS.PLANS;
@@ -216,7 +217,21 @@ export async function recordPlanCompletion(
         await updateAffinityScore(allParticipants[i], allParticipants[j]);
       }
     }
-
+    // Notify all participants and host
+    const planDoc = await FirebaseQueryBuilder.doc(COLLECTIONS.PLANS, planId).get();
+    const planData = planDoc.exists ? planDoc.data() : null;
+    const hostId = planData?.hostId;
+    const notifyUsers = Array.from(new Set([...participantIds, userId, hostId].filter(Boolean)));
+    if (notifyUsers.length > 0) {
+      await createNotificationForMultipleUsers(notifyUsers, {
+        type: 'plan_completion',
+        title: 'Plan Completed',
+        description: planData?.name ? `The plan "${planData.name}" has been completed.` : 'A plan you participated in has been completed.',
+        actionUrl: `/plans/${planId}`,
+        isRead: false,
+        metadata: { planId },
+      });
+    }
     return true;
   } catch (error) {
     console.error('Error recording plan completion:', error);

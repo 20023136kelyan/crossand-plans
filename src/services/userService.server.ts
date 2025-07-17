@@ -6,6 +6,7 @@ import { Timestamp as AdminTimestamp, FieldValue, DocumentSnapshot, QueryDocumen
 import admin from 'firebase-admin'; // For FieldPath.documentId()
 import { updateUserAvatarInFeedAdmin } from './feedService.server';
 import { FirebaseQueryBuilder, COLLECTIONS, SUBCOLLECTIONS } from '@/lib/data/core/QueryBuilder';
+import { createNotification } from './notificationService.server';
 
 // Legacy constants for backward compatibility
 const USER_COLLECTION = COLLECTIONS.USERS;
@@ -621,11 +622,14 @@ export const followUserAdmin = async (currentUserId: string, targetUserId: strin
       sentFollowRequests: FieldValue.arrayUnion(targetUserId),
       updatedAt: now
     });
-    // Add notification for the target user
+    // Add notification for the target user with user info
     const notificationsRef = FirebaseQueryBuilder.collection(COLLECTIONS.USERS).doc(targetUserId).collection('notifications');
     batch.set(notificationsRef.doc(), {
       type: 'follow_request',
       fromUserId: currentUserId,
+      title: 'requested to follow you',
+      userName: currentUserProfile.name || currentUserProfile.username || 'Someone',
+      avatarUrl: currentUserProfile.avatarUrl || undefined,
       createdAt: now,
       isRead: false
     });
@@ -638,6 +642,16 @@ export const followUserAdmin = async (currentUserId: string, targetUserId: strin
     batch.update(targetUserDocRef, {
       followers: FieldValue.arrayUnion(currentUserId),
       updatedAt: now
+    });
+    // Notify user of new follower
+    await createNotification(targetUserId, {
+      type: 'follow_request',
+      title: 'is now following you',
+      userName: currentUserProfile.name || currentUserProfile.username || 'Someone',
+      avatarUrl: currentUserProfile.avatarUrl || undefined,
+      actionUrl: `/u/${currentUserId}`,
+      isRead: false,
+      metadata: { followerId: currentUserId },
     });
   }
   await batch.commit();
