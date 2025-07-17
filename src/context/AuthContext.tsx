@@ -9,12 +9,15 @@ import {
   updateProfile as firebaseUpdateProfile,
   signInWithPopup,
   GoogleAuthProvider,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  signInWithPhoneNumber,
+  PhoneAuthProvider,
+  ConfirmationResult
 } from 'firebase/auth';
 import { useRouter, usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
-import { auth, googleProvider } from '@/lib/firebase';
+import { auth, googleProvider, recaptchaVerifier, initRecaptchaVerifier, clearRecaptchaVerifier } from '@/lib/firebase';
 import { getUserProfile, getFriendships, getPendingPlanSharesForUser, getPendingPlanInvitationsCount, getCompletedPlansForParticipant } from '@/services/clientServices';
 // TEMP: checkUserProfileExists moved to server action to avoid server-only import
 import type { UserProfile } from '@/types/user';
@@ -34,6 +37,8 @@ interface AuthContextType {
   signUpWithEmail: (email: string, password: string, displayName: string, username?: string) => Promise<User | null>;
   signInWithEmail: (email: string, password: string) => Promise<User | null>;
   signInWithGoogle: () => Promise<User | null>;
+  signInWithPhone: (phoneNumber: string) => Promise<ConfirmationResult>;
+  confirmPhoneCode: (confirmationResult: ConfirmationResult, code: string) => Promise<User | null>;
   sendPasswordReset: (email: string) => Promise<void>;
 }
 
@@ -305,6 +310,82 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const signInWithPhoneFunc = async (phoneNumber: string): Promise<ConfirmationResult> => {
+    if (!auth) {
+        console.error("Firebase Auth not initialized for signInWithPhone.");
+        throw new Error("Authentication service not available.");
+    }
+    
+    let retryCount = 0;
+    const maxRetries = 2;
+    
+    while (retryCount <= maxRetries) {
+      try {
+        // Clear any existing verifier before retrying
+        if (retryCount > 0) {
+          clearRecaptchaVerifier();
+          // Wait a bit before retrying
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
+        // Initialize reCAPTCHA verifier
+        const verifier = await initRecaptchaVerifier();
+        
+        if (!verifier) {
+          throw new Error("reCAPTCHA verifier not available. Please try again.");
+        }
+
+        const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, verifier);
+        return confirmationResult;
+      } catch (error: any) {
+        console.error(`[AuthContext] Error signing in with phone (attempt ${retryCount + 1}):`, error);
+        
+        // Clear the verifier on error
+        clearRecaptchaVerifier();
+        
+        if (error.code === 'auth/invalid-app-credential') {
+          if (retryCount < maxRetries) {
+            retryCount++;
+            continue; // Retry
+          } else {
+            throw new Error("reCAPTCHA verification failed. Please refresh the page and try again.");
+          }
+        }
+        
+        // Handle rate limiting errors specifically
+        if (error.code === 'auth/too-many-requests') {
+          throw error; // Preserve the original error with code
+        }
+        
+        if (error.code === 'auth/quota-exceeded') {
+          throw error; // Preserve the original error with code
+        }
+        
+        // For other errors, don't retry
+        throw error;
+      }
+    }
+    
+    throw new Error("Failed to initialize reCAPTCHA after multiple attempts. Please refresh the page.");
+  };
+
+  const confirmPhoneCodeFunc = async (confirmationResult: ConfirmationResult, code: string): Promise<User | null> => {
+    try {
+      const result = await confirmationResult.confirm(code);
+      if (result.user) {
+        // Forcing token refresh before setting session cookie
+        await result.user.getIdToken(true);
+        await setSessionCookie(result.user);
+        // isNewUserJustSignedUp will be set by onAuthStateChanged
+        return result.user;
+      }
+      return null;
+    } catch (error: any) {
+      console.error("[AuthContext] Error confirming phone code:", error);
+      throw error;
+    }
+  };
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -319,6 +400,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       signUpWithEmail: signUpWithEmailFunc,
       signInWithEmail: signInWithEmailFunc,
       signInWithGoogle: signInWithGoogleFunc,
+      signInWithPhone: signInWithPhoneFunc,
+      confirmPhoneCode: confirmPhoneCodeFunc,
       sendPasswordReset: sendPasswordResetEmailFunc,
     }}>
       {children}

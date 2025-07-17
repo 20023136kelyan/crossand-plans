@@ -48,31 +48,17 @@ export const POST = createAuthenticatedHandler(
       updatedAt: FieldValue.serverTimestamp()
     });
     
-    // Remove from following/followers if they exist
-    const followingRef = db!.collection('following').doc(authResult.userId);
-    const followersRef = db!.collection('followers').doc(userId);
+    // Remove from following/followers arrays in user profiles
+    const currentUserProfileRef = db!.collection('users').doc(authResult.userId);
+    const targetUserProfileRef = db!.collection('users').doc(userId);
     
-    batch.update(followingRef, {
-      users: FieldValue.arrayRemove(userId),
+    batch.update(currentUserProfileRef, {
+      following: FieldValue.arrayRemove(userId),
       updatedAt: FieldValue.serverTimestamp()
     });
     
-    batch.update(followersRef, {
-      users: FieldValue.arrayRemove(authResult.userId),
-      updatedAt: FieldValue.serverTimestamp()
-    });
-    
-    // Also remove the reverse relationship
-    const reverseFollowingRef = db!.collection('following').doc(userId);
-    const reverseFollowersRef = db!.collection('followers').doc(authResult.userId);
-    
-    batch.update(reverseFollowingRef, {
-      users: FieldValue.arrayRemove(authResult.userId),
-      updatedAt: FieldValue.serverTimestamp()
-    });
-    
-    batch.update(reverseFollowersRef, {
-      users: FieldValue.arrayRemove(userId),
+    batch.update(targetUserProfileRef, {
+      followers: FieldValue.arrayRemove(authResult.userId),
       updatedAt: FieldValue.serverTimestamp()
     });
     

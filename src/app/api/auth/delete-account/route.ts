@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authAdmin, firestoreAdmin as db } from '@/lib/firebaseAdmin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { createAuthenticatedHandler, parseRequestBody } from '@/lib/api/middleware';
 
 export const POST = createAuthenticatedHandler(
@@ -56,11 +57,24 @@ export const POST = createAuthenticatedHandler(
         batch.delete(doc.ref);
       });
 
-      // 4. Delete user's followers and following relationships
-      const followersRef = db!.collection('followers').doc(userId);
-      const followingRef = db!.collection('following').doc(userId);
-      batch.delete(followersRef);
-      batch.delete(followingRef);
+      // 4. Remove user from other users' following/followers arrays
+      const allUsersQuery = await db!.collection('users').get();
+      allUsersQuery.docs.forEach(doc => {
+        const userData = doc.data();
+        const updatedData: any = {};
+        
+        if (userData.following && userData.following.includes(userId)) {
+          updatedData.following = FieldValue.arrayRemove(userId);
+        }
+        if (userData.followers && userData.followers.includes(userId)) {
+          updatedData.followers = FieldValue.arrayRemove(userId);
+        }
+        
+        if (Object.keys(updatedData).length > 0) {
+          updatedData.updatedAt = FieldValue.serverTimestamp();
+          batch.update(doc.ref, updatedData);
+        }
+      });
 
       // 5. Delete user profile
       const userRef = db!.collection('users').doc(userId);

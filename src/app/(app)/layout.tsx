@@ -243,39 +243,70 @@ export default function AppLayout({
 
   useEffect(() => {
     if (authLoading) return;
+    
     const publicPaths = ['/login', '/signup', '/'];
     const isOnboardingRelated = pathname === '/onboarding';
     const isPublicDynamicRoute = pathname.startsWith('/p/') || pathname.startsWith('/u/'); 
-    if (profileExists === null && user) return;
+    
+    // Only log if we're not already on the onboarding page
+    if (pathname !== '/onboarding') {
+      console.log('[AppLayout Redirect] Debug:', {
+        user: !!user,
+        emailVerified: user?.emailVerified,
+        profileExists,
+        pathname,
+        isOnboardingRelated,
+        isPublicDynamicRoute
+      });
+    }
     
     if (user) { 
-      // Check if email is verified, as it's required before onboarding
       const isEmailVerified = user.emailVerified;
       
-      if (!isEmailVerified && !isPublicDynamicRoute && !publicPaths.includes(pathname)) {
-        // If email is not verified, keep user on current page to allow verification
-        // This prevents redirection loops and allows email verification UI to show
+      // STRICT PROFILE CHECK: If profile doesn't exist, redirect to onboarding regardless of current page
+      if (profileExists === false) {
+        if (!isEmailVerified) {
+          // If email not verified, redirect to signup for verification
+          console.log('[AppLayout Redirect] Email not verified, redirecting to signup');
+          router.push('/signup');
+        } else {
+          // Email verified but no profile - must complete onboarding
+          if (pathname === '/onboarding') {
+            console.log('[AppLayout Redirect] User already on onboarding page, no redirect needed');
+          } else {
+            console.log('[AppLayout Redirect] Email verified but no profile, redirecting to onboarding');
+            router.push('/onboarding');
+          }
+        }
         return;
       }
       
-      // Three cases for redirection:
-      // 1. No profile exists and we're not on onboarding page -> go to onboarding
-      // 2. Just signed up with verified email -> go to onboarding
-      // 3. Has complete profile and is on public/onboarding page -> go to feed
+      // If profile exists but email not verified, redirect to signup
+      if (profileExists === true && !isEmailVerified) {
+        console.log('[AppLayout Redirect] Profile exists but email not verified, redirecting to signup');
+        router.push('/signup');
+        return;
+      }
       
-      if (profileExists === false && !isOnboardingRelated) {
-        // Profile doesn't exist - go to onboarding regardless of isNewUserJustSignedUp status
-        // This ensures users who verify their email always go to onboarding next
-        router.push('/onboarding');
-      } else if (profileExists === true && (isOnboardingRelated || publicPaths.includes(pathname))) {
-        // User has complete profile and is on a public page - send to feed
+      // If profile exists and email verified, redirect away from auth pages to feed
+      if (profileExists === true && isEmailVerified && (publicPaths.includes(pathname) || isOnboardingRelated)) {
+        console.log('[AppLayout Redirect] Profile exists and email verified, redirecting to feed');
         router.push('/feed');
+        return;
+      }
+      
+      // If profile loading (null) and on protected route, wait for profile check
+      if (profileExists === null && !publicPaths.includes(pathname) && !isPublicDynamicRoute && !isOnboardingRelated) {
+        console.log('[AppLayout Redirect] Profile loading, waiting for check to complete');
+        return; // Wait for profile check to complete
       }
     } else { 
       // No user logged in - redirect to login if not on public page
-      if (!isPublicDynamicRoute && !publicPaths.includes(pathname)) router.push('/login');
+      if (!isPublicDynamicRoute && !publicPaths.includes(pathname)) {
+        router.push('/login');
+      }
     }
-  }, [user, authLoading, profileExists, router, pathname, isNewUserJustSignedUp]);
+  }, [user, authLoading, profileExists, router, pathname]);
 
   const [pageAnimationClass, setPageAnimationClass] = useState('');
   const previousPathnameRef = useRef(pathname);
@@ -551,8 +582,9 @@ export default function AppLayout({
 
   const dialogTitle = currentPostCreationStep === 1 ? "Select a Plan" : "Add Highlight Details";
   
-  if (authLoading && !user) return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
-  if (user && profileExists === null && !authLoading) return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
+  if (authLoading) return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
+  // If user exists but profile is still loading, show loading spinner
+  if (user && profileExists === null) return <div className="flex h-screen items-center justify-center bg-background"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
 
   return (
     <GoogleMapsProvider>

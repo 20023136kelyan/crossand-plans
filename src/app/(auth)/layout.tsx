@@ -11,14 +11,21 @@ export default function AuthLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading } = useAuth();
+  const { user, loading, profileExists } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     if (!loading && user) {
-      router.push('/feed');
+      if (user.emailVerified && profileExists === true) {
+        // User is fully verified and has profile - redirect to feed
+        router.push('/feed');
+      } else if (user.emailVerified && profileExists === false) {
+        // User is verified but no profile - redirect to onboarding
+        router.push('/onboarding');
+      }
+      // If email not verified, stay on current page (signup/verification)
     }
-  }, [user, loading, router]);
+  }, [user, loading, profileExists, router]);
 
   if (loading) {
     return (
@@ -29,9 +36,14 @@ export default function AuthLayout({
     );
   }
   
-  // If user is already loaded and present, they will be redirected.
-  // If user is not present, show the children (login/signup form).
-  if (user) {
+  // If user is already loaded and present, and meets all requirements, they will be redirected.
+  // If user is not present or not fully verified/onboarded, show the children (login/signup form or email verification prompt).
+  if (user && user.emailVerified && profileExists === true) {
+    return null; // Or a loading spinner until redirect completes
+  }
+  
+  // If user is verified but no profile, redirect to onboarding
+  if (user && user.emailVerified && profileExists === false) {
     return null; // Or a loading spinner until redirect completes
   }
 
@@ -47,7 +59,7 @@ export default function AuthLayout({
         }}
       />
       {/* Content */}
-      <div className="relative z-10 w-full max-w-md mx-auto flex justify-center">
+      <div className="relative z-10 w-full max-w-md mx-auto">
         {children}
       </div>
     </div>

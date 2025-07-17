@@ -2,6 +2,72 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Font Face Definitions for Landing Page */
+@font-face {
+  font-family: 'Audiowide';
+  src: url('/fonts/Alumni_Sans_Pinstripe,Audiowide,Cinzel,Funnel_Sans,Roboto_Condensed/Audiowide/Audiowide-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Cinzel';
+  src: url('/fonts/Audiowide,Cinzel/Cinzel/Cinzel-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'AlumniSansPinstripe';
+  src: url('/fonts/Alumni_Sans_Pinstripe,Audiowide,Cinzel,Funnel_Sans,Roboto_Condensed/Alumni_Sans_Pinstripe/AlumniSansPinstripe-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'AlumniSansPinstripe';
+  src: url('/fonts/Alumni_Sans_Pinstripe,Audiowide,Cinzel,Funnel_Sans,Roboto_Condensed/Alumni_Sans_Pinstripe/AlumniSansPinstripe-Regular.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'AlumniSansPinstripe';
+  src: url('/fonts/Alumni_Sans_Pinstripe,Audiowide,Cinzel,Funnel_Sans,Roboto_Condensed/Alumni_Sans_Pinstripe/AlumniSansPinstripe-Italic.ttf') format('truetype');
+  font-weight: normal;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'AlumniSansPinstripe';
+  src: url('/fonts/Alumni_Sans_Pinstripe,Audiowide,Cinzel,Funnel_Sans,Roboto_Condensed/Alumni_Sans_Pinstripe/AlumniSansPinstripe-Italic.ttf') format('truetype');
+  font-weight: bold;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'BarlowCondensed';
+  src: url('/fonts/Barlow_Condensed/BarlowCondensed-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Font utility classes for landing page */
+.font-audiowide {
+  font-family: 'Audiowide', sans-serif;
+}
+
+.font-alumnisanspinstripe {
+  font-family: 'AlumniSansPinstripe', sans-serif;
+}
+
 /* Hide scrollbar for Chrome, Safari and Opera */
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
@@ -599,6 +665,19 @@ textarea:focus-visible {
 
 .animate-confetti {
   animation: confetti 1s ease-out;
+}
+
+@keyframes purple-move {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
+.animate-purple-move {
+  animation: purple-move 3s linear infinite alternate;
 }
 
 /* Ensure plan card images have properly rounded corners */

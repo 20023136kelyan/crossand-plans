@@ -737,11 +737,10 @@ export default function OnboardingPage() {
       const selectedCountryObject = countries.find(c => c.code === data.selectedCountryCode);
       const countryDialCodeForAction = selectedCountryObject ? selectedCountryObject.dialCode : null;
 
-      const profileDataForAction: OnboardingProfileData = {
+      // Pass the form data directly to the action - it will handle the conversion internally
+      const profileDataForAction = {
         ...data,
-        countryDialCode: countryDialCodeForAction,
-        birthDate: data.birthDate || null,
-        phoneNumber: data.phoneNumber || null,
+        name: data.name || null, // Ensure name is string | null, not undefined
       };
 
       const result = await completeOnboardingAction(profileDataForAction, authUserDataPayload);
@@ -751,6 +750,21 @@ export default function OnboardingPage() {
           title: currentUserProfile ? "Profile Updated!" : "Onboarding Complete!",
           description: currentUserProfile ? "Your profile has been saved." : "Welcome to Macaroom!",
         });
+        
+        // Refresh authentication tokens and session cookies after profile creation
+        if (user) {
+          try {
+            // Force refresh the user's ID token
+            await user.getIdToken(true);
+            // Update session cookie with fresh token
+            const { setSessionCookie } = await import('@/lib/sessionCookie');
+            await setSessionCookie(user);
+          } catch (error) {
+            console.error("Error refreshing authentication tokens:", error);
+          }
+        }
+        
+        await new Promise(res => setTimeout(res, 500)); // Add 500ms delay before refreshing profile
         await refreshProfileStatus();
         if (!currentUserProfile) { 
           acknowledgeNewUserWelcome();

@@ -16,11 +16,11 @@ export const GET = createAuthenticatedHandler(
     const page = parseInt(params.page!) || 1;
     const limit = Math.min(parseInt(params.limit!) || 20, 50); // Cap at 50
 
-    // Get followers for the target user
-    const followersRef = db!.collection('followers').doc(targetUserId);
-    const followersDoc = await followersRef.get();
+    // Get followers for the target user from their profile
+    const userProfileRef = db!.collection('users').doc(targetUserId);
+    const userProfileDoc = await userProfileRef.get();
 
-    if (!followersDoc.exists) {
+    if (!userProfileDoc.exists) {
       return NextResponse.json({
         followers: [],
         pagination: {
@@ -34,8 +34,8 @@ export const GET = createAuthenticatedHandler(
       });
     }
 
-    const followersData = followersDoc.data();
-    const followerIds = followersData?.users || [];
+    const userProfileData = userProfileDoc.data();
+    const followerIds = userProfileData?.followers || [];
     const totalFollowers = followerIds.length;
     const totalPages = Math.ceil(totalFollowers / limit);
 
@@ -56,15 +56,14 @@ export const GET = createAuthenticatedHandler(
         if (doc.exists) {
           const data = doc.data();
           followers.push({
-            id: doc.id,
-            firstName: data?.firstName || '',
-            lastName: data?.lastName || '',
-            email: data?.email || '',
-            avatar: data?.avatar || '',
+            uid: doc.id,
+            name: data?.name || null,
+            username: data?.username || null,
+            email: data?.email || null,
+            avatarUrl: data?.avatarUrl || null,
+            role: data?.role || null,
             isVerified: data?.isVerified || false,
-            followerCount: data?.followerCount || 0,
-            followingCount: data?.followingCount || 0,
-            planCount: data?.planCount || 0
+            bio: data?.bio || null
           });
         }
       });

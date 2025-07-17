@@ -166,13 +166,9 @@ export function SignupForm() {
           };
           await sendEmailVerification(user, actionCodeSettings);
           console.log('[SignupForm] Email verification sent successfully');
-          setUserEmail(data.email);
-          setShowEmailVerification(true);
-          console.log('[SignupForm] showEmailVerification set to true');
-          toast({
-            title: 'Account Created Successfully!',
-            description: 'Please check your email and click the verification link to continue with your profile setup.'
-          });
+          // Instead of setting local state, redirect to verification page
+          router.push(`/signup?verify=1&email=${encodeURIComponent(data.email)}`);
+          return;
         } catch (verificationError) {
           console.error('[SignupForm] Email verification error:', verificationError);
           // Still show success but mention verification issue
@@ -181,9 +177,8 @@ export function SignupForm() {
             description: 'Account created but verification email failed to send. You can resend it from your profile.',
             variant: 'default',
           });
-          setUserEmail(data.email);
-          setShowEmailVerification(true);
-          console.log('[SignupForm] showEmailVerification set to true (after error)');
+          router.push(`/signup?verify=1&email=${encodeURIComponent(data.email)}`);
+          return;
         }
       } else {
         console.log('[SignupForm] User creation returned null/undefined');
@@ -212,36 +207,19 @@ export function SignupForm() {
     }
   };
 
-  const handleEmailVerified = () => {
-    // Reset the new user flag so layout won't prevent redirection
-    acknowledgeNewUserWelcome();
-    console.log('[SignupForm] Email verified, acknowledged new user welcome');
-    
-    // Redirect to onboarding or dashboard after verification
-    const searchParams = new URLSearchParams(window.location.search);
-    const redirectPath = searchParams.get('redirect');
-    searchParams.delete('redirect');
-    
-    if (redirectPath) {
-      const finalRedirect = redirectPath + (searchParams.toString() ? `?${searchParams.toString()}` : '');
-      router.push(finalRedirect);
-    } else {
-      router.push('/onboarding');
-    }
-  };
-
   // Show email verification prompt after successful signup
-  if (showEmailVerification) {
-    return (
-      <EmailVerificationPrompt 
-        email={userEmail} 
-        onVerified={handleEmailVerified}
-      />
-    );
-  }
+  // (No longer needed, handled by redirect)
+  // if (showEmailVerification) {
+  //   return (
+  //     <EmailVerificationPrompt 
+  //       email={userEmail} 
+  //       onVerified={handleEmailVerified}
+  //     />
+  //   );
+  // }
 
   return (
-    <Card className="w-full max-w-sm shadow-lg bg-gray-900/30 backdrop-blur-md border-gray-700/40 overflow-hidden rounded-2xl">
+    <Card className="w-full shadow-lg bg-gray-900/30 backdrop-blur-md border-gray-700/40 overflow-hidden rounded-2xl">
       <CardHeader className="text-center space-y-3 pb-4">
         <div className="flex flex-col items-center">
           <Link href="/" className="flex items-center gap-2 mb-2">
@@ -449,16 +427,6 @@ export function SignupForm() {
             ) : (
               <GoogleIcon />
             )}
-          </Button>
-          <Button 
-            type="button" 
-            variant="outline" 
-            className="flex-1 h-10" 
-            disabled={isSubmitting}
-          >
-            <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-            </svg>
           </Button>
         </div>
       </CardContent>

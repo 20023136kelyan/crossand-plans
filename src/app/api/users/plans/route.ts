@@ -1,9 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { firestoreAdmin as db } from '@/lib/firebaseAdmin';
-import { createAuthenticatedHandler, getQueryParams } from '@/lib/api/middleware';
+import { firestoreAdmin as db, authAdmin } from '@/lib/firebaseAdmin';
+import { createPublicHandler, getQueryParams } from '@/lib/api/middleware';
 
-export const GET = createAuthenticatedHandler(
-  async ({ request, authResult }) => {
+export const GET = createPublicHandler(
+  async ({ request }) => {
+    // Get authentication token if available
+    const authHeader = request.headers.get('authorization');
+    let authResult = null;
+    
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.split('Bearer ')[1];
+        const decodedToken = await authAdmin!.verifyIdToken(token);
+        authResult = {
+          userId: decodedToken.uid,
+          decodedToken
+        };
+      } catch (error) {
+        // Continue without authentication
+        console.log('[Plans API] Invalid token, proceeding as unauthenticated');
+      }
+    }
     // Get query parameters with validation
     const { params, error } = getQueryParams(request, {
       userId: { required: false },
@@ -16,7 +33,14 @@ export const GET = createAuthenticatedHandler(
     });
     if (error) return error;
 
-    const targetUserId = params.userId || authResult.userId;
+    const targetUserId = params.userId || authResult?.userId;
+    if (!targetUserId) {
+      return NextResponse.json(
+        { error: 'User ID is required' },
+        { status: 400 }
+      );
+    }
+    
     const status = params.status;
     const category = params.category;
     const page = parseInt(params.page!) || 1;
@@ -25,7 +49,7 @@ export const GET = createAuthenticatedHandler(
     const sortOrder = params.sortOrder! as 'asc' | 'desc';
 
     // Check privacy (if viewing another user's plans)
-    const isOwnProfile = targetUserId === authResult.userId;
+    const isOwnProfile = authResult && targetUserId === authResult.userId;
     if (!isOwnProfile) {
       // Check if the target user's profile is public or if current user follows them
       const targetUserRef = db!.collection('users').doc(targetUserId);
@@ -42,11 +66,19 @@ export const GET = createAuthenticatedHandler(
       const isPublicProfile = targetUserData?.profileVisibility === 'public';
       
       if (!isPublicProfile) {
-        // Check if current user follows target user
-        const followingRef = db!.collection('following').doc(authResult.userId);
-        const followingDoc = await followingRef.get();
-        const isFollowing = followingDoc.exists && 
-                           followingDoc.data()?.users?.includes(targetUserId);
+        // Check if current user follows target user by looking at current user's following array
+        const currentUserRef = db!.collection('users').doc(authResult!.userId);
+        const currentUserDoc = await currentUserRef.get();
+        
+        if (!currentUserDoc.exists) {
+          return NextResponse.json(
+            { error: 'Current user profile not found' },
+            { status: 404 }
+          );
+        }
+        
+        const currentUserData = currentUserDoc.data();
+        const isFollowing = (currentUserData?.following || []).includes(targetUserId);
         
         if (!isFollowing) {
           return NextResponse.json(
@@ -59,7 +91,7 @@ export const GET = createAuthenticatedHandler(
 
     // Build query for user's plans
     let query: any = db!.collection('plans')
-      .where('userId', '==', targetUserId);
+      .where('hostId', '==', targetUserId);
 
     // Apply filters
     if (status) {
@@ -89,24 +121,23 @@ export const GET = createAuthenticatedHandler(
       const data = doc.data();
       plans.push({
         id: doc.id,
-        title: data.title,
+        name: data.name || data.title,
         description: data.description,
         category: data.category,
         eventType: data.eventType,
         location: data.location,
-        date: data.date,
-        time: data.time,
-        duration: data.duration,
-        maxParticipants: data.maxParticipants,
-        currentParticipants: data.currentParticipants || 0,
-        price: data.price || 0,
-        currency: data.currency || 'USD',
+        eventTime: data.eventTime,
+        city: data.city,
+        priceRange: data.priceRange,
         status: data.status,
-        visibility: data.visibility,
-        tags: data.tags || [],
-        images: data.images || [],
-        createdAt: data.createdAt?.toDate() || new Date(),
-        updatedAt: data.updatedAt?.toDate() || new Date(),
+        planType: data.planType,
+        hostId: data.hostId,
+        hostName: data.hostName,
+        hostAvatarUrl: data.hostAvatarUrl,
+        invitedParticipantUserIds: data.invitedParticipantUserIds || [],
+        participantResponses: data.participantResponses || {},
+        createdAt: data.createdAt?.toDate?.() || data.createdAt || new Date(),
+        updatedAt: data.updatedAt?.toDate?.() || data.updatedAt || new Date(),
         likesCount: data.likesCount || 0,
         commentsCount: data.commentsCount || 0,
         sharesCount: data.sharesCount || 0
@@ -116,7 +147,7 @@ export const GET = createAuthenticatedHandler(
     // Get total count for pagination
     const totalSnapshot = await db!
       .collection('plans')
-      .where('userId', '==', targetUserId)
+      .where('hostId', '==', targetUserId)
       .get();
     const totalPlans = totalSnapshot.size;
     const totalPages = Math.ceil(totalPlans / limit);

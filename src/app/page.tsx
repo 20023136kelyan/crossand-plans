@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Users, MapPin, Star, ArrowRight, Sparkles, Heart, Share2, Camera, MessageSquare, Zap, Globe } from 'lucide-react';
+import { Sparkles, Heart, Users, Camera, MapPin, Globe, ArrowRight } from 'lucide-react';
 import { useSettings } from '@/context/SettingsContext';
 
 const CrossandLogo = ({ className }: { className?: string }) => (
@@ -20,15 +20,14 @@ const FeatureCard = ({ icon: Icon, title, description }: { icon: any, title: str
       <CardTitle className="text-xl">{title}</CardTitle>
     </CardHeader>
     <CardContent>
-      <CardDescription className="text-center text-muted-foreground">{description}</CardDescription>
+      <CardDescription className="text-center text-white">{description}</CardDescription>
     </CardContent>
   </Card>
 );
 
 export default function HomePage() {
   const { settings } = useSettings();
-  
-  const siteName = settings?.siteName || 'Macaroom';
+
   const siteDescription = settings?.siteDescription || 'Sweeten your social planning with Macaroom';
 
   const features = [
@@ -65,30 +64,36 @@ export default function HomePage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
+    <div className="min-h-screen">
       {/* Hero Section */}
-      <section className="relative overflow-hidden">
+      <section className="relative w-screen h-screen min-h-screen flex items-center justify-center overflow-hidden" style={{ backgroundImage: "url(/images/Homepage.jpg)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat" }}>
         <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-transparent to-accent/10 opacity-50" />
-        <div className="relative container mx-auto px-6 py-20 text-center">
+        <div className="relative w-full h-full flex flex-col items-center justify-center text-center z-10">
           <div className="animate-fade-in">
-            <CrossandLogo className="h-32 w-32 mb-8 mx-auto drop-shadow-lg" />
+            {/* Glowing Logo */}
+            <div className="relative flex justify-center items-center mb-8">
+              <span className="absolute inset-0 flex items-center justify-center">
+                <span className="block w-56 h-56 rounded-full bg-white opacity-90 blur-xl animate-pulse" />
+              </span>
+              <CrossandLogo className="h-32 w-32 mx-auto drop-shadow-lg relative z-10" />
+            </div>
             <Badge variant="secondary" className="mb-6 px-4 py-2 text-sm font-medium">
               <Sparkles className="mr-2 h-4 w-4" />
               AI-Powered Activity Discovery Platform
             </Badge>
-            <h1 className="text-6xl md:text-7xl font-bold bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent font-redressed mb-6 leading-tight">
-              Welcome to Crossand
+            <h1 className="font-audiowide text-6xl md:text-7xl font-bold text-white mb-6 leading-tight uppercase">
+              WELCOME TO CROSSAND
             </h1>
-            <p className="text-xl md:text-2xl text-muted-foreground mb-8 max-w-3xl mx-auto leading-relaxed">
+            <p className="font-[600] text-xl md:text-2xl text-white mb-8 max-w-3xl mx-auto leading-relaxed" style={{ fontFamily: 'BarlowCondensed, sans-serif' }}>
               {siteDescription}. Our AI helps you discover curated activity templates from real experiences, empowering you to live more fully, be more present, and build lasting happiness through meaningful adventures.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
-              <Button asChild size="lg" className="text-lg px-8 py-6 shadow-lg hover:shadow-xl transition-all duration-300">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+              <Button asChild size="lg" className="text-lg px-8 py-6 shadow-lg hover:shadow-xl transition-all duration-300 rounded-full">
                 <Link href="/login">
                   Get Started Free <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
               </Button>
-              <Button asChild variant="outline" size="lg" className="text-lg px-8 py-6 border-2 hover:bg-primary/5">
+              <Button asChild variant="outline" size="lg" className="text-lg px-8 py-6 border-2 hover:bg-primary/5 rounded-full">
                 <Link href="/explore">
                   Discover Activities
                 </Link>
@@ -98,85 +103,42 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Second Section */}
+      <section
+        className="relative w-screen h-screen flex items-center justify-center overflow-hidden bg-black"
+        style={{
+          backgroundImage: 'url(/images/homepage2.jpg)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          backgroundColor: '#000',
+        }}
+      >
+        <div className="flex flex-col items-center justify-center text-center w-full h-full px-6">
+          <h2 className="font-audiowide text-5xl md:text-7xl font-bold mb-14 text-white" style={{ textShadow: '0 2px 16px rgba(0,0,0,0.7)' }}>
+            AI-Powered Journey to a Fuller Life
+          </h2>
+        </div>
+      </section>
+
       {/* Features Section */}
-      <section className="py-20 bg-gradient-to-b from-transparent to-muted/20">
-        <div className="container mx-auto px-6">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold mb-6 bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
-              AI-Powered Journey to a Fuller Life
-            </h2>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Our AI mission is to help you live more actively, be more present in the world, and build lasting happiness through meaningful experiences and authentic connections.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
-            {features.map((feature, index) => (
-              <div key={index} className="animate-slide-in-from-right" style={{ animationDelay: `${index * 100}ms` }}>
-                <FeatureCard {...feature} />
-              </div>
+      <section
+        className="relative w-screen min-h-screen flex items-center justify-center bg-black py-20"
+        style={{
+          backgroundImage: 'url(/images/colors.jpg)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+        }}
+      >
+        <div className="w-full flex flex-col items-center justify-center text-center px-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto mt-8">
+            {features.map((feature, idx) => (
+              <FeatureCard key={idx} icon={feature.icon} title={feature.title} description={feature.description} />
             ))}
           </div>
         </div>
       </section>
-
-      {/* Social Proof Section */}
-      <section className="py-20">
-        <div className="container mx-auto px-6 text-center">
-          <div className="max-w-4xl mx-auto">
-            <h3 className="text-3xl md:text-4xl font-bold mb-8">
-              AI Helping People Live More Fully
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
-              <div className="p-6">
-                <div className="text-4xl font-bold text-gradient-primary mb-2">10K+</div>
-                <div className="text-muted-foreground">Activity Templates</div>
-              </div>
-              <div className="p-6">
-                <div className="text-4xl font-bold text-gradient-primary mb-2">5K+</div>
-                <div className="text-muted-foreground">Happy Adventurers</div>
-              </div>
-              <div className="p-6">
-                <div className="text-4xl font-bold text-gradient-primary mb-2">50+</div>
-                <div className="text-muted-foreground">Cities to Explore</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-20 bg-gradient-to-r from-primary/10 via-accent/10 to-primary/10">
-        <div className="container mx-auto px-6 text-center">
-          <div className="max-w-3xl mx-auto">
-            <h3 className="text-4xl md:text-5xl font-bold mb-6">
-              Ready to Live More Fully with AI?
-            </h3>
-            <p className="text-xl text-muted-foreground mb-8">
-              Let our AI guide you toward a more active, present, and joyful life through personalized activity discovery that builds genuine happiness and meaningful connections.
-            </p>
-            <Button asChild size="lg" className="text-lg px-12 py-6 shadow-xl hover:shadow-2xl transition-all duration-300">
-              <Link href="/login">
-                Start Living More Fully - It's Free! <Heart className="ml-2 h-5 w-5" />
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="py-12 border-t border-border/30">
-        <div className="container mx-auto px-6 text-center">
-          <CrossandLogo className="h-12 w-12 mb-4 mx-auto" />
-          <p className="text-muted-foreground mb-4">
-            Crafted with <span className="text-accent">♥</span> using Next.js and Genkit.
-          </p>
-          <div className="flex justify-center space-x-6 text-sm text-muted-foreground">
-            <Link href="/privacy" className="hover:text-primary transition-colors">Privacy</Link>
-            <Link href="/terms" className="hover:text-primary transition-colors">Terms</Link>
-            <Link href="/contact" className="hover:text-primary transition-colors">Contact</Link>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

@@ -1,14 +1,16 @@
+'use client';
+
 import { SignupForm } from '@/components/auth/SignupForm';
-// Removed Users icon and Link for Macaroom, as it will be in SignupForm
-// import { Users } from 'lucide-react';
-// import Link from 'next/link';
+import { EmailVerificationPrompt } from '@/components/auth/EmailVerificationPrompt';
+import { useSearchParams } from 'next/navigation';
 
 export default function SignupPage() {
-  return (
-    <div className="w-full max-w-md space-y-8">
-      {/* The MacaronLogo and app name Link previously here is now removed. */}
-      {/* It will be rendered by the SignupForm component. */}
-      <SignupForm />
-    </div>
-  );
+  const searchParams = useSearchParams();
+  const showVerification = searchParams.get('verify') === '1';
+  const email = searchParams.get('email') || '';
+
+  if (showVerification && email) {
+    return <EmailVerificationPrompt email={email} />;
+  }
+  return <SignupForm />;
 }

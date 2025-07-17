@@ -1,6 +1,6 @@
 // src/lib/firebase.ts (CLIENT SDK INITIALIZATION)
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, type Auth } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, RecaptchaVerifier, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore, Timestamp as ClientTimestamp, serverTimestamp as firestoreClientServerTimestamp } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -16,7 +16,11 @@ const firebaseConfig = {
 let auth: Auth | null = null;
 let db: Firestore | null = null;
 let googleProvider: GoogleAuthProvider | null = null;
+let recaptchaVerifier: RecaptchaVerifier | null = null;
 let firebaseInitialized = false;
+let recaptchaInitializing = false;
+let recaptchaInitialized = false;
+let recaptchaContainerId = 0;
 
 // Initialize Firebase
 const initFirebase = () => {
@@ -73,6 +77,106 @@ const initFirebase = () => {
   return null;
 };
 
+// Create a unique reCAPTCHA container
+const createRecaptchaContainer = (): string => {
+  recaptchaContainerId++;
+  const containerId = `recaptcha-container-${recaptchaContainerId}`;
+  
+  // Remove any existing container with this ID
+  const existingContainer = document.getElementById(containerId);
+  if (existingContainer) {
+    existingContainer.remove();
+  }
+  
+  // Create new container
+  const container = document.createElement('div');
+  container.id = containerId;
+  container.style.position = 'absolute';
+  container.style.left = '-9999px';
+  container.style.top = '-9999px';
+  document.body.appendChild(container);
+  
+  return containerId;
+};
+
+// Initialize reCAPTCHA verifier for phone auth
+const initRecaptchaVerifier = async (): Promise<RecaptchaVerifier | null> => {
+  if (typeof window === 'undefined' || !auth) {
+    console.warn("[firebase.ts client] Cannot initialize reCAPTCHA: window or auth not available");
+    return null;
+  }
+
+  // Clear any existing verifier
+  if (recaptchaVerifier) {
+    try {
+      recaptchaVerifier.clear();
+    } catch (e) {
+      console.warn("Error clearing existing reCAPTCHA verifier:", e);
+    }
+    recaptchaVerifier = null;
+  }
+
+  recaptchaInitialized = false;
+  recaptchaInitializing = true;
+
+  try {
+    // Create a unique container for this reCAPTCHA instance
+    const containerId = createRecaptchaContainer();
+    
+    recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
+      'size': 'invisible',
+      'callback': () => {
+        console.log('reCAPTCHA solved');
+      },
+      'expired-callback': () => {
+        console.log('reCAPTCHA expired');
+        recaptchaVerifier = null;
+        recaptchaInitialized = false;
+      }
+    });
+
+    // Render the reCAPTCHA
+    await recaptchaVerifier.render();
+    console.log('reCAPTCHA rendered successfully');
+    
+    recaptchaInitialized = true;
+    recaptchaInitializing = false;
+    
+    return recaptchaVerifier;
+
+  } catch (e: any) {
+    console.warn("[firebase.ts client] WARNING: Error creating RecaptchaVerifier instance.", e.message);
+    recaptchaVerifier = null;
+    recaptchaInitialized = false;
+    recaptchaInitializing = false;
+    return null;
+  }
+};
+
+// Clear reCAPTCHA verifier
+const clearRecaptchaVerifier = () => {
+  if (recaptchaVerifier) {
+    try {
+      recaptchaVerifier.clear();
+    } catch (e) {
+      console.warn("Error clearing reCAPTCHA verifier:", e);
+    }
+    recaptchaVerifier = null;
+  }
+  recaptchaInitialized = false;
+  recaptchaInitializing = false;
+  
+  // Clean up any recaptcha containers
+  const containers = document.querySelectorAll('[id^="recaptcha-container-"]');
+  containers.forEach(container => {
+    try {
+      container.remove();
+    } catch (e) {
+      console.warn("Error removing reCAPTCHA container:", e);
+    }
+  });
+};
+
 export const app = initFirebase();
 export const serverTimestamp = firestoreClientServerTimestamp;
-export { auth, googleProvider, db, ClientTimestamp, firebaseInitialized };
+export { auth, googleProvider, db, ClientTimestamp, firebaseInitialized, recaptchaVerifier, initRecaptchaVerifier, clearRecaptchaVerifier };

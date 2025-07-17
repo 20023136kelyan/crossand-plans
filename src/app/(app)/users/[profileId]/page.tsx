@@ -21,6 +21,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { useTheme } from "next-themes";
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   fetchPublicUserProfileDataAction,
@@ -72,7 +73,7 @@ const PlansTabContent = ({ profileId, isOwnProfile, currentUser }: TabContentPro
         setLoading(true);
         setError(null);
         
-        const response = await fetch(`/api/users/plans?userId=${profileId}`, {
+        const response = await fetch(`/api/users/plans?userId=${profileId}&status=completed`, {
           headers: currentUser ? {
             'Authorization': `Bearer ${await currentUser.getIdToken()}`
           } : {}
@@ -119,8 +120,8 @@ const PlansTabContent = ({ profileId, isOwnProfile, currentUser }: TabContentPro
     return (
       <div className="text-center py-12 text-muted-foreground">
         <Calendar className="mx-auto h-16 w-16 opacity-30 mb-3" />
-        <p className="font-semibold text-lg">No Plans Yet</p>
-        <p className="text-sm">{isOwnProfile ? 'Create your first plan!' : 'No plans to display'}</p>
+        <p className="font-semibold text-lg">No Completed Plans</p>
+        <p className="text-sm">{isOwnProfile ? 'Complete your first plan!' : 'No completed plans to display'}</p>
       </div>
     );
   }
@@ -143,189 +144,7 @@ const PlansTabContent = ({ profileId, isOwnProfile, currentUser }: TabContentPro
   );
 };
 
-const FollowersTabContent = ({ profileId, isOwnProfile, currentUser }: TabContentProps) => {
-  const [followers, setFollowers] = useState<UserProfile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { toast } = useToast();
 
-  useEffect(() => {
-    const fetchFollowers = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        const response = await fetch(`/api/users/followers?userId=${profileId}`, {
-          headers: currentUser ? {
-            'Authorization': `Bearer ${await currentUser.getIdToken()}`
-          } : {}
-        });
-        
-        const result = await response.json();
-        
-        if (response.ok) {
-          setFollowers(result.followers || []);
-        } else {
-          setError(result.error || 'Failed to load followers');
-        }
-      } catch (err: any) {
-        setError('An error occurred while loading followers');
-        console.error('Error fetching followers:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchFollowers();
-  }, [profileId, currentUser]);
-
-  if (loading) {
-    return (
-      <div className="text-center py-12">
-        <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground mt-2">Loading followers...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        <EyeOff className="mx-auto h-16 w-16 opacity-30 mb-3" />
-        <p className="font-semibold text-lg">Followers Not Available</p>
-        <p className="text-sm">{error}</p>
-      </div>
-    );
-  }
-
-  if (followers.length === 0) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        <Users className="mx-auto h-16 w-16 opacity-30 mb-3" />
-        <p className="font-semibold text-lg">No Followers Yet</p>
-        <p className="text-sm">{isOwnProfile ? 'Share your profile to gain followers!' : 'No followers to display'}</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3 px-4">
-      {followers.map((follower) => (
-        <Link key={follower.uid} href={`/users/${follower.uid}`} className="block">
-          <div className="flex items-center space-x-3 p-3 bg-card border border-border rounded-lg hover:shadow-md transition-shadow">
-            <Avatar className="h-12 w-12">
-              <AvatarImage src={follower.avatarUrl || ''} alt={follower.name || follower.username || ''} />
-              <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary">
-                {(follower.name || follower.username)?.charAt(0)?.toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center space-x-1">
-                <p className="font-semibold text-sm truncate">{follower.name || follower.username}</p>
-                <VerificationBadgeInline role={follower.role} isVerified={follower.isVerified} />
-              </div>
-              {follower.username && follower.name && (
-                <p className="text-xs text-muted-foreground truncate">@{follower.username}</p>
-              )}
-            </div>
-          </div>
-        </Link>
-      ))}
-    </div>
-  );
-};
-
-const FollowingTabContent = ({ profileId, isOwnProfile, currentUser }: TabContentProps) => {
-  const [following, setFollowing] = useState<UserProfile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { toast } = useToast();
-
-  useEffect(() => {
-    const fetchFollowing = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        const response = await fetch(`/api/users/following?userId=${profileId}`, {
-          headers: currentUser ? {
-            'Authorization': `Bearer ${await currentUser.getIdToken()}`
-          } : {}
-        });
-        
-        const result = await response.json();
-        
-        if (response.ok) {
-          setFollowing(result.following || []);
-        } else {
-          setError(result.error || 'Failed to load following');
-        }
-      } catch (err: any) {
-        setError('An error occurred while loading following');
-        console.error('Error fetching following:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchFollowing();
-  }, [profileId, currentUser]);
-
-  if (loading) {
-    return (
-      <div className="text-center py-12">
-        <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground mt-2">Loading following...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        <EyeOff className="mx-auto h-16 w-16 opacity-30 mb-3" />
-        <p className="font-semibold text-lg">Following Not Available</p>
-        <p className="text-sm">{error}</p>
-      </div>
-    );
-  }
-
-  if (following.length === 0) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        <UserPlus className="mx-auto h-16 w-16 opacity-30 mb-3" />
-        <p className="font-semibold text-lg">Not Following Anyone</p>
-        <p className="text-sm">{isOwnProfile ? 'Discover and follow interesting people!' : 'Not following anyone yet'}</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3 px-4">
-      {following.map((user) => (
-        <Link key={user.uid} href={`/users/${user.uid}`} className="block">
-          <div className="flex items-center space-x-3 p-3 bg-card border border-border rounded-lg hover:shadow-md transition-shadow">
-            <Avatar className="h-12 w-12">
-              <AvatarImage src={user.avatarUrl || ''} alt={user.name || user.username || ''} />
-              <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary">
-                {(user.name || user.username)?.charAt(0)?.toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center space-x-1">
-                <p className="font-semibold text-sm truncate">{user.name || user.username}</p>
-                <VerificationBadgeInline role={user.role} isVerified={user.isVerified} />
-              </div>
-              {user.username && user.name && (
-                <p className="text-xs text-muted-foreground truncate">@{user.username}</p>
-              )}
-            </div>
-          </div>
-        </Link>
-      ))}
-    </div>
-  );
-};
 
 interface ProfilePageData {
   userProfile: UserProfile | null;
@@ -404,6 +223,7 @@ export default function UserProfilePage() {
   const router = useRouter();
   const { user: currentUser, currentUserProfile: authenticatedUserProfile, loading: authLoading, refreshProfileStatus } = useAuth();
   const { toast } = useToast();
+  const { theme } = useTheme();
   
   const profileId = params.profileId as string;
 
@@ -953,7 +773,7 @@ export default function UserProfilePage() {
         </header>
 
         {/* Sleek Mobile Profile Header */}
-        <div className="relative bg-gradient-to-br from-gray-900 via-black/90 to-black text-white rounded-b-3xl md:rounded-t-3xl">
+        <div className={`relative ${theme === 'dark' ? 'bg-gradient-to-br from-gray-900 via-black/90 to-black text-white' : 'bg-background text-gray-900'} rounded-b-3xl md:rounded-t-3xl`}>
 
 
           <div className="flex flex-col items-center justify-center px-6 pt-20 pb-12">
@@ -995,29 +815,44 @@ export default function UserProfilePage() {
             
             {/* Name and Username */}
             <div className="text-center mb-4">
-              <h1 className="text-base font-bold text-white mb-1">
+              <h1 className={`text-base font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'} mb-1`}>
                 {userProfile.name || userProfile.username}
               </h1>
-              <p className="text-gray-400 text-base">
+              <p className={`${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} text-base`}>
                 {userProfile.bio || 'No bio available'}
               </p>
             </div>
 
             {/* Stats */}
-            <div className="flex items-center gap-8 mb-6 text-center">
-              <div>
-                <span className="text-white font-semibold text-lg">{userStats?.followersCount || 0}</span>
-                <span className="text-gray-400 ml-1">Followers</span>
+            <div className="flex items-center gap-2 sm:gap-4 md:gap-8 mb-6 text-center">
+              <div 
+                className="flex flex-col cursor-pointer hover:opacity-80 transition-opacity" 
+                onClick={() => router.push('/users/friends?tab=followers')}
+                role="button"
+                aria-label="View followers"
+              >
+                <span className={`${theme === 'dark' ? 'text-white' : 'text-gray-900'} font-semibold text-base sm:text-lg`}>{userStats?.followersCount || 0}</span>
+                <span className={`${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} text-xs sm:text-sm`}>Followers</span>
               </div>
-              <div className="w-px h-8 bg-gray-600/30"></div>
-              <div>
-                <span className="text-white font-semibold text-lg">{userStats?.postCount || 0}</span>
-                <span className="text-gray-400 ml-1">Posts</span>
+              <div className={`w-px h-8 ${theme === 'dark' ? 'bg-gray-600/30' : 'bg-gray-300/50'}`}></div>
+              <div 
+                className="flex flex-col cursor-pointer hover:opacity-80 transition-opacity" 
+                onClick={() => router.push('/users/friends?tab=following')}
+                role="button"
+                aria-label="View following"
+              >
+                <span className={`${theme === 'dark' ? 'text-white' : 'text-gray-900'} font-semibold text-base sm:text-lg`}>{userStats?.followingCount || 0}</span>
+                <span className={`${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} text-xs sm:text-sm`}>Following</span>
               </div>
-              <div className="w-px h-8 bg-gray-600/30"></div>
-              <div>
-                <span className="text-green-400 font-semibold text-lg">{userStats?.plansCreatedCount || 0}</span>
-                <span className="text-gray-400 ml-1">Plans</span>
+              <div className={`w-px h-8 ${theme === 'dark' ? 'bg-gray-600/30' : 'bg-gray-300/50'}`}></div>
+              <div className="flex flex-col">
+                <span className={`${theme === 'dark' ? 'text-white' : 'text-gray-900'} font-semibold text-base sm:text-lg`}>{userStats?.postCount || 0}</span>
+                <span className={`${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} text-xs sm:text-sm`}>Posts</span>
+              </div>
+              <div className={`w-px h-8 ${theme === 'dark' ? 'bg-gray-600/30' : 'bg-gray-300/50'}`}></div>
+              <div className="flex flex-col">
+                <span className="text-green-400 font-semibold text-base sm:text-lg">{userStats?.plansCreatedCount || 0}</span>
+                <span className={`${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} text-xs sm:text-sm`}>Plans</span>
               </div>
             </div>
 
@@ -1027,14 +862,14 @@ export default function UserProfilePage() {
                 <div className="flex gap-2">
                   <Button 
                     variant="outline" 
-                    className="flex-1 bg-white/10 border-white/20 text-white hover:bg-white/20 transition-all duration-200"
+                    className={`flex-1 ${theme === 'dark' ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' : 'bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200'} transition-all duration-200`}
                     onClick={() => router.push('/users/settings')}
                   >
                     Edit Profile
                   </Button>
                   <Button 
                     variant="outline" 
-                    className="w-10 h-10 p-0 bg-white/10 border-white/20 text-white hover:bg-white/20 transition-all duration-200"
+                    className={`w-10 h-10 p-0 ${theme === 'dark' ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' : 'bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200'} transition-all duration-200`}
                     onClick={() => router.push('/users/settings')}
                   >
                     <Settings className="h-4 w-4" />
@@ -1061,7 +896,7 @@ export default function UserProfilePage() {
                   {friendshipStatusWithViewer === 'pending_sent' && (
                     <Button 
                       variant="outline" 
-                      className="flex-1 bg-white/10 border-white/20 text-white hover:bg-white/20"
+                      className={`flex-1 ${theme === 'dark' ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' : 'bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200'} transition-all duration-200`}
                       onClick={() => handleFriendRequestButtonAction('cancel')}
                       disabled={actionLoading}
                     >
@@ -1090,7 +925,7 @@ export default function UserProfilePage() {
                       </Button>
                       <Button 
                         variant="outline" 
-                        className="flex-1 bg-white/10 border-white/20 text-white hover:bg-white/20"
+                        className={`flex-1 ${theme === 'dark' ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' : 'bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200'} transition-all duration-200`}
                         onClick={() => handleFriendRequestButtonAction('decline')}
                         disabled={actionLoading}
                       >
@@ -1106,7 +941,7 @@ export default function UserProfilePage() {
                   {friendshipStatusWithViewer === 'friends' && (
                     <Button 
                       variant="outline" 
-                      className="flex-1 bg-white/10 border-white/20 text-white hover:bg-white/20"
+                      className={`flex-1 ${theme === 'dark' ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' : 'bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200'} transition-all duration-200`}
                       onClick={() => handleFriendRequestButtonAction('remove')}
                       disabled={actionLoading}
                     >
@@ -1122,7 +957,7 @@ export default function UserProfilePage() {
                   {/* Message Button */}
                   <Button 
                     variant="outline" 
-                    className="flex-1 bg-white/10 border-white/20 text-white hover:bg-white/20"
+                    className={`flex-1 ${theme === 'dark' ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' : 'bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200'} transition-all duration-200`}
                     onClick={handleInitiateChat}
                     disabled={actionLoading}
                   >
@@ -1144,7 +979,7 @@ export default function UserProfilePage() {
           {/* Tabs Section */}
           <div className="px-0">
             <Tabs defaultValue="posts" className="w-full">
-            <TabsList className="w-full grid grid-cols-4 h-16 bg-transparent p-0">
+            <TabsList className="w-full grid grid-cols-2 h-16 bg-transparent p-0">
               <TabsTrigger 
                 value="posts" 
                 className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2"
@@ -1158,20 +993,6 @@ export default function UserProfilePage() {
               >
                 <Calendar className="h-4 w-4" />
                 <span className="text-sm font-medium">Plans</span>
-              </TabsTrigger>
-              <TabsTrigger 
-                value="followers" 
-                className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2"
-              >
-                <Users className="h-4 w-4" />
-                <span className="text-sm font-medium">Followers</span>
-              </TabsTrigger>
-              <TabsTrigger 
-                value="following" 
-                className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2"
-              >
-                <UserPlus className="h-4 w-4" />
-                <span className="text-sm font-medium">Following</span>
               </TabsTrigger>
             </TabsList>
             
@@ -1220,16 +1041,6 @@ export default function UserProfilePage() {
              {/* Plans Tab Content */}
              <TabsContent value="plans" className="mt-6 p-0">
                <PlansTabContent profileId={userProfile.uid} isOwnProfile={isOwnProfile} currentUser={currentUser} />
-             </TabsContent>
-             
-             {/* Followers Tab Content */}
-             <TabsContent value="followers" className="mt-6 p-0">
-               <FollowersTabContent profileId={userProfile.uid} isOwnProfile={isOwnProfile} currentUser={currentUser} />
-             </TabsContent>
-             
-             {/* Following Tab Content */}
-             <TabsContent value="following" className="mt-6 p-0">
-               <FollowingTabContent profileId={userProfile.uid} isOwnProfile={isOwnProfile} currentUser={currentUser} />
              </TabsContent>
            </Tabs>
          </div>

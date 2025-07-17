@@ -110,7 +110,21 @@ export type OnboardingProfileData = Pick<
   | 'budgetFlexibilityNotes'
   | 'socialPreferences'
   | 'availabilityNotes'
-> & { birthDate?: string | null; name?: string | null; username?: string | null; email?: string | null; avatarUrl?: string | null; };
+> & { 
+  birthDate?: string | null; 
+  name?: string | null | undefined; 
+  username?: string | null; 
+  email?: string | null; 
+  avatarUrl?: string | null;
+  // Allow undefined for optional fields that might not be set during form submission
+  physicalAddress?: {
+    street?: string | null | undefined;
+    city?: string | null | undefined;
+    state?: string | null | undefined;
+    zipCode?: string | null | undefined;
+    country?: string | null | undefined;
+  } | null | undefined;
+};
 
 
 export type FriendStatus = 'pending_sent' | 'pending_received' | 'friends';
