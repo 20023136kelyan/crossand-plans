@@ -185,6 +185,19 @@ export default function SettingsPage() {
     followersVisibility: 'public',
     followingVisibility: 'public'
   });
+  // Add state for isPrivate
+  const [isPrivate, setIsPrivate] = useState<boolean>(false);
+  const [isSavingPrivacySetting, setIsSavingPrivacySetting] = useState(false);
+  // Add state for pending follow requests
+  const [pendingFollowRequests, setPendingFollowRequests] = useState<string[]>([]);
+  const [isLoadingPendingRequests, setIsLoadingPendingRequests] = useState(false);
+
+  // Load isPrivate from user profile
+  useEffect(() => {
+    if (currentUserProfile && typeof currentUserProfile.isPrivate === 'boolean') {
+      setIsPrivate(currentUserProfile.isPrivate);
+    }
+  }, [currentUserProfile]);
 
   // Function to calculate activity score
   const calculateActivityScore = useCallback((stats: any, profile: any) => {
@@ -972,6 +985,82 @@ const handleSaveNotifications = async () => {
     } finally {
       setIsSavingPrivacy(false);
     }
+  };
+
+  // Handler to update privacy
+  const handlePrivacyToggle = async (checked: boolean) => {
+    if (!user) {
+      toast({ title: 'Error', description: 'User not authenticated.' });
+      return;
+    }
+    setIsSavingPrivacySetting(true);
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/users/update-privacy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ isPrivate: checked })
+      });
+      if (response.ok) {
+        setIsPrivate(checked);
+        toast({ title: 'Privacy updated', description: checked ? 'Your account is now private.' : 'Your account is now public.' });
+      } else {
+        const data = await response.json();
+        toast({ title: 'Error', description: data.error || 'Failed to update privacy.' });
+      }
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to update privacy.' });
+    } finally {
+      setIsSavingPrivacySetting(false);
+    }
+  };
+
+  // Load pending follow requests if private
+  useEffect(() => {
+    const fetchPendingRequests = async () => {
+      if (!user || !isPrivate) return;
+      setIsLoadingPendingRequests(true);
+      try {
+        const idToken = await user.getIdToken();
+        const response = await fetch('/api/users/pending-follow-requests', {
+          headers: { 'Authorization': `Bearer ${idToken}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setPendingFollowRequests(data.pendingFollowRequests || []);
+        }
+      } catch (error) {
+        // Optionally show error
+      } finally {
+        setIsLoadingPendingRequests(false);
+      }
+    };
+    fetchPendingRequests();
+  }, [user, isPrivate]);
+
+  // Approve/Deny handlers
+  const handleApproveRequest = async (requesterId: string) => {
+    if (!user) return;
+    const idToken = await user.getIdToken();
+    await fetch('/api/users/approve-follow-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+      body: JSON.stringify({ requesterId })
+    });
+    setPendingFollowRequests((prev) => prev.filter((id) => id !== requesterId));
+  };
+  const handleDenyRequest = async (requesterId: string) => {
+    if (!user) return;
+    const idToken = await user.getIdToken();
+    await fetch('/api/users/deny-follow-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+      body: JSON.stringify({ requesterId })
+    });
+    setPendingFollowRequests((prev) => prev.filter((id) => id !== requesterId));
   };
 
   if (authLoading || (!currentUserProfile && user)) {
@@ -2189,6 +2278,26 @@ const handleSaveNotifications = async () => {
                   </Button>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>Account Privacy</CardTitle>
+              <CardDescription>Control who can follow you and see your content.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="private-account">Private Account</Label>
+                <Switch
+                  id="private-account"
+                  checked={isPrivate}
+                  onCheckedChange={handlePrivacyToggle}
+                  disabled={isSavingPrivacySetting}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                {isPrivate ? 'Only people you approve can follow you.' : 'Anyone can follow you instantly.'}
+              </p>
             </CardContent>
           </Card>
         </div>

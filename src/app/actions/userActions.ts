@@ -1,23 +1,21 @@
 // src/app/actions/userActions.ts
 'use server';
 
-import {
+import { 
+  getUserProfileAdmin, 
+  getUserStatsAdmin, 
   createUserProfileAdmin,
   updateUserProfileAdmin,
   updateUserProfileAvatarAdmin,
-  searchUsersAdmin as searchUsersAdminService,
-  getUserProfileAdmin as getUserProfileAdminService,
-  getUserStatsAdmin as getUserStatsAdminService,
-  sendFriendRequestAdmin,
-  acceptFriendRequestAdmin,
-  declineOrCancelFriendRequestAdmin,
-  removeFriendAdmin,
-  followUserAdmin,
-  unfollowUserAdmin
+  searchUsersAdmin,
+  followUserAdmin, 
+  unfollowUserAdmin,
+  approveFollowRequestAdmin,
+  denyFollowRequestAdmin
 } from '@/services/userService.server';
 import { countries } from '@/app/(app)/onboarding/countries';
 import { getFeedPostsAdmin } from '@/services/feedService.server';
-import type { OnboardingProfileData, SearchedUser, UserProfile, UserStats, FriendStatus, FeedPost, UserPreferences } from '@/types/user'; // Added FeedPost and UserPreferences
+import type { OnboardingProfileData, SearchedUser, UserProfile, UserStats, FriendStatus, FeedPost } from '@/types/user'; // Added FeedPost and UserPreferences
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { authAdmin, firestoreAdmin } from '@/lib/firebaseAdmin';
@@ -241,55 +239,54 @@ interface ProfilePageData {
 
 export async function fetchPublicUserProfileDataAction(
   profileId: string,
-  idToken?: string | null 
+  currentViewerId?: string | null 
 ): Promise<ProfilePageData & { error?: string }> {
   if (!authAdmin || !firestoreAdmin) {
     return { userProfile: null, userPosts: [], userStats: null, error: "Server error: Core services not available." };
   }
-  
-  let currentViewerId: string | null = null;
-  if (idToken) {
-    try {
-      const decodedToken = await authAdmin.verifyIdToken(idToken);
-      currentViewerId = decodedToken.uid;
-    } catch (error) {
-      // Proceed as unauthenticated viewer
-    }
-  }
 
   try {
-    const userProfile = await getUserProfileAdminService(profileId);
+    const userProfile = await getUserProfileAdmin(profileId);
     if (!userProfile) {
       return { userProfile: null, userPosts: [], userStats: null, error: "User profile not found." };
     }
     
     const { posts: userPosts } = await getFeedPostsAdmin(currentViewerId, 50, profileId); 
-    const userStats = await getUserStatsAdminService(profileId);
+    const userStats = await getUserStatsAdmin(profileId);
 
-    let isViewerFollowing: boolean = false; // Initialize to false
-    if (currentViewerId && currentViewerId !== profileId) { // Ensure it's not the user's own profile
-      isViewerFollowing = (userProfile.followers || []).includes(currentViewerId); // Use empty array if followers is undefined
-    }
-
+    // Initialize default values
+    let isViewerFollowing: boolean = false;
     let friendshipStatusWithViewer: FriendStatus | 'not_friends' | 'is_self' | null = 'not_friends';
+
+    // Only check relationship if viewer is authenticated and not viewing their own profile
     if (currentViewerId) {
       if (currentViewerId === profileId) {
         friendshipStatusWithViewer = 'is_self';
       } else {
         try {
-            const friendshipDoc = await firestoreAdmin.collection(USER_COLLECTION).doc(currentViewerId).collection(FRIENDSHIPS_SUBCOLLECTION).doc(profileId).get();
-            if (friendshipDoc.exists) {
-               friendshipStatusWithViewer = friendshipDoc.data()?.status as FriendStatus;
+          // Check if both users are following each other (mutual following = friends)
+          const [currentUserProfile, targetUserProfile] = await Promise.all([
+            getUserProfileAdmin(currentViewerId),
+            getUserProfileAdmin(profileId)
+          ]);
+
+          if (currentUserProfile && targetUserProfile) {
+            const currentUserFollowing = currentUserProfile.following || [];
+            const targetUserFollowing = targetUserProfile.following || [];
+
+            const isCurrentUserFollowingTarget = currentUserFollowing.includes(profileId);
+            const isTargetUserFollowingCurrent = targetUserFollowing.includes(currentViewerId);
+
+            // Friends = mutual following
+            if (isCurrentUserFollowingTarget && isTargetUserFollowingCurrent) {
+              friendshipStatusWithViewer = 'friends';
             } else {
-                const otherWayFriendshipDoc = await firestoreAdmin.collection(USER_COLLECTION).doc(profileId).collection(FRIENDSHIPS_SUBCOLLECTION).doc(currentViewerId).get();
-                if (otherWayFriendshipDoc.exists && otherWayFriendshipDoc.data()?.status === 'pending_sent') {
-                    friendshipStatusWithViewer = 'pending_received';
-                } else {
-                    friendshipStatusWithViewer = 'not_friends';
-                }
+              friendshipStatusWithViewer = 'not_friends';
             }
-        } catch (fsError: any) {
-            friendshipStatusWithViewer = 'not_friends';
+          }
+        } catch (error) {
+          console.error('Error determining friendship status:', error);
+          friendshipStatusWithViewer = 'not_friends';
         }
       }
     }
@@ -325,142 +322,11 @@ export async function searchUsersAction(
     const currentUserId = decodedToken.uid;
 
     try {
-        const users = await searchUsersAdminService(searchTerm, currentUserId);
+        const users = await searchUsersAdmin(searchTerm, currentUserId);
         return { success: true, users };
     } catch (error: any) {
         return { success: false, error: error.message || "Failed to search users." };
     }
-}
-
-export async function sendFriendRequestAction(
-  targetUserId: string,
-  idToken: string
-): Promise<{ success: boolean; error?: string; message?: string }> {
-  if (!authAdmin) {
-    return { success: false, error: "Server error: Auth service not available." };
-  }
-
-  try {
-    const decodedToken = await authAdmin.verifyIdToken(idToken);
-    const currentUserId = decodedToken.uid;
-
-    if (currentUserId === targetUserId) {
-      return { success: false, error: "You cannot send a friend request to yourself." };
-    }
-
-    // Get both user profiles
-    const [currentUserProfile, targetUserProfile] = await Promise.all([
-      getUserProfileAdminService(currentUserId),
-      getUserProfileAdminService(targetUserId)
-    ]);
-
-    if (!currentUserProfile || !targetUserProfile) {
-      return { success: false, error: "Could not find one or both user profiles." };
-    }
-
-    // Send friend request using admin service
-    await sendFriendRequestAdmin(currentUserProfile, targetUserProfile);
-
-    return {
-      success: true,
-      message: `Friend request sent to ${targetUserProfile.name || 'user'}.`
-    };
-  } catch (error: any) {
-    console.error('Error in sendFriendRequestAction:', error);
-    return {
-      success: false,
-      error: error.message || "Failed to send friend request."
-    };
-  }
-}
-
-export async function acceptFriendRequestAction(
-  requesterId: string,
-  idToken: string
-): Promise<{ success: boolean; error?: string; message?: string }> {
-  if (!authAdmin) {
-    return { success: false, error: "Server error: Auth service not available." };
-  }
-
-  try {
-    const decodedToken = await authAdmin.verifyIdToken(idToken);
-    const currentUserId = decodedToken.uid;
-
-    // Get both user profiles
-    const [currentUserProfile, requesterProfile] = await Promise.all([
-      getUserProfileAdminService(currentUserId),
-      getUserProfileAdminService(requesterId)
-    ]);
-
-    if (!currentUserProfile || !requesterProfile) {
-      return { success: false, error: "Could not find one or both user profiles." };
-    }
-
-    // Accept friend request using admin service
-    const result = await acceptFriendRequestAdmin(currentUserProfile, requesterProfile);
-    revalidatePath(`/users/${requesterId}`);
-    return { success: true, message: "Friend request accepted successfully." };
-  } catch (error: any) {
-    console.error('Error in acceptFriendRequestAction:', error);
-    return {
-      success: false,
-      error: error.message || "Failed to accept friend request."
-    };
-  }
-}
-
-export async function declineFriendRequestAction(
-  targetUserId: string,
-  idToken: string
-): Promise<{ success: boolean; error?: string; message?: string }> {
-  if (!authAdmin) {
-    return { success: false, error: "Server error: Auth service not available." };
-  }
-
-  try {
-    const decodedToken = await authAdmin.verifyIdToken(idToken);
-    const currentUserId = decodedToken.uid;
-
-    await declineOrCancelFriendRequestAdmin(currentUserId, targetUserId);
-    revalidatePath(`/users/${targetUserId}`);
-    return {
-      success: true,
-      message: "Friend request declined."
-    };
-  } catch (error: any) {
-    console.error('Error in declineFriendRequestAction:', error);
-    return {
-      success: false,
-      error: error.message || "Failed to decline friend request."
-    };
-  }
-}
-
-export async function removeFriendAction(
-  targetUserId: string,
-  idToken: string
-): Promise<{ success: boolean; error?: string; message?: string }> {
-  if (!authAdmin) {
-    return { success: false, error: "Server error: Auth service not available." };
-  }
-
-  try {
-    const decodedToken = await authAdmin.verifyIdToken(idToken);
-    const currentUserId = decodedToken.uid;
-
-    await removeFriendAdmin(currentUserId, targetUserId);
-    revalidatePath(`/users/${targetUserId}`);
-    return {
-      success: true,
-      message: "Friend removed."
-    };
-  } catch (error: any) {
-    console.error('Error in removeFriendAction:', error);
-    return {
-      success: false,
-      error: error.message || "Failed to remove friend."
-    };
-  }
 }
 
 export async function followUserAction(
@@ -519,6 +385,92 @@ export async function unfollowUserAction(
   }
 }
 
+export async function approveFollowRequestAction(
+  requesterId: string,
+  idToken: string
+): Promise<{ success: boolean; error?: string; message?: string }> {
+  if (!authAdmin) {
+    return { success: false, error: "Server error: Auth service not available." };
+  }
+
+  try {
+    const decodedToken = await authAdmin.verifyIdToken(idToken);
+    const currentUserId = decodedToken.uid;
+
+    await approveFollowRequestAdmin(currentUserId, requesterId);
+    revalidatePath(`/users/${requesterId}`);
+    return { success: true, message: "Follow request approved successfully." };
+  } catch (error: any) {
+    console.error('Error in approveFollowRequestAction:', error);
+    return {
+      success: false,
+      error: error.message || "Failed to approve follow request."
+    };
+  }
+}
+
+export async function denyFollowRequestAction(
+  requesterId: string,
+  idToken: string
+): Promise<{ success: boolean; error?: string; message?: string }> {
+  if (!authAdmin) {
+    return { success: false, error: "Server error: Auth service not available." };
+  }
+
+  try {
+    const decodedToken = await authAdmin.verifyIdToken(idToken);
+    const currentUserId = decodedToken.uid;
+
+    await denyFollowRequestAdmin(currentUserId, requesterId);
+    revalidatePath(`/users/${requesterId}`);
+    return { success: true, message: "Follow request denied." };
+  } catch (error: any) {
+    console.error('Error in denyFollowRequestAction:', error);
+    return {
+      success: false,
+      error: error.message || "Failed to deny follow request."
+    };
+  }
+}
+
+export async function cancelFollowRequestAction(
+  targetUserId: string,
+  idToken: string
+): Promise<{ success: boolean; error?: string; message?: string }> {
+  if (!authAdmin) {
+    return { success: false, error: "Server error: Auth service not available." };
+  }
+
+  try {
+    const decodedToken = await authAdmin.verifyIdToken(idToken);
+    const currentUserId = decodedToken.uid;
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/api/users/cancel-follow-request`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`
+      },
+      body: JSON.stringify({ targetUserId })
+    });
+
+    const result = await response.json();
+    
+    if (result.success) {
+      revalidatePath(`/users/${targetUserId}`);
+      return { success: true, message: "Follow request cancelled successfully." };
+    } else {
+      return { success: false, error: result.error || "Failed to cancel follow request." };
+    }
+  } catch (error: any) {
+    console.error('Error in cancelFollowRequestAction:', error);
+    return {
+      success: false,
+      error: error.message || "Failed to cancel follow request."
+    };
+  }
+}
+
 export async function getUserLocationAction(userId: string): Promise<{ 
   success: boolean; 
   data?: { city: string; country: string; state?: string; }; 
@@ -558,7 +510,7 @@ export async function getUserLocationAction(userId: string): Promise<{
   try {
     // First try to get the user profile directly
     console.log(`[getUserLocationAction] Fetching profile for userId: ${userId}`);
-    const userProfile = await getUserProfileAdminService(userId);
+    const userProfile = await getUserProfileAdmin(userId);
     
     if (!userProfile) {
       console.warn(`[getUserLocationAction] Profile fetch returned null for userId: ${userId}`);
@@ -618,7 +570,7 @@ export async function getUserLocationAction(userId: string): Promise<{
   }
 }
 
-export async function getUserPreferencesAction(userId: string): Promise<UserPreferences | null> {
+export async function getUserPreferencesAction(userId: string): Promise<any> { // Changed return type to any as UserPreferences type was removed
   if (!firestoreAdmin) {
     console.error('[getUserPreferencesAction] Database not initialized');
     return null;
@@ -636,7 +588,7 @@ export async function getUserPreferencesAction(userId: string): Promise<UserPref
     const userData = userProfileDoc.data() as any;
     
     // Create default preferences if not available
-    const userPreferences: UserPreferences = {
+    const userPreferences: any = { // Changed to any as UserPreferences type was removed
       preferredCategories: [],
       preferredLocations: [],
       preferredPriceRange: '',

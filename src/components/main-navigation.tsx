@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, User, CalendarDays, Users, Settings, ShieldAlert, HandCoins, CalendarPlus, Search } from 'lucide-react';
+import { Home, User, CalendarDays, Users, Settings, ShieldAlert, HandCoins, CalendarPlus, Search, Bell } from 'lucide-react';
 import {
   SidebarMenu,
   SidebarMenuItem,
@@ -19,4 +19,5 @@ const navItems = [
   { href: '/profile', label: 'My Profile', icon: User },
   { href: '/friends', label: 'Friends', icon: Users },
   { href: '/payments', label: 'Payments', icon: HandCoins },
+  { href: '/users/notifications', label: 'Notifications', icon: Bell },
 ];

@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
 import { useTheme } from 'next-themes';
-import { ChevronLeft, Loader2, UserPlus, UserMinus, EyeOff, Users, UserCheck } from 'lucide-react';
+import { ChevronLeft, Loader2, UserPlus, UserMinus, EyeOff, Users, UserCheck, Search } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -78,7 +79,7 @@ const UserCard = ({ user, currentUser, onFollowToggle, isFollowing, isLoading }:
   );
 };
 
-const FollowersTabContent = () => {
+const FollowersTabContent = ({ searchTerm = '' }: { searchTerm?: string }) => {
   const [followers, setFollowers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -176,9 +177,30 @@ const FollowersTabContent = () => {
     );
   }
 
+  // Filter followers based on search term
+  const filteredFollowers = followers.filter(user => {
+    if (!searchTerm) return true;
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      (user.name?.toLowerCase() || '').includes(searchLower) ||
+      (user.username?.toLowerCase() || '').includes(searchLower)
+    );
+  });
+
+  // If we have followers but none match the search
+  if (followers.length > 0 && filteredFollowers.length === 0 && searchTerm) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        <Users className="mx-auto h-16 w-16" />
+        <p className="font-semibold text-lg">No Matches Found</p>
+        <p className="text-sm">No followers match your search for "{searchTerm}"</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3 px-4">
-      {followers.map((user) => (
+      {filteredFollowers.map((user) => (
         <Link key={user.uid} href={`/users/${user.uid}`} className="block">
           <UserCard 
             user={user} 
@@ -192,7 +214,7 @@ const FollowersTabContent = () => {
   );
 };
 
-const FollowingTabContent = () => {
+const FollowingTabContent = ({ searchTerm = '' }: { searchTerm?: string }) => {
   const [following, setFollowing] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -290,9 +312,30 @@ const FollowingTabContent = () => {
     );
   }
 
+  // Filter following based on search term
+  const filteredFollowing = following.filter(user => {
+    if (!searchTerm) return true;
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      (user.name?.toLowerCase() || '').includes(searchLower) ||
+      (user.username?.toLowerCase() || '').includes(searchLower)
+    );
+  });
+
+  // If we have following but none match the search
+  if (following.length > 0 && filteredFollowing.length === 0 && searchTerm) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        <Users className="mx-auto h-16 w-16" />
+        <p className="font-semibold text-lg">No Matches Found</p>
+        <p className="text-sm">No following users match your search for "{searchTerm}"</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3 px-4">
-      {following.map((user) => (
+      {filteredFollowing.map((user) => (
         <Link key={user.uid} href={`/users/${user.uid}`} className="block">
           <UserCard 
             user={user} 
@@ -306,7 +349,7 @@ const FollowingTabContent = () => {
   );
 };
 
-const FriendsTabContent = () => {
+const FriendsTabContent = ({ searchTerm = '' }: { searchTerm?: string }) => {
   const [friends, setFriends] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -386,9 +429,30 @@ const FriendsTabContent = () => {
     );
   }
 
+  // Filter friends based on search term
+  const filteredFriends = friends.filter(user => {
+    if (!searchTerm) return true;
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      (user.name?.toLowerCase() || '').includes(searchLower) ||
+      (user.username?.toLowerCase() || '').includes(searchLower)
+    );
+  });
+
+  // If we have friends but none match the search
+  if (friends.length > 0 && filteredFriends.length === 0 && searchTerm) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        <Users className="mx-auto h-16 w-16" />
+        <p className="font-semibold text-lg">No Matches Found</p>
+        <p className="text-sm">No friends match your search for "{searchTerm}"</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3 px-4">
-      {friends.map((user) => (
+      {filteredFriends.map((user) => (
         <Link key={user.uid} href={`/users/${user.uid}`} className="block">
           <UserCard user={user} currentUser={currentUser} />
         </Link>
@@ -412,6 +476,7 @@ const FriendsPage = () => {
   const { theme } = useTheme();
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<string>('followers');
+  const [searchTerm, setSearchTerm] = useState<string>('');
   
   // Set initial tab based on URL parameter
   useEffect(() => {
@@ -423,6 +488,11 @@ const FriendsPage = () => {
 
   const handleTabChange = (value: string) => {
     setActiveTab(value);
+    setSearchTerm(''); // Reset search when changing tabs
+  };
+  
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
   };
 
   return (
@@ -440,6 +510,19 @@ const FriendsPage = () => {
           Connections
         </h1>
       </div>
+      
+      <div className="mb-6 relative">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
+            <Input
+              type="text"
+              placeholder="Search users by username..."
+              value={searchTerm}
+              onChange={handleSearchChange}
+              className="pl-10"
+            />
+          </div>
+        </div>
 
       <Tabs 
         defaultValue={activeTab} 
@@ -455,15 +538,15 @@ const FriendsPage = () => {
         </TabsList>
         
         <TabsContent value="followers" className="mt-6">
-          <FollowersTabContent />
+          <FollowersTabContent searchTerm={searchTerm} />
         </TabsContent>
         
         <TabsContent value="following" className="mt-6">
-          <FollowingTabContent />
+          <FollowingTabContent searchTerm={searchTerm} />
         </TabsContent>
         
         <TabsContent value="friends" className="mt-6">
-          <FriendsTabContent />
+          <FriendsTabContent searchTerm={searchTerm} />
         </TabsContent>
         
         <TabsContent value="groups" className="mt-6">

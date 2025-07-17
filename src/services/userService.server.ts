@@ -491,162 +491,6 @@ export const searchUsersAdmin = async (searchTerm: string, currentUserId: string
 };
 
 
-export const sendFriendRequestAdmin = async (
-  fromUserProfile: UserProfile, 
-  toUserProfile: UserProfile    
-): Promise<void> => {
-  if (!firestoreAdmin) throw new Error("Server configuration error: Database service not available.");
-  if (fromUserProfile.uid === toUserProfile.uid) throw new Error("Cannot send friend request to oneself.");
-
-  const batch = firestoreAdmin.batch();
-  const now = FieldValue.serverTimestamp();
-
-  const senderRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, fromUserProfile.uid, SUBCOLLECTIONS.FRIENDSHIPS).doc(toUserProfile.uid);
-  const senderEntry: Omit<FriendEntry, 'friendUid' | 'requestedAt' | 'friendsSince'> & { requestedAt: FieldValue } = {
-    status: 'pending_sent',
-    name: toUserProfile.name,
-    avatarUrl: toUserProfile.avatarUrl,
-    role: toUserProfile.role,
-    isVerified: toUserProfile.isVerified,
-    requestedAt: now,
-  };
-  batch.set(senderRef, senderEntry);
-
-  const receiverRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, toUserProfile.uid, SUBCOLLECTIONS.FRIENDSHIPS).doc(fromUserProfile.uid);
-  const receiverEntry: Omit<FriendEntry, 'friendUid' | 'requestedAt' | 'friendsSince'> & { requestedAt: FieldValue } = {
-    status: 'pending_received',
-    name: fromUserProfile.name,
-    avatarUrl: fromUserProfile.avatarUrl,
-    role: fromUserProfile.role,
-    isVerified: fromUserProfile.isVerified,
-    requestedAt: now,
-  };
-  batch.set(receiverRef, receiverEntry);
-
-  try {
-    await batch.commit();
-  } catch (error) {
-    console.error("[sendFriendRequestAdmin] Error sending friend request (Admin SDK):", error);
-    throw error;
-  }
-};
-
-export const acceptFriendRequestAdmin = async (
-    currentUserProfile: UserProfile, 
-    requesterProfile: UserProfile     
-): Promise<void> => {
-  if (!firestoreAdmin) throw new Error("Server configuration error: Database service not available.");
-  const batch = firestoreAdmin.batch();
-  const now = FieldValue.serverTimestamp();
-  
-  const currentUserUid = currentUserProfile.uid;
-  const requesterUid = requesterProfile.uid;
-
-  // Update friendship entries to 'friends'
-  const currentUserFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, currentUserUid, SUBCOLLECTIONS.FRIENDSHIPS).doc(requesterUid);
-  batch.set(currentUserFriendshipRef, { // Use set with merge to update or create if it was somehow missing
-    status: 'friends' as FriendStatus,
-    friendsSince: now,
-    name: requesterProfile.name, 
-    avatarUrl: requesterProfile.avatarUrl,
-    role: requesterProfile.role,
-    isVerified: requesterProfile.isVerified,
-    requestedAt: now, // or keep existing requestedAt if needed
-  }, { merge: true });
-
-  const requesterFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, requesterUid, SUBCOLLECTIONS.FRIENDSHIPS).doc(currentUserUid);
-  batch.set(requesterFriendshipRef, { // Use set with merge
-    status: 'friends' as FriendStatus,
-    friendsSince: now,
-    name: currentUserProfile.name, 
-    avatarUrl: currentUserProfile.avatarUrl,
-    role: currentUserProfile.role,
-    isVerified: currentUserProfile.isVerified,
-    requestedAt: now,
-  }, { merge: true });
-
-  // Update followers/following arrays for mutual follow
-  const currentUserDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, currentUserUid);
-  const requesterDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, requesterUid);
-
-  batch.update(currentUserDocRef, {
-    following: FieldValue.arrayUnion(requesterUid),
-    followers: FieldValue.arrayUnion(requesterUid),
-    updatedAt: now
-  });
-  batch.update(requesterDocRef, {
-    following: FieldValue.arrayUnion(currentUserUid),
-    followers: FieldValue.arrayUnion(currentUserUid),
-    updatedAt: now
-  });
-
-  try {
-    await batch.commit();
-  } catch (error) {
-    console.error("[acceptFriendRequestAdmin] Error accepting friend request (Admin SDK):", error);
-    throw error;
-  }
-};
-
-export const declineOrCancelFriendRequestAdmin = async (currentUserUid: string, otherUserUid: string): Promise<void> => {
-  if (!firestoreAdmin) throw new Error("Server configuration error: Database service not available.");
-  const batch = firestoreAdmin.batch();
-
-  const currentUserFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, currentUserUid, SUBCOLLECTIONS.FRIENDSHIPS).doc(otherUserUid);
-  batch.delete(currentUserFriendshipRef);
-
-  const otherUserFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, otherUserUid, SUBCOLLECTIONS.FRIENDSHIPS).doc(currentUserUid);
-  batch.delete(otherUserFriendshipRef);
-
-  // Note: This action does NOT automatically unfollow. 
-  // If a request is declined, it doesn't mean an existing follow (if any) should be removed.
-  // Unfollowing is a separate action.
-
-  try {
-    await batch.commit();
-  } catch (error) {
-    console.error("[declineOrCancelFriendRequestAdmin] Error declining/cancelling friend request (Admin SDK):", error);
-    throw error;
-  }
-};
-
-export const removeFriendAdmin = async (currentUserUid: string, friendUid: string): Promise<void> => {
-  if (!firestoreAdmin) throw new Error("Server configuration error: Database service not available.");
-  const batch = firestoreAdmin.batch();
-  const now = FieldValue.serverTimestamp();
-
-  // Delete friendship entries
-  const currentUserFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, currentUserUid, SUBCOLLECTIONS.FRIENDSHIPS).doc(friendUid);
-  batch.delete(currentUserFriendshipRef);
-  const friendFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, friendUid, SUBCOLLECTIONS.FRIENDSHIPS).doc(currentUserUid);
-  batch.delete(friendFriendshipRef);
-
-  // Unfollow each other
-  const currentUserDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, currentUserUid);
-  const friendDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, friendUid);
-
-  batch.update(currentUserDocRef, {
-    following: FieldValue.arrayRemove(friendUid),
-    // Followers list of currentUser is affected by friendUid unfollowing *them*, which is a separate action.
-    // This action is currentUser unfriending (and thus unfollowing) friendUid.
-    // And friendUid is also unfollowing currentUser.
-    followers: FieldValue.arrayRemove(friendUid), 
-    updatedAt: now
-  });
-  batch.update(friendDocRef, {
-    following: FieldValue.arrayRemove(currentUserUid), 
-    followers: FieldValue.arrayRemove(currentUserUid),
-    updatedAt: now
-  });
-
-  try {
-    await batch.commit();
-  } catch (error) {
-    console.error("[removeFriendAdmin] Error removing friend (Admin SDK):", error);
-    throw error;
-  }
-};
-
 export const getFriendUidsAdmin = async (userId: string): Promise<string[]> => {
   try {
     const friendshipsRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, userId, SUBCOLLECTIONS.FRIENDSHIPS);
@@ -743,89 +587,125 @@ export const getUserStatsAdmin = async (userId: string): Promise<UserStats> => {
   }
 };
 
+// Remove all friend request functions - friendship is now determined by mutual following
+// Only keep follow/unfollow functions
+
+// UserProfile type should have isPrivate, pendingFollowRequests, sentFollowRequests
+// Update followUserAdmin to handle privacy
 export const followUserAdmin = async (currentUserId: string, targetUserId: string): Promise<void> => {
   if (currentUserId === targetUserId) throw new Error("Cannot follow yourself.");
+  if (!firestoreAdmin) throw new Error("Server configuration error: Database service not available.");
+
+  const [currentUserProfile, targetUserProfile] = await Promise.all([
+    getUserProfileAdmin(currentUserId),
+    getUserProfileAdmin(targetUserId)
+  ]);
+
+  if (!currentUserProfile || !targetUserProfile) {
+    throw new Error("Could not fetch one or both user profiles.");
+  }
 
   const currentUserDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, currentUserId);
   const targetUserDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, targetUserId);
+  const batch = firestoreAdmin.batch();
   const now = FieldValue.serverTimestamp();
-  const batch = firestoreAdmin!.batch();
 
-  batch.update(currentUserDocRef, { following: FieldValue.arrayUnion(targetUserId), updatedAt: now });
-  batch.update(targetUserDocRef, { followers: FieldValue.arrayUnion(currentUserId), updatedAt: now });
-
-  // Check for mutual follow to establish/update friendship
-  try {
-    // To check for mutuality, we need the target user's data *before* this batch commits to see their current 'following' list.
-    // Or, assume this follow action might complete a mutual follow initiated by a friend request.
-    // For simplicity in this batch, we'll optimistically set/update friendship if this follow completes a mutual one.
-    // This requires fetching both profiles to get current name/avatar.
-    const [currentUserProfile, targetUserProfile] = await Promise.all([
-        getUserProfileAdmin(currentUserId),
-        getUserProfileAdmin(targetUserId)
-    ]);
-
-    if (!currentUserProfile || !targetUserProfile) {
-        console.warn("[followUserAdmin] Could not fetch one or both profiles for friendship update. Skipping friendship subcollection update.");
-    } else {
-        // Check if target is ALREADY following current user (before this transaction)
-        const targetIsFollowingCurrentUser = (targetUserProfile.following || []).includes(currentUserId);
-        
-        if (targetIsFollowingCurrentUser) { // This follow by current user makes it mutual
-            const currentUserFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, currentUserId, SUBCOLLECTIONS.FRIENDSHIPS).doc(targetUserId);
-            batch.set(currentUserFriendshipRef, {
-                status: 'friends' as FriendStatus,
-                friendsSince: now,
-                name: targetUserProfile.name,
-                avatarUrl: targetUserProfile.avatarUrl,
-                role: targetUserProfile.role,
-                isVerified: targetUserProfile.isVerified,
-            }, { merge: true });
-
-            const targetUserFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, targetUserId, SUBCOLLECTIONS.FRIENDSHIPS).doc(currentUserId);
-            batch.set(targetUserFriendshipRef, {
-                status: 'friends' as FriendStatus,
-                friendsSince: now,
-                name: currentUserProfile.name,
-                avatarUrl: currentUserProfile.avatarUrl,
-                role: currentUserProfile.role,
-                isVerified: currentUserProfile.isVerified,
-            }, { merge: true });
-            console.log(`[followUserAdmin] Mutual follow established between ${currentUserId} and ${targetUserId}. Friendship status updated.`);
-        } else {
-             console.log(`[followUserAdmin] ${currentUserId} followed ${targetUserId}. Not yet mutual for friendship status.`);
-        }
-    }
-    await batch.commit();
-  } catch (error) {
-    console.error(`Error in followUserAdmin (${currentUserId} -> ${targetUserId}):`, error);
-    // If batch.commit() fails, the whole operation is rolled back.
-    throw error;
+  // When adding a pending follow request, also add a notification with a server-side timestamp
+  if (targetUserProfile.isPrivate) {
+    // Add to pendingFollowRequests and sentFollowRequests
+    batch.update(targetUserDocRef, {
+      pendingFollowRequests: FieldValue.arrayUnion(currentUserId),
+      updatedAt: now
+    });
+    batch.update(currentUserDocRef, {
+      sentFollowRequests: FieldValue.arrayUnion(targetUserId),
+      updatedAt: now
+    });
+    // Add notification for the target user
+    const notificationsRef = FirebaseQueryBuilder.collection(COLLECTIONS.USERS).doc(targetUserId).collection('notifications');
+    batch.set(notificationsRef.doc(), {
+      type: 'follow_request',
+      fromUserId: currentUserId,
+      createdAt: now,
+      isRead: false
+    });
+  } else {
+    // Public: add to followers/following instantly
+    batch.update(currentUserDocRef, {
+      following: FieldValue.arrayUnion(targetUserId),
+      updatedAt: now
+    });
+    batch.update(targetUserDocRef, {
+      followers: FieldValue.arrayUnion(currentUserId),
+      updatedAt: now
+    });
   }
+  await batch.commit();
+};
+
+// Approve follow request
+export const approveFollowRequestAdmin = async (currentUserId: string, requesterId: string): Promise<void> => {
+  if (!firestoreAdmin) throw new Error("Server configuration error: Database service not available.");
+  const currentUserDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, currentUserId);
+  const requesterDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, requesterId);
+  const batch = firestoreAdmin.batch();
+  const now = FieldValue.serverTimestamp();
+  // Remove from pending/sent requests
+  batch.update(currentUserDocRef, {
+    pendingFollowRequests: FieldValue.arrayRemove(requesterId),
+    followers: FieldValue.arrayUnion(requesterId),
+    updatedAt: now
+  });
+  batch.update(requesterDocRef, {
+    sentFollowRequests: FieldValue.arrayRemove(currentUserId),
+    following: FieldValue.arrayUnion(currentUserId),
+    updatedAt: now
+  });
+  await batch.commit();
+};
+
+// Deny follow request
+export const denyFollowRequestAdmin = async (currentUserId: string, requesterId: string): Promise<void> => {
+  if (!firestoreAdmin) throw new Error("Server configuration error: Database service not available.");
+  const currentUserDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, currentUserId);
+  const requesterDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, requesterId);
+  const batch = firestoreAdmin.batch();
+  const now = FieldValue.serverTimestamp();
+  batch.update(currentUserDocRef, {
+    pendingFollowRequests: FieldValue.arrayRemove(requesterId),
+    updatedAt: now
+  });
+  batch.update(requesterDocRef, {
+    sentFollowRequests: FieldValue.arrayRemove(currentUserId),
+    updatedAt: now
+  });
+  await batch.commit();
 };
 
 export const unfollowUserAdmin = async (currentUserId: string, targetUserId: string): Promise<void> => {
+  if (currentUserId === targetUserId) throw new Error("Cannot unfollow yourself.");
+  if (!firestoreAdmin) throw new Error("Server configuration error: Database service not available.");
+
   const currentUserDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, currentUserId);
   const targetUserDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, targetUserId);
+
+  const batch = firestoreAdmin.batch();
   const now = FieldValue.serverTimestamp();
-  const batch = firestoreAdmin!.batch();
 
-  batch.update(currentUserDocRef, { following: FieldValue.arrayRemove(targetUserId), updatedAt: now });
-  batch.update(targetUserDocRef, { followers: FieldValue.arrayRemove(currentUserId), updatedAt: now });
+  // Remove from current users following list
+  batch.update(currentUserDocRef, {
+    following: FieldValue.arrayRemove(targetUserId),
+    updatedAt: now
+  });
 
-  // Unfollowing breaks any "friends" status, so delete friendship entries.
-  const currentUserFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, currentUserId, SUBCOLLECTIONS.FRIENDSHIPS).doc(targetUserId);
-  batch.delete(currentUserFriendshipRef);
-  const targetUserFriendshipRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, targetUserId, SUBCOLLECTIONS.FRIENDSHIPS).doc(currentUserId);
-  batch.delete(targetUserFriendshipRef);
-  console.log(`[unfollowUserAdmin] Friendship entries between ${currentUserId} and ${targetUserId} marked for deletion.`);
+  // Remove from target users followers list
+  batch.update(targetUserDocRef, {
+    followers: FieldValue.arrayRemove(currentUserId),
+    updatedAt: now
+  });
 
-  try {
-    await batch.commit();
-  } catch (error) {
-    console.error(`Error in unfollowUserAdmin (${currentUserId} -> ${targetUserId}):`, error);
-    throw error;
-  }
+  await batch.commit();
+  console.log(`User ${currentUserId} unfollowed ${targetUserId}`);
 };
 
 // === Premium Status and Activity Score Functions ===

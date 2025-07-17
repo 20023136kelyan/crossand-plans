@@ -16,7 +16,7 @@ import {
 import {
   Loader2, Edit3, MessageSquare, ShieldCheck as AdminIcon, CheckCircle, Settings,
   UserPlus, XCircle as XIcon, Check, MoreVertical, Camera, ChevronLeft, Users as UsersIconIcon,
-  RotateCcw, EyeOff, Phone, Video, LayoutGrid, Calendar, Users, Eye, Upload, UserMinus, Instagram, X
+  RotateCcw, EyeOff, Phone, Video, LayoutGrid, Calendar, Users, Eye, Upload, UserMinus, Instagram, X, Clock
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/context/AuthContext";
@@ -25,13 +25,8 @@ import { useTheme } from "next-themes";
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   fetchPublicUserProfileDataAction,
-  followUserAction,
-  unfollowUserAction,
-  sendFriendRequestAction,
-  acceptFriendRequestAction,
-  declineFriendRequestAction,
-  removeFriendAction,
   updateUserAvatarAction,
+  cancelFollowRequestAction,
 } from '@/app/actions/userActions';
 import { initiateDirectChatAction } from '@/app/actions/chatActions';
 import type { UserProfile, FeedPost, UserStats, FriendStatus, UserRoleType, FriendEntry } from "@/types/user";
@@ -236,6 +231,7 @@ export default function UserProfilePage() {
   });
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
+  const [followRequestPending, setFollowRequestPending] = useState<boolean | null>(null);
   const [friendshipStatusWithViewer, setFriendshipStatusWithViewer] = useState<FriendStatus | 'not_friends' | 'is_self' | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [followActionLoading, setFollowActionLoading] = useState(false);
@@ -341,6 +337,7 @@ export default function UserProfilePage() {
     return [];
   }, [profileData]);
 
+  // Only follow/unfollow functionality - no friend requests
   const handleFollowToggle = useCallback(async () => {
     if (!currentUser || !userProfile || isOwnProfile || isFollowing === null) {
       toast({ title: "Action Failed", description: "Cannot perform follow/unfollow action.", variant: "destructive"});
@@ -360,7 +357,7 @@ export default function UserProfilePage() {
         ...prev,
         userStats: {
           ...prev.userStats,
-          followersCount: !originalIsFollowing ? currentFollowers + 1 : Math.max(0, currentFollowers - 1)
+          followersCount: originalIsFollowing ? currentFollowers - 1 : currentFollowers + 1
         }
       };
     });
@@ -368,33 +365,46 @@ export default function UserProfilePage() {
     try {
       await currentUser.getIdToken(true);
       const idToken = await currentUser.getIdToken();
-      if (!idToken) throw new Error("Authentication token not available.");
-
-      const actionToCall = originalIsFollowing ? unfollowUserAction : followUserAction;
-      const result = await actionToCall(userProfile.uid, idToken);
-
-      if (result.success) {
-        toast({ title: result.message || (originalIsFollowing ? "Unfollowed successfully" : "Followed successfully") });
-        // Re-fetch to get authoritative data, this will also update friendshipStatus
-        await fetchProfileData(); 
-      } else {
-        // Revert optimistic updates
-        setIsFollowing(originalIsFollowing);
-        setProfileData(prev => {
-          if (!prev || !prev.userProfile || !prev.userStats) return prev;
-          const currentFollowers = prev.userStats.followersCount || 0;
-          return {
-            ...prev,
-            userStats: {
-              ...prev.userStats,
-              followersCount: originalIsFollowing ? currentFollowers + 1 : Math.max(0, currentFollowers - 1)
-            }
-          };
-        });
-        toast({ title: "Error", description: result.error || "Action failed.", variant: "destructive" });
+      if (!idToken) {
+        toast({ title: "Auth Error", description: "Could not get authentication token.", variant: "destructive" });
+        setFollowActionLoading(false);
+        return;
       }
-    } catch (error: any) {
-      // Revert optimistic updates
+
+      const response = await fetch('/api/users/follow-toggle', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({
+          targetUserId: profileId,
+          action: originalIsFollowing ? 'unfollow' : 'follow'
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({ 
+          title: originalIsFollowing ? "Unfollowed" : "Followed", 
+          description: originalIsFollowing ? `You unfollowed ${userProfile.name}` : `You are now following ${userProfile.name}`,
+          variant: "default"
+        });
+        
+        // Refetch profile data to ensure UI is in sync
+        await fetchProfileData();
+      } else {
+        throw new Error(result.error || 'Unknown error occurred');
+      }
+    } catch (error) {
+      console.error('Follow toggle error:', error);
+      
+      // Revert optimistic update
       setIsFollowing(originalIsFollowing);
       setProfileData(prev => {
         if (!prev || !prev.userProfile || !prev.userStats) return prev;
@@ -403,97 +413,40 @@ export default function UserProfilePage() {
           ...prev,
           userStats: {
             ...prev.userStats,
-            followersCount: originalIsFollowing ? currentFollowers + 1 : Math.max(0, currentFollowers - 1)
+            followersCount: originalIsFollowing ? currentFollowers + 1 : currentFollowers - 1
           }
         };
       });
-      toast({ title: "Error", description: error.message || "Failed to perform action.", variant: "destructive" });
+      
+      toast({ 
+        title: "Action Failed", 
+        description: originalIsFollowing ? "Failed to unfollow user." : "Failed to follow user.", 
+        variant: "destructive" });
     } finally {
       setFollowActionLoading(false);
     }
-  }, [currentUser, userProfile, isOwnProfile, isFollowing, toast, fetchProfileData]);
+  }, [currentUser, userProfile, isOwnProfile, isFollowing, profileId, fetchProfileData]);
 
-  const handleFriendRequestButtonAction = useCallback(async (actionType: 'accept' | 'decline' | 'cancel' | 'send' | 'remove') => {
-    if (!currentUser || !profileData.userProfile || isOwnProfile) {
-      toast({ title: "Action Failed", description: "User data missing or not logged in.", variant: "destructive" });
-      if (!currentUser) router.push('/login');
-      return;
-    }
-    setActionLoading(true);
+  // Add handler for canceling a follow request
+  const handleCancelFollowRequest = async () => {
+    if (!currentUser) return;
+    setFollowActionLoading(true);
     try {
-      await currentUser.getIdToken(true);
       const idToken = await currentUser.getIdToken();
-      if (!idToken) {
-        toast({ title: "Auth Error", description: "Could not get authentication token.", variant: "destructive" });
-        setActionLoading(false);
-        return;
-      }
-
-      let result: { success: boolean; error?: string; message?: string };
-
-      switch (actionType) {
-        case 'send':
-          result = await sendFriendRequestAction(profileData.userProfile.uid, idToken);
-          if (result.success) {
-            setFriendshipStatusWithViewer('pending_sent');
-            setIsFollowing(true);
-          }
-          break;
-        case 'accept':
-          result = await acceptFriendRequestAction(profileData.userProfile.uid, idToken);
-          if (result.success) {
-            setFriendshipStatusWithViewer('friends');
-            setIsFollowing(true);
-          }
-          break;
-        case 'decline':
-        case 'cancel':
-          result = await declineFriendRequestAction(profileData.userProfile.uid, idToken);
-          if (result.success) {
-            setFriendshipStatusWithViewer('not_friends');
-          }
-          break;
-        case 'remove':
-          result = await removeFriendAction(profileData.userProfile.uid, idToken);
-          if (result.success) {
-            setFriendshipStatusWithViewer('not_friends');
-            setIsFollowing(false);
-          }
-          break;
-        default:
-          setActionLoading(false);
-          return;
-      }
-
+      const result = await cancelFollowRequestAction(profileId, idToken);
       if (result.success) {
-        toast({ title: "Success", description: result.message || `Action successful.` });
-        // Update local counts optimistically
-        if (actionType === 'send' || actionType === 'accept') {
-          setProfileData(prev => ({
-            ...prev,
-            userStats: prev.userStats ? {
-              ...prev.userStats,
-              followersCount: (prev.userStats.followersCount || 0) + 1
-            } : null
-          }));
-        } else if (actionType === 'remove') {
-          setProfileData(prev => ({
-            ...prev,
-            userStats: prev.userStats ? {
-              ...prev.userStats,
-              followersCount: Math.max(0, (prev.userStats.followersCount || 0) - 1)
-            } : null
-          }));
-        }
+        setFollowRequestPending(false);
+        setIsFollowing(false);
+        toast({ title: 'Request Cancelled', description: 'Your follow request has been cancelled.' });
       } else {
-        toast({ title: "Error", description: result.error || "Could not complete action.", variant: "destructive" });
+        toast({ title: 'Error', description: result.error || 'Failed to cancel follow request.', variant: 'destructive' });
       }
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to perform action.", variant: "destructive" });
+      toast({ title: 'Error', description: error?.message || 'Failed to cancel follow request.', variant: 'destructive' });
     } finally {
-      setActionLoading(false);
+      setFollowActionLoading(false);
     }
-  }, [currentUser, profileData.userProfile, isOwnProfile, toast, router]);
+  };
 
   const handleInitiateChat = useCallback(async () => {
     if (!currentUser || !authenticatedUserProfile || !userProfile || isOwnProfile) {
@@ -740,6 +693,39 @@ export default function UserProfilePage() {
   const handleNextPostInModal = () => { if (userPostsArray && selectedPostIndex !== null && selectedPostIndex < userPostsArray.length - 1) setSelectedPostIndex(selectedPostIndex + 1); };
   const handlePreviousPostInModal = () => { if (selectedPostIndex !== null && selectedPostIndex > 0) setSelectedPostIndex(selectedPostIndex - 1); };
 
+
+
+  useEffect(() => {
+    if (!currentUser || !userProfile || isOwnProfile) {
+      setIsFollowing(null);
+      setFollowRequestPending(null);
+      return;
+    }
+
+    // Check if current user is following the profile user
+    const following = userProfile.followers?.includes(currentUser.uid) || false;
+    setIsFollowing(following);
+
+    // Check if there's a pending follow request (current user sent request to profile user)
+    const pendingRequest = userProfile.pendingFollowRequests?.includes(currentUser.uid) || false;
+    setFollowRequestPending(pendingRequest);
+  }, [currentUser, userProfile, isOwnProfile]);
+
+  // Get follow button text and state
+  const getFollowButtonState = () => {
+    if (!currentUser || isOwnProfile) return { text: "Follow", disabled: true, variant: "outline" as const };
+    
+    if (isFollowing) {
+      return { text: "Unfollow", disabled: false, variant: "outline" as const };
+    } else if (followRequestPending) {
+      return { text: "Request Sent", disabled: true, variant: "outline" as const };
+    } else {
+      return { text: "Follow", disabled: false, variant: "default" as const };
+    }
+  };
+
+  const followButtonState = getFollowButtonState();
+
   if (loadingProfile || (authLoading && !profileData.userProfile)) { 
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background text-foreground">
@@ -856,121 +842,65 @@ export default function UserProfilePage() {
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="w-full max-w-xs">
-              {isOwnProfile ? (
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    className={`flex-1 ${theme === 'dark' ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' : 'bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200'} transition-all duration-200`}
-                    onClick={() => router.push('/users/settings')}
-                  >
-                    Edit Profile
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    className={`w-10 h-10 p-0 ${theme === 'dark' ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' : 'bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200'} transition-all duration-200`}
-                    onClick={() => router.push('/users/settings')}
-                  >
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  {/* Friend Request Button */}
-                  {friendshipStatusWithViewer === 'not_friends' && (
-                    <Button 
-                      variant="default" 
-                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-                      onClick={() => handleFriendRequestButtonAction('send')}
-                      disabled={actionLoading}
-                    >
-                      {actionLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : (
-                        <UserPlus className="h-4 w-4 mr-2" />
-                      )}
-                      Add Friend
-                    </Button>
-                  )}
-                  {friendshipStatusWithViewer === 'pending_sent' && (
-                    <Button 
-                      variant="outline" 
-                      className={`flex-1 ${theme === 'dark' ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' : 'bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200'} transition-all duration-200`}
-                      onClick={() => handleFriendRequestButtonAction('cancel')}
-                      disabled={actionLoading}
-                    >
-                      {actionLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : (
-                        <X className="h-4 w-4 mr-2" />
-                      )}
-                      Cancel Request
-                    </Button>
-                  )}
-                  {friendshipStatusWithViewer === 'pending_received' && (
+            {/* Action Buttons - Only Follow/Unfollow */}
+            {!isOwnProfile && currentUser && (
+              <div className="flex gap-2">
+                <Button 
+                  variant={followButtonState.variant}
+                  className="flex-1"
+                  onClick={handleFollowToggle}
+                  disabled={followButtonState.disabled || followActionLoading}
+                >
+                  {followActionLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : followRequestPending ? (
                     <>
-                      <Button 
-                        variant="default" 
-                        className="flex-1 bg-green-600 hover:bg-green-700 text-white"
-                        onClick={() => handleFriendRequestButtonAction('accept')}
-                        disabled={actionLoading}
-                      >
-                        {actionLoading ? (
-                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        ) : (
-                          <Check className="h-4 w-4 mr-2" />
-                        )}
-                        Accept
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        className={`flex-1 ${theme === 'dark' ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' : 'bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200'} transition-all duration-200`}
-                        onClick={() => handleFriendRequestButtonAction('decline')}
-                        disabled={actionLoading}
-                      >
-                        {actionLoading ? (
-                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        ) : (
-                          <X className="h-4 w-4 mr-2" />
-                        )}
-                        Decline
-                      </Button>
+                      <Clock className="h-4 w-4 mr-2" /> Request Sent
+                    </>
+                  ) : isFollowing ? (
+                    <>
+                      <UserMinus className="h-4 w-4 mr-2" />
+                      Unfollow
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Follow
                     </>
                   )}
-                  {friendshipStatusWithViewer === 'friends' && (
-                    <Button 
-                      variant="outline" 
-                      className={`flex-1 ${theme === 'dark' ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' : 'bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200'} transition-all duration-200`}
-                      onClick={() => handleFriendRequestButtonAction('remove')}
-                      disabled={actionLoading}
-                    >
-                      {actionLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : (
-                        <UserMinus className="h-4 w-4 mr-2" />
-                      )}
-                      Remove Friend
-                    </Button>
-                  )}
-                  
-                  {/* Message Button */}
-                  <Button 
-                    variant="outline" 
-                    className={`flex-1 ${theme === 'dark' ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' : 'bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200'} transition-all duration-200`}
-                    onClick={handleInitiateChat}
-                    disabled={actionLoading}
+                </Button>
+                {followRequestPending && !followActionLoading && (
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={handleCancelFollowRequest}
+                    disabled={followActionLoading}
                   >
-                    {actionLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <MessageSquare className="h-4 w-4 mr-2" />
-                    )}
-                    Message
+                    Cancel Request
                   </Button>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
+
+            {/* Edit Profile for Own Profile */}
+            {isOwnProfile && (
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => router.push('/users/settings')}
+                >
+                  Edit Profile
+                </Button>
+                <Button 
+                  variant="outline"
+                  className="w-10 p-0"
+                  onClick={() => router.push('/users/settings')}
+                >
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </div>
         </div>
         

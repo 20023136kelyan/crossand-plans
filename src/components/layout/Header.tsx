@@ -233,90 +233,14 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
         
         <div className="flex items-center space-x-2 ml-auto mr-2 md:space-x-4 md:mr-4">
           {/* Notifications */}
-          <DropdownMenu open={isNotificationsOpen} onOpenChange={setIsNotificationsOpen}>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Notifications">
-                <div className="relative">
-                  <Bell className="h-6 w-6 text-foreground/80 hover:text-primary transition-colors" />
-                  {notificationCount > 0 && (
-                    <span className="absolute -top-1 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-destructive-foreground shadow-md">
-                      {notificationCount > 9 ? '9+' : notificationCount}
-                    </span>
-                  )}
-                </div>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-80 p-0">
-              <div className="flex items-center justify-between p-4 border-b">
-                <h3 className="font-semibold">Notifications</h3>
-                {notificationCount > 0 && (
-                  <Button variant="ghost" size="sm" onClick={markAllAsRead}>
-                    Mark all read
-                  </Button>
-                )}
+          <Link href="/users/notifications" aria-label="Notifications">
+            <Button variant="ghost" size="icon">
+              <div className="relative">
+                <Bell className="h-6 w-6 text-foreground/80 hover:text-primary transition-colors" />
+                {/* Optionally, show a notification count badge here if desired */}
               </div>
-              <ScrollArea className="h-96">
-                {notifications.length === 0 ? (
-                  <div className="p-4 text-center text-muted-foreground">
-                    <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p>No notifications yet</p>
-                  </div>
-                ) : (
-                  <div className="divide-y">
-                    {notifications.map((notification, index) => (
-                      <div key={notification.id}>
-                        <div 
-                          className={cn(
-                            "p-4 hover:bg-muted/50 cursor-pointer transition-colors",
-                            !notification.isRead && "bg-blue-50/50 dark:bg-blue-950/20"
-                          )}
-                          onClick={() => {
-                             markAsRead(notification.id);
-                             if (notification.actionUrl) {
-                               setIsNotificationsOpen(false);
-                               router.push(notification.actionUrl);
-                             }
-                           }}
-                        >
-                          <div className="flex items-start space-x-3">
-                            <div className="flex-shrink-0">
-                              {notification.avatarUrl ? (
-                                <img 
-                                  src={notification.avatarUrl} 
-                                  alt="" 
-                                  className="h-8 w-8 rounded-full"
-                                />
-                              ) : (
-                                <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-sm">
-                                  {getNotificationIcon(notification.type)}
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between">
-                                <p className="text-sm font-medium text-foreground truncate">
-                                  {notification.title}
-                                </p>
-                                {!notification.isRead && (
-                                  <div className="h-2 w-2 bg-blue-500 rounded-full flex-shrink-0 ml-2" />
-                                )}
-                              </div>
-                              <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                                {notification.description}
-                              </p>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                {formatTimeAgo(notification.timestamp)}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </Button>
+          </Link>
           
           {/* Messages */}
           <Button variant="ghost" size="icon" asChild>

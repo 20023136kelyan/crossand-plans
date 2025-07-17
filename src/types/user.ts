@@ -31,6 +31,9 @@ export interface UserProfile {
     country?: string | null;
   } | null;
   avatarUrl: string | null;
+  isPrivate?: boolean;
+  pendingFollowRequests?: string[];
+  sentFollowRequests?: string[];
 
   // Detailed Preferences
   allergies: string[];
