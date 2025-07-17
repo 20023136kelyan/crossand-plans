@@ -13,6 +13,7 @@ let adminAppInstance: admin.app.App | null = null;
 let firestoreAdminInstance: Firestore | null = null;
 let authAdminInstance: admin.auth.Auth | null = null;
 let storageAdminInstance: admin.storage.Storage | null = null;
+let messagingAdminInstance: admin.messaging.Messaging | null = null;
 let appInitialized = false;
 
 function initializeFirebaseServices(app: admin.app.App): boolean {
@@ -36,6 +37,12 @@ function initializeFirebaseServices(app: admin.app.App): boolean {
     if (!storage) throw new Error('Failed to initialize Storage');
     storageAdminInstance = storage;
     console.log('[firebaseAdmin] Storage initialized successfully');
+
+    // Initialize Messaging
+    const messaging = app.messaging();
+    if (!messaging) throw new Error('Failed to initialize Messaging');
+    messagingAdminInstance = messaging;
+    console.log('[firebaseAdmin] Messaging initialized successfully');
     
     return true;
   } catch (error: any) {
@@ -158,6 +165,7 @@ initializeWithRetry();
 export const firestoreAdmin = firestoreAdminInstance ? (firestoreAdminInstance as Firestore) : null;
 export const authAdmin = authAdminInstance ? (authAdminInstance as admin.auth.Auth) : null;
 export const storageAdmin = storageAdminInstance ? (storageAdminInstance as admin.storage.Storage) : null;
+export const messagingAdmin = messagingAdminInstance ? (messagingAdminInstance as admin.messaging.Messaging) : null;
 export { adminAppInstance as firebaseAdminApp };
 
 // Helper function to ensure Firebase Admin is initialized

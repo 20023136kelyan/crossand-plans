@@ -59,6 +59,7 @@ import {
   GeneratePlanInputSchema,
   PriceRangeSchema
 } from '@/ai/schemas/shared';
+import { createNotification } from '@/services/notificationService.server';
 
 // Type for the enhanced profile from schema
 export type AIEnhancedProfileType = z.infer<typeof AIEnhancedProfileSchema>;
@@ -966,11 +967,58 @@ export async function updateMyRSVPAction(
     if (!isHost && !isInvited) return { success: false, error: 'User not part of this plan.' };
 
     const updatedResponses = { ...(currentPlan.participantResponses || {}) };
+    const wasGoing = updatedResponses[userId] === 'going';
     updatedResponses[userId] = newStatus;
 
     await updatePlanAdminService(planId, { participantResponses: updatedResponses }, currentPlan);
     revalidatePath(`/plans/${planId}`);
     revalidatePath('/plans');
+
+    // --- Notification logic ---
+    if (newStatus === 'going' && !wasGoing) {
+      // Get joining user's profile
+      const joiningUser = await getUserProfileAdmin(userId);
+      if (joiningUser) {
+        // Prepare notification data
+        const planImageUrl = currentPlan.images && currentPlan.images.length > 0 ? currentPlan.images[0].url : undefined;
+        const notificationData = {
+          type: 'plan_join',
+          avatarUrl: joiningUser.avatarUrl || undefined,
+          userName: joiningUser.username || joiningUser.name || 'Someone',
+          timestamp: new Date(),
+          planImageUrl,
+        };
+        // Notify host (if not joining user)
+        if (currentPlan.hostId && currentPlan.hostId !== userId) {
+          await createNotification(currentPlan.hostId, {
+            ...notificationData,
+            title: 'Someone joined your plan',
+            description: `${notificationData.userName} joined your plan`,
+            actionUrl: `/plans/${planId}`,
+            type: 'plan_join',
+            avatarUrl: joiningUser.avatarUrl || undefined,
+            planImageUrl,
+          });
+        }
+        // Notify all other confirmed participants (except joining user)
+        const confirmedParticipants = Object.entries(updatedResponses)
+          .filter(([uid, resp]) => uid !== userId && resp === 'going')
+          .map(([uid]) => uid);
+        for (const participantId of confirmedParticipants) {
+          await createNotification(participantId, {
+            ...notificationData,
+            title: 'Someone joined your plan',
+            description: `${notificationData.userName} joined the plan you're attending`,
+            actionUrl: `/plans/${planId}`,
+            type: 'plan_join',
+            avatarUrl: joiningUser.avatarUrl || undefined,
+            planImageUrl,
+          });
+        }
+      }
+    }
+    // --- End notification logic ---
+
     return { success: true };
   } catch (error: any) {
     console.error('[updateMyRSVPAction] Error:', error);

@@ -36,6 +36,17 @@ import { useEffect, useState, useMemo, useCallback, useRef, useReducer } from 'r
 import { useAuth } from '@/context/AuthContext';
 import type { Chat, FriendEntry, UserProfile, UserRoleType, SearchedUser } from '@/types/user';
 import { formatDistanceToNowStrict, isValid, parseISO } from 'date-fns';
+
+function formatCompactTime(date: Date): string {
+  const now = new Date();
+  const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
+  
+  if (diffInMinutes < 1) return 'now';
+  if (diffInMinutes < 60) return `${diffInMinutes}m`;
+  if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h`;
+  if (diffInMinutes < 43200) return `${Math.floor(diffInMinutes / 1440)}d`;
+  return `${Math.floor(diffInMinutes / 43200)}mo`;
+}
 import { FriendPickerDialog } from '@/components/messages/FriendPickerDialog';
 import { 
   initiateDirectChatAction, 
@@ -759,18 +770,38 @@ export default function MessagesPage() {
                   </div>
 
                   <div className="flex items-center flex-grow min-w-0">
-                    <Avatar className="h-12 w-12 mr-3">
-                      {display.avatarUrl ? (
-                        <AvatarImage src={display.avatarUrl} alt={display.name} data-ai-hint={display.dataAiHint} />
-                      ) : (
-                        <AvatarFallback>{display.initial}</AvatarFallback>
+                    {/* User Avatar with Action Overlay */}
+                    <div className="relative mr-3">
+                      <Avatar className="h-12 w-12">
+                        {display.avatarUrl ? (
+                          <AvatarImage src={display.avatarUrl} alt={display.name} data-ai-hint={display.dataAiHint} />
+                        ) : (
+                          <AvatarFallback>{display.initial}</AvatarFallback>
+                        )}
+                      </Avatar>
+                      
+                      {/* Action Overlay Icon */}
+                      {hasNewActivity && (
+                        <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-background border border-border flex items-center justify-center">
+                          <div className="w-2.5 h-2.5 text-blue-500">💬</div>
+                        </div>
                       )}
-                    </Avatar>
+                    </div>
+                    
+                    {/* User Info and Message Preview */}
                     <div className="flex-grow min-w-0">
                       <div className="flex justify-between items-center">
-                        <div className="flex items-center">
+                        <div className="flex items-center gap-1">
                           <h3 className="font-semibold truncate" title={display.name}>{display.name}</h3>
                           <VerificationBadge role={display.role} isVerified={display.isVerified} />
+                          {hasNewActivity && (
+                            <>
+                              <span className="text-muted-foreground">•</span>
+                              <span className="text-xs text-muted-foreground">
+                                {formatCompactTime(new Date(lastMessageTs || Date.now()))}
+                              </span>
+                            </>
+                          )}
                         </div>
                         <div className="flex items-center pr-6">
                           {hasNewActivity && (
@@ -781,7 +812,10 @@ export default function MessagesPage() {
                           </span>
                         </div>
                       </div>
-                      <p className="text-sm text-muted-foreground truncate pr-6">{chat.lastMessageSenderId === user?.uid ? "You: " : ""}{chat.lastMessageText || (chat.lastMessageSenderId && chat.lastMessageText === '' ? '[Image]' : 'No messages yet')}</p>
+                      <p className="text-sm text-muted-foreground truncate pr-6">
+                        {chat.lastMessageSenderId === user?.uid ? "You: " : ""}
+                        {chat.lastMessageText || (chat.lastMessageSenderId && chat.lastMessageText === '' ? '[Image]' : 'No messages yet')}
+                      </p>
                     </div>
                   </div>
                 </Card>

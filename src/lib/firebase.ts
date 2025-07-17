@@ -2,6 +2,7 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, RecaptchaVerifier, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore, Timestamp as ClientTimestamp, serverTimestamp as firestoreClientServerTimestamp } from "firebase/firestore";
+import { getMessaging } from 'firebase/messaging';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -178,5 +179,6 @@ const clearRecaptchaVerifier = () => {
 };
 
 export const app = initFirebase();
+export const messaging = typeof window !== 'undefined' && app ? getMessaging(app) : null;
 export const serverTimestamp = firestoreClientServerTimestamp;
 export { auth, googleProvider, db, ClientTimestamp, firebaseInitialized, recaptchaVerifier, initRecaptchaVerifier, clearRecaptchaVerifier };

@@ -9,7 +9,9 @@ import { Bell, X } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useSettings } from '@/context/SettingsContext';
-import { getFriendships, getPendingPlanSharesForUser, getPendingPlanInvitationsCount, getCompletedPlansForParticipant } from '@/services/clientServices';
+import { getFriendships, getPendingPlanSharesForUser, getPendingPlanInvitationsCount, getCompletedPlansForParticipant, getPostInteractionsForUser } from '@/services/clientServices';
+import { fetchNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '@/services/notificationService.client';
+import { listenToUnreadNotifications } from '@/services/notificationListener';
 
 import {
   DropdownMenu,
@@ -56,6 +58,15 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
       setNotificationCount(0);
       return;
     }
+    
+    // Listen for real-time unread notification count
+    const unreadListener = listenToUnreadNotifications(
+      user.uid,
+      (count) => {
+        setNotificationCount(count);
+      },
+      (error) => console.error('Error listening to unread notifications:', error)
+    );
     
     const unsubscribers: (() => void)[] = [];
     
@@ -143,8 +154,44 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
       unsubscribers.push(unsubPlanCompletions);
     }
     
+    // Listen for post interactions (likes and comments on user's posts)
+    if (typeof getPostInteractionsForUser === 'function') {
+      const unsubPostInteractions = getPostInteractionsForUser(user.uid, (interactions: any[]) => {
+        const postInteractionNotifications: NotificationItem[] = interactions.map(interaction => {
+          if (interaction.type === 'post_like') {
+            return {
+              id: interaction.id,
+              type: 'post_interaction',
+              title: 'New Like',
+              description: `Someone liked your post "${interaction.postTitle}"`,
+              timestamp: new Date(interaction.timestamp),
+              isRead: false,
+              actionUrl: `/feed?post=${interaction.postId}`,
+              avatarUrl: interaction.postMediaUrl || undefined
+            };
+          } else if (interaction.type === 'post_comment') {
+            return {
+              id: interaction.id,
+              type: 'post_interaction',
+              title: 'New Comment',
+              description: `Someone commented on your post "${interaction.postTitle}"`,
+              timestamp: new Date(interaction.timestamp),
+              isRead: false,
+              actionUrl: `/feed?post=${interaction.postId}`,
+              avatarUrl: interaction.postMediaUrl || undefined
+            };
+          }
+          return null;
+        }).filter(Boolean) as NotificationItem[];
+        
+        updateNotifications('post_interaction', postInteractionNotifications);
+      });
+      unsubscribers.push(unsubPostInteractions);
+    }
+    
     return () => {
       unsubscribers.forEach(unsub => unsub());
+      unreadListener.unsubscribe();
     };
   }, [user?.uid]);
   
@@ -158,15 +205,36 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
     });
   };
   
-  const markAsRead = (notificationId: string) => {
-    setNotifications(prev => 
-      prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n)
-    );
+  const markAsRead = async (notificationId: string) => {
+    if (!user) return;
+    
+    try {
+      const idToken = await user.getIdToken();
+      await markNotificationAsRead(idToken, notificationId);
+      
+      setNotifications(prev => 
+        prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n)
+      );
+      // Recalculate unread count
+      const unreadCount = notifications.filter(n => !n.isRead && n.id !== notificationId).length;
+      setNotificationCount(unreadCount);
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
   };
   
-  const markAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-    setNotificationCount(0);
+  const markAllAsRead = async () => {
+    if (!user) return;
+    
+    try {
+      const idToken = await user.getIdToken();
+      await markAllNotificationsAsRead(idToken);
+      
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      setNotificationCount(0);
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
+    }
   };
   
   const getNotificationIcon = (type: string) => {
@@ -174,6 +242,8 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
       case 'friend_request': return '👥';
       case 'plan_share': return '📋';
       case 'plan_invitation': return '📅';
+      case 'plan_completion': return '✅';
+      case 'post_interaction': return '💬';
       case 'system': return '⚙️';
       default: return '🔔';
     }
@@ -237,7 +307,11 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
             <Button variant="ghost" size="icon">
               <div className="relative">
                 <Bell className="h-6 w-6 text-foreground/80 hover:text-primary transition-colors" />
-                {/* Optionally, show a notification count badge here if desired */}
+                {notificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-destructive-foreground shadow-md"> 
+                    {notificationCount > 9 ? '9+' : notificationCount}
+                  </span>
+                )}
               </div>
             </Button>
           </Link>

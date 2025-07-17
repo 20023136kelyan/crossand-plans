@@ -534,6 +534,99 @@ export function getUserPlansSubscription(
 }
 
 /**
+ * Subscribe to post interactions (likes and comments) on posts created by the user
+ */
+export function getPostInteractionsForUser(
+  userId: string,
+  onUpdate: (interactions: any[]) => void,
+  onError?: (error: Error) => void
+): Unsubscribe {
+  if (!userId) {
+    onError?.(new Error('User ID is required'));
+    return () => {};
+  }
+
+  try {
+    // Query for posts created by the user
+    const postsQuery = query(
+      collection(getDb(), 'feedPosts'),
+      where('userId', '==', userId),
+      orderBy('createdAt', 'desc')
+    );
+
+    return onSnapshot(
+      postsQuery,
+      (postsSnapshot) => {
+        try {
+          const interactions: any[] = [];
+          
+          postsSnapshot.forEach((postDoc) => {
+            const postData = postDoc.data();
+            const postId = postDoc.id;
+            
+            // Track likes on this post
+            if (postData.likedBy && postData.likedBy.length > 0) {
+              // Get user profiles for people who liked
+              postData.likedBy.forEach((likerId: string) => {
+                if (likerId !== userId) { // Don't notify about your own likes
+                  interactions.push({
+                    id: `like_${postId}_${likerId}`,
+                    type: 'post_like',
+                    postId: postId,
+                    postTitle: postData.text || 'Your post',
+                    postMediaUrl: postData.mediaUrl,
+                    interactorId: likerId,
+                    interactionType: 'like',
+                    timestamp: postData.updatedAt || postData.createdAt,
+                    isRead: false
+                  });
+                }
+              });
+            }
+            
+            // Track comments on this post
+            if (postData.commentsCount && postData.commentsCount > 0) {
+              // We'll need to query comments separately
+              const commentsQuery = query(
+                collection(getDb(), 'feedPosts', postId, 'comments'),
+                where('userId', '!=', userId), // Only comments from others
+                orderBy('createdAt', 'desc')
+              );
+              
+              // This is a simplified approach - in production you might want to cache this
+              // For now, we'll create a placeholder interaction for comments
+              if (postData.commentsCount > 0) {
+                interactions.push({
+                  id: `comment_${postId}`,
+                  type: 'post_comment',
+                  postId: postId,
+                  postTitle: postData.text || 'Your post',
+                  postMediaUrl: postData.mediaUrl,
+                  commentCount: postData.commentsCount,
+                  interactionType: 'comment',
+                  timestamp: postData.updatedAt || postData.createdAt,
+                  isRead: false
+                });
+              }
+            }
+          });
+          
+          onUpdate(interactions);
+        } catch (error) {
+          onError?.(error instanceof Error ? error : new Error('Failed to process post interactions'));
+        }
+      },
+      (error) => {
+        onError?.(error instanceof Error ? error : new Error('Post interactions subscription failed'));
+      }
+    );
+  } catch (error) {
+    onError?.(error instanceof Error ? error : new Error('Failed to initialize post interactions subscription'));
+    return () => {};
+  }
+}
+
+/**
  * Get user's saved plan IDs
  */
 export async function getUserSavedPlans(userId: string): Promise<string[]> {
