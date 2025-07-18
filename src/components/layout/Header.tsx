@@ -40,6 +40,15 @@ interface NotificationItem {
   status?: string; // Added for new logic
 }
 
+interface PendingFollowRequest {
+  id: string;
+  fromUserId: string;
+  createdAt?: any;
+  requesterName?: string;
+  requesterAvatarUrl?: string | null;
+  requesterUsername?: string | null;
+}
+
 export function Header({ messagesNotificationCount }: HeaderProps) {
   const { user } = useAuth();
   const { settings } = useSettings();
@@ -53,11 +62,14 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationCount, setNotificationCount] = useState(0);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [pendingFollowRequests, setPendingFollowRequests] = useState<PendingFollowRequest[]>([]);
+  const [isPrivate, setIsPrivate] = useState(false);
   
   useEffect(() => {
     if (!user?.uid) {
       setNotifications([]);
       setNotificationCount(0);
+      setPendingFollowRequests([]);
       return;
     }
     
@@ -196,6 +208,28 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
       unreadListener.unsubscribe();
     };
   }, [user?.uid]);
+
+  // Fetch follow requests separately (like notifications page does)
+  useEffect(() => {
+    const fetchPendingFollowRequests = async () => {
+      if (!user) return;
+      
+      try {
+        const idToken = await user.getIdToken();
+        const response = await fetch('/api/users/pending-follow-requests', {
+          headers: { 'Authorization': `Bearer ${idToken}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setPendingFollowRequests(data.pendingFollowRequests || []);
+        }
+      } catch (error) {
+        console.error('Error fetching pending follow requests:', error);
+      }
+    };
+    
+    fetchPendingFollowRequests();
+  }, [user]);
   
   const updateNotifications = (type: string, newNotifications: NotificationItem[]) => {
     setNotifications(prev => {
@@ -261,15 +295,17 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
     return `${Math.floor(diffInMinutes / 1440)}d ago`;
   };
 
-  // Helper functions for notification counts
+  // Helper functions for notification counts (matching notifications page logic)
   const isActionable = (n: NotificationItem) =>
     (n.type === 'friend_request' || n.type === 'follow_request' || n.type === 'plan_invitation' || (n.type === 'plan_share' && n.status)) && n['handled'] === false;
   const isInformational = (n: NotificationItem) =>
+    !isActionable(n);
+  const isUnreadInformational = (n: NotificationItem) =>
     !isActionable(n) && !n.isRead;
 
-  // Compute total notification count for badge
-  const actionableCount = notifications.filter(isActionable).length;
-  const informationalCount = notifications.filter(isInformational).length;
+  // Compute total notification count for badge (matching notifications page logic)
+  const actionableCount = notifications.filter(isActionable).length + pendingFollowRequests.length;
+  const informationalCount = notifications.filter(isUnreadInformational).length;
   const totalNotificationCount = actionableCount + informationalCount;
 
   return (

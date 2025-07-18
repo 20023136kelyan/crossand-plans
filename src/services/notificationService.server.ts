@@ -76,18 +76,45 @@ export async function createNotification(
 
   await notificationRef.set(notification);
 
-  // Send push notification via FCM
+  // Prepare enhanced FCM data with proper metadata
+  const fcmData: any = {
+    actionUrl: notificationData.actionUrl || '/users/notifications',
+    type: notificationData.type,
+    notificationId: notificationRef.id,
+    userName: notificationData.userName,
+    timestamp: new Date().toISOString(),
+  };
+
+  // Add interaction type for post interactions
+  if (notificationData.type === 'post_interaction') {
+    fcmData.interactionType = notificationData.metadata?.interactionType || 'general';
+  }
+
+  // Add image URL if available
+  if (notificationData.planImageUrl) {
+    fcmData.imageUrl = notificationData.planImageUrl;
+  } else if (notificationData.postImageUrl) {
+    fcmData.imageUrl = notificationData.postImageUrl;
+  } else if (notificationData.avatarUrl) {
+    fcmData.imageUrl = notificationData.avatarUrl;
+  }
+
+  // Add chat-specific data
+  if (notificationData.type === 'chat_message') {
+    fcmData.chatId = notificationData.chatId;
+    fcmData.senderId = notificationData.senderId;
+    fcmData.senderName = notificationData.senderName;
+    fcmData.messagePreview = notificationData.messagePreview;
+  }
+
+  // Send push notification via FCM with enhanced data
   await sendFCMToUser(userId, {
     notification: {
       title: notificationData.title,
       body: notificationData.description || notificationData.title,
-      image: notificationData.avatarUrl || notificationData.planImageUrl,
+      icon: '/crossand-logo.svg',
     },
-    data: {
-      actionUrl: notificationData.actionUrl || '',
-      type: notificationData.type,
-      notificationId: notificationRef.id,
-    }
+    data: fcmData
   }, getFcmTokensForUser);
 
   return notificationRef.id;
@@ -139,6 +166,50 @@ export async function createNotificationForMultipleUsers(
   });
 
   await batch.commit();
+
+  // Send FCM notifications to all users
+  const fcmPromises = userIds.map(async (userId) => {
+    const fcmData: any = {
+      actionUrl: notificationData.actionUrl || '/users/notifications',
+      type: notificationData.type,
+      notificationId: notificationIds[userIds.indexOf(userId)],
+      userName: notificationData.userName,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Add interaction type for post interactions
+    if (notificationData.type === 'post_interaction') {
+      fcmData.interactionType = notificationData.metadata?.interactionType || 'general';
+    }
+
+    // Add image URL if available
+    if (notificationData.planImageUrl) {
+      fcmData.imageUrl = notificationData.planImageUrl;
+    } else if (notificationData.postImageUrl) {
+      fcmData.imageUrl = notificationData.postImageUrl;
+    } else if (notificationData.avatarUrl) {
+      fcmData.imageUrl = notificationData.avatarUrl;
+    }
+
+    // Add chat-specific data
+    if (notificationData.type === 'chat_message') {
+      fcmData.chatId = notificationData.chatId;
+      fcmData.senderId = notificationData.senderId;
+      fcmData.senderName = notificationData.senderName;
+      fcmData.messagePreview = notificationData.messagePreview;
+    }
+
+    await sendFCMToUser(userId, {
+      notification: {
+        title: notificationData.title,
+        body: notificationData.description || notificationData.title,
+        icon: '/crossand-logo.svg',
+      },
+      data: fcmData
+    }, getFcmTokensForUser);
+  });
+
+  await Promise.all(fcmPromises);
   return notificationIds;
 }
 

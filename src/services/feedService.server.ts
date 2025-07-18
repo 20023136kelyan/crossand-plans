@@ -279,8 +279,8 @@ export const toggleLikePostAdmin = async (postId: string, userId: string): Promi
       const mappedPost = mapDocToFeedPost(postDoc);
       finalUpdatedPost = {
         ...mappedPost,
-        likesCount: newLikesCount,
-        likedBy: newLikedBy,
+        likesCount: newLikesCount,    
+        likedBy: newLikedBy,          
       };
     });
     // After transaction, send notification if this was a new like and not by the owner
@@ -293,17 +293,21 @@ export const toggleLikePostAdmin = async (postId: string, userId: string): Promi
         likerName = likerProfile?.name ?? likerProfile?.username ?? 'Someone';
         likerAvatarUrl = likerProfile?.avatarUrl ?? undefined;
       } catch {}
-      await createNotification(postOwnerId, {
+      const notificationData: any = {
         type: 'post_interaction',
         title: 'liked your post',
-        description: postText ? postText.slice(0, 50) : 'Your post',
         userName: likerName,
-        avatarUrl: likerAvatarUrl,
         postImageUrl: postMediaUrl,
         actionUrl: `/feed/${postId}`,
         isRead: false,
-        metadata: { postId, likerId: userId },
-      });
+        metadata: { postId, likerId: userId, interactionType: 'like' },
+      };
+      
+      if (likerAvatarUrl) {
+        notificationData.avatarUrl = likerAvatarUrl;
+      }
+      
+      await createNotification(postOwnerId, notificationData);
     }
     if (!finalUpdatedPost) {
         // This path should ideally not be hit if transaction succeeds and mappedPost is constructed.
@@ -404,7 +408,14 @@ export const addCommentToPostAdmin = async (
     // Fetch the created comment to get its actual data including the server-generated timestamp
     const createdCommentDoc = await newCommentRef.get();
     if (createdCommentDoc.exists) {
-      finalCommentData = { id: createdCommentDoc.id, ...createdCommentDoc.data() } as FeedComment;
+      const commentData = createdCommentDoc.data();
+      if (commentData) {
+    finalCommentData = {
+        id: createdCommentDoc.id,
+          ...commentData,
+          createdAt: convertAdminTimestampToISO(commentData.createdAt)
+        } as FeedComment;
+      }
     }
     // After comment is added, send notification if commenter is not the owner
     if (postOwnerId && postOwnerId !== commentData.userId) {
@@ -416,17 +427,22 @@ export const addCommentToPostAdmin = async (
         commenterName = commenterProfile?.name ?? commenterProfile?.username ?? 'Someone';
         commenterAvatarUrl = commenterProfile?.avatarUrl ?? undefined;
       } catch {}
-      await createNotification(postOwnerId, {
+      const notificationData: any = {
         type: 'post_interaction',
         title: 'commented on your post',
-        description: finalCommentData?.text ? finalCommentData.text.slice(0, 50) : 'Your post',
+        description: finalCommentData?.text ? `commented: ${finalCommentData.text.slice(0, 50)}` : 'commented on your post',
         userName: commenterName,
-        avatarUrl: commenterAvatarUrl,
         postImageUrl: postMediaUrl,
         actionUrl: `/feed/${postId}`,
         isRead: false,
-        metadata: { postId, commenterId: commentData.userId },
-      });
+        metadata: { postId, commenterId: commentData.userId, interactionType: 'comment' },
+      };
+      
+      if (commenterAvatarUrl) {
+        notificationData.avatarUrl = commenterAvatarUrl;
+      }
+      
+      await createNotification(postOwnerId, notificationData);
     }
     return { success: true, updatedPost: finalUpdatedPost, comment: finalCommentData };
   } catch (error: any) {

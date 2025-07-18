@@ -214,7 +214,7 @@ export const sendMessageAdmin = async (
 
     // Create notification for each recipient
     await Promise.all(recipients.map(async (recipientId: string) => {
-      await createNotification(recipientId, {
+      const notificationData: any = {
         type: 'chat_message',
         title: 'sent you a message',
         description: messagePreview,
@@ -222,11 +222,16 @@ export const sendMessageAdmin = async (
         chatId,
         senderId,
         senderName,
-        senderAvatarUrl,
         messagePreview,
         actionUrl: `/messages/${chatId}`,
         isRead: false,
-      });
+      };
+      
+      if (senderAvatarUrl) {
+        notificationData.senderAvatarUrl = senderAvatarUrl;
+      }
+      
+      await createNotification(recipientId, notificationData);
     }));
   } catch (error) {
     console.error(`[sendMessageAdmin] Error sending message to chat ${chatId}:`, error);

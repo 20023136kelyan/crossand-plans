@@ -981,39 +981,52 @@ export async function updateMyRSVPAction(
       if (joiningUser) {
         // Prepare notification data
         const planImageUrl = currentPlan.images && currentPlan.images.length > 0 ? currentPlan.images[0].url : undefined;
-        const notificationData = {
+        const notificationData: any = {
           type: 'plan_join',
-          avatarUrl: joiningUser.avatarUrl || undefined,
           userName: joiningUser.username || joiningUser.name || 'Someone',
           timestamp: new Date(),
           planImageUrl,
         };
+        
+        if (joiningUser.avatarUrl) {
+          notificationData.avatarUrl = joiningUser.avatarUrl;
+        }
         // Notify host (if not joining user)
         if (currentPlan.hostId && currentPlan.hostId !== userId) {
-          await createNotification(currentPlan.hostId, {
+          const hostNotificationData: any = {
             ...notificationData,
             title: 'Someone joined your plan',
             description: `${notificationData.userName} joined your plan`,
             actionUrl: `/plans/${planId}`,
             type: 'plan_join',
-            avatarUrl: joiningUser.avatarUrl || undefined,
             planImageUrl,
-          });
+          };
+          
+          if (joiningUser.avatarUrl) {
+            hostNotificationData.avatarUrl = joiningUser.avatarUrl;
+          }
+          
+          await createNotification(currentPlan.hostId, hostNotificationData);
         }
         // Notify all other confirmed participants (except joining user)
         const confirmedParticipants = Object.entries(updatedResponses)
           .filter(([uid, resp]) => uid !== userId && resp === 'going')
           .map(([uid]) => uid);
         for (const participantId of confirmedParticipants) {
-          await createNotification(participantId, {
+          const participantNotificationData: any = {
             ...notificationData,
             title: 'Someone joined your plan',
             description: `${notificationData.userName} joined the plan you're attending`,
             actionUrl: `/plans/${planId}`,
             type: 'plan_join',
-            avatarUrl: joiningUser.avatarUrl || undefined,
             planImageUrl,
-          });
+          };
+          
+          if (joiningUser.avatarUrl) {
+            participantNotificationData.avatarUrl = joiningUser.avatarUrl;
+          }
+          
+          await createNotification(participantId, participantNotificationData);
         }
       }
     }

@@ -624,15 +624,21 @@ export const followUserAdmin = async (currentUserId: string, targetUserId: strin
     });
     // Add notification for the target user with user info
     const notificationsRef = FirebaseQueryBuilder.collection(COLLECTIONS.USERS).doc(targetUserId).collection('notifications');
-    batch.set(notificationsRef.doc(), {
+    const notificationData = {
       type: 'follow_request',
       fromUserId: currentUserId,
       title: 'requested to follow you',
       userName: currentUserProfile.name || currentUserProfile.username || 'Someone',
-      avatarUrl: currentUserProfile.avatarUrl || undefined,
       createdAt: now,
       isRead: false
-    });
+    };
+    
+    // Only add avatarUrl if it exists
+    if (currentUserProfile.avatarUrl) {
+      notificationData.avatarUrl = currentUserProfile.avatarUrl;
+    }
+    
+    batch.set(notificationsRef.doc(), notificationData);
   } else {
     // Public: add to followers/following instantly
     batch.update(currentUserDocRef, {
@@ -644,15 +650,21 @@ export const followUserAdmin = async (currentUserId: string, targetUserId: strin
       updatedAt: now
     });
     // Notify user of new follower
-    await createNotification(targetUserId, {
+    const notificationData: any = {
       type: 'follow_request',
       title: 'is now following you',
       userName: currentUserProfile.name || currentUserProfile.username || 'Someone',
-      avatarUrl: currentUserProfile.avatarUrl || undefined,
       actionUrl: `/u/${currentUserId}`,
       isRead: false,
       metadata: { followerId: currentUserId },
-    });
+    };
+    
+    // Only add avatarUrl if it exists
+    if (currentUserProfile.avatarUrl) {
+      notificationData.avatarUrl = currentUserProfile.avatarUrl;
+    }
+    
+    await createNotification(targetUserId, notificationData);
   }
   await batch.commit();
 };

@@ -33,7 +33,7 @@ import { LimitGuard } from '@/components/limits/LimitGuard';
 import { type PriceRangeType, type PlanTypeType as PlanTypeHintTypeAlias } from '@/types/user';
 import { type Plan } from '@/types/plan';
 import type { UserProfile } from '@/types/user';
-import { getUsersProfiles } from '@/services/clientServices';
+import { getOtherUsersProfiles } from '@/services/clientServices';
 import { z } from 'zod';
 
 // Plan Generation Form Schema
@@ -220,6 +220,9 @@ function GeneratePlanPage() {
       // Check if we're clicking inside the date picker
       const isDatePickerElement = target.closest('.react-datepicker') !== null;
       
+      // Check if we're clicking inside a Radix UI popover
+      const isRadixPopoverElement = target.closest('[data-radix-popper-content-wrapper]') !== null;
+      
       // Handle friend selector
       if (
         showFriendSelector && 
@@ -228,6 +231,7 @@ function GeneratePlanPage() {
         friendButtonRef.current && 
         !friendButtonRef.current.contains(target) &&
         !isDatePickerElement &&
+        !isRadixPopoverElement &&
         !(priceRangeButtonRef.current?.contains(target) || priceRangeSelectorRef.current?.contains(target))
       ) {
         setShowFriendSelector(false);
@@ -241,6 +245,7 @@ function GeneratePlanPage() {
         priceRangeButtonRef.current &&
         !priceRangeButtonRef.current.contains(target) &&
         !isDatePickerElement &&
+        !isRadixPopoverElement &&
         !(friendButtonRef.current?.contains(target) || friendSelectorRef.current?.contains(target))
       ) {
         setShowPriceRangeSelector(false);
@@ -299,7 +304,7 @@ function GeneratePlanPage() {
         return;
       }
       try {
-        const profiles = await getUsersProfiles(generatedPlan.invitedParticipantUserIds);
+        const profiles = await getOtherUsersProfiles(generatedPlan.invitedParticipantUserIds);
         setInvitedProfiles(profiles);
       } catch (err) {
         console.error('Failed to load invited participant profiles', err);

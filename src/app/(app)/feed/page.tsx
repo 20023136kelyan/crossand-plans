@@ -69,7 +69,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from "@/lib/utils";
-import { getPostComments, getUserProfile, getPlanById, getTemplatesByOriginalPlanId } from '@/services/clientServices';
+import { getPostComments, getOtherUserProfile, getPlanById, getTemplatesByOriginalPlanId } from '@/services/clientServices';
 import { PostDetailModal } from '@/components/feed/PostDetailModal';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { extractImageGradientCached } from '@/lib/colorExtraction';
@@ -1041,7 +1041,7 @@ export default function FeedPage() {
     }
     setActivePostForDetailModal(post); setIsPostDetailModalOpen(true); setLoadingAuthorForDetailModal(true); setAuthorForDetailModal(null);
     try {
-      const authorProfile = await getUserProfile(post.userId);
+      const authorProfile = await getOtherUserProfile(post.userId);
       if (authorProfile) {
         setAuthorForDetailModal(authorProfile);
       } else {

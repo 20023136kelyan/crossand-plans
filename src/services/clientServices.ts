@@ -265,6 +265,24 @@ export function getPostComments(
           const comments: FeedComment[] = [];
           snapshot.forEach((doc) => {
             const data = doc.data();
+            // Convert Firestore timestamp to ISO string
+            let createdAtString = '';
+            if (data.createdAt) {
+              if (typeof data.createdAt.toDate === 'function') {
+                // Firestore Timestamp object
+                createdAtString = data.createdAt.toDate().toISOString();
+              } else if (data.createdAt instanceof Date) {
+                // JavaScript Date object
+                createdAtString = data.createdAt.toISOString();
+              } else if (typeof data.createdAt === 'string') {
+                // Already a string
+                createdAtString = data.createdAt;
+              } else {
+                // Fallback
+                createdAtString = new Date().toISOString();
+              }
+            }
+
             comments.push({
               id: doc.id,
               postId: postId,
@@ -272,8 +290,10 @@ export function getPostComments(
               userName: data.userName || data.username || 'Unknown',
               username: data.username || null,
               userAvatarUrl: data.userAvatarUrl || data.avatar || null,
+              userRole: data.userRole || null,
+              userIsVerified: data.userIsVerified || false,
               text: data.text || '',
-              createdAt: data.createdAt || ''
+              createdAt: createdAtString
             });
           });
           onUpdate(comments);
@@ -647,7 +667,7 @@ export async function getUserSavedPlans(userId: string): Promise<string[]> {
 // ===== DATA FETCHING FUNCTIONS =====
 
 /**
- * Get user profile by ID
+ * Get user profile by ID (for current user - uses direct Firestore access)
  */
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   if (!userId) return null;
@@ -669,7 +689,36 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
 }
 
 /**
- * Get multiple user profiles by IDs
+ * Get other user's profile by ID (for viewing other users - uses API endpoint)
+ */
+export async function getOtherUserProfile(userId: string): Promise<UserProfile | null> {
+  if (!userId) return null;
+
+  try {
+    // Use the API endpoint for fetching other users' profiles
+    const response = await fetch(`/api/users/profile/${userId}`, {
+      method: 'GET',
+      credentials: 'include', // Include session cookie
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.warn(`User profile not found for userId: ${userId}`);
+        return null;
+      }
+      throw new Error(`Failed to fetch user profile: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.profile as UserProfile;
+  } catch (error) {
+    console.error('Error fetching other user profile:', error);
+    return null;
+  }
+}
+
+/**
+ * Get multiple user profiles by IDs (for current user's friends/contacts - uses direct Firestore access)
  */
 export async function getUsersProfiles(userIds: string[]): Promise<UserProfile[]> {
   if (!userIds.length) return [];
@@ -689,6 +738,31 @@ export async function getUsersProfiles(userIds: string[]): Promise<UserProfile[]
     return profiles;
   } catch (error) {
     console.error('Error fetching multiple user profiles:', error);
+    return [];
+  }
+}
+
+/**
+ * Get multiple other users' profiles by IDs (for viewing other users - uses API endpoint)
+ */
+export async function getOtherUsersProfiles(userIds: string[]): Promise<UserProfile[]> {
+  if (!userIds.length) return [];
+
+  try {
+    const profiles: UserProfile[] = [];
+    
+    // Fetch in chunks to avoid API limits
+    const chunkSize = 5; // Smaller chunk size for API calls
+    for (let i = 0; i < userIds.length; i += chunkSize) {
+      const chunk = userIds.slice(i, i + chunkSize);
+      const promises = chunk.map(id => getOtherUserProfile(id));
+      const chunkProfiles = await Promise.all(promises);
+      profiles.push(...chunkProfiles.filter(Boolean) as UserProfile[]);
+    }
+    
+    return profiles;
+  } catch (error) {
+    console.error('Error fetching multiple other user profiles:', error);
     return [];
   }
 }

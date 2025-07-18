@@ -150,16 +150,21 @@ export const updatePlanAdmin = async (
     if (newlyInvited.length > 0 && hostId) {
       // Get host profile for notification
       const hostProfile = await getUserProfileAdmin(hostId);
-      await createNotificationForMultipleUsers(newlyInvited, {
+      const notificationData: any = {
         type: 'plan_invitation',
         title: 'invited you to a plan',
         description: currentPlanData?.name || 'A plan',
         userName: hostProfile?.name || hostProfile?.username || 'Someone',
-        avatarUrl: hostProfile?.avatarUrl || undefined,
         actionUrl: `/plans/${planId}`,
         isRead: false,
         metadata: { planId },
-      });
+      };
+      
+      if (hostProfile?.avatarUrl) {
+        notificationData.avatarUrl = hostProfile.avatarUrl;
+      }
+      
+      await createNotificationForMultipleUsers(newlyInvited, notificationData);
     }
     // 2. Notify host when someone accepts/declines
     if (hostId && statusChanged.length > 0) {
@@ -167,16 +172,21 @@ export const updatePlanAdmin = async (
         if (change.newStatus === 'going' || change.newStatus === 'declined') {
           // Get participant profile for notification
           const participantProfile = await getUserProfileAdmin(change.uid);
-          await createNotification(hostId, {
+          const notificationData: any = {
             type: 'plan_invitation',
             title: `${change.newStatus === 'going' ? 'accepted' : 'declined'} your invitation`,
             description: `to your plan`,
             userName: participantProfile?.name || participantProfile?.username || 'Someone',
-            avatarUrl: participantProfile?.avatarUrl || undefined,
             actionUrl: `/plans/${planId}`,
             isRead: false,
             metadata: { planId, participantId: change.uid, status: change.newStatus },
-          });
+          };
+          
+          if (participantProfile?.avatarUrl) {
+            notificationData.avatarUrl = participantProfile.avatarUrl;
+          }
+          
+          await createNotification(hostId, notificationData);
         }
       }
     }
@@ -187,16 +197,21 @@ export const updatePlanAdmin = async (
       if (notifyUsers.length > 0) {
         // Get updater profile for notification
         const updaterProfile = await getUserProfileAdmin(updaterId);
-        await createNotificationForMultipleUsers(notifyUsers, {
+        const notificationData: any = {
           type: 'plan_share',
           title: 'updated the plan',
           description: 'Event details, location, or participants have been modified',
           userName: updaterProfile?.name || updaterProfile?.username || 'Someone',
-          avatarUrl: updaterProfile?.avatarUrl || undefined,
           actionUrl: `/plans/${planId}`,
           isRead: false,
           metadata: { planId },
-        });
+        };
+        
+        if (updaterProfile?.avatarUrl) {
+          notificationData.avatarUrl = updaterProfile.avatarUrl;
+        }
+        
+        await createNotificationForMultipleUsers(notifyUsers, notificationData);
       }
     }
   } catch (error) {

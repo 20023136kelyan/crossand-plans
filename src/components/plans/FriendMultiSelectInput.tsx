@@ -102,6 +102,11 @@ export function FriendMultiSelectInput({
       : [...safeSelectedUserIds, friendUid];
     onSelectedUserIdsChange(newSelected);
   };
+
+  // Prevent popover from closing when clicking inside
+  const handlePopoverContentClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+  };
   
   const getFriendInfo = (uid: string) => actualFriends.find(f => f.friendUid === uid);
   
@@ -126,7 +131,10 @@ export function FriendMultiSelectInput({
                             <button
                                 type="button"
                                 className="absolute -top-1 -right-1 h-5 w-5 bg-muted rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                                onClick={() => handleSelectFriend(uid)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSelectFriend(uid);
+                                }}
                                 aria-label={`Remove ${friendName}`}
                             >
                                 <X className="h-3 w-3 text-muted-foreground" />
@@ -155,8 +163,24 @@ export function FriendMultiSelectInput({
                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
             </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-            <Command>
+            <PopoverContent 
+              className="w-[--radix-popover-trigger-width] p-0"
+              onPointerDownOutside={(e) => {
+                // Only prevent default if clicking inside the Command component
+                const target = e.target as HTMLElement;
+                if (target.closest('[cmdk-list]') || target.closest('[cmdk-input]')) {
+                  e.preventDefault();
+                }
+              }}
+              onInteractOutside={(e) => {
+                // Only prevent default if clicking inside the Command component
+                const target = e.target as HTMLElement;
+                if (target.closest('[cmdk-list]') || target.closest('[cmdk-input]')) {
+                  e.preventDefault();
+                }
+              }}
+            >
+            <Command onClick={handlePopoverContentClick}>
                 <CommandInput
                 placeholder="Search friends..."
                 value={searchTerm}
@@ -172,7 +196,9 @@ export function FriendMultiSelectInput({
                     <CommandItem
                         key={friend.friendUid}
                         value={friend.name || friend.friendUid}
-                        onSelect={() => handleSelectFriend(friend.friendUid)}
+                        onSelect={() => {
+                          handleSelectFriend(friend.friendUid);
+                        }}
                         className="flex items-center gap-2 text-xs cursor-pointer"
                     >
                         <Avatar className="h-5 w-5">

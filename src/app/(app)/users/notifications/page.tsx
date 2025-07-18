@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Loader2, ArrowLeft, Users, Bell, Clock } from 'lucide-react';
+
 import { formatDistanceToNow, format, isToday, isYesterday, isWithinInterval, subDays } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -13,8 +14,7 @@ export default function NotificationsPage() {
   const { user, currentUserProfile } = useAuth();
   const router = useRouter();
   const [isPrivate, setIsPrivate] = useState(false);
-  // Add new tab for history
-  const [activeTab, setActiveTab] = useState<'requests' | 'other' | 'history'>('requests');
+  const [activeTab, setActiveTab] = useState<'requests' | 'other'>('requests');
   
   // Update the type for pendingFollowRequests
   interface PendingFollowRequest {
@@ -138,6 +138,20 @@ export default function NotificationsPage() {
     fetchAllNotifications();
   }, [user]);
 
+  // Mark informational notifications as read when they're viewed
+  useEffect(() => {
+    if (activeTab === 'other' && otherNotifications.length > 0) {
+      const unreadInformationalNotifications = otherNotifications.filter(
+        notification => !notification.isRead && !isActionable(notification)
+      );
+      
+      // Mark informational notifications as read when viewed (including chat messages)
+      unreadInformationalNotifications.forEach(notification => {
+        markNotificationAsRead(notification.id);
+      });
+    }
+  }, [activeTab, otherNotifications]);
+
   // Approve/Deny handlers
   const handleApproveRequest = async (requesterId: string) => {
     if (!user) return;
@@ -162,6 +176,30 @@ export default function NotificationsPage() {
 
   const handleBack = () => {
     router.back();
+  };
+
+  // Function to mark notification as read
+  const markNotificationAsRead = async (notificationId: string) => {
+    if (!user) return;
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/notifications/mark-as-read', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ notificationId })
+      });
+      if (response.ok) {
+        // Update local state
+        setOtherNotifications(prev => 
+          prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n)
+        );
+      }
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
   };
 
   const renderRequestItem = (request: PendingFollowRequest) => (
@@ -231,19 +269,7 @@ export default function NotificationsPage() {
           onClick={async () => {
             if (!user) return;
             try {
-              const idToken = await user.getIdToken();
-              // Mark as read if not already
-              if (!notification.isRead) {
-                await fetch('/api/notifications/mark-as-read', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${idToken}`
-                  },
-                  body: JSON.stringify({ notificationId: notification.id })
-                });
-              }
-              // Navigate to chat
+              // Navigate to chat (marking as read is handled automatically when viewed)
               router.push(notification.actionUrl || `/messages/${notification.chatId}`);
             } catch (error) {
               console.error('Error handling chat notification click:', error);
@@ -300,17 +326,9 @@ export default function NotificationsPage() {
           onClick={async () => {
             if (!user) return;
             try {
-              const idToken = await user.getIdToken();
               // Mark as read if not already
               if (!notification.isRead) {
-                await fetch('/api/notifications/mark-as-read', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${idToken}`
-                  },
-                  body: JSON.stringify({ notificationId: notification.id })
-                });
+                await markNotificationAsRead(notification.id);
               }
               // Handle specific actions if needed
               if (notification.type === 'friend_request') {
@@ -348,21 +366,23 @@ export default function NotificationsPage() {
               
               {/* Action Overlay Icon */}
               {notification.type !== 'system' && (
-                <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-background border border-border flex items-center justify-center">
-                  {notification.type === 'post_interaction' && notification.action === 'like' ? (
-                    <div className="w-2.5 h-2.5 text-red-500">❤️</div>
-                  ) : notification.type === 'post_interaction' && notification.action === 'comment' ? (
-                    <div className="w-2.5 h-2.5 text-blue-500">💬</div>
+                <div className="absolute bottom-1 right-1 w-4 h-4 rounded-full bg-background border border-border flex items-center justify-center shadow-sm">
+                  {notification.type === 'post_interaction' ? (
+                    <div className="w-2.5 h-2.5">
+                      {notification.metadata?.interactionType === 'like' ? '❤️' : '💬'}
+                    </div>
                   ) : notification.type === 'plan_share' ? (
-                    <div className="w-2.5 h-2.5 text-blue-500">📋</div>
+                    <div className="w-2.5 h-2.5">📝</div>
                   ) : notification.type === 'plan_invitation' ? (
-                    <div className="w-2.5 h-2.5 text-green-500">📅</div>
+                    <div className="w-2.5 h-2.5">📅</div>
                   ) : notification.type === 'plan_completion' ? (
-                    <div className="w-2.5 h-2.5 text-green-500">✅</div>
-                  ) : notification.type === 'friend_request' ? (
-                    <div className="w-2.5 h-2.5 text-purple-500">👥</div>
+                    <div className="w-2.5 h-2.5">🎉</div>
+                  ) : notification.type === 'friend_request' || notification.type === 'follow_request' ? (
+                    <div className="w-2.5 h-2.5">👋</div>
+                  ) : notification.type === 'chat_message' ? (
+                    <div className="w-2.5 h-2.5">💬</div>
                   ) : (
-                    <div className="w-2.5 h-2.5 text-muted-foreground">🔔</div>
+                    <div className="w-2.5 h-2.5">🔔</div>
                   )}
                 </div>
               )}
@@ -434,41 +454,11 @@ export default function NotificationsPage() {
               </div>
             )}
             
-            {/* Unread indicator and action button */}
+            {/* Unread indicator */}
             <div className="flex flex-col items-end gap-1">
               {!notification.isRead && (
                 <div className="w-2 h-2 rounded-full bg-primary"></div>
               )}
-              <Button 
-                size="sm" 
-                variant="ghost" 
-                className="rounded-full h-6 px-2 text-xs"
-                onClick={async (e) => {
-                  e.stopPropagation(); // Prevent click from propagating to parent
-                  if (!user) return;
-                  try {
-                    const idToken = await user.getIdToken();
-                    const response = await fetch('/api/notifications/mark-as-read', {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${idToken}`
-                      },
-                      body: JSON.stringify({ notificationId: notification.id })
-                    });
-                    if (response.ok) {
-                      // Update local state
-                      setOtherNotifications(prev => 
-                        prev.map(n => n.id === notification.id ? { ...n, isRead: true } : n)
-                      );
-                    }
-                  } catch (error) {
-                    console.error('Error marking notification as read:', error);
-                  }
-                }}
-              >
-                Mark Read
-              </Button>
             </div>
           </div>
         </li>
@@ -498,21 +488,23 @@ export default function NotificationsPage() {
           
           {/* Action Overlay Icon */}
           {notification.type !== 'system' && (
-            <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-background border border-border flex items-center justify-center">
-              {notification.type === 'post_interaction' && notification.action === 'like' ? (
-                <div className="w-2.5 h-2.5 text-red-500">❤️</div>
-              ) : notification.type === 'post_interaction' && notification.action === 'comment' ? (
-                <div className="w-2.5 h-2.5 text-blue-500">💬</div>
+            <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-background border border-border flex items-center justify-center shadow-sm">
+              {notification.type === 'post_interaction' ? (
+                <div className="w-3 h-3">
+                  {notification.metadata?.interactionType === 'like' ? '❤️' : '💬'}
+                </div>
               ) : notification.type === 'plan_share' ? (
-                <div className="w-2.5 h-2.5 text-blue-500">📋</div>
+                <div className="w-3 h-3">📝</div>
               ) : notification.type === 'plan_invitation' ? (
-                <div className="w-2.5 h-2.5 text-green-500">📅</div>
+                <div className="w-3 h-3">📅</div>
               ) : notification.type === 'plan_completion' ? (
-                <div className="w-2.5 h-2.5 text-green-500">✅</div>
-              ) : notification.type === 'friend_request' ? (
-                <div className="w-2.5 h-2.5 text-purple-500">👥</div>
+                <div className="w-3 h-3">🎉</div>
+              ) : notification.type === 'friend_request' || notification.type === 'follow_request' ? (
+                <div className="w-3 h-3">👋</div>
+              ) : notification.type === 'chat_message' ? (
+                <div className="w-3 h-3">💬</div>
               ) : (
-                <div className="w-2.5 h-2.5 text-muted-foreground">🔔</div>
+                <div className="w-3 h-3">🔔</div>
               )}
             </div>
           )}
@@ -584,41 +576,11 @@ export default function NotificationsPage() {
           </div>
         )}
         
-        {/* Unread indicator and action button */}
+        {/* Unread indicator */}
         <div className="flex flex-col items-end gap-1">
           {!notification.isRead && (
             <div className="w-2 h-2 rounded-full bg-primary"></div>
           )}
-          <Button 
-            size="sm" 
-            variant="ghost" 
-            className="rounded-full h-6 px-2 text-xs"
-              onClick={async (e) => {
-                e.stopPropagation(); // Prevent click from propagating to parent
-              if (!user) return;
-              try {
-                const idToken = await user.getIdToken();
-                const response = await fetch('/api/notifications/mark-as-read', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${idToken}`
-                  },
-                  body: JSON.stringify({ notificationId: notification.id })
-                });
-                if (response.ok) {
-                  // Update local state
-                  setOtherNotifications(prev => 
-                    prev.map(n => n.id === notification.id ? { ...n, isRead: true } : n)
-                  );
-                }
-              } catch (error) {
-                console.error('Error marking notification as read:', error);
-              }
-            }}
-          >
-            Mark Read
-          </Button>
         </div>
       </div>
     </li>
@@ -684,17 +646,19 @@ export default function NotificationsPage() {
 
   return (
     <div className="fixed inset-0 z-30 bg-background w-full h-full pb-16">
-      <div className="flex items-center p-4">
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          onClick={handleBack}
-          className="mr-3"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <h2 className="text-lg font-semibold">Notifications</h2>
-      </div>
+              <div className="flex items-center justify-between p-4">
+          <div className="flex items-center">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={handleBack}
+              className="mr-3"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <h2 className="text-lg font-semibold">Notifications</h2>
+          </div>
+        </div>
       
       {/* Tab Switcher - aligned left with icons */}
       <div className="flex items-center justify-start px-4 pt-2 pb-4 mb-6">
@@ -731,55 +695,11 @@ export default function NotificationsPage() {
               <span className="ml-2 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold px-2 py-0.5 min-w-[1.5em]">{informationalCount}</span>
             )}
           </button>
-          <button
-            onClick={() => setActiveTab('history')}
-            className={cn(
-              "px-4 py-2 text-sm font-medium transition-colors relative flex items-center gap-2",
-              activeTab === 'history'
-                ? "text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <Bell className="h-4 w-4" />
-            History
-          </button>
+
         </div>
       </div>
       
-      {/* Mark All as Read button for Other tab */}
-      {activeTab === 'other' && otherNotifications.some(n => !n.isRead) && (
-        <div className="flex justify-center px-4 pb-4">
-          <Button 
-            size="sm" 
-            variant="outline" 
-            className="rounded-full"
-            onClick={async () => {
-              if (!user) return;
-              try {
-                const idToken = await user.getIdToken();
-                const response = await fetch('/api/notifications/mark-as-read', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${idToken}`
-                  },
-                  body: JSON.stringify({ markAll: true })
-                });
-                if (response.ok) {
-                  // Update local state
-                  setOtherNotifications(prev => 
-                    prev.map(n => ({ ...n, isRead: true }))
-                  );
-                }
-              } catch (error) {
-                console.error('Error marking all notifications as read:', error);
-              }
-            }}
-          >
-            Mark All as Read
-          </Button>
-        </div>
-      )}
+
       
       <div className="flex-1 overflow-y-auto flex flex-col">
         {activeTab === 'requests' && (
@@ -817,29 +737,7 @@ export default function NotificationsPage() {
         
         {activeTab === 'other' && (
           <div className="flex-1 flex flex-col items-center justify-center px-4">
-            {/* Show only unread informational notifications */}
-            {isLoadingOtherNotifications ? (
-              <div className="text-center space-y-4 mt-32">
-                <div className="w-20 h-20 rounded-full bg-muted/20 flex items-center justify-center mx-auto">
-                  <Loader2 className="h-10 w-10 text-muted-foreground animate-spin" />
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-lg font-semibold text-foreground">Loading notifications...</h3>
-                  <p className="text-muted-foreground text-sm">Fetching your latest notifications</p>
-                </div>
-              </div>
-            ) : (
-              <div className="w-full max-w-md">
-                {notificationGroups.map(([label, key]) =>
-                  renderOtherGroup(label, groupedOtherNotifications[key].filter(isInformational))
-                )}
-              </div>
-            )}
-          </div>
-        )}
-        {activeTab === 'history' && (
-          <div className="flex-1 flex flex-col items-center justify-center px-4">
-            {/* Show all notifications, grouped by date */}
+            {/* Show all notifications */}
             {isLoadingOtherNotifications ? (
               <div className="text-center space-y-4 mt-32">
                 <div className="w-20 h-20 rounded-full bg-muted/20 flex items-center justify-center mx-auto">
@@ -859,6 +757,7 @@ export default function NotificationsPage() {
             )}
           </div>
         )}
+
       </div>
     </div>
   );

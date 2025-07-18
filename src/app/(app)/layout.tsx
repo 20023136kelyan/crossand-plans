@@ -68,6 +68,7 @@ import { getFriendUidsAdmin } from '@/services/userService.server';
 import { getCompletedPlansAdmin } from '@/services/planService.server';
 import { getPendingPlanSharesForUser, getPendingPlanInvitationsCount, getUserChats, getUserPlans } from '@/services/clientServices';
 import { UpcomingPlansCalendar } from '@/components/plans/UpcomingPlansCalendar';
+import { FCMTokenRegistration } from '@/components/FCMTokenRegistration';
 
 async function canvasPreview(
   image: HTMLImageElement,
@@ -1139,6 +1140,9 @@ export default function AppLayout({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        
+        {/* FCM Token Registration */}
+        <FCMTokenRegistration />
       </div>
     </GoogleMapsProvider>
   );
