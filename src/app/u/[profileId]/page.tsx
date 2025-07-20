@@ -17,10 +17,10 @@ import { useToast } from "@/hooks/use-toast";
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { 
   fetchPublicUserProfileDataAction, 
-  sendFriendRequestAction, 
-  acceptFriendRequestAction, 
-  declineFriendRequestAction, 
-  removeFriendAction 
+  followUserAction, 
+  approveFollowRequestAction, 
+  denyFollowRequestAction, 
+  unfollowUserAction 
 } from '@/app/actions/userActions';
 import { getFriendships } from '@/services/clientServices';
 import { initiateDirectChatAction } from '@/app/actions/chatActions';
@@ -166,11 +166,11 @@ export default function PublicProfilePage() {
       };
 
       switch (actionType) {
-        case 'send': result = await sendFriendRequestAction(userProfile.uid, idToken); break;
-        case 'accept': result = await acceptFriendRequestAction(userProfile.uid, idToken); break;
+        case 'send': result = await followUserAction(userProfile.uid, idToken); break;
+        case 'accept': result = await approveFollowRequestAction(userProfile.uid, idToken); break;
         case 'decline':
-        case 'cancel': result = await declineFriendRequestAction(userProfile.uid, idToken); break;
-        case 'remove': result = await removeFriendAction(userProfile.uid, idToken); break;
+        case 'cancel': result = await denyFollowRequestAction(userProfile.uid, idToken); break;
+        case 'remove': result = await unfollowUserAction(userProfile.uid, idToken); break;
         default: setFriendActionLoading(false); return;
       }
 

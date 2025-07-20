@@ -1,4 +1,5 @@
 
+import 'server-only';
 import { auth as firebaseAuth } from './firebase';
 import { cookies } from 'next/headers';
 import { authAdmin } from './firebaseAdmin';

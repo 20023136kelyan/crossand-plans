@@ -34,6 +34,7 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
+import { createListenerWithRetry, getCollectionFallback } from '@/lib/firebaseListenerUtils';
 import { VerificationBadge } from '@/components/ui/verification-badge';
 import type { UserRoleType } from '@/types/user';
 import { Badge } from '@/components/ui/badge';
@@ -87,11 +88,14 @@ export default function PlanComments({
   useEffect(() => {
     if (!planId) return;
     setLoading(true);
+    
     const q = query(
       collection(db!, 'plans', planId, 'comments'),
       orderBy('createdAt', 'asc')
     );
-    const unsub = onSnapshot(q, (snapshot) => {
+    
+    const listener = createListenerWithRetry(
+      () => onSnapshot(q, (snapshot) => {
       const fetchedComments = snapshot.docs.map((doc) => ({ 
         id: doc.id, 
         ...doc.data() 
@@ -108,8 +112,19 @@ export default function PlanComments({
       
       setComments(fetchedComments);
       setLoading(false);
-    });
-    return () => unsub();
+      }),
+      (comments) => {
+        setComments(comments);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Error listening to comments:', error);
+        setLoading(false);
+      },
+      () => getCollectionFallback<Comment>(`plans/${planId}/comments`, [orderBy('createdAt', 'asc')])
+    );
+    
+    return () => listener.unsubscribe();
   }, [planId]);
 
   // Add comment

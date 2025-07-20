@@ -29,7 +29,8 @@ export async function GET(
     }
 
     const currentUserId = decodedClaims.uid;
-    const requestedUserId = params.userId;
+    // Await params before accessing userId
+    const { userId: requestedUserId } = await params;
 
     // Check if userId is provided
     if (!requestedUserId) {

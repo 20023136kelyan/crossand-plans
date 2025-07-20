@@ -52,9 +52,11 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // --- Users Collection ---
+    // --- Users Collection (User Profiles) ---
+    // Users can read and write their own profile data
+    // Admins can read and write all user profiles
     match /users/{userId} {
-      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow read: if isAuthenticated();
       allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
 
       // Allow users to read/write their own notifications, restrict updates, and allow only admin deletes
@@ -84,13 +86,9 @@ service cloud.firestore {
       }
     }
     
-    // --- User Profiles Collection ---
-    match /userProfiles/{userId} {
-      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
-      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
-    }
-    
     // --- User Stats Collection ---
+    // Stats are read by users and admins, but only written by system/admins
+    // This prevents users from manipulating their own stats
     match /userStats/{userId} {
       allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
       // Only admins and system can write to stats
@@ -98,12 +96,17 @@ service cloud.firestore {
     }
     
     // --- User Notification Preferences Collection ---
+    // Users can read and write their own notification preferences
+    // Admins can read all preferences for support purposes
     match /userNotificationPreferences/{userId} {
       allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
       allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
     }
     
     // --- User Security Collection (for 2FA) ---
+    // Users can read their own security settings
+    // Only admins can write to prevent security bypasses
+    // 2FA operations should go through secure API endpoints
     match /userSecurity/{userId} {
       allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
       // Only allow reads by the user, writes should go through the API for security
@@ -278,7 +281,9 @@ service cloud.firestore {
       }
     }
 
-    // Only the user can read their own subscription, admins can read all
+    // --- Subscriptions Collection ---
+    // Users can read their own subscription data
+    // Only admins can write to prevent subscription manipulation
     match /subscriptions/{subscriptionId} {
       allow read: if isAuthenticated() && (
         resource.data.userId == request.auth.uid || isAdmin()

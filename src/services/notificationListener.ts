@@ -1,5 +1,6 @@
 import { onSnapshot, collection, query, orderBy, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { createListenerWithRetry, getCollectionFallback } from '@/lib/firebaseListenerUtils';
 
 export interface NotificationListener {
   unsubscribe: () => void;
@@ -21,7 +22,8 @@ export function listenToNotifications(
     orderBy('createdAt', 'desc')
   );
 
-  const unsubscribe = onSnapshot(
+  const listener = createListenerWithRetry(
+    () => onSnapshot(
     notificationsQuery,
     (snapshot) => {
       const notifications = snapshot.docs.map(doc => ({
@@ -29,11 +31,14 @@ export function listenToNotifications(
         ...doc.data()
       }));
       onUpdate(notifications);
-    },
-    onError
+      }
+    ),
+    onUpdate,
+    onError,
+    () => getCollectionFallback(`users/${userId}/notifications`, [orderBy('createdAt', 'desc')])
   );
 
-  return { unsubscribe };
+  return { unsubscribe: listener.unsubscribe };
 }
 
 export function listenToUnreadNotifications(
@@ -52,13 +57,20 @@ export function listenToUnreadNotifications(
     where('isRead', '==', false)
   );
 
-  const unsubscribe = onSnapshot(
+  const listener = createListenerWithRetry(
+    () => onSnapshot(
     unreadQuery,
     (snapshot) => {
       onUpdate(snapshot.docs.length);
-    },
-    onError
+      }
+    ),
+    onUpdate,
+    onError,
+    async () => {
+      const docs = await getCollectionFallback(`users/${userId}/notifications`, [where('isRead', '==', false)]);
+      return docs.length;
+    }
   );
 
-  return { unsubscribe };
+  return { unsubscribe: listener.unsubscribe };
 } 

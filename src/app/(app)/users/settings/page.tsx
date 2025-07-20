@@ -26,6 +26,7 @@ import type { UserProfile } from '@/types/user';
 // Import Firebase
 import { db, auth, serverTimestamp } from '@/lib/firebase';
 import { doc, getDoc, updateDoc, setDoc, onSnapshot, collection, query, where, orderBy, limit } from 'firebase/firestore';
+import { createListenerWithRetry, getDocumentFallback, getCollectionFallback } from '@/lib/firebaseListenerUtils';
 import { 
   EmailAuthProvider, 
   reauthenticateWithCredential, 
@@ -244,13 +245,27 @@ export default function SettingsPage() {
     
     const unsubscribers: Array<() => void> = [];
     
-    // Listen for user profile changes
-    const userProfileRef = doc(db, 'userProfiles', user.uid);
-    const profileUnsubscribe = onSnapshot(userProfileRef, (docSnapshot) => {
-      if (docSnapshot.exists()) {
-        const profileData = docSnapshot.data() as UserProfile;
-        
-        // Update the local state with the new profile data
+    // Listen for user profile changes using shared service
+    const userProfileRef = doc(db, 'users', user.uid);
+    const profileListener = createListenerWithRetry(
+      () => onSnapshot(userProfileRef, (docSnapshot) => {
+        if (docSnapshot.exists()) {
+          const profileData = docSnapshot.data() as UserProfile;
+          
+          // Update the local state with the new profile data
+          setUserData(prevData => {
+            if (!prevData) return prevData;
+            return {
+              ...prevData,
+              userProfile: profileData
+            };
+          });
+          
+          // Update form data using memoized function
+          updateProfileForm(profileData);
+        }
+      }),
+      (profileData: UserProfile) => {
         setUserData(prevData => {
           if (!prevData) return prevData;
           return {
@@ -258,16 +273,19 @@ export default function SettingsPage() {
             userProfile: profileData
           };
         });
-        
-        // Update form data using memoized function
         updateProfileForm(profileData);
+      },
+      (error) => {
+        console.error('Error listening to profile changes:', error);
+      },
+      async () => {
+        const doc = await getDocumentFallback(`users/${user.uid}`);
+        return doc as UserProfile;
       }
-    }, (error) => {
-      console.error('Error listening to profile changes:', error);
-    });
-    unsubscribers.push(profileUnsubscribe);
+    );
+    unsubscribers.push(profileListener.unsubscribe);
     
-    // Listen for subscription changes
+    // Listen for subscription changes using shared service
     const subscriptionsQuery = query(
       collection(db, 'subscriptions'),
       where('userId', '==', user.uid),
@@ -275,29 +293,62 @@ export default function SettingsPage() {
       limit(1)
     );
     
-    const subscriptionUnsubscribe = onSnapshot(subscriptionsQuery, (querySnapshot) => {
-      const subscriptionData = !querySnapshot.empty 
-        ? querySnapshot.docs[0].data() as Subscription 
-        : null;
-      
-      setUserData(prevData => {
-        if (!prevData) return prevData;
-        return {
-          ...prevData,
-          subscription: subscriptionData
-        };
-      });
-    }, (error) => {
-      console.error('Error listening to subscription changes:', error);
-    });
-    unsubscribers.push(subscriptionUnsubscribe);
-    
-    // Listen for user stats changes
-    const userStatsRef = doc(db, 'userStats', user.uid);
-    const userStatsUnsubscribe = onSnapshot(userStatsRef, (docSnapshot) => {
-      if (docSnapshot.exists()) {
-        const statsData = docSnapshot.data();
+    const subscriptionListener = createListenerWithRetry(
+      () => onSnapshot(subscriptionsQuery, (querySnapshot) => {
+        const subscriptionData = !querySnapshot.empty 
+          ? querySnapshot.docs[0].data() as Subscription 
+          : null;
         
+        setUserData(prevData => {
+          if (!prevData) return prevData;
+          return {
+            ...prevData,
+            subscription: subscriptionData
+          };
+        });
+      }),
+      (subscriptionData: Subscription | null) => {
+        setUserData(prevData => {
+          if (!prevData) return prevData;
+          return {
+            ...prevData,
+            subscription: subscriptionData
+          };
+        });
+      },
+      (error) => {
+        console.error('Error listening to subscription changes:', error);
+      },
+      async () => {
+        const docs = await getCollectionFallback('subscriptions', [
+          where('userId', '==', user.uid),
+          where('status', '==', 'active'),
+          limit(1)
+        ]);
+        return docs.length > 0 ? docs[0] as Subscription : null;
+      }
+    );
+    unsubscribers.push(subscriptionListener.unsubscribe);
+    
+    // Listen for user stats changes using shared service
+    const userStatsRef = doc(db, 'userStats', user.uid);
+    const userStatsListener = createListenerWithRetry(
+      () => onSnapshot(userStatsRef, (docSnapshot) => {
+        if (docSnapshot.exists()) {
+          const statsData = docSnapshot.data();
+          
+          setUserData(prevData => {
+            if (!prevData) return prevData;
+            const newActivityScore = calculateActivityScore(statsData, prevData.userProfile);
+            return {
+              ...prevData,
+              userStats: statsData,
+              activityScore: newActivityScore
+            };
+          });
+        }
+      }),
+      (statsData: any) => {
         setUserData(prevData => {
           if (!prevData) return prevData;
           const newActivityScore = calculateActivityScore(statsData, prevData.userProfile);
@@ -307,29 +358,49 @@ export default function SettingsPage() {
             activityScore: newActivityScore
           };
         });
+      },
+      (error) => {
+        console.error('Error listening to user stats changes:', error);
+      },
+      async () => {
+        const doc = await getDocumentFallback(`userStats/${user.uid}`);
+        return doc;
       }
-    }, (error) => {
-      console.error('Error listening to user stats changes:', error);
-    });
-    unsubscribers.push(userStatsUnsubscribe);
+    );
+    unsubscribers.push(userStatsListener.unsubscribe);
     
-    // Listen for notification preferences
+    // Listen for notification preferences using shared service
     const notificationPrefsRef = doc(db, 'userNotificationPreferences', user.uid);
-    const notificationPrefsUnsubscribe = onSnapshot(notificationPrefsRef, (docSnapshot) => {
-      if (docSnapshot.exists()) {
-        const prefsData = docSnapshot.data();
-        
+    const notificationPrefsListener = createListenerWithRetry(
+      () => onSnapshot(notificationPrefsRef, (docSnapshot) => {
+        if (docSnapshot.exists()) {
+          const prefsData = docSnapshot.data();
+          
+          setNotifications({
+            email: prefsData.emailNotifications ?? true,
+            push: prefsData.pushNotifications ?? true,
+            planReminders: prefsData.planReminders ?? true,
+            marketing: prefsData.marketingEmails ?? false
+          });
+        }
+      }),
+      (prefsData: any) => {
         setNotifications({
           email: prefsData.emailNotifications ?? true,
           push: prefsData.pushNotifications ?? true,
           planReminders: prefsData.planReminders ?? true,
           marketing: prefsData.marketingEmails ?? false
         });
+      },
+      (error) => {
+        console.error('Error listening to notification preferences changes:', error);
+      },
+      async () => {
+        const doc = await getDocumentFallback(`userNotificationPreferences/${user.uid}`);
+        return doc;
       }
-    }, (error) => {
-      console.error('Error listening to notification preferences changes:', error);
-    });
-    unsubscribers.push(notificationPrefsUnsubscribe);
+    );
+    unsubscribers.push(notificationPrefsListener.unsubscribe);
     
     // Return cleanup function that unsubscribes from all listeners
     return () => {
@@ -348,6 +419,18 @@ export default function SettingsPage() {
       if (!user) return;
       
       try {
+        // First, ensure default collections exist
+        try {
+          const idToken = await user.getIdToken();
+          await fetch('/api/users/create-missing-collections', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${idToken}` }
+          });
+        } catch (error) {
+          console.warn('Could not create missing collections:', error);
+          // Continue anyway - this is not critical
+        }
+        
         // Try to fetch from the API first for initial data
         const response = await fetch('/api/subscriptions/user-data');
         if (response.ok) {
@@ -483,7 +566,7 @@ export default function SettingsPage() {
     
     // Update profile in Firestore
     if (db) {
-      const profileRef = doc(db, 'userProfiles', user.uid);
+      const profileRef = doc(db, 'users', user.uid);
       
       await updateDoc(profileRef, {
         name: profileForm.name,

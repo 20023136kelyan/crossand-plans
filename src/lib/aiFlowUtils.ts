@@ -23,8 +23,8 @@ export const createPlanObject = (planData: any, input: any): Plan => {
     location: planData?.location || input.locationQuery,
     primaryLocation: planData?.primaryLocation || undefined,
     city: planData?.city || 'Unknown City',
-    eventType: planData?.eventType || 'Social',
-    eventTypeLowercase: (planData?.eventType || 'social').toLowerCase(),
+    eventType: input.eventType || 'planned-event',
+    eventTypeLowercase: ((input.eventType || 'planned-event') as string).toLowerCase(),
     priceRange: planData?.priceRange || '$',
     hostId: input.hostProfile.uid,
     hostName: input.hostProfile.name || undefined,
@@ -46,7 +46,7 @@ export const createPlanObject = (planData: any, input: any): Plan => {
     participantResponses: {},
     participantRSVPDetails: {},
     rsvpSettings: undefined,
-    waitlist: [],
+    waitlist: planData?.waitlist || [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     coordinates: undefined,
@@ -62,17 +62,18 @@ export const createPlanObject = (planData: any, input: any): Plan => {
     likesCount: 0,
     sharesCount: 0,
     savesCount: 0,
-    type: 'regular',
-    isCompleted: false,
-    completedAt: undefined,
-    completionConfirmedBy: [],
-    highlightsEnabled: false,
-    isTemplate: false,
-    templateOriginalHostId: undefined,
-    templateOriginalHostName: undefined,
-    waitlistUserIds: [],
-    privateNotes: null,
-  };
+    images: planData?.images || [],
+    comments: planData?.comments || [],
+    type: planData?.type || 'regular',
+    isCompleted: planData?.isCompleted || false,
+    completedAt: planData?.completedAt || undefined,
+    completionConfirmedBy: planData?.completionConfirmedBy || [],
+    highlightsEnabled: planData?.highlightsEnabled || false,
+    isTemplate: planData?.isTemplate || false,
+    templateOriginalHostId: planData?.templateOriginalHostId || undefined,
+    privateNotes: planData?.privateNotes || null,
+    // Add any additional required fields from Plan type here
+  } as Plan;
 };
 
 // Shared AI output processing
@@ -272,6 +273,10 @@ export const processAIOutput = async (output: any, input: any): Promise<Plan> =>
     updatedAt: finalPlan.updatedAt || basePlan.updatedAt,
   };
 
+  // Ensure images and comments are always arrays
+  enhancedPlan.images = enhancedPlan.images || [];
+  enhancedPlan.comments = enhancedPlan.comments || [];
+
   return enhancedPlan;
 }; 
 
@@ -307,7 +312,9 @@ export const createFallbackPlan = (input: any): Plan => {
     averageRating: null,
     reviewCount: 0,
     photoHighlights: [],
-    participantResponses: {}
+    participantResponses: {},
+    images: [],
+    comments: [],
   };
   
   return fallbackPlan as Plan;

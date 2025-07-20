@@ -15,6 +15,7 @@ import {
   limit,
   Unsubscribe 
 } from 'firebase/firestore';
+import { createListenerWithRetry, getCollectionFallback, retryWithBackoff } from '@/lib/firebaseListenerUtils';
 import type { 
   UserProfile, 
   FriendEntry, 
@@ -50,7 +51,8 @@ export function getFriendships(
   try {
     const friendshipsRef = collection(getDb(), 'users', userId, 'friendships');
     
-    return onSnapshot(
+    const listener = createListenerWithRetry(
+      () => onSnapshot(
       friendshipsRef,
       (snapshot) => {
         try {
@@ -72,11 +74,14 @@ export function getFriendships(
         } catch (error) {
           onError?.(error instanceof Error ? error : new Error('Failed to process friendships'));
         }
-      },
-      (error) => {
-        onError?.(error instanceof Error ? error : new Error('Friendships subscription failed'));
       }
+      ),
+      onUpdate,
+      (error) => onError?.(error instanceof Error ? error : new Error('Friendships subscription failed')),
+      () => getCollectionFallback(`users/${userId}/friendships`)
     );
+
+    return listener.unsubscribe;
   } catch (error) {
     onError?.(error instanceof Error ? error : new Error('Failed to initialize friendships subscription'));
     return () => {};
@@ -103,7 +108,8 @@ export function getUserChats(
       orderBy('lastMessageTimestamp', 'desc')
     );
 
-    return onSnapshot(
+    const listener = createListenerWithRetry(
+      () => onSnapshot(
       chatsQuery,
       (snapshot) => {
         try {
@@ -129,11 +135,17 @@ export function getUserChats(
         } catch (error) {
           onError?.(error instanceof Error ? error : new Error('Failed to process chats'));
         }
-      },
-      (error) => {
-        onError?.(error instanceof Error ? error : new Error('Chats subscription failed'));
-      }
+        }
+      ),
+      onUpdate,
+      (error) => onError?.(error instanceof Error ? error : new Error('Chats subscription failed')),
+      () => getCollectionFallback('chats', [
+        where('participants', 'array-contains', userId),
+        orderBy('lastMessageTimestamp', 'desc')
+      ])
     );
+
+    return listener.unsubscribe;
   } catch (error) {
     onError?.(error instanceof Error ? error : new Error('Failed to initialize chats subscription'));
     return () => {};
@@ -161,7 +173,8 @@ export function getPendingPlanSharesForUser(
       orderBy('createdAt', 'desc')
     );
 
-    return onSnapshot(
+    const listener = createListenerWithRetry(
+      () => onSnapshot(
       sharesQuery,
       (snapshot) => {
         try {
@@ -176,11 +189,18 @@ export function getPendingPlanSharesForUser(
         } catch (error) {
           onError?.(error instanceof Error ? error : new Error('Failed to process plan shares'));
         }
-      },
-      (error) => {
-        onError?.(error instanceof Error ? error : new Error('Plan shares subscription failed'));
-      }
+        }
+      ),
+      onUpdate,
+      (error) => onError?.(error instanceof Error ? error : new Error('Plan shares subscription failed')),
+      () => getCollectionFallback('planShares', [
+        where('inviteeId', '==', userId),
+        where('status', '==', 'pending'),
+        orderBy('createdAt', 'desc')
+      ])
     );
+
+    return listener.unsubscribe;
   } catch (error) {
     onError?.(error instanceof Error ? error : new Error('Failed to initialize plan shares subscription'));
     return () => {};
@@ -207,7 +227,8 @@ export function getPendingPlanInvitationsCount(
       where('status', '==', 'published')
     );
 
-    return onSnapshot(
+    const listener = createListenerWithRetry(
+      () => onSnapshot(
       invitationsQuery,
       (snapshot) => {
         try {
@@ -228,11 +249,31 @@ export function getPendingPlanInvitationsCount(
         } catch (error) {
           onError?.(error instanceof Error ? error : new Error('Failed to count invitations'));
         }
-      },
-      (error) => {
-        onError?.(error instanceof Error ? error : new Error('Invitations count subscription failed'));
+        }
+      ),
+      onUpdate,
+      (error) => onError?.(error instanceof Error ? error : new Error('Invitations count subscription failed')),
+      async () => {
+        const docs = await getCollectionFallback('plans', [
+          where('invitedUsers', 'array-contains', userId),
+          where('status', '==', 'published')
+        ]);
+        
+        let count = 0;
+        const now = new Date();
+        
+        docs.forEach((doc: any) => {
+          const eventTime = doc.eventTime?.toDate?.() || new Date(doc.eventTime);
+          if (eventTime > now) {
+            count++;
+      }
+        });
+        
+        return count;
       }
     );
+
+    return listener.unsubscribe;
   } catch (error) {
     onError?.(error instanceof Error ? error : new Error('Failed to initialize invitations count subscription'));
     return () => {};
@@ -258,7 +299,8 @@ export function getPostComments(
       orderBy('createdAt', 'asc')
     );
 
-    return onSnapshot(
+    const listener = createListenerWithRetry(
+      () => onSnapshot(
       commentsQuery,
       (snapshot) => {
         try {
@@ -300,11 +342,14 @@ export function getPostComments(
         } catch (error) {
           onError?.(error instanceof Error ? error : new Error('Failed to process comments'));
         }
-      },
-      (error) => {
-        onError?.(error instanceof Error ? error : new Error('Comments subscription failed'));
       }
+      ),
+      onUpdate,
+      (error) => onError?.(error instanceof Error ? error : new Error('Comments subscription failed')),
+      () => getCollectionFallback(`feedPosts/${postId}/comments`, [orderBy('createdAt', 'asc')])
     );
+
+    return listener.unsubscribe;
   } catch (error) {
     onError?.(error instanceof Error ? error : new Error('Failed to initialize comments subscription'));
     return () => {};
@@ -333,7 +378,8 @@ export function getCompletedPlansForParticipant(
       limit(50)
     );
 
-    return onSnapshot(
+    const listener = createListenerWithRetry(
+      () => onSnapshot(
       plansQuery,
       (snapshot) => {
         try {
@@ -354,11 +400,19 @@ export function getCompletedPlansForParticipant(
         } catch (error) {
           onError?.(error instanceof Error ? error : new Error('Failed to process completed plans'));
         }
-      },
-      (error) => {
-        onError?.(error instanceof Error ? error : new Error('Completed plans subscription failed'));
-      }
+        }
+      ),
+      onUpdate,
+      (error) => onError?.(error instanceof Error ? error : new Error('Completed plans subscription failed')),
+      () => getCollectionFallback('plans', [
+        where('participantIds', 'array-contains', userId),
+        where('status', '==', 'completed'),
+        orderBy('completionTimestamp', 'desc'),
+        limit(50)
+      ])
     );
+
+    return listener.unsubscribe;
   } catch (error) {
     onError?.(error instanceof Error ? error : new Error('Failed to initialize completed plans subscription'));
     return () => {};
@@ -381,8 +435,8 @@ export function getUserPlansSubscription(
 
   try {
     const plansMap = new Map<string, Plan>();
-    let hostedUnsubscribe: Unsubscribe | null = null;
-    let invitedUnsubscribe: Unsubscribe | null = null;
+    let hostedListener: any = null;
+    let invitedListener: any = null;
 
     const updatePlans = () => {
       const plans = Array.from(plansMap.values()).sort((a, b) => {
@@ -393,7 +447,46 @@ export function getUserPlansSubscription(
       onUpdate(plans);
     };
 
-    // Subscribe to hosted plans
+    const createPlanFromData = (doc: any, data: any): Plan => ({
+      id: doc.id,
+      name: data.name || 'Untitled Plan',
+      description: data.description || null,
+      eventTime: data.eventTime || '',
+      location: data.location || '',
+      city: data.city || '',
+      eventType: data.eventType || null,
+      eventTypeLowercase: data.eventTypeLowercase || (data.eventType || '').toLowerCase(),
+      priceRange: data.priceRange || '$',
+      hostId: data.hostId || '',
+      hostName: data.hostName || null,
+      hostAvatarUrl: data.hostAvatarUrl || null,
+      invitedParticipantUserIds: data.invitedParticipantUserIds || [],
+      participantUserIds: data.participantUserIds || [],
+      participantResponses: data.participantResponses || {},
+      waitlist: data.waitlist || [],
+      itinerary: data.itinerary?.map((item: any) => ({
+        ...item,
+        startTime: item.startTime || null,
+        endTime: item.endTime || null,
+      })) || [],
+      status: data.status || 'draft',
+      planType: data.planType || 'single-stop',
+      originalPlanId: data.originalPlanId || null,
+      sharedByUid: data.sharedByUid || null,
+      averageRating: data.averageRating === undefined ? null : data.averageRating,
+      reviewCount: data.reviewCount === undefined ? 0 : data.reviewCount,
+      photoHighlights: data.photoHighlights || [],
+      images: data.images || [],
+      comments: data.comments || [],
+      createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || '',
+      updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || '',
+      coordinates: data.coordinates || undefined,
+      completedAt: data.completedAt || undefined,
+      completionConfirmedBy: data.completionConfirmedBy || [],
+      isTemplate: data.isTemplate || false,
+    });
+
+    // Subscribe to hosted plans using shared service
     const hostedQuery = query(
       collection(getDb(), 'plans'),
       where('hostId', '==', userId),
@@ -401,9 +494,8 @@ export function getUserPlansSubscription(
       limit(50)
     );
 
-    hostedUnsubscribe = onSnapshot(
-      hostedQuery,
-      (snapshot) => {
+    hostedListener = createListenerWithRetry(
+      () => onSnapshot(hostedQuery, (snapshot) => {
         try {
           // Clear hosted plans and re-add them
           for (const [planId, plan] of plansMap.entries()) {
@@ -414,44 +506,7 @@ export function getUserPlansSubscription(
 
           snapshot.forEach((doc) => {
             const data = doc.data();
-            const plan: Plan = {
-              id: doc.id,
-              name: data.name || 'Untitled Plan',
-              description: data.description || null,
-              eventTime: data.eventTime || '',
-              location: data.location || '',
-              city: data.city || '',
-              eventType: data.eventType || null,
-              eventTypeLowercase: data.eventTypeLowercase || (data.eventType || '').toLowerCase(),
-              priceRange: data.priceRange || '$',
-              hostId: data.hostId || '',
-              hostName: data.hostName || null,
-              hostAvatarUrl: data.hostAvatarUrl || null,
-              invitedParticipantUserIds: data.invitedParticipantUserIds || [],
-              participantUserIds: data.participantUserIds || [],
-              participantResponses: data.participantResponses || {},
-              waitlistUserIds: data.waitlistUserIds || [],
-              itinerary: data.itinerary?.map((item: any) => ({
-                ...item,
-                startTime: item.startTime || null,
-                endTime: item.endTime || null,
-              })) || [],
-              status: data.status || 'draft',
-              planType: data.planType || 'single-stop',
-              originalPlanId: data.originalPlanId || null,
-              sharedByUid: data.sharedByUid || null,
-              averageRating: data.averageRating === undefined ? null : data.averageRating,
-              reviewCount: data.reviewCount === undefined ? 0 : data.reviewCount,
-              photoHighlights: data.photoHighlights || [],
-              images: data.images || [],
-              comments: data.comments || [],
-              createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || '',
-              updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || '',
-              coordinates: data.coordinates || undefined,
-              completedAt: data.completedAt || undefined,
-              completionConfirmedBy: data.completionConfirmedBy || [],
-              isTemplate: data.isTemplate || false,
-            };
+            const plan = createPlanFromData(doc, data);
             plansMap.set(plan.id, plan);
           });
 
@@ -459,13 +514,37 @@ export function getUserPlansSubscription(
         } catch (error) {
           onError?.(error instanceof Error ? error : new Error('Failed to process hosted plans'));
         }
-      },
-      (error) => {
-        onError?.(error instanceof Error ? error : new Error('Hosted plans subscription failed'));
+      }),
+      updatePlans,
+      (error) => onError?.(error instanceof Error ? error : new Error('Hosted plans subscription failed')),
+      async () => {
+        const docs = await getCollectionFallback('plans', [
+          where('hostId', '==', userId),
+          orderBy('eventTime', 'desc'),
+          limit(50)
+        ]);
+        
+        // Clear hosted plans and re-add them
+        for (const [planId, plan] of plansMap.entries()) {
+          if (plan.hostId === userId) {
+            plansMap.delete(planId);
+          }
+        }
+
+        docs.forEach((doc: any) => {
+          const plan = createPlanFromData(doc, doc);
+          plansMap.set(plan.id, plan);
+        });
+
+        return Array.from(plansMap.values()).sort((a, b) => {
+          const timeA = new Date(a.eventTime).getTime();
+          const timeB = new Date(b.eventTime).getTime();
+          return timeB - timeA; // Newest first
+        });
       }
     );
 
-    // Subscribe to invited plans
+    // Subscribe to invited plans using shared service
     const invitedQuery = query(
       collection(getDb(), 'plans'),
       where('invitedParticipantUserIds', 'array-contains', userId),
@@ -473,9 +552,8 @@ export function getUserPlansSubscription(
       limit(50)
     );
 
-    invitedUnsubscribe = onSnapshot(
-      invitedQuery,
-      (snapshot) => {
+    invitedListener = createListenerWithRetry(
+      () => onSnapshot(invitedQuery, (snapshot) => {
         try {
           // Clear invited plans and re-add them (but keep hosted ones)
           for (const [planId, plan] of plansMap.entries()) {
@@ -489,45 +567,7 @@ export function getUserPlansSubscription(
             // Skip if this is already added as a hosted plan
             if (data.hostId === userId) return;
 
-            const plan: Plan = {
-              id: doc.id,
-              name: data.name || 'Untitled Plan',
-              description: data.description || null,
-              eventTime: data.eventTime || '',
-              location: data.location || '',
-              city: data.city || '',
-              eventType: data.eventType || null,
-              eventTypeLowercase: data.eventTypeLowercase || (data.eventType || '').toLowerCase(),
-              priceRange: data.priceRange || '$',
-              hostId: data.hostId || '',
-              hostName: data.hostName || null,
-              hostAvatarUrl: data.hostAvatarUrl || null,
-              invitedParticipantUserIds: data.invitedParticipantUserIds || [],
-              participantUserIds: data.participantUserIds || [],
-              participantResponses: data.participantResponses || {},
-              waitlistUserIds: data.waitlistUserIds || [],
-              itinerary: data.itinerary?.map((item: any) => ({
-                ...item,
-                startTime: item.startTime || null,
-                endTime: item.endTime || null,
-              })) || [],
-              status: data.status || 'draft',
-              planType: data.planType || 'single-stop',
-              originalPlanId: data.originalPlanId || null,
-              sharedByUid: data.sharedByUid || null,
-              averageRating: data.averageRating === undefined ? null : data.averageRating,
-              reviewCount: data.reviewCount === undefined ? 0 : data.reviewCount,
-              photoHighlights: data.photoHighlights || [],
-              // Required fields from interface
-              images: data.images || [], 
-              comments: data.comments || [],
-              createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || '',
-              updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || '',
-              coordinates: data.coordinates || undefined,
-              completedAt: data.completedAt || undefined,
-              completionConfirmedBy: data.completionConfirmedBy || [],
-              isTemplate: data.isTemplate || false,
-            };
+            const plan = createPlanFromData(doc, data);
             plansMap.set(plan.id, plan);
           });
 
@@ -535,16 +575,44 @@ export function getUserPlansSubscription(
         } catch (error) {
           onError?.(error instanceof Error ? error : new Error('Failed to process invited plans'));
         }
-      },
-      (error) => {
-        onError?.(error instanceof Error ? error : new Error('Invited plans subscription failed'));
+      }),
+      updatePlans,
+      (error) => onError?.(error instanceof Error ? error : new Error('Invited plans subscription failed')),
+      async () => {
+        const docs = await getCollectionFallback('plans', [
+          where('invitedParticipantUserIds', 'array-contains', userId),
+          orderBy('eventTime', 'desc'),
+          limit(50)
+        ]);
+        
+        // Clear invited plans and re-add them (but keep hosted ones)
+        for (const [planId, plan] of plansMap.entries()) {
+          if (plan.hostId !== userId && plan.invitedParticipantUserIds.includes(userId)) {
+            plansMap.delete(planId);
+          }
+        }
+
+        docs.forEach((doc: any) => {
+          const data = doc;
+          // Skip if this is already added as a hosted plan
+          if (data.hostId === userId) return;
+
+          const plan = createPlanFromData(doc, data);
+          plansMap.set(plan.id, plan);
+        });
+
+        return Array.from(plansMap.values()).sort((a, b) => {
+          const timeA = new Date(a.eventTime).getTime();
+          const timeB = new Date(b.eventTime).getTime();
+          return timeB - timeA; // Newest first
+        });
       }
     );
 
     // Return combined unsubscribe function
     return () => {
-      hostedUnsubscribe?.();
-      invitedUnsubscribe?.();
+      hostedListener?.unsubscribe?.();
+      invitedListener?.unsubscribe?.();
     };
 
   } catch (error) {
@@ -574,7 +642,8 @@ export function getPostInteractionsForUser(
       orderBy('createdAt', 'desc')
     );
 
-    return onSnapshot(
+    const listener = createListenerWithRetry(
+      () => onSnapshot(
       postsQuery,
       (postsSnapshot) => {
         try {
@@ -635,11 +704,61 @@ export function getPostInteractionsForUser(
         } catch (error) {
           onError?.(error instanceof Error ? error : new Error('Failed to process post interactions'));
         }
-      },
-      (error) => {
-        onError?.(error instanceof Error ? error : new Error('Post interactions subscription failed'));
+        }
+      ),
+      onUpdate,
+      (error) => onError?.(error instanceof Error ? error : new Error('Post interactions subscription failed')),
+      async () => {
+        const docs = await getCollectionFallback('feedPosts', [
+          where('userId', '==', userId),
+          orderBy('createdAt', 'desc')
+        ]);
+        
+        const interactions: any[] = [];
+        
+        docs.forEach((postData: any) => {
+          const postId = postData.id;
+          
+          // Track likes on this post
+          if (postData.likedBy && postData.likedBy.length > 0) {
+            postData.likedBy.forEach((likerId: string) => {
+              if (likerId !== userId) {
+                interactions.push({
+                  id: `like_${postId}_${likerId}`,
+                  type: 'post_like',
+                  postId: postId,
+                  postTitle: postData.text || 'Your post',
+                  postMediaUrl: postData.mediaUrl,
+                  interactorId: likerId,
+                  interactionType: 'like',
+                  timestamp: postData.updatedAt || postData.createdAt,
+                  isRead: false
+                });
+              }
+            });
+          }
+          
+          // Track comments on this post
+          if (postData.commentsCount && postData.commentsCount > 0) {
+            interactions.push({
+              id: `comment_${postId}`,
+              type: 'post_comment',
+              postId: postId,
+              postTitle: postData.text || 'Your post',
+              postMediaUrl: postData.mediaUrl,
+              commentCount: postData.commentsCount,
+              interactionType: 'comment',
+              timestamp: postData.updatedAt || postData.createdAt,
+              isRead: false
+            });
+          }
+        });
+        
+        return interactions;
       }
     );
+
+    return listener.unsubscribe;
   } catch (error) {
     onError?.(error instanceof Error ? error : new Error('Failed to initialize post interactions subscription'));
     return () => {};
@@ -667,13 +786,17 @@ export async function getUserSavedPlans(userId: string): Promise<string[]> {
 // ===== DATA FETCHING FUNCTIONS =====
 
 /**
- * Get user profile by ID (for current user - uses direct Firestore access)
+ * Get user profile by ID (for current user - uses direct Firestore access with retry logic)
  */
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   if (!userId) return null;
 
   try {
-    const userDoc = await getDoc(doc(getDb(), 'users', userId));
+    // Use retry logic for better error handling
+    const userDoc = await retryWithBackoff(async () => {
+      return await getDoc(doc(getDb(), 'users', userId));
+    });
+
     if (!userDoc.exists()) return null;
 
     const data = userDoc.data();
@@ -684,6 +807,13 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
     } as unknown as UserProfile;
   } catch (error) {
     console.error('Error fetching user profile:', error);
+    
+    // Handle permission errors gracefully
+    if (error instanceof Error && error.message.includes('permission-denied')) {
+      console.warn(`Permission denied when fetching user profile for ${userId}. This might be due to missing document or insufficient permissions.`);
+      return null;
+    }
+    
     return null;
   }
 }
@@ -903,7 +1033,7 @@ export async function getTemplatesByOriginalPlanId(originalPlanId: string): Prom
         invitedParticipantUserIds: data.invitedParticipantUserIds || [],
         participantUserIds: data.participantUserIds || [],
         participantResponses: data.participantResponses || {},
-        waitlistUserIds: data.waitlistUserIds || [],
+        waitlist: data.waitlist || [],
         itinerary: data.itinerary?.map((item: any) => ({
           ...item,
           startTime: item.startTime || null,

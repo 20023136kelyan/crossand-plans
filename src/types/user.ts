@@ -1,10 +1,14 @@
 // src/types/user.ts
 
 import type { Timestamp as ClientTimestamp, GeoPoint } from 'firebase/firestore';
-import type { FieldValue } from 'firebase-admin/firestore';
+// Remove firebase-admin import - this types file is used on both client and server
+// import type { FieldValue } from 'firebase-admin/firestore';
 
 // Simplified Timestamp type for use in interfaces, services will handle specific SDK types
 export type AppTimestamp = ClientTimestamp | Date | string;
+
+// Define FieldValue type for server-side use only
+export type ServerFieldValue = any; // This will be properly typed in server files
 
 export type UserRoleType = 'user' | 'admin' | 'influencer' | 'corporate';
 
@@ -204,7 +208,7 @@ export interface ChatMessageCreate {
   text?: string; 
   mediaUrl?: string; 
   mediaContentType?: string;
-  timestamp: FieldValue; // FieldValue.serverTimestamp() for server-side creation
+  timestamp: ServerFieldValue; // FieldValue.serverTimestamp() for server-side creation
   hiddenBy?: string[]; // Array of UIDs who have hidden this message for themselves
 }
 export type RSVPStatusType = 'going' | 'maybe' | 'not-going' | 'pending';
@@ -338,7 +342,6 @@ export interface Plan {
   isTemplate?: boolean; // For admin-created template plans that don't require specific scheduling
   templateOriginalHostId?: string; // Original host ID when plan becomes template
   templateOriginalHostName?: string; // Original host name when plan becomes template
-  waitlistUserIds?: string[]; // Array of user IDs on waitlist
   privateNotes?: string | null; // Private notes that get cleared when becoming template
   noisePreference?: 'quiet' | 'moderate' | 'lively' | null;
   stopCountReasoning?: {

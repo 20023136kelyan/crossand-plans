@@ -43,9 +43,9 @@ export async function POST(request: NextRequest) {
       // Cast to any to avoid type errors - in a production app, you would use proper types
       const db = firestoreAdmin as any;
       
-      const userSecurityRef = db.collection('userSecurity').doc(userId);
-      
-      await userSecurityRef.set({
+          const userSecurityRef = db.collection('userSecurity').doc(userId);
+    
+    await userSecurityRef.set({
         twoFactorEnabled: true,
         updatedAt: new Date()
       }, { merge: true });

@@ -79,7 +79,11 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
       (count) => {
         setNotificationCount(count);
       },
-      (error) => console.error('Error listening to unread notifications:', error)
+      (error) => {
+        console.error('Error listening to unread notifications:', error);
+        // Set a fallback count to prevent UI issues
+        setNotificationCount(0);
+      }
     );
     
     const unsubscribers: (() => void)[] = [];
@@ -102,7 +106,11 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
         
         updateNotifications('friend_request', friendRequestNotifications);
       },
-      (error) => console.error('Error listening to friend requests:', error)
+      (error) => {
+        console.error('Error listening to friend requests:', error);
+        // Clear friend request notifications on error
+        updateNotifications('friend_request', []);
+      }
     );
     unsubscribers.push(unsubFriendRequests);
     
@@ -121,6 +129,10 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
         }));
         
         updateNotifications('plan_share', planShareNotifications);
+      }, (error) => {
+        console.error('Error listening to plan shares:', error);
+        // Clear plan share notifications on error
+        updateNotifications('plan_share', []);
       });
       unsubscribers.push(unsubPlanShares);
     }

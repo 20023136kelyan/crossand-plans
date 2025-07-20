@@ -1,8 +1,7 @@
-
 'use client';
 
 import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 
@@ -13,19 +12,24 @@ export default function AuthLayout({
 }) {
   const { user, loading, profileExists } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+
+  // Helper: check if on email verification prompt
+  const isOnEmailVerificationPrompt = pathname.startsWith('/signup') && typeof window !== 'undefined' && window.location.search.includes('verify=1') && window.location.search.includes('email=');
 
   useEffect(() => {
     if (!loading && user) {
       if (user.emailVerified && profileExists === true) {
-        // User is fully verified and has profile - redirect to feed
         router.push('/feed');
       } else if (user.emailVerified && profileExists === false) {
-        // User is verified but no profile - redirect to onboarding
         router.push('/onboarding');
+      } else if (!user.emailVerified && isOnEmailVerificationPrompt) {
+        // Stay on email verification prompt
+        return;
       }
-      // If email not verified, stay on current page (signup/verification)
+      // If email not verified and not on verification prompt, stay on current page
     }
-  }, [user, loading, profileExists, router]);
+  }, [user, loading, profileExists, router, isOnEmailVerificationPrompt]);
 
   if (loading) {
     return (
@@ -36,19 +40,18 @@ export default function AuthLayout({
     );
   }
   
-  // If user is already loaded and present, and meets all requirements, they will be redirected.
-  // If user is not present or not fully verified/onboarded, show the children (login/signup form or email verification prompt).
-  if (user && user.emailVerified && profileExists === true) {
-    return null; // Or a loading spinner until redirect completes
-  }
-  
-  // If user is verified but no profile, redirect to onboarding
-  if (user && user.emailVerified && profileExists === false) {
-    return null; // Or a loading spinner until redirect completes
+  if (!isOnEmailVerificationPrompt) {
+    if (user && user.emailVerified && profileExists === true) {
+      return null; // Or a loading spinner until redirect completes
+    }
+    // If user is verified but no profile, redirect to onboarding
+    if (user && user.emailVerified && profileExists === false) {
+      return null; // Or a loading spinner until redirect completes
+    }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4 relative" style={{ background: 'none' }}>
+    <div className="flex min-h-screen items-center justify-center p-4 relative dark" style={{ background: 'none' }}>
       {/* Background image */}
       <div 
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"

@@ -404,16 +404,13 @@ export function SignupForm() {
           </form>
         </Form>
 
-        <div className="relative my-4">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t border-border/50" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-gray-900/30 backdrop-blur-sm px-2 text-muted-foreground">
-              Or continue with
-            </span>
-          </div>
-        </div>
+                    <div className="flex items-center my-4 gap-3">
+              <span className="flex-1 border-t border-border/30" />
+              <span className="text-muted-foreground font-medium text-xs">
+                Or continue with
+              </span>
+              <span className="flex-1 border-t border-border/30" />
+            </div>
 
         <div className="flex gap-2">
           <Button

@@ -745,120 +745,8 @@ const FeedPostCard = React.memo(({
 });
 FeedPostCard.displayName = 'FeedPostCard';
 
-interface CommentsModalProps {
-  post: FeedPost | null;
-  commentsData: FeedComment[];
-  isOpen: boolean;
-  onClose: () => void;
-  loading: boolean;
-  onCommentSubmitModal: (postId: string, text: string) => Promise<boolean>;
-  currentUserProfile: UserProfile | null;
-}
-
-const CommentsModal: React.FC<CommentsModalProps> = ({ post, commentsData: initialCommentsData, isOpen, onClose, loading: loadingCommentsProp, onCommentSubmitModal, currentUserProfile }) => {
-  const { user } = useAuth();
-  const { toast } = useToast();
-  const [newModalComment, setNewModalComment] = useState('');
-  const [isSubmittingModalComment, setIsSubmittingModalComment] = useState(false);
-  const [isDeletingComment, setIsDeletingComment] = useState(false);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const commentInputRef = useRef<HTMLTextAreaElement>(null);
-
-  const sortedCommentsData = useMemo(() => {
-    return [...(initialCommentsData || [])].sort((a, b) => {
-      const timeA = a.createdAt && isValid(parseISO(a.createdAt as string)) ? parseISO(a.createdAt as string).getTime() : 0;
-      const timeB = b.createdAt && isValid(parseISO(b.createdAt as string)) ? parseISO(b.createdAt as string).getTime() : 0;
-      return timeA - timeB;
-    });
-  }, [initialCommentsData]);
-
-  useEffect(() => {
-    if (isOpen && scrollAreaRef.current && sortedCommentsData.length > 0) {
-      const timer = setTimeout(() => { if (scrollAreaRef.current) { scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight; } }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen, sortedCommentsData]);
-
-  if (!post) return null;
-  const handleSubmitModalComment = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!newModalComment.trim() || !post) return;
-    setIsSubmittingModalComment(true);
-    const success = await onCommentSubmitModal(post.id, newModalComment.trim());
-    if (success) { setNewModalComment(''); }
-    setIsSubmittingModalComment(false);
-  };
-  const authorInitial = post.username ? post.username.charAt(0).toUpperCase() : (post.userName ? post.userName.charAt(0).toUpperCase() : 'U');
-  const handleDeleteComment = async (commentId: string) => {
-    if (!user || !post) return;
-    setIsDeletingComment(true);
-    try {
-      const idToken = await user.getIdToken(true);
-      if (!idToken) throw new Error("Authentication token not available.");
-      const result = await deleteFeedCommentAction(post.id, commentId, idToken);
-      if (result.success) {
-        toast({ title: "Comment deleted" });
-      } else {
-        let description = result.error || "Could not delete comment.";
-        switch (result.errorCode) {
-          case "POST_NOT_FOUND": description = "The post this comment belongs to no longer exists."; break;
-          case "COMMENT_NOT_FOUND": description = "This comment no longer exists."; break;
-          case "UNAUTHORIZED": description = "You are not authorized to delete this comment."; break;
-          case "AUTH_TOKEN_EXPIRED": description = "Your session has expired. Please log in again."; break;
-        }
-        throw new Error(description);
-      }
-    } catch (error: any) {
-      toast({ title: "Delete Error", description: error.message || "Could not delete comment.", variant: "destructive" });
-    } finally {
-      setIsDeletingComment(false);
-    }
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="sm:max-w-md p-0 flex flex-col h-[85vh] sm:h-[75vh] bg-card border-border/30 rounded-t-xl sm:rounded-xl shadow-2xl overflow-hidden" hideCloseButton>
-        <DialogHeader className="p-4 border-b border-border/30">
-          <DialogClose asChild><Button variant="ghost" size="icon" className="absolute top-3 right-3 h-10 w-10 rounded-full text-muted-foreground hover:bg-muted/80"><XIcon className="h-5 w-5" aria-hidden="true" /><span className="sr-only">Close comments</span></Button></DialogClose>
-          <div className="flex flex-col items-center w-full pt-8"><DialogTitle className="text-lg font-semibold text-center">Comments on {post.username || post.userName}'s post</DialogTitle><DialogDescriptionComponent className="text-sm text-muted-foreground text-center mt-1">Read and add comments below. The original post text is shown for context.</DialogDescriptionComponent></div>
-        </DialogHeader>
-        <div className="px-4 pt-3 pb-2 border-b border-border/30 shrink-0">
-          <div className="flex items-start gap-2"><Avatar className="h-8 w-8"><AvatarImage src={post.userAvatarUrl || undefined} alt={post.username || post.userName} data-ai-hint="person avatar"/><AvatarFallback>{authorInitial}</AvatarFallback></Avatar><div className="text-sm"><span className="font-semibold text-foreground/90">{post.username || post.userName}</span><span className="text-foreground/80 ml-1 whitespace-pre-line line-clamp-2">{post.text}</span></div></div>
-        </div>
-        <div className="flex-1 min-h-0"><ScrollArea className="h-full" ref={scrollAreaRef}><div className="px-4 py-2">
-          {loadingCommentsProp ? (<div className="flex justify-center items-center h-32"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>)
-            : sortedCommentsData.length === 0 ? (<p className="text-sm text-muted-foreground text-center py-8">No comments yet. Be the first!</p>)
-            : (<div className="space-y-3 pb-2">{sortedCommentsData.map((comment) => {
-                let commentTimestampRelative = 'just now';
-                if (comment.createdAt) { const dateValue = parseISO(comment.createdAt as string); if (isValid(dateValue)) { commentTimestampRelative = formatDistanceToNowStrict(dateValue, { addSuffix: true }); }}
-                const commenterInitial = comment.username ? comment.username.charAt(0).toUpperCase() : (comment.userName ? comment.userName.charAt(0).toUpperCase() : 'U');
-                const isCommentOwner = user?.uid === comment.userId;
-                return (<div key={comment.id} className="flex flex-col mt-0 mb-0 relative">
-                  <div className="absolute -top-3 left-3 z-10 flex items-center gap-2 bg-muted/80 border border-border/30 rounded-full py-1 pl-1 pr-3 shadow-sm"><Avatar className="h-6 w-6"><AvatarImage src={comment.userAvatarUrl || undefined} alt={comment.username || comment.userName || 'User'} data-ai-hint="person avatar"/><AvatarFallback className="text-[11px]">{commenterInitial}</AvatarFallback></Avatar><span className="text-sm font-medium text-foreground">{comment.username || comment.userName || 'User'}</span></div>
-                  <div className="w-full text-xs bg-background border border-border/10 p-3 pt-5 pl-4 rounded-xl shadow-sm relative group hover:bg-muted/20 transition-colors duration-200 mt-0">
-                    <p className="text-foreground/90 whitespace-pre-line break-words leading-relaxed pr-6">{comment.text}</p>
-                    <div className="absolute top-2.5 right-2.5 flex items-center gap-1">
-                      {isCommentOwner && (<DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-5 w-5 p-0 text-muted-foreground/70 opacity-0 group-hover:opacity-100 transition-opacity"><MoreVertical className="h-3 w-3" /><span className="sr-only">Comment options</span></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-32"><DropdownMenuItem className="text-destructive focus:text-destructive cursor-pointer text-xs py-1.5 flex items-center" onClick={() => handleDeleteComment(comment.id)} disabled={isDeletingComment}><Trash2 className="h-3.5 w-3.5 mr-2" />Delete</DropdownMenuItem></DropdownMenuContent></DropdownMenu>)}
-                    </div>
-                    <div className="mt-1.5 text-right"><span className="text-muted-foreground text-[10px]">{commentTimestampRelative}</span></div>
-                  </div>
-                </div>);})}
-            </div>)}
-        </div></ScrollArea></div>
-        {currentUserProfile && (
-          <form onSubmit={handleSubmitModalComment} className="p-3 border-t border-border/30 flex items-center gap-2 shrink-0 bg-background/95 backdrop-blur-sm">
-            <Avatar className="h-8 w-8"><AvatarImage src={currentUserProfile.avatarUrl || undefined} alt={currentUserProfile.name || 'User'} data-ai-hint="person avatar"/><AvatarFallback className="text-xs">{currentUserProfile.name ? currentUserProfile.name.charAt(0).toUpperCase() : <UserCircleIcon className="h-4 w-4"/>}</AvatarFallback></Avatar>
-            <textarea ref={commentInputRef} placeholder="Add a comment..." value={newModalComment}
-              onChange={(e) => { setNewModalComment(e.target.value); if (commentInputRef.current) { commentInputRef.current.style.height = 'auto'; commentInputRef.current.style.height = `${Math.max(28, Math.min(120, commentInputRef.current.scrollHeight))}px`; }}}
-              className="min-h-[28px] h-[28px] w-full rounded-full border border-transparent bg-muted/50 px-3.5 py-1 text-sm focus:border-primary placeholder:text-muted-foreground/70 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden flex-1"
-              disabled={isSubmittingModalComment} />
-            {newModalComment.trim() && (<Button type="submit" variant="ghost" size="icon" className="text-primary h-9 w-9 flex-shrink-0 hover:bg-primary/10" disabled={isSubmittingModalComment} aria-label="Post comment">{isSubmittingModalComment ? <Loader2 className="h-4 w-4 animate-spin"/> : "Post"}</Button>)}
-          </form>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-};
+// Remove CommentsModal component and all related state/logic
+// Change comment icon/button to open PostDetailModal instead
 
 export default function FeedPage() {
   const { user, currentUserProfile, loading: authLoading } = useAuth();
@@ -874,10 +762,6 @@ export default function FeedPage() {
   const [planData, setPlanData] = useState<Record<string, { city?: string; location?: string; } | null>>({});
   const [postToDelete, setPostToDelete] = useState<FeedPost | null>(null);
   const [isDeletingPost, setIsDeletingPost] = useState(false);
-  const [activePostForCommentsModal, setActivePostForCommentsModal] = useState<FeedPost | null>(null);
-  const [commentsForActivePost, setCommentsForActivePost] = useState<FeedComment[]>([]);
-  const [loadingComments, setLoadingComments] = useState(false);
-  const commentsUnsubscribeRef = useRef<(() => void) | null>(null);
   const [activePostForDetailModal, setActivePostForDetailModal] = useState<FeedPost | null>(null);
   const [isPostDetailModalOpen, setIsPostDetailModalOpen] = useState(false);
   const [authorForDetailModal, setAuthorForDetailModal] = useState<UserProfile | null>(null);
@@ -915,7 +799,7 @@ export default function FeedPage() {
       toast({ title: "Error", description: error.message || "An unexpected error occurred while loading the feed.", variant: "destructive" });
       setFeedPosts([]); setHasMore(false);
     } finally { setLoadingFeed(false); }
-  }, [user?.uid, authLoading, toast, fetchPlanData]);
+  }, [authLoading, user?.uid, toast, fetchPlanData]);
 
   const loadMorePosts = async () => {
     if (loadingMore || !hasMore || !nextCursor) return;
@@ -939,8 +823,7 @@ export default function FeedPage() {
 
   const updateFeedPostInList = useCallback((updatedPostData: Partial<FeedPost> & { id: string }) => {
     setFeedPosts(prevPosts => prevPosts.map(p => p.id === updatedPostData.id ? { ...p, ...updatedPostData } : p));
-    if (activePostForCommentsModal?.id === updatedPostData.id) { setActivePostForCommentsModal(prev => prev ? { ...prev, ...updatedPostData } : null); }
-  }, [activePostForCommentsModal?.id]);
+  }, []);
 
   const hidePostLocally = useCallback((postId: string) => {
     setHiddenPostIds(prev => new Set(prev).add(postId));
@@ -963,7 +846,6 @@ export default function FeedPage() {
       if (result.success) {
         toast({ title: "Post Deleted", description: "The post has been removed." });
         setFeedPosts(prev => prev.filter(p => p.id !== postToDelete.id));
-        if (activePostForCommentsModal?.id === postToDelete.id) { closeCommentsModal(); }
       } else {
         if (result.error?.includes("Session expired")) {
           toast({ title: "Session Expired", description: "Your session has expired. The page will refresh to restore your session.", variant: "destructive" });
@@ -975,65 +857,6 @@ export default function FeedPage() {
       toast({ title: "Delete Error", description: error.message || "Could not delete post.", variant: "destructive" });
     } finally { setIsDeletingPost(false); setPostToDelete(null); }
   };
-
-  const openCommentsModal = useCallback((post: FeedPost) => {
-    if (!user) { toast({ title: "Login Required", description: "Please log in to view comments.", variant: "destructive" }); return; }
-    setActivePostForCommentsModal(post);
-  }, [user, toast]);
-
-  const closeCommentsModal = useCallback(() => {
-    setActivePostForCommentsModal(null); setCommentsForActivePost([]); setLoadingComments(false);
-    if (commentsUnsubscribeRef.current) { commentsUnsubscribeRef.current(); commentsUnsubscribeRef.current = null; }
-  }, []);
-
-  const handleAddCommentToPost = useCallback(async (postId: string, text: string): Promise<boolean> => {
-    if (!user || !currentUserProfile) {
-      toast({ title: "Login Required", description: "Please log in to comment.", variant: "destructive" }); return false;
-    }
-    try {
-      await user.getIdToken(true);
-      const idToken = await user.getIdToken();
-      if(!idToken) throw new Error("Authentication token not available.");
-      const result = await addCommentToPostServerAction(postId, text, idToken);
-      if (result.success && result.updatedPostFields && result.comment) {
-        toast({ title: "Comment Added!", duration: 2000 });
-        updateFeedPostInList({ id: postId, commentsCount: result.updatedPostFields.commentsCount });
-        return true;
-      } else {
-        let description = result.error || "Failed to add comment or comment data missing.";
-        switch (result.errorCode) {
-            case "POST_NOT_FOUND": description = "This post may have been deleted or is no longer available to comment on."; break;
-            case "TRANSACTION_FAILED": description = "There was a temporary issue posting your comment. Please try again."; break;
-            case "AUTH_TOKEN_EXPIRED": description = "Your session has expired. Please log in again to comment."; break;
-            case "VALIDATION_ERROR": description = "Your comment seems to be invalid. Please check and try again."; break;
-        }
-        toast({ title: "Comment Error", description, variant: "destructive" });
-        console.error(`Add Comment Error: ${result.errorCode} - ${result.error}. Original: ${result.originalError}`);
-        return false;
-      }
-    } catch (error: any) {
-      toast({ title: "Comment Error", description: error.message || "An unexpected network or client error occurred.", variant: "destructive" });
-      console.error("Client-side error during add comment operation:", error);
-      return false;
-    }
-  }, [user, currentUserProfile, toast, updateFeedPostInList]);
-
-  useEffect(() => {
-    if (activePostForCommentsModal?.id && user?.uid) {
-      setLoadingComments(true); setCommentsForActivePost([]);
-      if (commentsUnsubscribeRef.current) { commentsUnsubscribeRef.current(); }
-      commentsUnsubscribeRef.current = getPostComments(activePostForCommentsModal.id, (fetchedComments) => {
-        setCommentsForActivePost(fetchedComments); setLoadingComments(false);
-      }, (error) => {
-        console.error(`[FeedPage] Error in comments listener for post ${activePostForCommentsModal.id}:`, error);
-        toast({ title: "Error Loading Comments", description: error.message || "Could not load comments.", variant: "destructive" });
-        setCommentsForActivePost([]); setLoadingComments(false);
-      });
-    } else {
-      if (commentsUnsubscribeRef.current) { commentsUnsubscribeRef.current(); commentsUnsubscribeRef.current = null; }
-    }
-    return () => { if (commentsUnsubscribeRef.current) { commentsUnsubscribeRef.current(); commentsUnsubscribeRef.current = null; }};
-  }, [activePostForCommentsModal?.id, user?.uid, toast]);
 
   const handleOpenPostDetailModal = useCallback(async (post: FeedPost) => {
     if (!user) {
@@ -1083,7 +906,7 @@ export default function FeedPage() {
         {visibleFeedPosts.length > 0 && (
           <>
             <div className="grid grid-cols-1 gap-6 justify-items-center">
-              {visibleFeedPosts.map(item => (<FeedPostCard key={item.id} item={item} currentUserId={user?.uid} currentUserProfile={currentUserProfile} onOpenCommentsModal={openCommentsModal} onUpdatePostInList={updateFeedPostInList} onHidePost={hidePostLocally} onRequestDeletePost={handleRequestDeletePost} onOpenDetailModal={handleOpenPostDetailModal} plan={planData[item.planId]} />))}
+              {visibleFeedPosts.map(item => (<FeedPostCard key={item.id} item={item} currentUserId={user?.uid} currentUserProfile={currentUserProfile} onOpenCommentsModal={handleOpenPostDetailModal} onUpdatePostInList={updateFeedPostInList} onHidePost={hidePostLocally} onRequestDeletePost={handleRequestDeletePost} onOpenDetailModal={handleOpenPostDetailModal} plan={planData[item.planId]} />))}
             </div>
             {hasMore && (<div className="flex justify-center mt-8 mb-4"><Button onClick={loadMorePosts} disabled={loadingMore} className="bg-primary text-primary-foreground hover:bg-primary/90">{loadingMore ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading...</>) : ("Load More Posts")}</Button></div>)}
             {!hasMore && (<p className="text-center text-gray-500 mt-8 mb-4">You've reached the end of the feed.</p>)}
@@ -1092,7 +915,6 @@ export default function FeedPage() {
       </div>
       {/* ExploreContent is no longer rendered here */}
 
-      <CommentsModal post={activePostForCommentsModal} commentsData={commentsForActivePost} isOpen={!!activePostForCommentsModal} onClose={closeCommentsModal} loading={loadingComments} onCommentSubmitModal={handleAddCommentToPost} currentUserProfile={currentUserProfile} />
       {activePostForDetailModal && (<PostDetailModal post={activePostForDetailModal} authorProfile={authorForDetailModal} isLoadingAuthor={loadingAuthorForDetailModal} isOpen={isPostDetailModalOpen} onClose={handleClosePostDetailModal} onNext={handleNextPost} onPrevious={handlePreviousPost} hasNext={hasNextPost} hasPrevious={hasPreviousPost} />)}
       <AlertDialog open={!!postToDelete} onOpenChange={(open) => { if(!open) setPostToDelete(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete Post?</AlertDialogTitle><AlertDialogDescription>This will permanently delete this post. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setPostToDelete(null)} disabled={isDeletingPost}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeletePost} disabled={isDeletingPost} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">{isDeletingPost ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4"/>} Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
     </div>

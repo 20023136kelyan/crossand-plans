@@ -35,8 +35,12 @@ export async function saveFcmToken() {
 
     const { getToken } = await import('firebase/messaging');
     
-    // Get FCM token with VAPID key
-    const token = await getToken(messaging, { vapidKey: VAPID_KEY });
+    // Register the service worker and pass it to getToken
+    const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    const token = await getToken(messaging, { 
+      vapidKey: VAPID_KEY, 
+      serviceWorkerRegistration: registration 
+    });
     
     if (token) {
       // Save token to Firestore

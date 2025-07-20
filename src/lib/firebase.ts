@@ -124,29 +124,31 @@ const initRecaptchaVerifier = async (): Promise<RecaptchaVerifier | null> => {
     // Create a unique container for this reCAPTCHA instance
     const containerId = createRecaptchaContainer();
     
-    recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
-      'size': 'invisible',
-      'callback': () => {
-        console.log('reCAPTCHA solved');
-      },
-      'expired-callback': () => {
-        console.log('reCAPTCHA expired');
-        recaptchaVerifier = null;
-        recaptchaInitialized = false;
-      }
-    });
-
-    // Render the reCAPTCHA
-    await recaptchaVerifier.render();
-    console.log('reCAPTCHA rendered successfully');
+    console.log('[firebase.ts] Initializing reCAPTCHA verifier...');
     
-    recaptchaInitialized = true;
-    recaptchaInitializing = false;
+    // Create a simple invisible reCAPTCHA verifier
+    // Firebase will automatically use the correct site key from your project
+    recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
+      'size': 'invisible'
+    });
+    
+    console.log('[firebase.ts] Rendering reCAPTCHA...');
+    recaptchaVerifier.render().then(() => {
+      console.log('reCAPTCHA rendered successfully');
+      recaptchaInitialized = true;
+      recaptchaInitializing = false;
+    }).catch((error) => {
+      console.error('[firebase.ts] Failed to render reCAPTCHA:', error);
+      recaptchaVerifier = null;
+      recaptchaInitialized = false;
+      recaptchaInitializing = false;
+    });
     
     return recaptchaVerifier;
 
   } catch (e: any) {
-    console.warn("[firebase.ts client] WARNING: Error creating RecaptchaVerifier instance.", e.message);
+    console.error("[firebase.ts client] ERROR: Failed to create RecaptchaVerifier instance:", e);
+    console.error("[firebase.ts client] This might be due to domain authorization or Firebase configuration");
     recaptchaVerifier = null;
     recaptchaInitialized = false;
     recaptchaInitializing = false;
@@ -177,6 +179,72 @@ const clearRecaptchaVerifier = () => {
     }
   });
 };
+
+export function forceClearAllRecaptcha() {
+  console.log('[firebase.ts] Force clearing all reCAPTCHA instances...');
+  
+  // Clear any existing verifier
+  if (recaptchaVerifier) {
+    try {
+      recaptchaVerifier.clear();
+    } catch (error) {
+      console.log('[firebase.ts] Error clearing existing verifier:', error);
+    }
+    recaptchaVerifier = null;
+  }
+  
+  recaptchaInitialized = false;
+  recaptchaInitializing = false;
+  
+  // Clear all reCAPTCHA instances from the DOM
+  const recaptchaElements = document.querySelectorAll('.grecaptcha-badge, .g-recaptcha, iframe[src*="recaptcha"]');
+  recaptchaElements.forEach(element => {
+    try {
+      element.remove();
+    } catch (error) {
+      console.log('[firebase.ts] Error removing reCAPTCHA element:', error);
+    }
+  });
+  
+  // Clear any global reCAPTCHA objects
+  if (typeof window !== 'undefined') {
+    // Clear grecaptcha object
+    if ((window as any).grecaptcha) {
+      try {
+        (window as any).grecaptcha.reset();
+      } catch (error) {
+        console.log('[firebase.ts] Error resetting grecaptcha:', error);
+      }
+    }
+    
+    // Clear any cached reCAPTCHA data
+    if ((window as any).___grecaptcha_cfg) {
+      delete (window as any).___grecaptcha_cfg;
+    }
+    
+    // Clear any other reCAPTCHA related objects
+    Object.keys(window).forEach(key => {
+      if (key.toLowerCase().includes('recaptcha')) {
+        try {
+          delete (window as any)[key];
+        } catch (error) {
+          console.log('[firebase.ts] Error clearing reCAPTCHA key:', key, error);
+        }
+      }
+    });
+  }
+  
+  // Force garbage collection hint
+  if (typeof window !== 'undefined' && (window as any).gc) {
+    try {
+      (window as any).gc();
+    } catch (error) {
+      // Ignore errors
+    }
+  }
+  
+  console.log('[firebase.ts] All reCAPTCHA instances cleared');
+}
 
 export const app = initFirebase();
 export const messaging = typeof window !== 'undefined' && app ? getMessaging(app) : null;

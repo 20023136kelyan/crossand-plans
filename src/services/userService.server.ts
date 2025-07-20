@@ -142,6 +142,65 @@ export const getUsersProfilesAdmin = async (uids: string[]): Promise<UserProfile
   }
 };
 
+/**
+ * Creates default collections for a new user
+ * @param uid - The user ID
+ */
+export const createDefaultUserCollections = async (uid: string): Promise<void> => {
+  try {
+    const db = firestoreAdmin as Firestore;
+    
+    // Create default userStats
+    const userStatsRef = db.collection('userStats').doc(uid);
+    await userStatsRef.set({
+      plansCreatedCount: 0,
+      plansSharedOrExperiencedCount: 0,
+      postCount: 0,
+      followersCount: 0,
+      followingCount: 0,
+      totalRatingsReceived: 0,
+      averageRating: 0,
+      lastActivityDate: AdminTimestamp.now(),
+      createdAt: AdminTimestamp.now(),
+      updatedAt: AdminTimestamp.now()
+    });
+    
+    // Create default userNotificationPreferences
+    const notificationPrefsRef = db.collection('userNotificationPreferences').doc(uid);
+    await notificationPrefsRef.set({
+      emailNotifications: true,
+      pushNotifications: true,
+      planReminders: true,
+      marketingEmails: false,
+      createdAt: AdminTimestamp.now(),
+      updatedAt: AdminTimestamp.now()
+    });
+    
+    // Create default userSecurity (empty for now, will be populated when 2FA is enabled)
+    const userSecurityRef = db.collection('userSecurity').doc(uid);
+    await userSecurityRef.set({
+      twoFactorEnabled: false,
+      createdAt: AdminTimestamp.now(),
+      updatedAt: AdminTimestamp.now()
+    });
+    
+    // Create default subscription (free tier)
+    const subscriptionRef = db.collection('subscriptions').doc(uid);
+    await subscriptionRef.set({
+      userId: uid,
+      status: 'inactive', // Free tier
+      plan: 'free',
+      createdAt: AdminTimestamp.now(),
+      updatedAt: AdminTimestamp.now()
+    });
+    
+    console.log(`[createDefaultUserCollections] Created default collections for user ${uid}`);
+  } catch (error) {
+    console.error(`[createDefaultUserCollections] Error creating default collections for user ${uid}:`, error);
+    // Don't throw error - this is not critical for user creation
+  }
+};
+
 export const createUserProfileAdmin = async (
   uid: string,
   profileData: OnboardingProfileData & { // AuthUserData combined in action
@@ -203,6 +262,12 @@ export const createUserProfileAdmin = async (
     
     // Only set explicitly provided fields to avoid creating default arrays and values
     await userDocRef.set(basicProfileData, { merge: true });
+    
+    // Create default collections for new users
+    if (!exists) {
+      await createDefaultUserCollections(uid);
+    }
+    
     console.log('[createUserProfileAdmin] User profile created/updated successfully with Admin SDK for UID:', uid);
   } catch (error) {
     console.error('[createUserProfileAdmin] Error creating/updating user profile with Admin SDK:', error);
@@ -624,7 +689,7 @@ export const followUserAdmin = async (currentUserId: string, targetUserId: strin
     });
     // Add notification for the target user with user info
     const notificationsRef = FirebaseQueryBuilder.collection(COLLECTIONS.USERS).doc(targetUserId).collection('notifications');
-    const notificationData = {
+    const notificationData: any = {
       type: 'follow_request',
       fromUserId: currentUserId,
       title: 'requested to follow you',
@@ -667,6 +732,8 @@ export const followUserAdmin = async (currentUserId: string, targetUserId: strin
     await createNotification(targetUserId, notificationData);
   }
   await batch.commit();
+  // --- Friendship sync ---
+  await updateFriendshipStatus(currentUserId, targetUserId);
 };
 
 // Approve follow request
@@ -688,6 +755,8 @@ export const approveFollowRequestAdmin = async (currentUserId: string, requester
     updatedAt: now
   });
   await batch.commit();
+  // --- Friendship sync ---
+  await updateFriendshipStatus(currentUserId, requesterId);
 };
 
 // Deny follow request
@@ -731,6 +800,8 @@ export const unfollowUserAdmin = async (currentUserId: string, targetUserId: str
   });
 
   await batch.commit();
+  // --- Friendship sync ---
+  await updateFriendshipStatus(currentUserId, targetUserId);
   console.log(`User ${currentUserId} unfollowed ${targetUserId}`);
 };
 
@@ -784,3 +855,67 @@ export const calculateUserActivityScore = async (userId: string): Promise<number
     return 0;
   }
 };
+
+// --- Unified Friendship Status Helper ---
+async function updateFriendshipStatus(userA: string, userB: string) {
+  if (!firestoreAdmin) throw new Error("Server configuration error: Database service not available.");
+  const [profileA, profileB] = await Promise.all([
+    getUserProfileAdmin(userA),
+    getUserProfileAdmin(userB)
+  ]);
+  if (!profileA || !profileB) return;
+  const aFollowsB = profileA.following?.includes(userB);
+  const bFollowsA = profileB.following?.includes(userA);
+  const friendshipsARef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, userA, 'friendships').doc(userB);
+  const friendshipsBRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.USERS, userB, 'friendships').doc(userA);
+  const now = FieldValue.serverTimestamp();
+  if (aFollowsB && bFollowsA) {
+    // Mutual: set both to friends
+    await Promise.all([
+      friendshipsARef.set({
+        friendUid: userB,
+        status: 'friends',
+        friendsSince: now
+      }, { merge: true }),
+      friendshipsBRef.set({
+        friendUid: userA,
+        status: 'friends',
+        friendsSince: now
+      }, { merge: true })
+    ]);
+  } else if (aFollowsB) {
+    // A sent request or is following B
+    await Promise.all([
+      friendshipsARef.set({
+        friendUid: userB,
+        status: 'pending_sent',
+        requestedAt: now
+      }, { merge: true }),
+      friendshipsBRef.set({
+        friendUid: userA,
+        status: 'pending_received',
+        requestedAt: now
+      }, { merge: true })
+    ]);
+  } else if (bFollowsA) {
+    // B sent request or is following A
+    await Promise.all([
+      friendshipsARef.set({
+        friendUid: userB,
+        status: 'pending_received',
+        requestedAt: now
+      }, { merge: true }),
+      friendshipsBRef.set({
+        friendUid: userA,
+        status: 'pending_sent',
+        requestedAt: now
+      }, { merge: true })
+    ]);
+  } else {
+    // No relationship
+    await Promise.all([
+      friendshipsARef.delete(),
+      friendshipsBRef.delete()
+    ]);
+  }
+}

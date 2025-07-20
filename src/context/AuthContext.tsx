@@ -354,11 +354,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         
         // Handle rate limiting errors specifically
         if (error.code === 'auth/too-many-requests') {
-          throw error; // Preserve the original error with code
+          throw new Error('Too many attempts. Please wait 1-2 minutes before trying again.');
+        }
+        
+        // Handle other common errors
+        if (error.code === 'auth/invalid-phone-number') {
+          throw new Error('Invalid phone number format. Please check and try again.');
         }
         
         if (error.code === 'auth/quota-exceeded') {
-          throw error; // Preserve the original error with code
+          throw new Error('SMS quota exceeded. Please try again later.');
         }
         
         // For other errors, don't retry
