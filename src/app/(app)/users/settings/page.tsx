@@ -414,6 +414,8 @@ export default function SettingsPage() {
     }
   }, [user, authLoading, router]);
 
+
+
   useEffect(() => {
     const fetchUserData = async () => {
       if (!user) return;

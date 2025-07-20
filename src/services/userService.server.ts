@@ -237,8 +237,8 @@ export const createUserProfileAdmin = async (
       console.log(`[createUserProfileAdmin] Generated username '${username}' for user ${uid}`);
     }
 
-    // Simplified profile data with only essential fields
-    const basicProfileData: Record<string, any> = {
+    // Complete profile data including all preferences
+    const completeProfileData: Record<string, any> = {
       name: profileData.name,
       username: username,
       name_lowercase: profileData.name ? profileData.name.toLowerCase() : null,
@@ -247,21 +247,35 @@ export const createUserProfileAdmin = async (
       role: 'user' as UserRoleType,
       isVerified: false,
       updatedAt: now,
+      // Add all preference fields
+      allergies: profileData.allergies || [],
+      dietaryRestrictions: profileData.dietaryRestrictions || [],
+      favoriteCuisines: profileData.favoriteCuisines || [],
+      generalPreferences: profileData.generalPreferences || '',
+      physicalLimitations: profileData.physicalLimitations || [],
+      activityTypePreferences: profileData.activityTypePreferences || [],
+      activityTypeDislikes: profileData.activityTypeDislikes || [],
+      environmentalSensitivities: profileData.environmentalSensitivities || [],
+      travelTolerance: profileData.travelTolerance || '',
+      budgetFlexibilityNotes: profileData.budgetFlexibilityNotes || '',
+      socialPreferences: profileData.socialPreferences || { preferredGroupSize: null, interactionLevel: null },
+      availabilityNotes: profileData.availabilityNotes || '',
     };
     
     // Only set createdAt if this is a new document
     if (!exists) {
-      basicProfileData.createdAt = now;
+      completeProfileData.createdAt = now;
     }
 
-    // Only add these fields if they're explicitly provided
-    if (profileData.bio) basicProfileData.bio = profileData.bio;
-    if (profileData.physicalAddress) basicProfileData.physicalAddress = profileData.physicalAddress;
-    if (profileData.countryDialCode) basicProfileData.countryDialCode = profileData.countryDialCode;
-    if (profileData.phoneNumber) basicProfileData.phoneNumber = profileData.phoneNumber;
+    // Add optional fields if provided
+    if (profileData.bio) completeProfileData.bio = profileData.bio;
+    if (profileData.physicalAddress) completeProfileData.physicalAddress = profileData.physicalAddress;
+    if (profileData.countryDialCode) completeProfileData.countryDialCode = profileData.countryDialCode;
+    if (profileData.phoneNumber) completeProfileData.phoneNumber = profileData.phoneNumber;
+    if (profileData.birthDate) completeProfileData.birthDate = profileData.birthDate;
     
-    // Only set explicitly provided fields to avoid creating default arrays and values
-    await userDocRef.set(basicProfileData, { merge: true });
+    // Save complete profile data
+    await userDocRef.set(completeProfileData, { merge: true });
     
     // Create default collections for new users
     if (!exists) {
