@@ -150,7 +150,7 @@ const TravelToleranceSlider = ({
         
         {/* Continue Button */}
         <div className="mt-4 flex justify-center">
-          <button
+              <button
             onClick={() => {
               const options = currentQuestion.options || [];
               const selectedOption = options[sliderValue];
@@ -161,7 +161,7 @@ const TravelToleranceSlider = ({
             className="bg-orange-400 text-white hover:bg-orange-500 px-6 py-2 rounded-full text-sm font-medium transition-colors duration-200 shadow-lg hover:shadow-xl"
           >
             Continue
-          </button>
+              </button>
         </div>
       </div>
     </motion.div>
@@ -447,6 +447,8 @@ export default function OnboardingPage() {
   const [responses, setResponses] = useState<Record<string, any>>({});
   const [croissantMood, setCroissantMood] = useState<'idle' | 'excited' | 'thinking'>('idle');
   const [sliderValue, setSliderValue] = useState(2);
+  const [crossyReaction, setCrossyReaction] = useState<string>('');
+  const [showCrossyReaction, setShowCrossyReaction] = useState(false);
 
   const form = useForm<OnboardingFormValues>({
     resolver: zodResolver(onboardingFormSchema),
@@ -471,6 +473,64 @@ export default function OnboardingPage() {
 
   const currentQuestion = questions[currentQuestionIndex];
   const typingSpeed = 50; // ms per character
+
+  // Generate Crossy reactions based on question and selection
+  const getCrossyReaction = (questionId: string, selectedCount: number, totalCount: number) => {
+    const reactions = {
+      allergies: [
+        "Oh no! 😰 We'll make sure to avoid those!",
+        "Got it! 🚫 We'll keep you safe!",
+        "Noted! 📝 Safety first!",
+        "Understood! 🛡️ We'll be extra careful!"
+      ],
+      dietary: [
+        "Respect! 🙏 We'll find perfect options!",
+        "No worries! 🌱 We've got alternatives!",
+        "Got it! 🥗 We'll accommodate that!",
+        "Perfect! 🎯 We'll match your needs!"
+      ],
+      cuisines: [
+        "Yum! 😋 Great taste!",
+        "Delicious! 🍽️ Love your choices!",
+        "Mmm! 🤤 Those sound amazing!",
+        "Excellent! ⭐ You know good food!"
+      ],
+      physicalLimitations: [
+        "We'll adapt! ♿ Accessibility matters!",
+        "No problem! 💪 We'll work around that!",
+        "Got it! 🎯 We'll find suitable options!",
+        "Understood! 🤝 We'll accommodate you!"
+      ],
+      activityPreferences: [
+        "Awesome! 🎉 Love your energy!",
+        "Perfect! ⚡ You're adventurous!",
+        "Great choices! 🌟 You're active!",
+        "Exciting! 🚀 Let's get moving!"
+      ]
+    };
+
+    const questionReactions = reactions[questionId as keyof typeof reactions] || [
+      "Nice choice! 👍",
+      "Great pick! ⭐",
+      "Excellent! 🎯",
+      "Perfect! 🎉"
+    ];
+
+    // Show different reactions based on selection count
+    if (selectedCount === 0) {
+      return "Take your time! 😊";
+    } else if (selectedCount === 1) {
+      return "One down! 🎯";
+    } else if (selectedCount === 2) {
+      return "Two great choices! ✨";
+    } else if (selectedCount === 3) {
+      return "Almost there! 🚀";
+    } else if (selectedCount === 4) {
+      return questionReactions[Math.floor(Math.random() * questionReactions.length)];
+    }
+
+    return questionReactions[Math.floor(Math.random() * questionReactions.length)];
+  };
 
   // Typewriter effect for questions
   useEffect(() => {
@@ -599,7 +659,7 @@ export default function OnboardingPage() {
     switch (currentQuestion.type) {
       case 'button':
     return (
-          <motion.div variants={inputVariants} initial="hidden" animate="visible" exit="exit" className="mt-4">
+          <motion.div variants={inputVariants} initial="hidden" animate="visible" exit="exit" className="mt-4 flex justify-center">
             <button
               onClick={() => handleResponse('acknowledged')}
               className="bg-orange-400 text-white hover:bg-orange-500 px-6 py-2 rounded-full text-sm font-medium transition-colors duration-200 shadow-lg hover:shadow-xl"
@@ -610,8 +670,8 @@ export default function OnboardingPage() {
         );
 
       case 'text':
-  return (
-          <motion.div variants={inputVariants} initial="hidden" animate="visible" exit="exit" className="mt-4">
+    return (
+          <motion.div variants={inputVariants} initial="hidden" animate="visible" exit="exit" className="mt-4 space-y-4">
             <Input
               placeholder={currentQuestion.placeholder}
               maxLength={currentQuestion.maxLength}
@@ -623,12 +683,25 @@ export default function OnboardingPage() {
               }}
               autoFocus
             />
+            <div className="flex justify-center">
+              <button
+                onClick={() => {
+                  const input = document.querySelector('input[type="text"]') as HTMLInputElement;
+                  if (input && input.value.trim()) {
+                    handleResponse(input.value.trim());
+                  }
+                }}
+                className="bg-orange-400 text-white hover:bg-orange-500 px-6 py-2 rounded-full text-sm font-medium transition-colors duration-200 shadow-lg hover:shadow-xl"
+              >
+                Continue
+              </button>
+        </div>
           </motion.div>
         );
 
       case 'select':
         if (currentQuestion.id === 'travelTolerance') {
-          return (
+  return (
             <TravelToleranceSlider
               sliderValue={sliderValue}
               setSliderValue={setSliderValue}
@@ -650,14 +723,14 @@ export default function OnboardingPage() {
         return (
           <motion.div variants={inputVariants} initial="hidden" animate="visible" exit="exit" className="mt-4 space-y-2">
             {currentQuestion.options?.map((option) => (
-              <Button
+                                        <Button
                 key={option}
-                variant="outline"
+                                        variant="outline"
                 className="w-full max-w-md justify-start"
                 onClick={() => handleResponse(option)}
               >
                 {option}
-              </Button>
+                                        </Button>
             ))}
           </motion.div>
         );
@@ -690,6 +763,16 @@ export default function OnboardingPage() {
                         ? current.filter((item: string) => item !== option)
                         : [...current, option];
                       setResponses(prev => ({ ...prev, [currentQuestion.id]: newSelection }));
+                      
+                      // Show Crossy reaction
+                      const reaction = getCrossyReaction(currentQuestion.id, newSelection.length, currentQuestion.options?.length || 0);
+                      setCrossyReaction(reaction);
+                      setShowCrossyReaction(true);
+                      
+                      // Hide reaction after 2 seconds
+                      setTimeout(() => {
+                        setShowCrossyReaction(false);
+                      }, 2000);
                     }}
                     whileHover={!isDisabled ? { scale: 1.05 } : {}}
                     whileTap={!isDisabled ? { scale: 0.95 } : {}}
@@ -719,7 +802,7 @@ export default function OnboardingPage() {
 
       case 'date':
         return (
-          <motion.div variants={inputVariants} initial="hidden" animate="visible" exit="exit" className="mt-4">
+          <motion.div variants={inputVariants} initial="hidden" animate="visible" exit="exit" className="mt-4 space-y-4">
             <Input
               type="date"
               className="w-full max-w-md"
@@ -730,6 +813,19 @@ export default function OnboardingPage() {
               }}
               autoFocus
             />
+            <div className="flex justify-center">
+              <button
+                onClick={() => {
+                  const input = document.querySelector('input[type="date"]') as HTMLInputElement;
+                  if (input && input.value) {
+                    handleResponse(input.value);
+                  }
+                }}
+                className="bg-orange-400 text-white hover:bg-orange-500 px-6 py-2 rounded-full text-sm font-medium transition-colors duration-200 shadow-lg hover:shadow-xl"
+              >
+                Continue
+              </button>
+                    </div>
           </motion.div>
         );
 
@@ -791,7 +887,12 @@ export default function OnboardingPage() {
       <div className="flex-1 flex flex-col items-center justify-center px-4">
         {/* Croissant Character */}
         <div className="mb-8">
-          <CroissantCharacter mood={croissantMood} size="md" />
+          <CroissantCharacter 
+            mood={croissantMood} 
+            size="md" 
+            reaction={crossyReaction}
+            showReaction={showCrossyReaction}
+          />
         </div>
 
         {/* Speech Bubble */}
