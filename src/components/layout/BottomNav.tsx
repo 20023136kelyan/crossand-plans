@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutGrid, Search, PlusCircle, LayoutList, User as UserIcon, Wallet as WalletIcon,
-  Sparkles, Edit3, Camera // Added Sparkles, Edit3, Camera for popover
+  LayoutGrid, Search, PlusCircle, LayoutList, User as UserIcon,
+  Sparkles, Edit3, Camera, MessageSquare // Removed Wallet as WalletIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
@@ -97,7 +97,7 @@ export function BottomNav(props: BottomNavProps) {
   // Define base navigation items - only include profile/login if we have user data
   const navItems: NavItem[] = [
     { href: '/feed', label: 'Feed', icon: LayoutGrid, id: 'feed', ariaLabel: "Feed & Explore" },
-    { href: '/wallet', label: 'Wallet', icon: WalletIcon, id: 'wallet', ariaLabel: "My Wallet"},
+    { href: '/messages', label: 'Messages', icon: MessageSquare, id: 'messages', ariaLabel: "Messages" },
     { action: () => setIsQuickAddPopoverOpen(true), label: 'Create', icon: PlusCircle, id: 'quick-add', ariaLabel: "Quick Add Menu" },
     { href: '/plans', label: 'Plans', icon: LayoutList, id: 'plans', ariaLabel: "My Plans" },
   ];

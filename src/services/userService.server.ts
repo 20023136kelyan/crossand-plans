@@ -710,13 +710,11 @@ export const followUserAdmin = async (currentUserId: string, targetUserId: strin
       userName: currentUserProfile.name || currentUserProfile.username || 'Someone',
       createdAt: now,
       isRead: false
+      // status and handled will be set by notificationService as 'pending' and false
     };
-    
-    // Only add avatarUrl if it exists
     if (currentUserProfile.avatarUrl) {
       notificationData.avatarUrl = currentUserProfile.avatarUrl;
     }
-    
     batch.set(notificationsRef.doc(), notificationData);
   } else {
     // Public: add to followers/following instantly
@@ -736,13 +734,12 @@ export const followUserAdmin = async (currentUserId: string, targetUserId: strin
       actionUrl: `/u/${currentUserId}`,
       isRead: false,
       metadata: { followerId: currentUserId },
+      status: 'informational', // Mark as informational so it is not actionable
+      handled: true // Mark as handled so it does not show in pending
     };
-    
-    // Only add avatarUrl if it exists
     if (currentUserProfile.avatarUrl) {
       notificationData.avatarUrl = currentUserProfile.avatarUrl;
     }
-    
     await createNotification(targetUserId, notificationData);
   }
   await batch.commit();

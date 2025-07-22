@@ -376,27 +376,7 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
               </div>
             </Button>
           </Link>
-          
-          {/* Messages */}
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/messages" aria-label="Messages">
-              <div className="relative">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  className="h-6 w-6 text-foreground/80 hover:text-primary transition-colors"
-                >
-                  <path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-5H6V9h12v2z"/>
-                </svg>
-                {messagesNotificationCount > 0 && (
-                  <span className="absolute -top-1 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-destructive-foreground shadow-md"> 
-                    {messagesNotificationCount > 9 ? '9+' : messagesNotificationCount}
-                  </span>
-                )}
-              </div>
-            </Link>
-          </Button>
+          {/* Removed Messages button here */}
         </div>
       </div>
     </header>

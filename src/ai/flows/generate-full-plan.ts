@@ -18,6 +18,7 @@ import {
   GeneratePlanInputSchema, 
   PlanOutputSchema
 } from '@/ai/schemas/shared';
+import { canonicalCategories } from '@/data/canonicalCategories';
 
 // Define the input and output types for the plan generation flow
 export type GenerateFullPlanInput = z.infer<typeof GeneratePlanInputSchema>;
@@ -50,6 +51,14 @@ function ensureDateHasTimezone(dateStr: string): string {
     console.error(`[ensureDateHasTimezone] Error formatting date: ${dateStr}`, error);
     return dateStr; // Return original if parsing fails
   }
+}
+
+// Helper to flatten categories and subcategories for the prompt
+function getCategoryListForPrompt() {
+  return canonicalCategories.map(cat => {
+    const subs = cat.subcategories?.map(sub => `    - ${sub.id}: ${sub.name}${sub.description ? ` (${sub.description})` : ''}`).join('\n') || '';
+    return `- ${cat.id}: ${cat.name}\n${subs}`;
+  }).join('\n');
 }
 
 /**
@@ -117,6 +126,9 @@ export async function generateFullPlan(input: GenerateFullPlanInput): Promise<Pl
       recommendedStops: stopCountReasoning.recommendedStops
     });
 
+    // Generate the canonical category list for the prompt
+    const canonicalCategoryList = getCategoryListForPrompt();
+
     // Create the AI prompt for plan generation
     console.log('[generateFullPlan] Calling AI prompt with input');
     
@@ -144,6 +156,12 @@ You are creating a personalized plan for the user based on their input. This pla
 - Include realistic timing that accounts for travel between places.
 - Design the plan to fit within the specified duration, budget, and group size.
 - **ACTIVITY SUGGESTIONS**: For each itinerary item's activitySuggestions, include relevant emojis to make them more engaging and visually appealing. Examples: "🍽️ Try their signature dishes", "📸 Take photos of the view", "🎭 Enjoy the live performance".
+
+**CATEGORY CLASSIFICATION:**
+You must classify the plan into the most appropriate category and subcategory from the following list. Use the subcategory id as the value for the "eventType" field in your output.
+
+CATEGORIES:
+${canonicalCategoryList}
 
 **USER PROFILE:**
 ${JSON.stringify(input.hostProfile, null, 2)}
@@ -293,7 +311,7 @@ You must return ONLY raw JSON without any markdown formatting. DO NOT wrap your 
       location: planData.location,
       city: planData.city,
       eventType: planData.eventType,
-      eventTypeLowercase: planData.eventTypeLowercase,
+      eventTypeLowercase: planData.eventType ? planData.eventType.toLowerCase() : '',
       hostId: planData.hostId,
       invitedParticipantUserIds: planData.invitedParticipantUserIds || [],
       participantUserIds: planData.participantUserIds || [],

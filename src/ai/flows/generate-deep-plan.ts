@@ -13,6 +13,15 @@ import type { Plan, ItineraryItem, PriceRangeType } from '@/types/plan';
 import type { UserProfile } from '@/types/user';
 import { generateUUID } from '@/lib/utils';
 import { processAIGeneratedPlan } from '@/lib/planUtils';
+import { canonicalCategories } from '@/data/canonicalCategories';
+
+// Helper to flatten categories and subcategories for the prompt
+function getCategoryListForPrompt() {
+  return canonicalCategories.map(cat => {
+    const subs = cat.subcategories?.map(sub => `    - ${sub.id}: ${sub.name}${sub.description ? ` (${sub.description})` : ''}`).join('\n') || '';
+    return `- ${cat.id}: ${cat.name}\n${subs}`;
+  }).join('\n');
+}
 
 // Define the structured inputs and outputs for the AI flow
 
@@ -45,6 +54,8 @@ const ItineraryItemSketchSchema = z.object({
 const DeepPlanSketchSchema = z.object({
   planName: z.string().describe('A creative and fitting name for the plan.'),
   planDescription: z.string().describe('A brief, one-sentence description of the plan.'),
+  eventType: z.string().describe('The subcategory id chosen for this plan.'),
+  eventTypeLowercase: z.string().optional().describe('Lowercase version of eventType.'),
   itinerary: z.array(
     z.object({
       placeName: z.string().describe("The name of the venue or point of interest."),
@@ -107,6 +118,9 @@ export async function generateDeepPlan(input: GenerateDeepPlanInput): Promise<Ge
 - Budget Notes: ${p.budgetFlexibilityNotes || 'Not specified'}
 `).join('\n');
 
+  // Generate the canonical category list for the prompt
+  const canonicalCategoryList = getCategoryListForPrompt();
+
   // Phase 1 & 2: Discovery, Research, and Itinerary Sketch
   // The AI uses tools to find places, research them, and then sketch a plan.
   const discoveryFlow = await ai.generate({
@@ -124,6 +138,12 @@ export async function generateDeepPlan(input: GenerateDeepPlanInput): Promise<Ge
       - If "ai-decide" is specified: Use your judgment to determine the ideal number based on the request
       
       **CRITICAL RESEARCH TASK:** For each venue you select, you MUST use the \`exaSearchTool\` to find its official website. Search that website for information about reservations or tickets. If reservations are recommended or required, you MUST set \`reservationRecommended\` to true. If you find a direct link for booking, you MUST provide it in the \`bookingLink\` field.
+
+      **CATEGORY CLASSIFICATION:**
+      You must classify the plan into the most appropriate category and subcategory from the following list. Use the subcategory id as the value for the "eventType" field in your output.
+
+      CATEGORIES:
+      ${canonicalCategoryList}
 
       Your process for each itinerary stop is critical:
       1.  **Discover a Venue**: Use the \`deepPlace-discovery\` to find a potential venue that fits the user's request and profile.
@@ -270,13 +290,13 @@ export async function generateDeepPlan(input: GenerateDeepPlanInput): Promise<Ge
     location: input.locationQuery,
     city: input.locationQuery.split(',')[0].trim(),
     itinerary: enrichedItineraryItems,
-    priceRange: effectivePriceRange || 'Free', // Use the derived price range that respects user's budget flexibility
-    planType: enrichedItineraryItems.length > 1 ? 'multi-stop' : 'single-stop', // Set based on actual number of stops after enforcement
+    priceRange: effectivePriceRange || 'Free',
+    planType: enrichedItineraryItems.length > 1 ? 'multi-stop' : 'single-stop',
     status: 'draft',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    eventType: 'custom',
-    eventTypeLowercase: 'custom',
+    eventType: discoveredItinerary.eventType,
+    eventTypeLowercase: discoveredItinerary.eventType ? discoveredItinerary.eventType.toLowerCase() : '',
     averageRating: 0,
     reviewCount: 0,
     isTemplate: false,
@@ -285,7 +305,7 @@ export async function generateDeepPlan(input: GenerateDeepPlanInput): Promise<Ge
     photoHighlights: [],
     images: [], // Add required images array
     comments: [], // Add required comments array
-    invitedParticipantUserIds: [],
+    invitedParticipantUserIds: input.invitedFriendProfiles?.map(p => p.uid) || [],
     participantResponses: {},
     stopCountReasoning: null,
     coordinates: undefined,

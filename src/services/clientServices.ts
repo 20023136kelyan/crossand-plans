@@ -26,7 +26,7 @@ import type {
 } from '@/types/user';
 
 // Helper function to ensure db is initialized
-function getDb() {
+export function getDb() {
   if (!db) {
     throw new Error('Firebase not initialized');
   }
@@ -54,23 +54,42 @@ export function getFriendships(
     const listener = createListenerWithRetry(
       () => onSnapshot(
       friendshipsRef,
-      (snapshot) => {
+      async (snapshot) => {
         try {
           const friendships: FriendEntry[] = [];
+          const friendUids: string[] = [];
           snapshot.forEach((doc) => {
             const data = doc.data();
+            const friendUid = data.friendUid || doc.id;
+            friendUids.push(friendUid);
             friendships.push({
-              friendUid: data.friendUid || doc.id,
+              friendUid,
               status: data.status || 'friends',
-              name: data.name || data.displayName || 'Unknown',
-              avatarUrl: data.avatarUrl || data.avatar || null,
-              role: data.role || null,
-              isVerified: data.isVerified || false,
               requestedAt: data.requestedAt || null,
-              friendsSince: data.friendsSince || null
-            });
+              friendsSince: data.friendsSince || null,
+              // name, avatarUrl, etc. will be filled in after fetching profiles
+            } as FriendEntry);
           });
-          onUpdate(friendships);
+
+          // Fetch all friend profiles in parallel
+          const profiles = await getUsersProfiles(friendUids);
+          const profileMap = new Map(profiles.map(p => [p.uid, p]));
+
+          // Merge profile data into each FriendEntry
+          const enrichedFriendships = friendships.map(f => {
+            const profile = profileMap.get(f.friendUid);
+            return {
+              ...f,
+              name: profile?.name || profile?.username || 'Unknown',
+              avatarUrl: profile?.avatarUrl || null,
+              role: profile?.role || null,
+              isVerified: profile?.isVerified || false,
+              email: profile?.email || null,
+              // Add any other fields you want to expose
+            };
+          });
+
+          onUpdate(enrichedFriendships);
         } catch (error) {
           onError?.(error instanceof Error ? error : new Error('Failed to process friendships'));
         }

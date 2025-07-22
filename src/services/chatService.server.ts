@@ -64,7 +64,7 @@ export const createDirectChatAdmin = async (
       updatedAt: now,
       lastMessageText: '', 
       lastMessageSenderId: '',
-      lastMessageTimestamp: null,
+      lastMessageTimestamp: now, // Changed from null to now
       participantReadTimestamps: initialReadTimestamps, 
     });
     console.log('[createDirectChatAdmin] Direct chat created successfully with ID (Admin SDK):', newChatDocRef.id);

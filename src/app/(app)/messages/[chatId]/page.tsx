@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { 
   Send, ChevronLeft, Loader2, UserCircle, Paperclip, XCircle as XIcon, EyeOff, MoreVertical, Phone, Video,
-  ShieldCheck, CheckCircle as CheckCircleIcon // Added for VerificationBadge
+  ShieldCheck, CheckCircle as CheckCircleIcon, MessageSquare // Added for MessageSquare
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -24,6 +24,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn, commonImageExtensions } from "@/lib/utils";
 import Link from 'next/link';
 import { FileValidators } from '@/lib/fileValidation';
+import { doc, onSnapshot, collection, query, orderBy } from 'firebase/firestore';
+import { getDb } from '@/services/clientServices';
 
 const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, isVerified: boolean }) => {
   if (role === 'admin') {
@@ -36,6 +38,18 @@ const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, is
 };
 
 const HEADER_HEIGHT_PX = 60; 
+
+// Utility to normalize Firestore Timestamp, string, or Date to JS Date
+function getTimestampAsDate(ts: any): Date | null {
+  if (!ts) return null;
+  if (typeof ts === 'string') {
+    const d = new Date(ts);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof ts.toDate === 'function') return ts.toDate(); // Firestore Timestamp
+  if (ts instanceof Date) return ts;
+  return null;
+}
 
 export default function ChatPage() {
   const params = useParams();
@@ -137,11 +151,40 @@ export default function ChatPage() {
       return;
     }
     if (chatId && user.uid) {
-      initialMarkAsReadDoneRef.current = false; 
       setLoadingChat(true);
-      // TODO: Replace with appropriate action calls or server functions
-      setChatDetails(null);
+      // Real-time listener for chat details
+      const chatDocRef = doc(getDb(), 'chats', chatId);
+      const unsubChat = onSnapshot(chatDocRef, (docSnap) => {
+        if (docSnap.exists()) {
+          setChatDetails({ id: docSnap.id, ...docSnap.data() } as Chat);
+        } else {
+          setChatDetails(null);
+        }
+        setLoadingChat(false);
+      }, (error) => {
+        setChatDetails(null);
+        setLoadingChat(false);
+        toast({ title: 'Error loading chat', description: error.message || 'Could not load chat.', variant: 'destructive' });
+      });
+      // Real-time listener for messages
+      const messagesQuery = query(collection(getDb(), 'chats', chatId, 'messages'), orderBy('timestamp', 'asc'));
+      const unsubMessages = onSnapshot(messagesQuery, (snapshot) => {
+        const msgs: ChatMessage[] = [];
+        snapshot.forEach((doc) => {
+          msgs.push({ id: doc.id, ...doc.data() } as ChatMessage);
+        });
+        setMessages(msgs);
+      }, (error) => {
+        setMessages([]);
+        toast({ title: 'Error loading messages', description: error.message || 'Could not load messages.', variant: 'destructive' });
+      });
+      return () => {
+        unsubChat();
+        unsubMessages();
+      };
     } else {
+      setChatDetails(null);
+      setMessages([]);
       setLoadingChat(false);
     }
   }, [chatId, user?.uid, authLoading, router, toast]);
@@ -314,10 +357,17 @@ export default function ChatPage() {
     return messages.filter(msg => !locallyHiddenMessageIds.has(msg.id) && !(msg.hiddenBy && user && msg.hiddenBy.includes(user.uid)));
   }, [messages, locallyHiddenMessageIds, user]);
 
-  if (authLoading || (loadingChat && !chatDetails)) { 
+  if (authLoading || loadingChat) {
     return (
       <div className="flex flex-col h-full items-center justify-center bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+  if (!chatDetails) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center bg-background">
+        <p className="text-lg text-muted-foreground">Chat not found.</p>
       </div>
     );
   }
@@ -327,7 +377,7 @@ export default function ChatPage() {
   const otherParticipantInitial = otherParticipantFirstName ? otherParticipantFirstName.charAt(0).toUpperCase() : (otherParticipant?.uid ? otherParticipant.uid.charAt(0).toUpperCase() : <UserCircle className="h-5 w-5" />);
 
   return (
-    <div className="relative h-full flex flex-col bg-background overflow-hidden">
+    <div className="min-h-screen flex flex-col bg-background text-foreground">
       <header 
         className="absolute top-0 left-0 right-0 shrink-0 flex items-center p-3 border-b border-muted-foreground/50 bg-background z-20 shadow-sm"
         style={{ height: `${HEADER_HEIGHT_PX}px` }}
@@ -377,92 +427,90 @@ export default function ChatPage() {
             </Button>
         </div>
       </header>
+      <main className="flex-1 flex flex-col overflow-y-auto p-4" style={{ marginTop: HEADER_HEIGHT_PX, marginBottom: footerHeight }}>
+        {messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center flex-1 text-primary py-10 text-lg font-semibold">
+            No messages yet. Say hi!
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 flex-1">
+            {filteredAndVisibleMessages.map((msg, idx) => {
+              if (!user) return null;
+              const messageTimestamp = getTimestampAsDate(msg.timestamp);
 
-      <main 
-        className={cn(
-          "absolute left-0 right-0 overflow-y-auto p-4 space-y-3 bg-card z-10", 
-          "custom-scrollbar-vertical"
-        )}
-        style={{ top: `${HEADER_HEIGHT_PX}px`, bottom: `${footerHeight}px` }}
-      >
-        {filteredAndVisibleMessages.map((msg, idx) => {
-          if (!user) return null; 
-          const messageTimestampString = typeof msg.timestamp === 'string' ? msg.timestamp : (msg.timestamp as Date)?.toISOString();
-          const messageTimestamp = messageTimestampString && isValid(parseISO(messageTimestampString))
-            ? parseISO(messageTimestampString)
-            : null;
+              const isSender = msg.senderId === user.uid;
+              const prevMessage = filteredAndVisibleMessages[idx-1];
+              
+              const isSameSenderAndMinute = (prev: ChatMessage | undefined, current: ChatMessage): boolean => {
+                if (!prev || !current) return false;
+                if (prev.senderId !== current.senderId) return false;
+                const prevTs = typeof prev.timestamp === 'string' && isValid(parseISO(prev.timestamp)) ? parseISO(prev.timestamp) : null;
+                const currentTs = typeof current.timestamp === 'string' && isValid(parseISO(current.timestamp)) ? parseISO(current.timestamp) : null;
+                return !!(prevTs && currentTs && prevTs.getMinutes() === currentTs.getMinutes() && prevTs.getHours() === currentTs.getHours() && prevTs.getDate() === currentTs.getDate());
+              };
+              
+              const showAvatar = !isSender && (!prevMessage || prevMessage.senderId !== msg.senderId || !isSameSenderAndMinute(prevMessage, msg));
+              const isContinuingBlock = isSameSenderAndMinute(prevMessage, msg);
 
-          const isSender = msg.senderId === user.uid;
-          const prevMessage = filteredAndVisibleMessages[idx-1];
-          
-          const isSameSenderAndMinute = (prev: ChatMessage | undefined, current: ChatMessage): boolean => {
-            if (!prev || !current) return false;
-            if (prev.senderId !== current.senderId) return false;
-            const prevTs = typeof prev.timestamp === 'string' && isValid(parseISO(prev.timestamp)) ? parseISO(prev.timestamp) : null;
-            const currentTs = typeof current.timestamp === 'string' && isValid(parseISO(current.timestamp)) ? parseISO(current.timestamp) : null;
-            return !!(prevTs && currentTs && prevTs.getMinutes() === currentTs.getMinutes() && prevTs.getHours() === currentTs.getHours() && prevTs.getDate() === currentTs.getDate());
-          };
-          
-          const showAvatar = !isSender && (!prevMessage || prevMessage.senderId !== msg.senderId || !isSameSenderAndMinute(prevMessage, msg));
-          const isContinuingBlock = isSameSenderAndMinute(prevMessage, msg);
-
-          const bubblePadding = (msg.mediaUrl && !msg.text) ? "p-1.5" : "px-3.5 py-2.5";
-          const roundedCorners = cn(
-            "rounded-2xl", 
-            isSender ? (isContinuingBlock ? "rounded-tr-md rounded-br-lg" : "rounded-br-md") : (isContinuingBlock ? "rounded-tl-md rounded-bl-lg" : "rounded-bl-md")
-          );
-          
-          return (
-            <div key={msg.id} className={`flex w-full items-end gap-2 ${isSender ? 'justify-end' : 'justify-start'} ${isContinuingBlock ? 'mt-0.5' : 'mt-2'} group`}>
-              {!isSender && (
-                showAvatar && otherParticipant ? (
-                  <Avatar className="h-7 w-7 self-end mb-1 flex-shrink-0">
-                    {otherParticipant.avatarUrl ? (
-                        <AvatarImage src={otherParticipant.avatarUrl} alt={otherParticipantFirstName}/>
-                    ) : (
-                        <AvatarFallback className="text-xs bg-muted text-muted-foreground">{otherParticipantInitial}</AvatarFallback>
-                    )}
-                  </Avatar>
-                ) : (<div className="w-7 h-7 flex-shrink-0"></div>) 
-              )}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <div className={cn(
-                      bubblePadding, roundedCorners, "shadow-md max-w-[70%] sm:max-w-[65%] break-words group-hover:bg-opacity-80 cursor-pointer",
-                      isSender ? 'bg-gradient-to-r from-[hsl(var(--button-primary-gradient-start))] to-[hsl(var(--button-primary-gradient-end))] text-primary-foreground group-hover:opacity-90' 
-                               : 'bg-card text-foreground group-hover:bg-card/80'
-                    )}>
-                      {msg.mediaUrl && (
-                        <div 
-                          className={cn("relative w-full rounded-md overflow-hidden cursor-pointer active:opacity-70 transition-opacity", msg.text ? "mb-1.5" : "mb-0")} 
-                          onClick={(e) => { e.stopPropagation(); window.open(msg.mediaUrl, '_blank'); }}
-                        >
-                           <NextImage 
-                            src={msg.mediaUrl} alt="Chat image" 
-                            width={280} height={350} 
-                            style={{ display: 'block', width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '350px' }}
-                            className="rounded-md" data-ai-hint="chat media"
-                            unoptimized={!msg.mediaUrl?.startsWith('http') || msg.mediaUrl?.includes('placehold.co') || msg.mediaUrl.includes('firebasestorage.googleapis.com')} 
-                          />
+              const bubblePadding = (msg.mediaUrl && !msg.text) ? "p-1.5" : "px-3.5 py-2.5";
+              const roundedCorners = cn(
+                "rounded-2xl", 
+                isSender ? (isContinuingBlock ? "rounded-tr-md rounded-br-lg" : "rounded-br-md") : (isContinuingBlock ? "rounded-tl-md rounded-bl-lg" : "rounded-bl-md")
+              );
+              
+              return (
+                <div key={msg.id} className={`flex w-full items-end gap-2 ${isSender ? 'justify-end' : 'justify-start'} ${isContinuingBlock ? 'mt-0.5' : 'mt-2'} group`}>
+                  {!isSender && (
+                    showAvatar && otherParticipant ? (
+                      <Avatar className="h-7 w-7 self-end mb-1 flex-shrink-0">
+                        {otherParticipant.avatarUrl ? (
+                            <AvatarImage src={otherParticipant.avatarUrl} alt={otherParticipantFirstName}/>
+                        ) : (
+                            <AvatarFallback className="text-xs bg-muted text-muted-foreground">{otherParticipantInitial}</AvatarFallback>
+                        )}
+                      </Avatar>
+                    ) : (<div className="w-7 h-7 flex-shrink-0"></div>) 
+                  )}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <div className={cn(
+                          bubblePadding, roundedCorners, "shadow-md max-w-[70%] sm:max-w-[65%] break-words group-hover:bg-opacity-80 cursor-pointer",
+                          isSender ? 'bg-gradient-to-r from-[hsl(var(--button-primary-gradient-start))] to-[hsl(var(--button-primary-gradient-end))] text-primary-foreground group-hover:opacity-90' 
+                                   : 'bg-card text-foreground group-hover:bg-card/80'
+                        )}>
+                          {msg.mediaUrl && (
+                            <div 
+                              className={cn("relative w-full rounded-md overflow-hidden cursor-pointer active:opacity-70 transition-opacity", msg.text ? "mb-1.5" : "mb-0")} 
+                              onClick={(e) => { e.stopPropagation(); window.open(msg.mediaUrl, '_blank'); }}
+                            >
+                               <NextImage 
+                                src={msg.mediaUrl} alt="Chat image" 
+                                width={280} height={350} 
+                                style={{ display: 'block', width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '350px' }}
+                                className="rounded-md" data-ai-hint="chat media"
+                                unoptimized={!msg.mediaUrl?.startsWith('http') || msg.mediaUrl?.includes('placehold.co') || msg.mediaUrl.includes('firebasestorage.googleapis.com')} 
+                              />
+                            </div>
+                          )}
+                          {msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
+                          {messageTimestamp && (
+                            <p className={cn("text-[10px] opacity-70", (msg.mediaUrl && !msg.text) ? "mt-0.5" : "mt-1", isSender ? "text-primary-foreground/80 text-right" : "text-muted-foreground text-left")}>
+                              {formatDistanceToNowStrict(messageTimestamp, { addSuffix: true })}
+                            </p>
+                          )}
                         </div>
-                      )}
-                      {msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
-                      {messageTimestamp && (
-                        <p className={cn("text-[10px] opacity-70", (msg.mediaUrl && !msg.text) ? "mt-0.5" : "mt-1", isSender ? "text-primary-foreground/80 text-right" : "text-muted-foreground text-left")}>
-                          {formatDistanceToNowStrict(messageTimestamp, { addSuffix: true })}
-                        </p>
-                      )}
-                    </div>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align={isSender ? "end" : "start"} className="bg-popover text-popover-foreground">
-                    <DropdownMenuItem onClick={() => handleHideMessage(msg.id)} className="text-xs text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer">
-                      <EyeOff className="mr-2 h-3.5 w-3.5" /> Hide for Me
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-            </div>
-          );
-        })}
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align={isSender ? "end" : "start"} className="bg-popover text-popover-foreground">
+                        <DropdownMenuItem onClick={() => handleHideMessage(msg.id)} className="text-xs text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer">
+                          <EyeOff className="mr-2 h-3.5 w-3.5" /> Hide for Me
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                </div>
+              );
+            })}
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </main>
 

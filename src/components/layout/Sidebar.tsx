@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutGrid, LayoutList, User as UserIcon, Wallet as WalletIcon, Shield, Compass
+  LayoutGrid, LayoutList, User as UserIcon, Shield, Compass, MessageSquare
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -44,7 +44,7 @@ export function Sidebar(props: SidebarProps) {
     navItems.push(
       { href: '/feed', label: 'Feed', icon: LayoutGrid, id: 'feed', ariaLabel: "Feed" },
       { href: '/explore', label: 'Explore', icon: Compass, id: 'explore', ariaLabel: "Explore" },
-      { href: '/wallet', label: 'Wallet', icon: WalletIcon, id: 'wallet', ariaLabel: "Wallet" },
+      { href: '/messages', label: 'Messages', icon: MessageSquare, id: 'messages', ariaLabel: "Messages" },
       { href: '/plans', label: 'Plans', icon: LayoutList, id: 'plans', ariaLabel: "Plans" },
       { href: `/users/${user.uid}`, label: 'Profile', icon: UserIcon, id: 'profile', ariaLabel: "Profile" }
     );

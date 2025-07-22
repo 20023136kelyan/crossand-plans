@@ -366,23 +366,21 @@ export default function NotificationsPage() {
               
               {/* Action Overlay Icon */}
               {notification.type !== 'system' && (
-                <div className="absolute bottom-1 right-1 w-4 h-4 rounded-full bg-background border border-border flex items-center justify-center shadow-sm">
+                <div className="absolute" style={{ bottom: '-10px', right: '-6px' }}>
                   {notification.type === 'post_interaction' ? (
-                    <div className="w-2.5 h-2.5">
-                      {notification.metadata?.interactionType === 'like' ? '❤️' : '💬'}
-                    </div>
+                    <span className="text-base">{notification.metadata?.interactionType === 'like' ? '❤️' : '💬'}</span>
                   ) : notification.type === 'plan_share' ? (
-                    <div className="w-2.5 h-2.5">📝</div>
+                    <span className="text-base">📝</span>
                   ) : notification.type === 'plan_invitation' ? (
-                    <div className="w-2.5 h-2.5">📅</div>
+                    <span className="text-base">📅</span>
                   ) : notification.type === 'plan_completion' ? (
-                    <div className="w-2.5 h-2.5">🎉</div>
+                    <span className="text-base">🎉</span>
                   ) : notification.type === 'friend_request' || notification.type === 'follow_request' ? (
-                    <div className="w-2.5 h-2.5">👋</div>
+                    <span className="text-base">👋</span>
                   ) : notification.type === 'chat_message' ? (
-                    <div className="w-2.5 h-2.5">💬</div>
+                    <span className="text-base">💬</span>
                   ) : (
-                    <div className="w-2.5 h-2.5">🔔</div>
+                    <span className="text-base">🔔</span>
                   )}
                 </div>
               )}
@@ -542,38 +540,40 @@ export default function NotificationsPage() {
       {/* Right side - Visual preview and actions */}
       <div className="flex items-center gap-2">
         {/* Visual preview of the interacted item */}
-        {notification.type !== 'system' && (
-          <div className="w-12 h-12 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
-            {notification.type === 'plan_share' || notification.type === 'plan_invitation' || notification.type === 'plan_completion' ? (
-              notification.planImageUrl ? (
-                <img
-                  src={notification.planImageUrl}
-                  alt="Plan"
-                  className="w-full h-full object-cover"
-                />
+        {notification.type !== 'system' &&
+          notification.type !== 'follow_request' &&
+          notification.type !== 'friend_request' && (
+            <div className="w-12 h-12 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
+              {notification.type === 'plan_share' || notification.type === 'plan_invitation' || notification.type === 'plan_completion' ? (
+                notification.planImageUrl ? (
+                  <img
+                    src={notification.planImageUrl}
+                    alt="Plan"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs">
+                    📋
+                  </div>
+                )
+              ) : notification.type === 'post_interaction' ? (
+                notification.postImageUrl ? (
+                  <img
+                    src={notification.postImageUrl}
+                    alt="Post"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-green-500 to-blue-600 flex items-center justify-center text-white text-xs">
+                    📷
+                  </div>
+                )
               ) : (
-                <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs">
-                  📋
+                <div className="w-full h-full bg-muted flex items-center justify-center text-muted-foreground text-xs">
+                  📄
                 </div>
-              )
-            ) : notification.type === 'post_interaction' ? (
-              notification.postImageUrl ? (
-                <img
-                  src={notification.postImageUrl}
-                  alt="Post"
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full bg-gradient-to-br from-green-500 to-blue-600 flex items-center justify-center text-white text-xs">
-                  📷
-                </div>
-              )
-            ) : (
-              <div className="w-full h-full bg-muted flex items-center justify-center text-muted-foreground text-xs">
-                📄
-              </div>
-            )}
-          </div>
+              )}
+            </div>
         )}
         
         {/* Unread indicator */}

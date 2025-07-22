@@ -444,11 +444,13 @@ export default function OnboardingPage() {
   const [isTyping, setIsTyping] = useState(false);
   const [showInput, setShowInput] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSkipWarning, setShowSkipWarning] = useState(false);
   const [responses, setResponses] = useState<Record<string, any>>({});
   const [croissantMood, setCroissantMood] = useState<'idle' | 'excited' | 'thinking'>('idle');
   const [sliderValue, setSliderValue] = useState(2);
   const [crossyReaction, setCrossyReaction] = useState<string>('');
   const [showCrossyReaction, setShowCrossyReaction] = useState(false);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
   const form = useForm<OnboardingFormValues>({
     resolver: zodResolver(onboardingFormSchema),
@@ -653,6 +655,33 @@ export default function OnboardingPage() {
     }
   };
 
+  // --- Add this helper for skipping to next question ---
+  const handleSkipToNext = () => {
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex((prev) => prev + 1);
+    } else {
+      handleComplete();
+    }
+  };
+
+  // --- Add this helper for skipping all onboarding ---
+  const handleSkipAll = () => {
+    setShowSkipWarning(true);
+    setIsTyping(true);
+    setShowInput(false);
+  };
+
+  const confirmSkipOnboarding = () => {
+    form.reset({});
+    setResponses({});
+    setShowSkipWarning(false);
+    handleComplete();
+  };
+
+  const cancelSkipOnboarding = () => {
+    setShowSkipWarning(false);
+  };
+
   const renderInput = () => {
     if (!showInput || !currentQuestion) return null;
 
@@ -671,33 +700,33 @@ export default function OnboardingPage() {
 
       case 'text':
     return (
-          <motion.div variants={inputVariants} initial="hidden" animate="visible" exit="exit" className="mt-4 space-y-4">
-            <Input
-              placeholder={currentQuestion.placeholder}
-              maxLength={currentQuestion.maxLength}
-              className="w-full max-w-md"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                  handleResponse(e.currentTarget.value.trim());
-                }
-              }}
-              autoFocus
-            />
-            <div className="flex justify-center">
-              <button
-                onClick={() => {
-                  const input = document.querySelector('input[type="text"]') as HTMLInputElement;
-                  if (input && input.value.trim()) {
-                    handleResponse(input.value.trim());
-                  }
-                }}
-                className="bg-orange-400 text-white hover:bg-orange-500 px-6 py-2 rounded-full text-sm font-medium transition-colors duration-200 shadow-lg hover:shadow-xl"
-              >
-                Continue
-              </button>
+      <motion.div variants={inputVariants} initial="hidden" animate="visible" exit="exit" className="mt-4 space-y-4">
+        <Input
+          ref={inputRef}
+          placeholder={currentQuestion.placeholder}
+          maxLength={currentQuestion.maxLength}
+          className="w-full max-w-md"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+              handleResponse(e.currentTarget.value.trim());
+            }
+          }}
+          autoFocus
+        />
+        <div className="flex justify-center">
+          <button
+            onClick={() => {
+              if (inputRef.current && inputRef.current.value.trim()) {
+                handleResponse(inputRef.current.value.trim());
+              }
+            }}
+            className="bg-orange-400 text-white hover:bg-orange-500 px-6 py-2 rounded-full text-sm font-medium transition-colors duration-200 shadow-lg hover:shadow-xl"
+          >
+            Continue
+          </button>
         </div>
-          </motion.div>
-        );
+      </motion.div>
+    );
 
       case 'select':
         if (currentQuestion.id === 'travelTolerance') {
@@ -843,8 +872,9 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-amber-50 to-orange-100 flex flex-col">
-      <style jsx>{`
+    <div className="fixed inset-0 bg-gradient-to-br from-amber-50 to-orange-100 flex flex-col" suppressHydrationWarning>
+      <div className="light w-full h-full flex flex-col flex-1">
+        <style jsx>{`
         .slider {
           -webkit-appearance: none;
           appearance: none;
@@ -872,19 +902,25 @@ export default function OnboardingPage() {
         }
       `}</style>
       {/* Header */}
-      <div className="p-4">
-                    <Button
-                      variant="ghost"
-                      onClick={signOut}
+      <div className="p-4 flex items-center justify-between">
+        <Button
+          variant="ghost"
+          onClick={signOut}
           className="text-orange-600 hover:text-orange-700"
-                    >
+        >
           <LogOut className="h-4 w-4 mr-2" />
           Log Out
-                    </Button>
+        </Button>
+        <button
+          onClick={handleSkipAll}
+          className="text-sm font-medium text-orange-600 hover:text-orange-700 transition-colors px-3 py-1 rounded-full focus:outline-none border border-transparent bg-transparent"
+        >
+          Skip Onboarding
+        </button>
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4">
+      <div className="flex-1 flex flex-col items-center justify-center px-4 relative">
         {/* Croissant Character */}
         <div className="mb-8">
           <CroissantCharacter 
@@ -897,45 +933,94 @@ export default function OnboardingPage() {
 
         {/* Speech Bubble */}
         <AnimatePresence mode="wait">
-          <SpeechBubble
-            key={currentQuestionIndex}
-            text={currentQuestion.text}
-            isTyping={isTyping}
-            typingSpeed={typingSpeed}
-            onComplete={useCallback(() => {
-              setIsTyping(false);
-              setShowInput(true);
-              setCroissantMood('idle');
-            }, [])}
-          >
-            {renderInput()}
-          </SpeechBubble>
+          {showSkipWarning ? (
+            <SpeechBubble
+              key="skip-warning"
+              text={
+                "Are you sure you want to skip onboarding? " +
+                "If you skip, some features may not work as smoothly or be as personalized. " +
+                "You can always complete onboarding later! 😊"
+              }
+              isTyping={isTyping}
+              typingSpeed={typingSpeed}
+              onComplete={useCallback(() => {
+                setIsTyping(false);
+                setShowInput(true);
+                setCroissantMood('idle');
+              }, [])}
+            >
+              {showInput ? (
+                <div className="mt-4 flex justify-center gap-4">
+                  <button
+                    onClick={cancelSkipOnboarding}
+                    className="bg-orange-400 text-white hover:bg-orange-500 px-6 py-2 rounded-full text-sm font-medium transition-colors duration-200 shadow-lg hover:shadow-xl"
+                  >
+                    Complete Now
+                  </button>
+                  <button
+                    onClick={confirmSkipOnboarding}
+                    className="bg-muted text-foreground hover:bg-orange-100 px-6 py-2 rounded-full text-sm font-medium transition-colors duration-200 shadow-lg hover:shadow-xl"
+                  >
+                    Skip Anyway
+                  </button>
+                </div>
+              ) : null}
+            </SpeechBubble>
+          ) : (
+            <SpeechBubble
+              key={currentQuestionIndex}
+              text={currentQuestion.text}
+              isTyping={isTyping}
+              typingSpeed={typingSpeed}
+              onComplete={useCallback(() => {
+                setIsTyping(false);
+                setShowInput(true);
+                setCroissantMood('idle');
+              }, [])}
+            >
+              {renderInput()}
+            </SpeechBubble>
+          )}
         </AnimatePresence>
 
-        {/* Progress Indicator */}
-        <div className="mt-8 flex gap-1">
-          {questions.map((_, index) => (
-            <div
-              key={index}
-              className={`rounded-full transition-all duration-300 ${
-                index < currentQuestionIndex
-                  ? 'bg-green-500 w-2 h-2'
-                  : index === currentQuestionIndex
-                  ? 'bg-orange-500 w-4 h-3'
-                  : 'bg-gray-300 w-2 h-2'
-              }`}
-            />
-          ))}
-                </div>
+        {/* Progress bar below the speech bubble and input */}
+        <div className="flex items-center gap-1 z-30 mt-10 mb-2">
+          {(() => {
+            const realQuestions = questions.filter(q => ['text', 'select', 'multiSelect', 'date'].includes(q.type));
+            const currentRealIndex = realQuestions.findIndex(q => q.id === currentQuestion.id);
+            return realQuestions.map((_, index) => (
+              <div
+                key={index}
+                className={`transition-all duration-300 rounded-full ${
+                  index < currentRealIndex
+                    ? 'bg-primary w-2 h-2'
+                    : index === currentRealIndex
+                      ? 'bg-primary w-5 h-2.5'
+                      : 'bg-[#bfae99] w-2 h-2'
+                }`}
+                style={{ boxShadow: index === currentRealIndex ? '0 1px 4px 0 rgba(0,0,0,0.10)' : undefined }}
+              />
+            ));
+          })()}
+        </div>
+
+        {/* Next Button - bottom right, floating, use flat orange style */}
+        <button
+          onClick={handleSkipToNext}
+          className="fixed bottom-6 right-4 bg-orange-400 text-white hover:bg-orange-500 px-6 py-2 rounded-full text-sm font-medium transition-colors duration-200 shadow-lg hover:shadow-xl z-30"
+        >
+          Skip Question
+        </button>
 
         {/* Loading State */}
         {isSubmitting && (
           <div className="mt-8 flex items-center gap-2 text-orange-600">
             <Loader2 className="h-5 w-5 animate-spin" />
             <span>Saving your profile...</span>
-              </div>
-        )}
-            </div>
           </div>
+        )}
+      </div>
+      </div>
+    </div>
   );
 }

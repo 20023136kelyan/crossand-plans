@@ -133,7 +133,7 @@ export const getFeedPostsAdmin = async (
       });
       mainQueryProcessed = true;
     } else {
-      // General feed: Public posts from everyone
+      // 1. Public posts from everyone
       let publicPostsQuery = firestoreAdmin
         .collection(FEED_POSTS_COLLECTION)
         .where('visibility', '==', 'public' as FeedPostVisibility)
@@ -147,7 +147,11 @@ export const getFeedPostsAdmin = async (
       });
 
       if (currentUserId) {
-        // Current user's own private posts
+        // 2. Fetch the current user's profile to get the following array
+        const currentUserProfile = await getUserProfileAdmin(currentUserId);
+        const followingUids: string[] = currentUserProfile?.following || [];
+
+        // 3. The user's own private posts
         let userPrivatePostsQuery = firestoreAdmin
           .collection(FEED_POSTS_COLLECTION)
           .where('visibility', '==', 'private' as FeedPostVisibility)
@@ -161,27 +165,22 @@ export const getFeedPostsAdmin = async (
           if (!postsMap.has(doc.id)) postsMap.set(doc.id, mapDocToFeedPost(doc));
         });
 
-        // Private posts from friends
-        const friendUids = await getFriendUidsAdmin(currentUserId);
-        console.log(`[getFeedPostsAdmin] User ${currentUserId} has ${friendUids.length} friends for feed.`);
-        if (friendUids.length > 0) {
-          const MAX_UIDS_IN_QUERY = 30; 
-          for (let i = 0; i < friendUids.length; i += MAX_UIDS_IN_QUERY) {
-            const friendUidChunk = friendUids.slice(i, i + MAX_UIDS_IN_QUERY);
-            if (friendUidChunk.length > 0) {
-              let friendsPrivateQuery = firestoreAdmin
-                .collection(FEED_POSTS_COLLECTION)
-                .where('visibility', '==', 'private' as FeedPostVisibility)
-                .where('userId', 'in', friendUidChunk)
-                .orderBy('createdAt', 'desc');
-              if (lastPostFirestoreTimestamp) {
-                friendsPrivateQuery = friendsPrivateQuery.where('createdAt', '<', lastPostFirestoreTimestamp);
-              }
-              const friendsPrivateSnapshot = await friendsPrivateQuery.limit(limitCount).get(); // Limit per chunk query
-              friendsPrivateSnapshot.forEach(doc => {
-                if (!postsMap.has(doc.id)) postsMap.set(doc.id, mapDocToFeedPost(doc));
-              });
+        // 4. All posts (public or private) from users the current user follows
+        const MAX_UIDS_IN_QUERY = 30;
+        for (let i = 0; i < followingUids.length; i += MAX_UIDS_IN_QUERY) {
+          const followingChunk = followingUids.slice(i, i + MAX_UIDS_IN_QUERY);
+          if (followingChunk.length > 0) {
+            let followingPostsQuery = firestoreAdmin
+              .collection(FEED_POSTS_COLLECTION)
+              .where('userId', 'in', followingChunk)
+              .orderBy('createdAt', 'desc');
+            if (lastPostFirestoreTimestamp) {
+              followingPostsQuery = followingPostsQuery.where('createdAt', '<', lastPostFirestoreTimestamp);
             }
+            const followingPostsSnapshot = await followingPostsQuery.limit(limitCount).get();
+            followingPostsSnapshot.forEach(doc => {
+              if (!postsMap.has(doc.id)) postsMap.set(doc.id, mapDocToFeedPost(doc));
+            });
           }
         }
       }

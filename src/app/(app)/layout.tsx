@@ -54,7 +54,7 @@ import 'react-image-crop/dist/ReactCrop.css';
 import Link from 'next/link';
 import {
   Loader2, PlusCircle, Share2, Globe, Lock as LockIcon, Edit3, Camera, Sparkles, X as XIcon, UploadCloud,
-  MessageSquare, User as UserIcon, Search, LayoutGrid, LayoutList, Wallet as WalletIcon, ChevronLeft, ImageIcon, ImagePlus, ArrowRight, ArrowLeft as BackArrowIcon, Check, ChevronsUpDown, Settings, LogOut, Crop as CropIcon, Square, RectangleVertical, Smartphone
+  MessageSquare, User as UserIcon, Search, LayoutGrid, LayoutList, ChevronLeft, ImageIcon, ImagePlus, ArrowRight, ArrowLeft as BackArrowIcon, Check, ChevronsUpDown, Settings, LogOut, Crop as CropIcon, Square, RectangleVertical, Smartphone
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useIsMobile } from '@/hooks/use-is-mobile';

@@ -269,20 +269,20 @@ const PlanStackSection: React.FC<PlanStackSectionProps> = React.memo(({ title, p
              )}
              <Button
               variant="ghost"
-              size="sm"
+              size="icon"
               onClick={onToggleExpand}
-              className="h-8 px-3 text-xs text-primary hover:text-primary-foreground hover:bg-primary transition-all duration-300 rounded-full shadow-sm hover:shadow-md hover:scale-105 font-medium"
+              className="h-8 w-8 flex items-center justify-center text-primary hover:text-primary-foreground hover:bg-primary transition-all duration-300 rounded-full shadow-sm hover:shadow-md hover:scale-105 font-medium"
               aria-label={isExpanded ? `Collapse ${title} section` : `View all ${plans.length} items in ${title}`}
             >
             {isExpanded ? (
               <>
-                <ChevronUp className="h-4 w-4 mr-1" />
-                Show Less
+                <ChevronUp className="h-4 w-4" />
+                {/* Show Less */}
               </>
             ) : (
               <>
-                <ChevronDown className="h-4 w-4 mr-1" />
-                View All
+                <ChevronDown className="h-4 w-4" />
+                {/* View All */}
               </>
             )}
 

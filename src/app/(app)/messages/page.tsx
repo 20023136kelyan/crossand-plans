@@ -23,7 +23,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  MessageCircle, Search, UserPlus, Send, Loader2, ShieldCheck as AdminIcon, CheckCircle, Trash2, MoreVertical, Users as ManageFriendsIcon, XCircle, Plus
+  MessageCircle, Search, UserPlus, Send, Loader2, ShieldCheck as AdminIcon, CheckCircle, Trash2, MoreVertical, Users as ManageFriendsIcon, XCircle, Plus, Pin, MessageCircleIcon
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -53,11 +53,7 @@ import {
   deleteChatAction,
 } from '@/app/actions/chatActions'; 
 import {
-  searchUsersAction,
-  sendFriendRequestAction,
-  acceptFriendRequestAction,
-  declineFriendRequestAction,
-  removeFriendAction
+  searchUsersAction
 } from '@/app/actions/userActions';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
@@ -65,6 +61,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { getUserChats } from '@/services/clientServices';
 
 interface RawBasicUserInfo {
   uid: string;
@@ -352,6 +349,18 @@ function ManageFriendsDialog({
   );
 }
 
+// Utility to normalize Firestore Timestamp, string, or Date to JS Date
+function getTimestampAsDate(ts: any): Date | null {
+  if (!ts) return null;
+  if (typeof ts === 'string') {
+    const d = new Date(ts);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof ts.toDate === 'function') return ts.toDate(); // Firestore Timestamp
+  if (ts instanceof Date) return ts;
+  return null;
+}
+
 export default function MessagesPage() {
   const { user, currentUserProfile, loading: authLoading } = useAuth();
   const [chats, setChats] = useState<Chat[]>([]);
@@ -383,25 +392,41 @@ export default function MessagesPage() {
   const unsubFriendshipsSearchRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    let timeoutId: NodeJS.Timeout | undefined;
     if (authLoading) {
       setLoadingChats(true);
       return;
     }
     if (user?.uid) {
       setLoadingChats(true);
-      // TODO: Replace with appropriate action calls or server functions
-      // const unsubscribe = getUserChats(user.uid, (fetchedChats) => {
-      //   setChats(fetchedChats);
-      //   setLoadingChats(false); 
-      // });
-      // return () => {
-      //   unsubscribe();
-      // };
+      // Timeout fallback: if listener doesn't fire in 3s, stop loading
+      timeoutId = setTimeout(() => {
+        setLoadingChats(false);
+      }, 3000);
+      unsubscribe = getUserChats(
+        user.uid,
+        (fetchedChats) => {
+          setChats(fetchedChats);
+          setLoadingChats(false);
+          if (timeoutId) clearTimeout(timeoutId);
+        },
+        (error) => {
+          setChats([]);
+          setLoadingChats(false);
+          if (timeoutId) clearTimeout(timeoutId);
+          toast({ title: 'Error loading chats', description: error.message || 'Could not load chats.', variant: 'destructive' });
+        }
+      );
     } else {
       setChats([]);
       setLoadingChats(false);
     }
-  }, [user, authLoading]);
+    return () => {
+      if (unsubscribe) unsubscribe();
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [user?.uid, authLoading, toast]);
 
   // Effect to handle friendships subscription
   useEffect(() => {
@@ -683,215 +708,121 @@ export default function MessagesPage() {
     );
   }
 
+  // Dummy online users for demo (replace with real online logic)
+  const onlineUsers = chats.slice(0, 5).map(chat => chat.participantInfo?.find(p => p.uid !== user?.uid)).filter(Boolean);
+
+  // Dummy pinned messages (replace with real logic if needed)
+  const pinnedChats = [];
+
   return (
-    <>
-      <div className="flex flex-col h-full">
-        {/* Header with improved spacing and styling */}
-        <div className="pt-6 pb-6 border-b border-border/40">
-          <h1 className="text-3xl font-bold text-foreground/60 opacity-60 mb-6">Messages</h1>
-          
-          {/* Search bar with action buttons */}
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                type="search"
-                placeholder="Search chats..."
-                className="pl-8 sm:pl-10 bg-card border-border text-sm h-8 sm:h-9 rounded-lg focus:ring-primary focus:border-primary w-full"
-                value={searchTermChats}
-                onChange={(e) => setSearchTermChats(e.target.value)}
-              />
-            </div>
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsFriendPickerOpen(true)}
-              aria-label="Start new chat"
-              className="h-8 sm:h-9 px-2 sm:px-3 text-xs sm:text-sm bg-card border-border hover:bg-secondary/50"
-              disabled={isInitiatingChat}
-            >
-              {isInitiatingChat ? (
-                <Loader2 className="h-4 w-4 animate-spin md:mr-2" />
-              ) : (
-                <Plus className="h-4 w-4 md:mr-2" />
-              )}
-              <span className="hidden md:inline">New Chat</span>
-            </Button>
-          </div>
+    <div className="min-h-screen flex flex-col text-white">
+      {/* Header */}
+      <header className="flex items-center justify-between px-4 py-4 bg-background sticky top-0 z-20">
+        <h1 className="text-2xl font-bold tracking-tight">Messages</h1>
+        <div className="flex items-center gap-3">
+          {/* Only keep the compose/new chat button, remove the search button */}
+          <button className="p-2 rounded-full hover:bg-muted transition"><svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 19v-6m0 0V5m0 8H6m6 0h6"/></svg></button>
         </div>
+      </header>
 
-        <div className="pt-6">
-          <div className="flex-grow overflow-y-auto space-y-3 pr-1 custom-scrollbar-vertical">
-            {filteredChats.map(chat => {
-            const display = getDisplayInfo(chat);
-            let lastMessageDateFormatted = 'Date unknown';
-            let lastMessageTs: number | null = null;
-            if (chat.lastMessageTimestamp) {
-                const parsedDate = typeof chat.lastMessageTimestamp === 'string' ? parseISO(chat.lastMessageTimestamp) : (chat.lastMessageTimestamp instanceof Date ? chat.lastMessageTimestamp : null);
-                if (parsedDate && isValid(parsedDate)) {
-                    lastMessageDateFormatted = formatDistanceToNowStrict(parsedDate, { addSuffix: true });
-                    lastMessageTs = parsedDate.getTime();
-                }
-            }
-            const userReadTimestampISO = chat.participantReadTimestamps?.[user?.uid || ''] as string | undefined;
-            const userReadTime = userReadTimestampISO && isValid(parseISO(userReadTimestampISO)) ? parseISO(userReadTimestampISO).getTime() : 0;
-            const hasNewActivity = lastMessageTs && user && chat.lastMessageSenderId !== user.uid && lastMessageTs > userReadTime;
+      {/* Search Bar */}
+      <div className="px-4 pt-3 pb-5">
+        <Input
+          type="search"
+          placeholder="Search..."
+          className="rounded-full bg-muted/40 border-none focus:ring-2 focus:ring-primary/40 text-sm px-4 py-2"
+        />
+      </div>
 
+      {/* Online Now */}
+      <section className="px-4 pb-3 bg-background">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-muted-foreground font-semibold">Online Now</span>
+          <button className="text-xs text-primary/80 hover:underline">Archive</button>
+        </div>
+        <div className="flex gap-3 overflow-x-auto pb-2 hide-scrollbar">
+          {onlineUsers.length === 0 ? (
+            <span className="text-muted-foreground text-xs">No one online</span>
+          ) : (
+            onlineUsers.map((user, idx) => (
+              <div key={user.uid || idx} className="relative flex flex-col items-center w-16">
+                <span className="block h-11 w-11 rounded-full bg-muted overflow-hidden border-2 border-border">
+                  {user.avatarUrl ? (
+                    <img src={user.avatarUrl} alt={user.name || 'User'} className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center text-lg font-bold bg-muted text-white">{user.name?.charAt(0) || '?'}</span>
+                  )}
+                </span>
+                <span className="absolute bottom-1 right-1 h-3 w-3 rounded-full bg-green-500 border-2 border-background" />
+                <span className="mt-1 text-xs text-center truncate w-full text-muted-foreground">{user.name || 'User'}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
 
-            return (
-              <Link key={chat.id} href={`/messages/${chat.id}`} className="block group">
-                <Card className="relative flex items-center p-3 hover:bg-secondary/50 transition-colors cursor-pointer">
-                   <div className="absolute top-1 right-1 z-10">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-0"
-                          onClick={(e) => {e.preventDefault(); e.stopPropagation();}}
-                          aria-label="More options"
-                        >
-                          <MoreVertical className="h-3.5 w-3.5" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        align="end"
-                        onClick={(e) => {e.preventDefault(); e.stopPropagation();}}
-                      >
-                        <DropdownMenuItem
-                          onClick={(e) => { e.stopPropagation(); handleDeleteChatRequest(chat); }}
-                          className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer text-xs"
-                        >
-                          <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete Chat
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+      {/* Pinned Conversations */}
+      {pinnedChats.length > 0 && (
+        <section className="px-4 py-2 bg-background">
+          <span className="flex items-center gap-1 text-xs text-muted-foreground font-semibold">
+            <Pin className="h-4 w-4 mr-1 text-muted-foreground fill-current" fill="currentColor" />
+            Pinned Conversations
+          </span>
+          <div> {/* Render pinned chats here if needed */} </div>
+        </section>
+      )}
+
+      {/* All Messages */}
+      <section className="flex-1 flex flex-col bg-background overflow-y-auto">
+        <span className="flex items-center gap-1 px-4 pt-4 pb-2 text-xs text-muted-foreground font-semibold">
+          <MessageCircle className="h-4 w-4 mr-1 text-muted-foreground fill-current" fill="currentColor" />
+          All Messages
+        </span>
+        <div className="flex flex-col">
+          {filteredChats.length === 0 ? (
+            <div className="text-center text-muted-foreground py-10">No chats found.</div>
+          ) : (
+            filteredChats.map((chat) => {
+              const display = getDisplayInfo(chat);
+              const lastMessageDate = getTimestampAsDate(chat.lastMessageTimestamp);
+              const lastMessageTime = lastMessageDate ?
+                lastMessageDate.getHours().toString().padStart(2, '0') + ':' + lastMessageDate.getMinutes().toString().padStart(2, '0') : '';
+              const isOnline = true; // Replace with real online logic
+              const unreadCount = 0; // Replace with real unread logic
+              const isTyping = false; // Replace with real typing logic
+              return (
+                <Link key={chat.id} href={`/messages/${chat.id}`} className="flex items-center gap-3 px-4 py-3 transition group">
+                  <div className="relative">
+                    <span className="block h-11 w-11 rounded-full bg-muted overflow-hidden border-2 border-border">
+                      {display.avatarUrl ? (
+                        <img src={display.avatarUrl} alt={display.name} className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="flex h-full w-full items-center justify-center text-lg font-bold bg-muted text-white">{display.initial}</span>
+                      )}
+                    </span>
+                    {isOnline && <span className="absolute bottom-1 right-1 h-3 w-3 rounded-full bg-green-500 border-2 border-background" />}
                   </div>
-
-                  <div className="flex items-center flex-grow min-w-0">
-                    {/* User Avatar with Action Overlay */}
-                    <div className="relative mr-3">
-                      <Avatar className="h-12 w-12">
-                        {display.avatarUrl ? (
-                          <AvatarImage src={display.avatarUrl} alt={display.name} data-ai-hint={display.dataAiHint} />
-                        ) : (
-                          <AvatarFallback>{display.initial}</AvatarFallback>
-                        )}
-                      </Avatar>
-                      
-                      {/* Action Overlay Icon */}
-                      {hasNewActivity && (
-                        <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-background border border-border flex items-center justify-center">
-                          <div className="w-2.5 h-2.5 text-blue-500">💬</div>
-                        </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold truncate group-hover:text-primary transition-colors">{display.name}</span>
+                      <span className="text-xs text-muted-foreground ml-2 whitespace-nowrap">{lastMessageTime}</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs text-muted-foreground truncate">
+                        {isTyping ? <span className="text-green-400">Typing...</span> : chat.lastMessageText || 'No messages yet.'}
+                      </span>
+                      {unreadCount > 0 && (
+                        <span className="ml-2 bg-blue-500 text-white text-xs rounded-full px-2 py-0.5 font-bold">{unreadCount}</span>
                       )}
                     </div>
-                    
-                    {/* User Info and Message Preview */}
-                    <div className="flex-grow min-w-0">
-                      <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-1">
-                          <h3 className="font-semibold truncate" title={display.name}>{display.name}</h3>
-                          <VerificationBadge role={display.role} isVerified={display.isVerified} />
-                          {hasNewActivity && (
-                            <>
-                              <span className="text-muted-foreground">•</span>
-                              <span className="text-xs text-muted-foreground">
-                                {formatCompactTime(new Date(lastMessageTs || Date.now()))}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                        <div className="flex items-center pr-6">
-                          {hasNewActivity && (
-                            <span className="mr-1.5 flex-shrink-0 h-2.5 w-2.5 rounded-full bg-primary shadow-md" aria-label="New activity"></span>
-                          )}
-                          <span className="text-xs text-muted-foreground flex-shrink-0 ml-auto">
-                            {lastMessageDateFormatted}
-                          </span>
-                        </div>
-                      </div>
-                      <p className="text-sm text-muted-foreground truncate pr-6">
-                        {chat.lastMessageSenderId === user?.uid ? "You: " : ""}
-                        {chat.lastMessageText || (chat.lastMessageSenderId && chat.lastMessageText === '' ? '[Image]' : 'No messages yet')}
-                      </p>
-                    </div>
                   </div>
-                </Card>
-              </Link>
-            );
-          })}
+                </Link>
+              );
+            })
+          )}
         </div>
-
-        {!loadingChats && chats.length === 0 && (
-            <div className="flex-grow flex flex-col items-center justify-between text-center py-16 sm:py-20">
-              <div className="flex flex-col items-center">
-                <MessageCircle className="mx-auto h-24 w-24 text-muted-foreground/50 mb-4" />
-                <h2 className="text-2xl font-semibold mb-2">No Messages Yet</h2>
-                <p className="text-muted-foreground mb-8">Start a conversation with your friends.</p>
-              </div>
-              <Button
-                variant="outline"
-                size="lg"
-                className="border-primary/50 text-primary hover:bg-primary/10 hover:text-primary"
-                onClick={() => setIsFriendPickerOpen(true)}
-                disabled={isInitiatingChat}
-              >
-                {isInitiatingChat ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                Start New Chat
-              </Button>
-            </div>
-        )}
-        {!loadingChats && chats.length > 0 && filteredChats.length === 0 && searchTermChats && (
-          <div className="flex-grow flex flex-col items-center justify-center text-center py-10">
-              <Search className="h-20 w-20 text-muted-foreground/50 mb-4" />
-              <h2 className="text-xl font-semibold">No Chats Found</h2>
-              <p className="text-muted-foreground">Your search for "{searchTermChats}" did not match any chats.</p>
-          </div>
-        )}
-      </div>
+      </section>
     </div>
-
-      <FriendPickerDialog
-        open={isFriendPickerOpen}
-        onOpenChange={setIsFriendPickerOpen}
-        onFriendSelect={handleFriendSelectForChat}
-      />
-
-      <ManageFriendsDialog
-        open={isManageFriendsDialogOpen}
-        onOpenChange={setIsManageFriendsDialogOpen}
-        friends={friends}
-        pendingReceived={pendingReceived}
-        pendingSent={pendingSent}
-        friendshipsLoading={friendshipsLoading}
-        onFriendAction={handleFriendAction}
-        friendActionLoading={friendActionLoading}
-        searchTerm={searchTerm}
-        onSearchTermChange={setSearchTerm}
-        searchResults={searchResults}
-        searchLoading={searchLoading}
-      />
-
-      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action will permanently delete this chat for all participants.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setShowDeleteConfirm(false)} disabled={isDeletingChat} aria-label="Cancel Delete">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteChat} disabled={isDeletingChat} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
-              {isDeletingChat ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
   );
 }
 
