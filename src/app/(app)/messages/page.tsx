@@ -937,7 +937,7 @@ export default function MessagesPage() {
                             </p>
                             
                             {unreadCount > 0 && (
-                              <span className="bg-primary text-primary-foreground text-[10px] font-medium rounded-full h-5 min-w-5 flex items-center justify-center">
+                              <span className="bg-primary text-white text-xs font-bold rounded-full h-5 min-w-5 flex items-center justify-center shadow-sm">
                                 {unreadCount > 9 ? '9+' : unreadCount}
                               </span>
                             )}
