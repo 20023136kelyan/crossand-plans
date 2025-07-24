@@ -30,6 +30,23 @@ export const SpeechBubble: React.FC<SpeechBubbleProps> = ({
   const [currentIndex, setCurrentIndex] = React.useState(0);
   const [hasCompleted, setHasCompleted] = React.useState(false);
 
+  // Function to complete the typing animation immediately
+  const completeTyping = React.useCallback(() => {
+    setDisplayedText(text);
+    setCurrentIndex(text.length);
+    setHasCompleted(true);
+    if (onComplete) {
+      onComplete();
+    }
+  }, [text, onComplete]);
+
+  // Handle click on the speech bubble
+  const handleBubbleClick = () => {
+    if (isTyping && currentIndex < text.length) {
+      completeTyping();
+    }
+  };
+
   React.useEffect(() => {
     if (isTyping) {
       setDisplayedText('');
@@ -41,6 +58,9 @@ export const SpeechBubble: React.FC<SpeechBubbleProps> = ({
           if (prev >= text.length) {
             clearInterval(interval);
             setHasCompleted(true);
+            if (onComplete) {
+              onComplete();
+            }
             return prev;
           }
           setDisplayedText(text.slice(0, prev + 1));
@@ -54,7 +74,7 @@ export const SpeechBubble: React.FC<SpeechBubbleProps> = ({
       setCurrentIndex(text.length);
       setHasCompleted(false);
     }
-  }, [text, isTyping, typingSpeed]);
+  }, [text, isTyping, typingSpeed, onComplete]);
 
   // Call onComplete after the component has rendered
   React.useEffect(() => {
@@ -72,7 +92,8 @@ export const SpeechBubble: React.FC<SpeechBubbleProps> = ({
       initial="hidden"
       animate="visible"
       exit="exit"
-      className="bg-white rounded-2xl p-6 shadow-lg max-w-md mx-auto relative"
+      onClick={handleBubbleClick}
+      className="bg-white rounded-2xl p-6 shadow-lg max-w-md mx-auto relative cursor-pointer hover:bg-gray-50 transition-colors"
     >
       <div className="text-gray-800 text-lg leading-relaxed">
         {isTyping ? (
