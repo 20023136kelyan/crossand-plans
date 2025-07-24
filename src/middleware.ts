@@ -23,7 +23,7 @@ async function getSettings(): Promise<AppSettings> {
 
 export async function middleware(request: NextRequest) {
   const requestPath = request.nextUrl.pathname;
-  console.log(`[Middleware] Checking request for: ${requestPath}`);
+  
 
   // Skip middleware for API routes, static files, and internal Next.js routes
   if (
@@ -78,13 +78,13 @@ export async function middleware(request: NextRequest) {
 
   // If it's a public route, just let it through
   if (isPublicRoute) {
-    console.log(`[Middleware] Public route detected (${requestPath}). Skipping session check.`);
+    
     return NextResponse.next();
   }
 
   // Check if this is an API route
   if (requestPath.startsWith('/api/')) {
-    console.log(`[Middleware] API route detected (${requestPath}). Skipping session check.`);
+    
     return NextResponse.next();
   }
   
@@ -95,7 +95,7 @@ export async function middleware(request: NextRequest) {
   
   // If it's not a direct access, let the client-side auth handle it
   if (!isDirectAccess) {
-    console.log(`[Middleware] Client-side navigation detected from ${referer}. Skipping session check.`);
+    
     return NextResponse.next();
   }
 
@@ -104,11 +104,11 @@ export async function middleware(request: NextRequest) {
   
   // If no session cookie exists, redirect to login
   if (!session) {
-    console.log(`[Middleware] No session cookie found for ${requestPath}. Redirecting to /login.`);
+    
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  console.log(`[Middleware] Session cookie found for ${requestPath}. Proceeding with request.`);
+  
   return NextResponse.next();
 }
 

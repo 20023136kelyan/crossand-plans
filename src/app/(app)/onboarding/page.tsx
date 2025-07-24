@@ -310,20 +310,15 @@ type QuestionType =
   | 'name'
   | 'ready'
   | 'birthDate'
-  | 'allergies'
-  | 'dietary'
   | 'cuisines'
-  | 'physicalLimitations'
   | 'activityPreferences'
-  | 'travelTolerance'
   | 'interactionLevel'
-  | 'almostDone'
   | 'complete';
 
 interface Question {
   id: QuestionType;
   text: string;
-  type: 'text' | 'select' | 'multiSelect' | 'date' | 'button';
+  type: 'text' | 'select' | 'multiSelect' | 'date' | 'button' | 'custom';
   options?: string[];
   placeholder?: string;
   required?: boolean;
@@ -332,99 +327,15 @@ interface Question {
   buttonText?: string;
 }
 
-const questions: Question[] = [
-  {
-    id: 'welcome',
-    text: "Bonjour! I am Crossy, your flaky guide to this buttery adventure! 🥐",
-    type: 'button',
-    buttonText: "Nice to meet you! 👋"
-  },
-  {
-    id: 'name',
-    text: "But before we begin, tell me—what should I call you?",
-    type: 'text',
-    placeholder: "Enter your name...",
-    required: true,
-    maxLength: 50
-  },
-  {
-    id: 'ready',
-    text: "Perfect! Now let's get to know you better so I can recommend the best experiences for you! 🎯",
-    type: 'button',
-    buttonText: "I'm ready! 🚀"
-  },
-  {
-    id: 'birthDate',
-    text: "When's your special day? (This helps us personalize your experience!)",
-    type: 'date'
-  },
-  {
-    id: 'allergies',
-    text: "Any food allergies I should know about? Safety first! 🚫",
-    type: 'multiSelect',
-    options: ['🥜 Peanuts', '🌰 Tree Nuts', '🥛 Milk', '🥚 Eggs', '🫘 Soy', '🌾 Wheat', '🐟 Fish', '🦐 Shellfish', '🌾 Gluten', '🥛 Lactose', '🍷 Sulfites', '❌ None']
-  },
-  {
-    id: 'dietary',
-    text: "What's your dietary style? Let's make sure we find the perfect places for you! 🥗",
-    type: 'multiSelect',
-    options: ['🥬 Vegetarian', '🌱 Vegan', '🐟 Pescatarian', '🥩 Keto', '🦴 Paleo', '🫒 Mediterranean', '🍞 Low-Carb', '🥛 Dairy-Free', '🌾 Gluten-Free', '☪️ Halal', '✡️ Kosher', '❌ None']
-  },
-  {
-    id: 'cuisines',
-    text: "What cuisines make your taste buds dance? 🍜",
-    type: 'multiSelect',
-    options: ['🍝 Italian', '🌮 Mexican', '🥢 Chinese', '🍱 Japanese', '🍜 Thai', '🍛 Indian', '🥖 French', '🫒 Mediterranean', '🍔 American', '🍚 Korean', '🍜 Vietnamese', '🧀 Greek', '🥘 Spanish', '🥙 Lebanese', '🍽️ Ethiopian', '🫓 Moroccan']
-  },
-  {
-    id: 'physicalLimitations',
-    text: "Any physical considerations I should keep in mind for your adventures? ⚠️",
-    type: 'multiSelect',
-    options: ['♿ Wheelchair Accessible', '🚶 Limited Mobility', '👁️ Visual Impairment', '👂 Hearing Impairment', '🐕 Service Animal Friendly', '🫂 Low-Impact Activities', '❌ None']
-  },
-  {
-    id: 'activityPreferences',
-    text: "What types of activities get you excited? ❤️",
-    type: 'multiSelect',
-    options: ['🏔️ Outdoor Adventures', '🏛️ Cultural Experiences', '🍽️ Food & Dining', '🎭 Arts & Entertainment', '💪 Sports & Fitness', '🧘 Relaxation & Wellness', '🛍️ Shopping', '📚 Educational', '🎉 Social Events', '📸 Photography', '🎵 Music', '🌿 Nature']
-  },
-  {
-    id: 'travelTolerance',
-    text: "How far are you willing to travel for a great experience?",
-    type: 'select',
-    options: ['Walking distance only', 'Up to 30 minutes', 'Up to 1 hour', 'Up to 2 hours', 'Any distance for the right experience', 'I prefer local adventures']
-  },
-  {
-    id: 'interactionLevel',
-    text: "How do you like to interact with others? Choose your spirit animal! 🦁",
-    type: 'select',
-    options: ['🐢 Shy Turtle - Mostly observing', '🐬 Friendly Dolphin - Balanced interaction', '🐧 Party Penguin - Very social and talkative', '🦎 Adaptive Chameleon - I adapt to the situation']
-  },
-  {
-    id: 'almostDone',
-    text: "Fantastic! I'm getting a really good sense of who you are. Just a few more details and we'll be all set! ✨",
-    type: 'button',
-    buttonText: "Almost there! 💪"
-  },
-  {
-    id: 'complete',
-    text: "Magnifique! You're all set for your buttery adventure! 🎉",
-    type: 'button',
-    buttonText: "Let's start planning! 🚀"
-  }
-];
-
+// Place schema and type above the component so they are in scope
 const onboardingFormSchema = z.object({
-  name: z.string().min(1, "Name is required.").max(100).optional().nullable(),
+  firstName: z.string().min(1, "First name is required.").max(50).optional().nullable(),
+  lastName: z.string().min(1, "Last name is required.").max(50).optional().nullable(),
   birthDate: z.string().optional().nullable(),
-  allergies: z.array(z.string()).optional().default([]),
-  dietaryRestrictions: z.array(z.string()).optional().default([]),
   favoriteCuisines: z.array(z.string()).optional().default([]),
-  physicalLimitations: z.array(z.string()).optional().default([]),
   activityTypePreferences: z.array(z.string()).optional().default([]),
   activityTypeDislikes: z.array(z.string()).optional().default([]),
   environmentalSensitivities: z.array(z.string()).optional().default([]),
-  travelTolerance: z.string().optional().nullable(),
   budgetFlexibilityNotes: z.string().max(300).optional().nullable(),
   socialPreferences: z.object({
     preferredGroupSize: z.string().optional().nullable(),
@@ -440,6 +351,26 @@ export default function OnboardingPage() {
   const router = useRouter();
   const { toast } = useToast();
   
+  // Helper to extract first/last name from providerData if available
+  function extractProviderNames(user: any): { givenName: string; familyName: string } {
+    const provider = user?.providerData?.[0];
+    // Google and Apple use these keys in the raw profile
+    const raw = provider?.raw || provider?.toJSON?.();
+    let givenName = '';
+    let familyName = '';
+    if (raw && typeof raw === 'object') {
+      givenName = raw.given_name || '';
+      familyName = raw.family_name || '';
+    }
+    return { givenName, familyName };
+  }
+  const { givenName, familyName } = extractProviderNames(user);
+  const hasPrefilledName = Boolean(currentUserProfile?.firstName || givenName || user?.displayName);
+  const prefillFirstName = currentUserProfile?.firstName || givenName || (user?.displayName ? user.displayName.split(' ')[0] : '');
+  const prefillLastName = currentUserProfile?.lastName || familyName || (user?.displayName ? user.displayName.split(' ').slice(1).join(' ') : '');
+  const displayName = prefillFirstName;
+
+  // Always start at the welcome message
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [isTyping, setIsTyping] = useState(false);
   const [showInput, setShowInput] = useState(false);
@@ -452,21 +383,72 @@ export default function OnboardingPage() {
   const [showCrossyReaction, setShowCrossyReaction] = useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
+  // Dynamically generate questions array so welcome message can use the user's name
+  const questions: Question[] = [
+    {
+      id: 'welcome',
+      text: hasPrefilledName && displayName
+        ? `Bonjour, ${displayName}! I am Crossy, your flaky guide to this buttery adventure! 🥐`
+        : "Bonjour! I am Crossy, your flaky guide to this buttery adventure! 🥐",
+      type: 'button',
+      buttonText: hasPrefilledName ? "Let's get started! 👋" : "Nice to meet you! 👋"
+    },
+    {
+      id: 'name',
+      text: "What's your name?",
+      type: 'custom', // Use 'custom' for the combined name step
+      placeholder: '',
+      required: true
+    },
+    {
+      id: 'ready',
+      text: "Perfect! Now let's get to know you better so I can recommend the best experiences for you! 🎯",
+      type: 'button',
+      buttonText: "I'm ready! 🚀"
+    },
+    {
+      id: 'birthDate',
+      text: "When's your special day? (This helps us personalize your experience!)",
+      type: 'date'
+    },
+    {
+      id: 'cuisines',
+      text: "What cuisines make your taste buds dance? 🍜",
+      type: 'multiSelect',
+      options: ['🍝 Italian', '🌮 Mexican', '🥢 Chinese', '🍱 Japanese', '🍜 Thai', '🍛 Indian', '🥖 French', '🫒 Mediterranean', '🍔 American', '🍚 Korean', '🍜 Vietnamese', '🧀 Greek', '🥘 Spanish', '🥙 Lebanese', '🍽️ Ethiopian', '🫓 Moroccan']
+    },
+    {
+      id: 'activityPreferences',
+      text: "What types of activities get you excited? ❤️",
+      type: 'multiSelect',
+      options: ['🏔️ Outdoor Adventures', '🏛️ Cultural Experiences', '🍽️ Food & Dining', '🎭 Arts & Entertainment', '💪 Sports & Fitness', '🧘 Relaxation & Wellness', '🛍️ Shopping', '📚 Educational', '🎉 Social Events', '📸 Photography', '🎵 Music', '🌿 Nature']
+    },
+    {
+      id: 'interactionLevel',
+      text: "How do you like to interact with others? Choose your spirit animal! 🦁",
+      type: 'select',
+      options: ['🐢 Shy Turtle - Mostly observing', '🐬 Friendly Dolphin - Balanced interaction', '🐧 Party Penguin - Very social and talkative', '🦎 Adaptive Chameleon - I adapt to the situation']
+    },
+    {
+      id: 'complete',
+      text: "Magnifique! I’m getting a really good sense of who you are. You’re all set for your buttery adventure! 🎉",
+      type: 'button',
+      buttonText: "Let's start planning! 🚀"
+    }
+  ];
+
   const form = useForm<OnboardingFormValues>({
     resolver: zodResolver(onboardingFormSchema),
     defaultValues: {
-      name: currentUserProfile?.name || user?.displayName || '',
+      firstName: prefillFirstName,
+      lastName: prefillLastName,
       birthDate: currentUserProfile?.birthDate && typeof currentUserProfile.birthDate !== 'string' && typeof (currentUserProfile.birthDate as any)?.toDate === 'function'
         ? (currentUserProfile.birthDate as any).toDate().toISOString().split('T')[0]
         : (typeof currentUserProfile?.birthDate === 'string' ? currentUserProfile.birthDate.split('T')[0] : ''),
-      allergies: currentUserProfile?.allergies || [],
-      dietaryRestrictions: currentUserProfile?.dietaryRestrictions || [],
       favoriteCuisines: currentUserProfile?.favoriteCuisines || [],
-      physicalLimitations: currentUserProfile?.physicalLimitations || [],
       activityTypePreferences: currentUserProfile?.activityTypePreferences || [],
       activityTypeDislikes: currentUserProfile?.activityTypeDislikes || [],
       environmentalSensitivities: currentUserProfile?.environmentalSensitivities || [],
-      travelTolerance: currentUserProfile?.travelTolerance || '',
       budgetFlexibilityNotes: currentUserProfile?.budgetFlexibilityNotes || '',
       socialPreferences: currentUserProfile?.socialPreferences || { preferredGroupSize: null, interactionLevel: null },
       availabilityNotes: currentUserProfile?.availabilityNotes || '',
@@ -479,29 +461,11 @@ export default function OnboardingPage() {
   // Generate Crossy reactions based on question and selection
   const getCrossyReaction = (questionId: string, selectedCount: number, totalCount: number) => {
     const reactions = {
-      allergies: [
-        "Oh no! 😰 We'll make sure to avoid those!",
-        "Got it! 🚫 We'll keep you safe!",
-        "Noted! 📝 Safety first!",
-        "Understood! 🛡️ We'll be extra careful!"
-      ],
-      dietary: [
-        "Respect! 🙏 We'll find perfect options!",
-        "No worries! 🌱 We've got alternatives!",
-        "Got it! 🥗 We'll accommodate that!",
-        "Perfect! 🎯 We'll match your needs!"
-      ],
       cuisines: [
         "Yum! 😋 Great taste!",
         "Delicious! 🍽️ Love your choices!",
         "Mmm! 🤤 Those sound amazing!",
         "Excellent! ⭐ You know good food!"
-      ],
-      physicalLimitations: [
-        "We'll adapt! ♿ Accessibility matters!",
-        "No problem! 💪 We'll work around that!",
-        "Got it! 🎯 We'll find suitable options!",
-        "Understood! 🤝 We'll accommodate you!"
       ],
       activityPreferences: [
         "Awesome! 🎉 Love your energy!",
@@ -554,33 +518,30 @@ export default function OnboardingPage() {
     const formUpdates: any = {};
     switch (currentQuestion.id) {
       case 'welcome':
-      case 'ready':
-      case 'almostDone':
-        // Button responses don't need form updates
+        // If user has a prefilled name, skip first/last name questions
+        if (hasPrefilledName) {
+          setTimeout(() => {
+            setCroissantMood('idle');
+            setCurrentQuestionIndex(2); // Skip to 'ready'
+          }, 1500);
+          return;
+        }
         break;
       case 'name':
-        formUpdates.name = response;
+        formUpdates.firstName = response.firstName;
+        formUpdates.lastName = response.lastName;
+        break;
+      case 'ready':
+      case 'complete':
         break;
       case 'birthDate':
         formUpdates.birthDate = response;
         break;
-      case 'allergies':
-        formUpdates.allergies = response;
-        break;
-      case 'dietary':
-        formUpdates.dietaryRestrictions = response;
-        break;
       case 'cuisines':
         formUpdates.favoriteCuisines = response;
         break;
-      case 'physicalLimitations':
-        formUpdates.physicalLimitations = response;
-        break;
       case 'activityPreferences':
         formUpdates.activityTypePreferences = response;
-        break;
-      case 'travelTolerance':
-        formUpdates.travelTolerance = response;
         break;
       case 'interactionLevel':
         formUpdates.socialPreferences = {
@@ -588,15 +549,10 @@ export default function OnboardingPage() {
           interactionLevel: response
         };
         break;
-      case 'almostDone':
-        // No form updates needed for this step
-        break;
       case 'complete':
-        // No form updates needed for this step
         break;
     }
     
-    // Update form values safely
     if (Object.keys(formUpdates).length > 0) {
       Object.entries(formUpdates).forEach(([key, value]) => {
         if (key === 'socialPreferences') {
@@ -607,15 +563,17 @@ export default function OnboardingPage() {
       });
     }
     
-    // Show response and move to next question
-    setTimeout(() => {
-      setCroissantMood('idle');
-      if (currentQuestionIndex < questions.length - 1) {
-        setCurrentQuestionIndex(prev => prev + 1);
-      } else {
-        handleComplete();
-      }
-    }, 1500);
+    // Show response and move to next question (unless handled above)
+    if (currentQuestion.id !== 'welcome' || !hasPrefilledName) {
+      setTimeout(() => {
+        setCroissantMood('idle');
+        if (currentQuestionIndex < questions.length - 1) {
+          setCurrentQuestionIndex(prev => prev + 1);
+        } else {
+          handleComplete();
+        }
+      }, 1500);
+    }
   };
 
   const handleComplete = async () => {
@@ -629,10 +587,16 @@ export default function OnboardingPage() {
       };
 
       const formData = form.getValues();
+      // Backend expects firstName and lastName, not name
       const result = await completeOnboardingAction({
         ...formData,
-        name: formData.name || null,
-        environmentalSensitivities: formData.environmentalSensitivities || []
+        firstName: formData.firstName || prefillFirstName || null,
+        lastName: formData.lastName || prefillLastName || null,
+        environmentalSensitivities: formData.environmentalSensitivities || [],
+        allergies: [],
+        dietaryRestrictions: [],
+        physicalLimitations: [],
+        travelTolerance: '',
       }, authUserDataPayload);
 
       if (result.success) {
@@ -640,9 +604,8 @@ export default function OnboardingPage() {
           title: "Welcome to Crossand! 🥐",
           description: "Your profile is complete and you're ready to start planning!",
         });
-        
         await refreshProfileStatus();
-          acknowledgeNewUserWelcome();
+        acknowledgeNewUserWelcome();
         router.push('/feed');
       } else {
         toast({ title: "Save Failed", description: result.error || "An unknown error occurred.", variant: "destructive" });
@@ -698,50 +661,48 @@ export default function OnboardingPage() {
           </motion.div>
         );
 
-      case 'text':
-    return (
-      <motion.div variants={inputVariants} initial="hidden" animate="visible" exit="exit" className="mt-4 space-y-4">
-        <Input
-          ref={inputRef}
-          placeholder={currentQuestion.placeholder}
-          maxLength={currentQuestion.maxLength}
-          className="w-full max-w-md"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-              handleResponse(e.currentTarget.value.trim());
-            }
-          }}
-          autoFocus
-        />
-        <div className="flex justify-center">
-          <button
-            onClick={() => {
-              if (inputRef.current && inputRef.current.value.trim()) {
-                handleResponse(inputRef.current.value.trim());
-              }
-            }}
-            className="bg-orange-400 text-white hover:bg-orange-500 px-6 py-2 rounded-full text-sm font-medium transition-colors duration-200 shadow-lg hover:shadow-xl"
-          >
-            Continue
-          </button>
-        </div>
-      </motion.div>
-    );
+      case 'custom':
+        // Name step: two fields in one step
+        return (
+          <motion.div variants={inputVariants} initial="hidden" animate="visible" exit="exit" className="mt-4 space-y-4">
+            <div className="flex flex-col md:flex-row gap-3">
+              <div className="flex-1">
+                <Input
+                  placeholder="First name (e.g. Alex)"
+                  value={form.watch('firstName') || ''}
+                  onChange={e => form.setValue('firstName', e.target.value)}
+                  maxLength={50}
+                  autoFocus
+                />
+              </div>
+              <div className="flex-1">
+                <Input
+                  placeholder="Last name (e.g. Smith)"
+                  value={form.watch('lastName') || ''}
+                  onChange={e => form.setValue('lastName', e.target.value)}
+                  maxLength={50}
+                />
+              </div>
+            </div>
+            <div className="flex justify-center">
+              <button
+                onClick={() => {
+                  if ((form.getValues('firstName') || '').trim() && (form.getValues('lastName') || '').trim()) {
+                    handleResponse({ firstName: form.getValues('firstName'), lastName: form.getValues('lastName') });
+                  }
+                }}
+                className="bg-orange-400 text-white hover:bg-orange-500 px-6 py-2 rounded-full text-sm font-medium transition-colors duration-200 shadow-lg hover:shadow-xl"
+                disabled={!(form.getValues('firstName') || '').trim() || !(form.getValues('lastName') || '').trim()}
+              >
+                Continue
+              </button>
+            </div>
+          </motion.div>
+        );
 
       case 'select':
-        if (currentQuestion.id === 'travelTolerance') {
-  return (
-            <TravelToleranceSlider
-              sliderValue={sliderValue}
-              setSliderValue={setSliderValue}
-              handleResponse={handleResponse}
-              currentQuestion={currentQuestion}
-            />
-          );
-        }
-        
         if (currentQuestion.id === 'interactionLevel') {
-          return (
+  return (
             <InteractionLevelSelector
               handleResponse={handleResponse}
               currentQuestion={currentQuestion}

@@ -30,7 +30,7 @@ import {
 } from '@/app/actions/userActions';
 import { initiateDirectChatAction } from '@/app/actions/chatActions';
 import type { UserProfile, FeedPost, UserStats, FriendStatus, UserRoleType, FriendEntry } from "@/types/user";
-import { cn, commonImageExtensions } from "@/lib/utils";
+import { cn, commonImageExtensions, getFullName } from "@/lib/utils";
 import { FileValidators } from '@/lib/fileValidation';
 import { PostDetailModal } from '@/components/feed/PostDetailModal';
 import ReactCrop, { type Crop, type PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
@@ -249,6 +249,7 @@ export default function UserProfilePage() {
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [currentImage, setCurrentImage] = useState<HTMLImageElement | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
 
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -462,7 +463,7 @@ export default function UserProfilePage() {
 
       const chatUserInfo: RawBasicUserInfo = {
         uid: userProfile.uid,
-        name: userProfile.name,
+        name: getFullName(userProfile),
         avatarUrl: userProfile.avatarUrl,
         role: userProfile.role || 'user',
         isVerified: userProfile.isVerified
@@ -470,7 +471,7 @@ export default function UserProfilePage() {
 
       const currentUserInfo: RawBasicUserInfo = {
         uid: currentUser.uid,
-        name: authenticatedUserProfile.name,
+        name: getFullName(authenticatedUserProfile),
         avatarUrl: authenticatedUserProfile.avatarUrl,
         role: authenticatedUserProfile.role || 'user',
         isVerified: authenticatedUserProfile.isVerified
@@ -629,7 +630,10 @@ export default function UserProfilePage() {
       toast({ title: "Save Error", description: "No cropped image to save or user not authenticated.", variant: "destructive" });
       return;
     }
+    
     setIsUploadingAvatar(true);
+    setUploadSuccess(false);
+    
     try {
       await currentUser.getIdToken(true);
       const idToken = await currentUser.getIdToken();
@@ -639,8 +643,10 @@ export default function UserProfilePage() {
       formData.append('avatarImage', croppedImageFile);
 
       const result = await updateUserAvatarAction(formData, idToken);
+      
       if (result.success && result.newAvatarUrl) {
         toast({ title: "Avatar Updated!" });
+        setUploadSuccess(true);
 
         // Optimistic update for the current page's display if it's the user's own profile
         if (isOwnProfile && profileData.userProfile) {
@@ -662,11 +668,22 @@ export default function UserProfilePage() {
         // Re-fetch full profile data for the page for consistency
         await fetchProfileData();
 
-        handleCancelAvatarChangeOnProfile(); // Clear local preview states
+        // Clear local preview states immediately
+        setCroppedImageFile(null);
+        if (avatarPreviewUrl) {
+          URL.revokeObjectURL(avatarPreviewUrl);
+        }
+        setAvatarPreviewUrl(null);
+        setImageSrcForCropper(null);
+        if (avatarFileInputRef.current) avatarFileInputRef.current.value = "";
+        
+        // Small delay to ensure state updates are processed
+        await new Promise(resolve => setTimeout(resolve, 100));
       } else {
         toast({ title: "Avatar Update Failed", description: result.error || "Could not update avatar.", variant: "destructive" });
       }
     } catch (error: any) {
+      console.error('Error in handleSaveAvatarToServer:', error);
       toast({ title: "Error", description: error.message || "Failed to update avatar.", variant: "destructive" });
     } finally {
       setIsUploadingAvatar(false);
@@ -675,9 +692,12 @@ export default function UserProfilePage() {
 
   const handleCancelAvatarChangeOnProfile = () => {
     setCroppedImageFile(null);
-    if (avatarPreviewUrl) URL.revokeObjectURL(avatarPreviewUrl);
+    if (avatarPreviewUrl) {
+      URL.revokeObjectURL(avatarPreviewUrl);
+    }
     setAvatarPreviewUrl(null);
     setImageSrcForCropper(null); 
+    setUploadSuccess(false);
     if (avatarFileInputRef.current) avatarFileInputRef.current.value = "";
   };
 
@@ -747,7 +767,7 @@ export default function UserProfilePage() {
     );
   }
   
-  const userInitial = userProfile.name ? userProfile.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : (userProfile.email ? userProfile.email[0].toUpperCase() : 'U');
+  const userInitial = getFullName(userProfile)?.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || (userProfile.username ? userProfile.username[0].toUpperCase() : (userProfile.email ? userProfile.email[0].toUpperCase() : 'U'));
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -771,16 +791,16 @@ export default function UserProfilePage() {
               >
                 {isOwnProfile && avatarPreviewUrl ? (
                   <Avatar className="h-32 w-32 border-4 border-white/20 shadow-2xl group-hover:shadow-blue-500/25 transition-all duration-300 group-hover:scale-105">
-                    <AvatarImage src={avatarPreviewUrl} alt={userProfile.name || userProfile.username || ''} />
+                    <AvatarImage src={avatarPreviewUrl} alt={getFullName(userProfile) || userProfile.username || ''} />
                     <AvatarFallback className="text-3xl font-bold bg-gradient-to-br from-blue-500 to-purple-600 text-white">
-                      {(userProfile.name || userProfile.username)?.charAt(0)?.toUpperCase()}
+                      {userInitial}
                     </AvatarFallback>
                   </Avatar>
                 ) : (
                   <Avatar className="h-32 w-32 border-4 border-white/20 shadow-2xl group-hover:shadow-blue-500/25 transition-all duration-300 group-hover:scale-105">
-                    <AvatarImage src={userProfile.avatarUrl || ''} alt={userProfile.name || userProfile.username || ''} />
+                    <AvatarImage src={userProfile.avatarUrl || ''} alt={getFullName(userProfile) || userProfile.username || ''} />
                     <AvatarFallback className="text-3xl font-bold bg-gradient-to-br from-blue-500 to-purple-600 text-white">
-                      {(userProfile.name || userProfile.username)?.charAt(0)?.toUpperCase()}
+                      {userInitial}
                     </AvatarFallback>
                   </Avatar>
                 )}
@@ -801,9 +821,18 @@ export default function UserProfilePage() {
             
             {/* Name and Username */}
             <div className="text-center mb-4">
-              <h1 className={`text-base font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'} mb-1`}>
-                {userProfile.name || userProfile.username}
-              </h1>
+              <div className="relative inline-block mb-1">
+                <h1 className={`text-base font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                  {getFullName(userProfile) || userProfile.username}
+                </h1>
+                {isOwnProfile && (
+                  <Button size="sm" variant="ghost" className="absolute -right-6 top-0 h-5 w-5 p-0 rounded-md hover:bg-primary/10 transition-all duration-200" asChild>
+                    <Link href={`/users/settings?tab=profile&returnUrl=${encodeURIComponent(`/users/${userProfile.uid}`)}`}>
+                      <Edit3 className="h-5 w-5 text-muted-foreground hover:text-primary" />
+                    </Link>
+                  </Button>
+                )}
+              </div>
               <p className={`${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} text-base`}>
                 {userProfile.bio || 'No bio available'}
               </p>
@@ -842,12 +871,29 @@ export default function UserProfilePage() {
               </div>
             </div>
 
-            {/* Action Buttons - Only Follow/Unfollow */}
+            {/* Action Buttons - Follow/Unfollow and Message */}
             {!isOwnProfile && currentUser && (
               <div className="flex gap-2">
+                {/* Message Button - only show when following */}
+                {isFollowing && (
+                  <Button 
+                    variant="outline"
+                    className="flex-1"
+                    onClick={handleInitiateChat}
+                    disabled={isInitiatingChat || followActionLoading}
+                  >
+                    {isInitiatingChat ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <MessageSquare className="h-4 w-4 mr-2" />
+                    )}
+                    Message
+                  </Button>
+                )}
+                
                 <Button 
                   variant={followButtonState.variant}
-                  className="flex-1"
+                  className={isFollowing ? "flex-1" : "flex-1"}
                   onClick={handleFollowToggle}
                   disabled={followButtonState.disabled || followActionLoading}
                 >
@@ -882,15 +928,15 @@ export default function UserProfilePage() {
               </div>
             )}
 
-            {/* Edit Profile for Own Profile */}
+            {/* Edit Preferences for Own Profile */}
             {isOwnProfile && (
               <div className="flex gap-2">
                 <Button 
                   variant="outline"
                   className="flex-1"
-                  onClick={() => router.push('/users/settings')}
+                  onClick={() => router.push(`/users/settings?tab=preferences&returnUrl=${encodeURIComponent(`/users/${userProfile.uid}`)}`)}
                 >
-                  Edit Profile
+                  Edit Preferences
                 </Button>
                 <Button 
                   variant="outline"
@@ -980,7 +1026,7 @@ export default function UserProfilePage() {
         <input type="file" accept="image/png, image/jpeg, image/gif, image/webp, image/*" ref={avatarFileInputRef} onChange={handleAvatarFileSelect} className="hidden" />
         
         {/* Avatar Save Controls */}
-        {avatarPreviewUrl && isOwnProfile && (
+        {avatarPreviewUrl && isOwnProfile && !uploadSuccess && (
           <div className="px-6 pb-6">
             <div className="flex gap-3 mt-6">
               <Button 

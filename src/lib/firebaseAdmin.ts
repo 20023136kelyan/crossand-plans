@@ -24,25 +24,25 @@ function initializeFirebaseServices(app: admin.app.App): boolean {
     const firestore = app.firestore();
     if (!firestore) throw new Error('Failed to initialize Firestore');
     firestoreAdminInstance = firestore;
-    console.log('[firebaseAdmin] Firestore initialized successfully');
+
     
     // Initialize Auth
     const auth = app.auth();
     if (!auth) throw new Error('Failed to initialize Auth');
     authAdminInstance = auth;
-    console.log('[firebaseAdmin] Auth initialized successfully');
+
     
     // Initialize Storage
     const storage = app.storage();
     if (!storage) throw new Error('Failed to initialize Storage');
     storageAdminInstance = storage;
-    console.log('[firebaseAdmin] Storage initialized successfully');
+
 
     // Initialize Messaging
     const messaging = app.messaging();
     if (!messaging) throw new Error('Failed to initialize Messaging');
     messagingAdminInstance = messaging;
-    console.log('[firebaseAdmin] Messaging initialized successfully');
+
     
     return true;
   } catch (error: any) {
@@ -89,7 +89,7 @@ function initializeAdminApp(): void {
     const existingApp = admin.apps.find(app => app?.name === 'MACAROOM_ADMIN_APP_INSTANCE');
     if (existingApp) {
       adminAppInstance = existingApp;
-      console.log('[firebaseAdmin] Using existing Firebase Admin app instance');
+  
       if (initializeFirebaseServices(existingApp)) {
         appInitialized = true;
         return;
@@ -98,7 +98,7 @@ function initializeAdminApp(): void {
 
     // Get and validate service account
     const serviceAccountJson = getServiceAccount();
-    console.log(`[firebaseAdmin] Successfully loaded service account for project: ${serviceAccountJson.projectId}`);
+    
 
     // Initialize app with credentials
     const appOptions: admin.AppOptions = {
@@ -111,12 +111,12 @@ function initializeAdminApp(): void {
     if (!app) throw new Error('Failed to initialize Firebase Admin app');
     
     adminAppInstance = app;
-    console.log(`[firebaseAdmin] Successfully initialized Firebase Admin app for project: ${serviceAccountJson.projectId}`);
+    
 
     // Initialize services
     if (initializeFirebaseServices(app)) {
       appInitialized = true;
-      console.log('[firebaseAdmin] All Firebase services initialized successfully');
+
     } else {
       throw new Error('Failed to initialize Firebase services');
     }
@@ -139,15 +139,15 @@ const MAX_RETRIES = 3;
 function initializeWithRetry() {
   try {
     if (!appInitialized) {
-      console.log('[firebaseAdmin] Attempting to initialize Firebase Admin SDK (attempt ' + (retryCount + 1) + ')');
+  
       initializeAdminApp();
-      console.log('[firebaseAdmin] Firebase Admin SDK initialized successfully');
+      
     }
   } catch (error) {
     console.error('[firebaseAdmin] Failed to initialize Firebase Admin SDK:', error);
     if (retryCount < MAX_RETRIES) {
       retryCount++;
-      console.log(`[firebaseAdmin] Retrying initialization (${retryCount}/${MAX_RETRIES})...`);
+      
       setTimeout(() => initializeWithRetry(), 1000); // Add delay between retries
     } else {
       console.error('[firebaseAdmin] Maximum retry attempts reached. Firebase Admin SDK initialization failed.');
@@ -172,7 +172,7 @@ export { adminAppInstance as firebaseAdminApp };
 export function ensureFirebaseAdminInitialized(): boolean {
   if (!appInitialized || !firestoreAdminInstance || !authAdminInstance) {
     console.error('[firebaseAdmin] Firebase Admin SDK is not properly initialized');
-    console.log('[firebaseAdmin] Attempting re-initialization...');
+
     try {
       initializeWithRetry();
       return appInitialized && !!firestoreAdminInstance && !!authAdminInstance;
@@ -185,4 +185,4 @@ export function ensureFirebaseAdminInitialized(): boolean {
 }
 
 // Log initialization status for debugging
-console.log(`[firebaseAdmin] Export status: Firestore: ${firestoreAdmin ? 'initialized' : 'null'}, Auth: ${authAdmin ? 'initialized' : 'null'}, Storage: ${storageAdmin ? 'initialized' : 'null'}`);
+

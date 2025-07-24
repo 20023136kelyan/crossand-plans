@@ -115,6 +115,9 @@ export default function SettingsPage() {
     }
   }, [searchParams]);
 
+  // Get return URL from search params
+  const returnUrl = searchParams.get('returnUrl');
+
   // Load privacy settings
   useEffect(() => {
     const loadPrivacySettings = async () => {
@@ -154,7 +157,8 @@ export default function SettingsPage() {
   
   // Profile form state
   const [profileForm, setProfileForm] = useState({
-    name: '',
+    firstName: '',
+    lastName: '',
     phone: '',
     birthdate: '',
     address: '',
@@ -216,10 +220,19 @@ export default function SettingsPage() {
     return Math.min(100, Math.round(baseScore));
   }, []);
 
+  // Fallback/migration: split legacy name if needed
+  function splitLegacyName(name: string | null | undefined): { firstName: string; lastName: string } {
+    if (!name) return { firstName: '', lastName: '' };
+    const parts = name.trim().split(' ');
+    return { firstName: parts[0] || '', lastName: parts.slice(1).join(' ') || '' };
+  }
+
   // Memoize profile form update function to prevent unnecessary re-renders
   const updateProfileForm = useCallback((profileData: UserProfile) => {
+    const { firstName: legacyFirst, lastName: legacyLast } = splitLegacyName(profileData.name);
     setProfileForm({
-      name: profileData.name || '',
+      firstName: profileData.firstName || legacyFirst || '',
+      lastName: profileData.lastName || legacyLast || '',
       phone: profileData.countryDialCode && profileData.phoneNumber
         ? `${profileData.countryDialCode} ${profileData.phoneNumber}`
         : profileData.phoneNumber || '',
@@ -508,13 +521,11 @@ export default function SettingsPage() {
   // Save profile changes
   const handleSaveProfile = async () => {
     if (!user) return;
-    
     setIsSavingProfile(true);
     try {
       // Get a reference to the user's profile document in Firestore
       if (!db) throw new Error('Database not initialized');
       const userProfileRef = doc(db, 'userProfiles', user.uid);
-      
       // Parse the form data
       let addressComponents = {};
       if (profileForm.address) {
@@ -522,7 +533,6 @@ export default function SettingsPage() {
         if (addressParts.length >= 1) {
       }
     }
-    
     // Parse birthdate
     let birthDate = null;
     if (profileForm.birthdate) {
@@ -531,13 +541,12 @@ export default function SettingsPage() {
         birthDate = parsedDate;
       }
     }
-    
     // Parse phone number components
     let phoneNumber = '';
     let countryDialCode = '';
     if (profileForm.phone) {
       // Simple parsing - in production, use a proper phone number library
-      const phoneMatch = profileForm.phone.match(/^(\+\d{1,3})\s*(.+)$/);
+      const phoneMatch = profileForm.phone.match(/^\+(\d{1,3})\s*(.+)$/);
       if (phoneMatch) {
         countryDialCode = phoneMatch[1];
         phoneNumber = phoneMatch[2];
@@ -545,13 +554,10 @@ export default function SettingsPage() {
         phoneNumber = profileForm.phone;
       }
     }
-
     // Parse address with improved validation
     let physicalAddress = null;
     if (profileForm.address && profileForm.address.trim()) {
       const addressParts = profileForm.address.split(',').map(part => part.trim()).filter(part => part.length > 0);
-      
-      // More robust address parsing with validation
       physicalAddress = {
         street: addressParts[0] || '',
         city: addressParts[1] || '',
@@ -559,19 +565,18 @@ export default function SettingsPage() {
         zipCode: addressParts[3] || '',
         country: addressParts[4] || 'United States' // Default country
       };
-      
-      // Validate that we have at least street and city
       if (!physicalAddress.street || !physicalAddress.city) {
         throw new Error('Please provide at least street address and city in the format: Street, City, State, ZIP, Country');
       }
     }
-    
     // Update profile in Firestore
     if (db) {
       const profileRef = doc(db, 'users', user.uid);
-      
       await updateDoc(profileRef, {
-        name: profileForm.name,
+        firstName: profileForm.firstName,
+        lastName: profileForm.lastName,
+        // For legacy compatibility, combine first and last name
+        name: [profileForm.firstName, profileForm.lastName].filter(Boolean).join(' '),
         phoneNumber,
         countryDialCode,
         birthDate,
@@ -582,9 +587,6 @@ export default function SettingsPage() {
     } else {
       throw new Error('Firestore not initialized');
     }
-    
-    // No need to manually refresh profile status since we have real-time listeners
-    
     toast({
       title: 'Profile Updated',
       description: 'Your profile has been successfully updated.',
@@ -1160,9 +1162,12 @@ const handleSaveNotifications = async () => {
     return null; 
   }
 
-  const userInitial = currentUserProfile.name 
-    ? currentUserProfile.name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase() 
-    : (currentUserProfile.email ? currentUserProfile.email[0].toUpperCase() : 'U');
+  const userInitial = (currentUserProfile.firstName || currentUserProfile.lastName)
+    ? [currentUserProfile.firstName, currentUserProfile.lastName]
+        .filter((n): n is string => Boolean(n && typeof n === 'string'))
+        .map(n => n[0])
+        .join('').substring(0,2).toUpperCase()
+    : (currentUserProfile.name ? currentUserProfile.name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase() : (currentUserProfile.email ? currentUserProfile.email[0].toUpperCase() : 'U'));
   
   const formattedPhoneNumber = currentUserProfile.countryDialCode && currentUserProfile.phoneNumber
     ? `${currentUserProfile.countryDialCode} ${currentUserProfile.phoneNumber}`
@@ -1185,7 +1190,13 @@ const handleSaveNotifications = async () => {
         <Button 
           variant="ghost" 
           size="icon" 
-          onClick={() => activeTab ? setActiveTab(null) : router.push(`/users/${user.uid}`)} 
+          onClick={() => {
+            if (activeTab && !returnUrl) {
+              setActiveTab(null);
+            } else {
+              router.push(returnUrl || `/users/${user.uid}`);
+            }
+          }} 
           className="hover:bg-muted"
         >
           <ChevronLeft className="h-5 w-5" />
@@ -1217,7 +1228,7 @@ const handleSaveNotifications = async () => {
           
           <div className="text-center mb-6">
             <div className="flex items-center justify-center mb-1">
-              <h2 className="text-xl font-bold">{currentUserProfile.name || 'Macaroom User'}</h2>
+              <h2 className="text-xl font-bold">{currentUserProfile.firstName || currentUserProfile.lastName ? `${currentUserProfile.firstName || ''} ${currentUserProfile.lastName || ''}`.trim() : (currentUserProfile.name || 'Macaroom User')}</h2>
               <VerificationBadge role={currentUserProfile.role} isVerified={currentUserProfile.isVerified} />
             </div>
             <p className="text-muted-foreground text-sm">{currentUserProfile.email}</p>
@@ -1507,10 +1518,19 @@ const handleSaveNotifications = async () => {
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name" className="text-muted-foreground">Full Name</Label>
+                  <Label htmlFor="firstName" className="text-muted-foreground">First Name</Label>
                   <Input 
-                    id="name" 
-                    value={profileForm.name} 
+                    id="firstName" 
+                    value={profileForm.firstName} 
+                    onChange={handleProfileChange} 
+                  />
+                  <p className="text-xs text-muted-foreground">This will be displayed on your profile</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastName" className="text-muted-foreground">Last Name</Label>
+                  <Input 
+                    id="lastName" 
+                    value={profileForm.lastName} 
                     onChange={handleProfileChange} 
                   />
                   <p className="text-xs text-muted-foreground">This will be displayed on your profile</p>

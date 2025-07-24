@@ -95,7 +95,7 @@ export const getFeedPostsAdmin = async (
     console.error("[getFeedPostsAdmin] CRITICAL: Error accessing Firestore Admin instance:", initError);
     throw new Error("Server configuration error: Database service initialization failed.");
   }
-  console.log(`[getFeedPostsAdmin] Fetching feed. currentViewerId: ${currentUserId || 'public/unauthenticated'}, forUserId: ${forUserId || 'general feed'}, limit: ${limitCount}, lastPostCreatedAt: ${lastPostCreatedAt}`);
+
 
   try {
     const postsMap = new Map<string, FeedPost>();
@@ -151,10 +151,9 @@ export const getFeedPostsAdmin = async (
         const currentUserProfile = await getUserProfileAdmin(currentUserId);
         const followingUids: string[] = currentUserProfile?.following || [];
 
-        // 3. The user's own private posts
+        // 3. The user's own private posts - simplified query to avoid index requirement
         let userPrivatePostsQuery = firestoreAdmin
           .collection(FEED_POSTS_COLLECTION)
-          .where('visibility', '==', 'private' as FeedPostVisibility)
           .where('userId', '==', currentUserId)
           .orderBy('createdAt', 'desc');
         if (lastPostFirestoreTimestamp) {
@@ -162,7 +161,11 @@ export const getFeedPostsAdmin = async (
         }
         const userPrivateSnapshot = await userPrivatePostsQuery.limit(limitCount).get();
         userPrivateSnapshot.forEach(doc => {
-          if (!postsMap.has(doc.id)) postsMap.set(doc.id, mapDocToFeedPost(doc));
+          const post = mapDocToFeedPost(doc);
+          // Filter for private posts in memory to avoid index requirement
+          if (post.visibility === 'private' && !postsMap.has(doc.id)) {
+            postsMap.set(doc.id, post);
+          }
         });
 
         // 4. All posts (public or private) from users the current user follows
@@ -202,7 +205,7 @@ export const getFeedPostsAdmin = async (
             nextCursor = typeof lastFetchedPost.createdAt === 'string' ? lastFetchedPost.createdAt : convertAdminTimestampToISO(lastFetchedPost.createdAt);
         }
         
-        console.log(`[getFeedPostsAdmin] Total combined posts before final limit: ${combinedPosts.length}. Returning ${limitedPosts.length} posts. Next cursor: ${nextCursor}`);
+  
         return { posts: limitedPosts, nextCursor };
     } else {
         console.warn("[getFeedPostsAdmin] No main queries were processed. Returning empty array.");
@@ -539,10 +542,10 @@ export const deleteFeedPostAdmin = async (postId: string, requestingUserId: stri
     if (count > 0) {
         await batch.commit();
     }
-    if (commentsSnapshot.docs.length > 0) console.log(`[deleteFeedPostAdmin] Deleted ${commentsSnapshot.docs.length} comments for post ${postId}.`);
+    
 
     await postRef.delete();
-    console.log(`[deleteFeedPostAdmin] Post ${postId} deleted successfully by user ${requestingUserId}.`);
+    
     return { success: true };
   } catch (error: any) {
     console.error(`[deleteFeedPostAdmin] Error deleting post ${postId}:`, error);
@@ -697,7 +700,7 @@ export const updateUserAvatarInFeedAdmin = async (userId: string, newAvatarUrl: 
     // Wait for all updates to complete
     await Promise.all(updatePromises);
 
-    console.log(`[updateUserAvatarInFeedAdmin] Successfully updated avatar URL for user ${userId} in all feed posts and comments.`);
+    
   } catch (error) {
     console.error(`[updateUserAvatarInFeedAdmin] Error updating avatar URL for user ${userId}:`, error);
     throw error;

@@ -45,7 +45,7 @@ export function HorizontalCalendar({
         const planDate = parseISO(plan.eventTime);
         const isMatch = isValid(planDate) && isSameDay(planDate, date);
         if (isMatch) {
-          console.log(`🗓️ HorizontalCalendar: Plan "${plan.name}" matches ${format(date, 'MMM d, yyyy')}`);
+  
         }
         return isMatch;
       } catch {
@@ -54,7 +54,7 @@ export function HorizontalCalendar({
     });
     
     if (plans.length > 0) {
-      console.log(`🗓️ HorizontalCalendar: ${format(date, 'MMM d, yyyy')} has ${plans.length} plans:`, plans.map(p => p.name));
+      
     }
     
     return plans;

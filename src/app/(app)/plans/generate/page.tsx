@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { GoogleMap, useJsApiLoader, CircleF } from '@react-google-maps/api';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronDown, ChevronUp, ChevronRight, SearchIcon, Target, Check, CheckCircle, MapPin, Clock, Users, DollarSign, MessageSquare, ArrowLeft, Sparkles, Loader2, X, Edit, Pencil, RefreshCw, Plus, Settings2, UserPlus, Navigation } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronDown, ChevronUp, ChevronRight, SearchIcon, Target, Check, CheckCircle, MapPin, Clock, Users, DollarSign, MessageSquare, ArrowLeft, Sparkles, Loader2, X, Edit, Pencil, RefreshCw, Plus, Settings2, UserPlus, Navigation, Crown } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 
@@ -206,6 +206,7 @@ function GeneratePlanPage() {
   const [showPriceRangeSelector, setShowPriceRangeSelector] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [useDeepPlanner, setUseDeepPlanner] = useState(false);
+  const [selectedModel, setSelectedModel] = useState('Crossy-Plan-1.0');
   const friendSelectorRef = useRef<HTMLDivElement>(null);
   const friendButtonRef = useRef<HTMLButtonElement>(null);
   const priceRangeButtonRef = useRef<HTMLButtonElement>(null);
@@ -321,19 +322,19 @@ function GeneratePlanPage() {
 
   // Hooks
   const router = useRouter();
-  const { user: currentUser } = useAuth();
+  const { user } = useAuth();
   const { theme } = useTheme();
   
   // Memoize greeting and welcome message to prevent regeneration on every render
   const { greeting, welcomeMessage } = useMemo(() => {
     const hour = new Date().getHours();
-    const firstName = currentUser?.displayName?.split(' ')[0] || 'there';
+    const firstName = user?.displayName?.split(' ')[0] || 'there';
     
     return {
-      greeting: getGreetingForHour(hour, currentUser?.displayName || ''),
+      greeting: getGreetingForHour(hour, user?.displayName || ''),
       welcomeMessage: getRandomWelcomeMessage()
     };
-  }, [currentUser?.displayName]); // Only regenerate when user's display name changes
+  }, [user?.displayName]); // Only regenerate when user's display name changes
 
   useEffect(() => {
     if (!scrollContainerRef.current || !generatedPlan) return;
@@ -429,6 +430,17 @@ function GeneratePlanPage() {
       }
     });
     return () => subscription.unsubscribe();
+  }, [form]);
+
+  // Initialize selected model from localStorage
+  useEffect(() => {
+    const savedModel = localStorage.getItem('crossand-selected-model');
+    if (savedModel === 'Crossy-Plan-1.0' || savedModel === 'Crossy-Plan-2.0') {
+      setSelectedModel(savedModel);
+      const isDeepPlanner = savedModel === 'Crossy-Plan-2.0';
+      setUseDeepPlanner(isDeepPlanner);
+      form.setValue('useDeepPlanner', isDeepPlanner, { shouldDirty: true, shouldTouch: true });
+    }
   }, [form]);
 
   // Update form when toggle changes
@@ -769,7 +781,7 @@ function GeneratePlanPage() {
 
   // Form submission handlers
   const handleGeneratePlan = async (data: PlanGenerationFormData) => {
-    if (!currentUser?.uid) {
+    if (!user?.uid) {
       toast({
         title: 'Authentication required',
         description: 'Please log in to generate a plan.',
@@ -792,11 +804,11 @@ function GeneratePlanPage() {
           ...data,
           planDateTime: format(data.planDateTime, "yyyy-MM-dd'T'HH:mm:ss"),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          hostUid: currentUser.uid,
+          hostUid: user.uid,
           selectedLocationLat: data.latitude,
           selectedLocationLng: data.longitude,
         },
-        await currentUser.getIdToken()
+        await user.getIdToken()
       );
       
       if (result.success && result.plan) {
@@ -845,7 +857,7 @@ function GeneratePlanPage() {
   };
 
   const handleSaveGeneratedPlan = async (planData: PlanFormValues) => {
-    if (!currentUser?.uid) {
+    if (!user?.uid) {
       toast({
         title: 'Authentication required',
         description: 'Please log in to save the plan.',
@@ -856,7 +868,7 @@ function GeneratePlanPage() {
 
     setIsGenerating(true);
     try {
-      const authToken = await currentUser.getIdToken();
+      const authToken = await user.getIdToken();
       const result = await createPlanAction(planData as PlanFormValues, authToken);
       
       if (result.success) {
@@ -965,9 +977,9 @@ function GeneratePlanPage() {
                    <div className="flex -space-x-2">
                      {/* Host Avatar */}
                      <Avatar className="h-10 w-10 ring-2 ring-background">
-                       <AvatarImage src={currentUser?.photoURL || undefined} alt={currentUser?.displayName || 'You'} />
+                       <AvatarImage src={user?.photoURL || undefined} alt={user?.displayName || 'You'} />
                         <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                          {currentUser?.displayName?.charAt(0) || 'U'}
+                          {user?.displayName?.charAt(0) || 'U'}
                         </AvatarFallback>
                       </Avatar>
                       {/* Invited participants */}
@@ -2047,31 +2059,119 @@ function GeneratePlanPage() {
                             >
                               <UserPlus className="h-4 w-4" />
                             </Button>
-                            <Button 
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className={cn(
-                                "h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg border border-border",
-                                form.watch('useDeepPlanner') && "text-primary"
-                              )}
-                              onClick={() => {
-                                const newValue = !form.watch('useDeepPlanner');
-                                form.setValue('useDeepPlanner', newValue, { shouldDirty: true, shouldTouch: true });
-                                setUseDeepPlanner(newValue);
-                                
-                                toast({
-                                  title: newValue ? 'Deep Planning Mode Enabled' : 'Deep Planning Mode Disabled',
-                                  description: newValue 
-                                    ? 'Using advanced AI for more detailed suggestions' 
-                                    : 'Using standard AI planning mode',
-                                  variant: 'default',
-                                });
-                              }}
-                              title={form.watch('useDeepPlanner') ? 'Disable Deep Planning' : 'Enable Deep Planning'}
-                            >
-                              <Sparkles className="h-4 w-4" />
-                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button 
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className={cn(
+                                    "h-8 px-3 py-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg border border-border",
+                                    selectedModel === 'Crossy-Plan-2.0' && "text-primary"
+                                  )}
+                                  title="Select AI Model"
+                                >
+                                  <span className="text-xs font-medium">
+                                    {selectedModel}
+                                  </span>
+                                  <ChevronDown className="h-3 w-3 ml-1" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-64 p-2 shadow-xl border-border/50 bg-background/95 backdrop-blur-sm">
+                                <div className="px-2 py-1.5 mb-2">
+                                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">AI Models</h4>
+                                </div>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedModel('Crossy-Plan-1.0');
+                                    setUseDeepPlanner(false);
+                                    form.setValue('useDeepPlanner', false, { shouldDirty: true, shouldTouch: true });
+                                    localStorage.setItem('crossand-selected-model', 'Crossy-Plan-1.0');
+                                    
+                                    toast({
+                                      title: 'Crossy-Plan-1.0 Selected',
+                                      description: 'Using standard AI planning mode',
+                                      variant: 'default',
+                                    });
+                                  }}
+                                  className={cn(
+                                    "cursor-pointer flex-col items-start h-auto p-3 rounded-lg transition-all duration-200 mb-1",
+                                    "hover:bg-accent/80 focus:bg-accent/80",
+                                    selectedModel === 'Crossy-Plan-1.0' 
+                                      ? "bg-primary/10 border border-primary/20 text-foreground" 
+                                      : "hover:bg-accent/50"
+                                  )}
+                                >
+                                  <div className="flex items-start justify-between w-full">
+                                    <div className="flex items-start gap-3">
+                                      <div className={cn(
+                                        "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5",
+                                        selectedModel === 'Crossy-Plan-1.0' 
+                                          ? "bg-primary/20 text-primary" 
+                                          : "bg-muted text-muted-foreground"
+                                      )}>
+                                        <Clock className="h-4 w-4" />
+                                      </div>
+                                      <div className="flex flex-col">
+                                        <span className="text-sm font-semibold">Crossy-Plan-1.0</span>
+                                        <span className="text-xs text-muted-foreground leading-relaxed">Standard planning with quick results</span>
+                                      </div>
+                                    </div>
+                                    {selectedModel === 'Crossy-Plan-1.0' && (
+                                      <div className="bg-primary/20 rounded-full p-1 ml-2 flex-shrink-0">
+                                        <Check className="h-3 w-3 text-primary" />
+                                      </div>
+                                    )}
+                                  </div>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedModel('Crossy-Plan-2.0');
+                                    setUseDeepPlanner(true);
+                                    form.setValue('useDeepPlanner', true, { shouldDirty: true, shouldTouch: true });
+                                    localStorage.setItem('crossand-selected-model', 'Crossy-Plan-2.0');
+                                    
+                                    toast({
+                                      title: 'Crossy-Plan-2.0 Selected',
+                                      description: 'Using advanced AI for more detailed suggestions',
+                                      variant: 'default',
+                                    });
+                                  }}
+                                  className={cn(
+                                    "cursor-pointer flex-col items-start h-auto p-3 rounded-lg transition-all duration-200",
+                                    "hover:bg-accent/80 focus:bg-accent/80",
+                                    selectedModel === 'Crossy-Plan-2.0' 
+                                      ? "bg-primary/10 border border-primary/20 text-foreground" 
+                                      : "hover:bg-accent/50"
+                                  )}
+                                >
+                                  <div className="flex items-start justify-between w-full">
+                                    <div className="flex items-start gap-3">
+                                      <div className={cn(
+                                        "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5",
+                                        selectedModel === 'Crossy-Plan-2.0' 
+                                          ? "bg-primary/20 text-primary" 
+                                          : "bg-muted text-muted-foreground"
+                                      )}>
+                                        <Sparkles className="h-4 w-4" />
+                                      </div>
+                                      <div className="flex flex-col">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-sm font-semibold">Crossy-Plan-2.0</span>
+                                          <Crown className="h-4 w-4 text-yellow-500" />
+                                        </div>
+                                        <span className="text-xs text-muted-foreground leading-relaxed">Advanced planning with detailed insights</span>
+                                      </div>
+                                    </div>
+                                    {selectedModel === 'Crossy-Plan-2.0' && (
+                                      <div className="bg-primary/20 rounded-full p-1 ml-2 flex-shrink-0">
+                                        <Check className="h-3 w-3 text-primary" />
+                                      </div>
+                                    )}
+                                  </div>
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                           <Button 
                             type={isGenerating ? 'button' : 'submit'}

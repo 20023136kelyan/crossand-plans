@@ -46,6 +46,7 @@ export function listenToUnreadNotifications(
   onUpdate: (count: number) => void,
   onError: (error: any) => void
 ): NotificationListener {
+  console.log('[listenToUnreadNotifications] Listening for unread notifications for userId:', userId);
   if (!db) {
     onError(new Error('Firebase not initialized'));
     return { unsubscribe: () => {} };

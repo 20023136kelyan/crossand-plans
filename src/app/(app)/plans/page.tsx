@@ -2016,6 +2016,33 @@ export default function PlansPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Delete Plan Confirmation Dialog */}
+      <AlertDialog open={!!planToDelete} onOpenChange={(open) => { if (!open) setPlanToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Plan</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <b>{planToDelete?.name}</b>? This action cannot be undone and will remove the plan for all participants.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => setPlanToDelete(null)}
+              disabled={isDeletingPlan}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeletePlan}
+              disabled={isDeletingPlan}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeletingPlan ? "Deleting..." : "Delete Plan"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PlansPageProvider>
   );
 }

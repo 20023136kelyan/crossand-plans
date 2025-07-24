@@ -11,7 +11,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useSettings } from '@/context/SettingsContext';
 import { getFriendships, getPendingPlanSharesForUser, getPendingPlanInvitationsCount, getCompletedPlansForParticipant, getPostInteractionsForUser } from '@/services/clientServices';
 import { fetchNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '@/services/notificationService.client';
-import { listenToUnreadNotifications } from '@/services/notificationListener';
+import { listenToNotifications } from '@/services/notificationListener';
 
 import {
   DropdownMenu,
@@ -50,7 +50,7 @@ interface PendingFollowRequest {
 }
 
 export function Header({ messagesNotificationCount }: HeaderProps) {
-  const { user } = useAuth();
+  const { user, authLoading } = useAuth();
   const { settings } = useSettings();
   const pathname = usePathname();
   const router = useRouter();
@@ -60,35 +60,33 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
   const siteName = settings?.siteName || 'Crossand';
   
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [notificationCount, setNotificationCount] = useState(0);
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [pendingFollowRequests, setPendingFollowRequests] = useState<PendingFollowRequest[]>([]);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
   
   useEffect(() => {
-    if (!user?.uid) {
+    if (!user?.uid || authLoading) {
       setNotifications([]);
-      setNotificationCount(0);
       setPendingFollowRequests([]);
       return;
     }
     
-    // Listen for real-time unread notification count
-    const unreadListener = listenToUnreadNotifications(
+    // Listen for all notifications and handle unread count ourselves
+    const notificationsListener = listenToNotifications(
       user.uid,
-      (count) => {
-        setNotificationCount(count);
+      (updatedNotifications: NotificationItem[]) => {
+        setNotifications(updatedNotifications);
       },
-      (error) => {
-        console.error('Error listening to unread notifications:', error);
-        // Set a fallback count to prevent UI issues
-        setNotificationCount(0);
+      (error: any) => {
+        console.error('Error listening to notifications:', error);
+        setNotifications([]);
       }
     );
     
-    const unsubscribers: (() => void)[] = [];
+    const unsubscribers: (() => void)[] = [notificationsListener.unsubscribe];
     
     // Listen for friend requests
+    
     const unsubFriendRequests = getFriendships(
       user.uid,
       (allFriendships) => {
@@ -215,11 +213,12 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
       unsubscribers.push(unsubPostInteractions);
     }
     
+    // Clean up all listeners
     return () => {
+      notificationsListener.unsubscribe();
       unsubscribers.forEach(unsub => unsub());
-      unreadListener.unsubscribe();
     };
-  }, [user?.uid]);
+  }, [user?.uid, authLoading]);
 
   // Fetch follow requests separately (like notifications page does)
   useEffect(() => {
@@ -247,9 +246,11 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
     setNotifications(prev => {
       const filtered = prev.filter(n => n.type !== type);
       const updated = [...filtered, ...newNotifications];
-      const unreadCount = updated.filter(n => !n.isRead).length;
-      setNotificationCount(unreadCount);
-      return updated.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+      return updated.sort((a, b) => {
+        const timeA = a.timestamp?.getTime?.() || 0;
+        const timeB = b.timestamp?.getTime?.() || 0;
+        return timeB - timeA;
+      });
     });
   };
   
@@ -263,9 +264,6 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
       setNotifications(prev => 
         prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n)
       );
-      // Recalculate unread count
-      const unreadCount = notifications.filter(n => !n.isRead && n.id !== notificationId).length;
-      setNotificationCount(unreadCount);
     } catch (error) {
       console.error('Error marking notification as read:', error);
     }
@@ -279,7 +277,6 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
       await markAllNotificationsAsRead(idToken);
       
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-      setNotificationCount(0);
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
     }
@@ -307,18 +304,28 @@ export function Header({ messagesNotificationCount }: HeaderProps) {
     return `${Math.floor(diffInMinutes / 1440)}d ago`;
   };
 
-  // Helper functions for notification counts (matching notifications page logic)
+  // Helper functions for notification counts
   const isActionable = (n: NotificationItem) =>
-    (n.type === 'friend_request' || n.type === 'follow_request' || n.type === 'plan_invitation' || (n.type === 'plan_share' && n.status)) && n['handled'] === false;
-  const isInformational = (n: NotificationItem) =>
-    !isActionable(n);
-  const isUnreadInformational = (n: NotificationItem) =>
-    !isActionable(n) && !n.isRead;
-
-  // Compute total notification count for badge (matching notifications page logic)
-  const actionableCount = notifications.filter(isActionable).length + pendingFollowRequests.length;
-  const informationalCount = notifications.filter(isUnreadInformational).length;
-  const totalNotificationCount = actionableCount + informationalCount;
+    (n.type === 'friend_request' || n.type === 'follow_request' || n.type === 'plan_invitation' || 
+     (n.type === 'plan_share' && n.status)) && n['handled'] === false;
+  
+  // Get all unread notifications (both actionable and non-actionable)
+  const unreadNotifications = notifications.filter(n => !n.isRead);
+  const pendingActionable = notifications.filter(isActionable);
+  
+  // Total count includes all unread notifications and pending follow requests
+  const totalNotificationCount = unreadNotifications.length + pendingFollowRequests.length;
+  
+  // Debug logging (commented out in production)
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Notifications:', {
+      all: notifications,
+      unread: unreadNotifications,
+      pendingActionable,
+      pendingFollowRequests,
+      total: totalNotificationCount
+    });
+  }
 
   return (
     <header className="sticky md:fixed top-0 z-40 w-full border-b bg-background/80 backdrop-blur-sm">

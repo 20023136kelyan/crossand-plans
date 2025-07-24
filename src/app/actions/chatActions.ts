@@ -100,6 +100,8 @@ export async function initiateDirectChatAction(
     }
 
     if (chatId) {
+      // Add a small delay to ensure the chat document is fully written to Firestore
+      await new Promise(resolve => setTimeout(resolve, 500));
       revalidatePath('/messages');
       revalidatePath(`/messages/${chatId}`);
       return { success: true, chatId };
@@ -189,35 +191,93 @@ export async function sendMessageAction(
 export async function markChatAsReadAction(
   chatId: string,
   idToken: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ 
+  success: boolean; 
+  error?: string; 
+  message?: string;
+  details?: any;
+}> {
+  console.log(`[markChatAsReadAction] Starting to mark chat ${chatId} as read`);
+  
   if (!authAdmin) {
-    console.error("[markChatAsReadAction] Firebase Admin Auth service not available.");
-    return { success: false, error: "Server error: Auth service not available." };
+    const errorMsg = "Firebase Admin Auth service not available.";
+    console.error(`[markChatAsReadAction] ${errorMsg}`);
+    return { success: false, error: `Server error: ${errorMsg}` };
   }
-  if (!idToken) return { success: false, error: 'Authentication token missing.' };
-  if (!chatId) return { success: false, error: 'Chat ID is missing.' };
+  
+  if (!idToken) {
+    const errorMsg = 'Authentication token missing.';
+    console.error(`[markChatAsReadAction] ${errorMsg}`);
+    return { success: false, error: errorMsg }; 
+  }
+  
+  if (!chatId) {
+    const errorMsg = 'Chat ID is missing.';
+    console.error(`[markChatAsReadAction] ${errorMsg}`);
+    return { success: false, error: errorMsg };
+  }
 
   let decodedToken;
   try {
+    console.log(`[markChatAsReadAction] Verifying ID token for chat ${chatId}`);
     decodedToken = await authAdmin.verifyIdToken(idToken);
+    console.log(`[markChatAsReadAction] Successfully verified ID token for user ${decodedToken.uid}`);
   } catch (authError: any) {
-    console.error(`[markChatAsReadAction] ID token verification failed for chat ${chatId}:`, authError);
+    const errorDetails = {
+      code: authError.code,
+      message: authError.message,
+      stack: authError.stack
+    };
+    console.error(`[markChatAsReadAction] ID token verification failed for chat ${chatId}:`, errorDetails);
+    
     let specificError = 'Authentication failed. Invalid or expired token.';
     if (authError.code === 'auth/id-token-expired') {
       specificError = 'Your session has expired. Please log in again.';
     }
-    return { success: false, error: specificError };
+    return { 
+      success: false, 
+      error: specificError,
+      details: errorDetails
+    };
   }
+  
   const userId = decodedToken.uid;
+  console.log(`[markChatAsReadAction] Proceeding with user ${userId} for chat ${chatId}`);
 
   try {
+    console.log(`[markChatAsReadAction] Calling markChatAsFullyReadAdminService for chat ${chatId}`);
     await markChatAsFullyReadAdminService(chatId, userId);
-    revalidatePath('/messages'); 
-    revalidatePath(`/messages/${chatId}`);
-    return { success: true };
+    console.log(`[markChatAsReadAction] Successfully marked chat ${chatId} as read for user ${userId}`);
+    
+    console.log(`[markChatAsReadAction] Revalidating paths for chat ${chatId}`);
+    try {
+      revalidatePath('/messages');
+      revalidatePath(`/messages/${chatId}`);
+      console.log(`[markChatAsReadAction] Successfully revalidated paths for chat ${chatId}`);
+    } catch (revalidateError) {
+      console.error(`[markChatAsReadAction] Error revalidating paths for chat ${chatId}:`, revalidateError);
+      // Don't fail the whole operation if revalidation fails
+    }
+    
+    return { 
+      success: true,
+      message: `Successfully marked chat ${chatId} as read`
+    };
   } catch (error: any) {
-    console.error(`[markChatAsReadAction] Error marking chat ${chatId} as read for user ${userId}:`, error);
-    return { success: false, error: error.message || 'Failed to mark chat as read.' };
+    const errorDetails = {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      code: (error as any).code
+    };
+    
+    console.error(`[markChatAsReadAction] Error marking chat ${chatId} as read for user ${userId}:`, errorDetails);
+    
+    return { 
+      success: false, 
+      error: 'Failed to mark chat as read.',
+      details: errorDetails
+    };
   }
 }
 

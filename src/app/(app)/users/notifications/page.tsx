@@ -4,11 +4,63 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Loader2, ArrowLeft, Users, Bell, Clock } from 'lucide-react';
+import { Loader2, ArrowLeft, Users, Bell, Clock, Check, X } from 'lucide-react';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 
 import { formatDistanceToNow, format, isToday, isYesterday, isWithinInterval, subDays } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { updateMyRSVPAction } from '@/app/actions/planActions';
+import toast from 'react-hot-toast';
+
+// Helper function to get preferred display name (username first, then first name)
+const getPreferredDisplayName = (notification: any): string => {
+  // For chat messages, prioritize username over full name (same as other notifications)
+  if (notification.type === 'chat_message') {
+    // The backend already sets senderName with priority: username > firstName > name
+    // So we just need to handle full names by extracting first name
+    if (notification.senderName && notification.senderName.includes(' ')) {
+      return notification.senderName.split(' ')[0];
+    }
+    return notification.senderName || 'Unknown User';
+  }
+  
+  // For follow requests from pendingFollowRequests
+  if (notification.isPendingFollowRequest) {
+    return notification.userName || 'Someone';
+  }
+  
+  // For PendingFollowRequest objects (direct from API)
+  if (notification.requesterUsername || notification.requesterName) {
+    return notification.requesterUsername || notification.requesterName || 'Someone';
+  }
+  
+  // For all other notifications, prioritize username over full name
+  if (notification.userName) {
+    // If userName contains a space, it might be a full name, so extract first name
+    if (notification.userName.includes(' ')) {
+      return notification.userName.split(' ')[0];
+    }
+    return notification.userName;
+  }
+  
+  // Check for firstName field (from user document)
+  if (notification.firstName) {
+    return notification.firstName;
+  }
+  
+  // For system notifications, use title as is
+  if (notification.type === 'system') {
+    return notification.title || 'System';
+  }
+  
+  // Fallback for old notifications: try to extract name from title
+  if (notification.title && notification.title.includes(' ')) {
+    return notification.title.split(' ')[0];
+  }
+  
+  return 'Someone';
+};
 
 export default function NotificationsPage() {
   const { user, currentUserProfile } = useAuth();
@@ -87,6 +139,63 @@ export default function NotificationsPage() {
     return { today, yesterday, last7Days, last30Days };
   }, [otherNotifications]);
 
+  // Helper to get initials for fallback
+  const isActionable = (n: any) =>
+    (n.type === 'friend_request' || n.type === 'plan_invitation' || (n.type === 'plan_share' && n.status))
+    && n.handled === false;
+
+  // Combine actionable notifications from Firestore with pending follow requests
+  const actionableNotifications = useMemo(() => {
+    // Map pendingFollowRequests to notification-like objects for unified rendering
+    const mappedFollowRequests = pendingFollowRequests.map(req => ({
+      id: req.id,
+      type: 'follow_request',
+      fromUserId: req.fromUserId,
+      createdAt: req.createdAt,
+      userName: req.requesterUsername || req.requesterName || req.fromUserId,
+      avatarUrl: req.requesterAvatarUrl,
+      handled: false,
+      isPendingFollowRequest: true, // custom flag
+    }));
+    
+    // Get actionable notifications from Firestore, but exclude follow_request if we have pendingFollowRequests
+    const actionableFromFirestore = otherNotifications
+      .filter(isActionable)
+      .filter(n => {
+        // Always exclude follow_request notifications from Firestore since we handle them via pendingFollowRequests
+        // This prevents duplicates and ensures we use the better user info from pendingFollowRequests
+        if (n.type === 'follow_request') {
+          return false;
+        }
+        return true;
+      })
+      .map(n => ({ ...n, isPendingFollowRequest: false }));
+    
+    return [...mappedFollowRequests, ...actionableFromFirestore];
+  }, [pendingFollowRequests, otherNotifications]);
+
+  // Group actionable notifications by date
+  const groupedActionable = useMemo(() => {
+    const today: any[] = [];
+    const yesterday: any[] = [];
+    const last7Days: any[] = [];
+    const last30Days: any[] = [];
+    actionableNotifications.forEach(n => {
+      const date = toDateSafe(n.createdAt);
+      const now = new Date();
+      if (isToday(date)) {
+        today.push(n);
+      } else if (isYesterday(date)) {
+        yesterday.push(n);
+      } else if (isWithinInterval(date, { start: subDays(now, 7), end: subDays(now, 2) })) {
+        last7Days.push(n);
+      } else if (isWithinInterval(date, { start: subDays(now, 30), end: subDays(now, 8) })) {
+        last30Days.push(n);
+      }
+    });
+    return { today, yesterday, last7Days, last30Days };
+  }, [actionableNotifications]);
+
   useEffect(() => {
     if (currentUserProfile && typeof currentUserProfile.isPrivate === 'boolean') {
       setIsPrivate(currentUserProfile.isPrivate);
@@ -153,7 +262,7 @@ export default function NotificationsPage() {
   }, [activeTab, otherNotifications]);
 
   // Approve/Deny handlers
-  const handleApproveRequest = async (requesterId: string) => {
+  const handleApproveRequest = async (requesterId: string, notificationId?: string) => {
     if (!user) return;
     const idToken = await user.getIdToken();
     await fetch('/api/users/approve-follow-request', {
@@ -162,8 +271,9 @@ export default function NotificationsPage() {
       body: JSON.stringify({ requesterId })
     });
     setPendingFollowRequests((prev) => prev.filter((req) => req.fromUserId !== requesterId));
+    if (notificationId) await markNotificationAsRead(notificationId, true);
   };
-  const handleDenyRequest = async (requesterId: string) => {
+  const handleDenyRequest = async (requesterId: string, notificationId?: string) => {
     if (!user) return;
     const idToken = await user.getIdToken();
     await fetch('/api/users/deny-follow-request', {
@@ -172,6 +282,7 @@ export default function NotificationsPage() {
       body: JSON.stringify({ requesterId })
     });
     setPendingFollowRequests((prev) => prev.filter((req) => req.fromUserId !== requesterId));
+    if (notificationId) await markNotificationAsRead(notificationId, true);
   };
 
   const handleBack = () => {
@@ -179,7 +290,7 @@ export default function NotificationsPage() {
   };
 
   // Function to mark notification as read
-  const markNotificationAsRead = async (notificationId: string) => {
+  const markNotificationAsRead = async (notificationId: string, handled?: boolean) => {
     if (!user) return;
     try {
       const idToken = await user.getIdToken();
@@ -189,12 +300,12 @@ export default function NotificationsPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${idToken}`
         },
-        body: JSON.stringify({ notificationId })
+        body: JSON.stringify({ notificationId, handled })
       });
       if (response.ok) {
         // Update local state
         setOtherNotifications(prev => 
-          prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n)
+          prev.map(n => n.id === notificationId ? { ...n, isRead: true, ...(handled ? { handled: true } : {}) } : n)
         );
       }
     } catch (error) {
@@ -207,25 +318,23 @@ export default function NotificationsPage() {
       <div className="flex items-center gap-3 min-w-0 flex-1">
         {/* User Avatar with Action Overlay */}
         <div className="relative">
-          {request.requesterAvatarUrl ? (
-            <img
-              src={request.requesterAvatarUrl}
+          <Avatar className="w-10 h-10">
+            <AvatarImage
+              src={request.requesterAvatarUrl || undefined}
               alt={request.requesterUsername || request.fromUserId}
-              className="w-10 h-10 rounded-full object-cover border"
             />
-          ) : (
-            <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground border">
+            <AvatarFallback className="text-xs font-bold text-muted-foreground border bg-muted">
               {(request.requesterUsername || request.fromUserId)[0]?.toUpperCase()}
-            </div>
-          )}
+            </AvatarFallback>
+          </Avatar>
           {/* Friend Request Overlay Icon */}
-          <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-background border border-border flex items-center justify-center">
-            <div className="w-2.5 h-2.5 text-purple-500">👥</div>
+          <div className="absolute" style={{ bottom: '-10px', right: '-6px' }}>
+            <span className="text-base">👥</span>
           </div>
         </div>
         <div className="flex flex-col min-w-0">
           <div className="flex items-center gap-1">
-            <span className="truncate font-medium">{request.requesterUsername || request.fromUserId}</span>
+            <span className="truncate font-medium">{getPreferredDisplayName(request)}</span>
             {request.createdAt && (
               <>
                 <span className="text-muted-foreground">•</span>
@@ -242,8 +351,8 @@ export default function NotificationsPage() {
         </div>
       </div>
       <div className="flex gap-2">
-        <Button size="sm" className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90 focus:bg-primary/90" onClick={() => handleApproveRequest(request.fromUserId)}>Approve</Button>
-        <Button size="sm" variant="outline" className="rounded-full" onClick={() => handleDenyRequest(request.fromUserId)}>Deny</Button>
+        <Button size="sm" className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90 focus:bg-primary/90" onClick={() => handleApproveRequest(request.fromUserId, request.id)}>Approve</Button>
+        <Button size="sm" variant="outline" className="rounded-full" onClick={() => handleDenyRequest(request.fromUserId, request.id)}>Deny</Button>
       </div>
     </li>
   );
@@ -258,6 +367,125 @@ export default function NotificationsPage() {
           {requests.map(renderRequestItem)}
                 </ul>
       </div>
+    );
+  };
+
+  const renderActionableItem = (n: any) => {
+    if (n.type === 'follow_request' && n.isPendingFollowRequest) {
+      // Render as before for pendingFollowRequests
+      return renderRequestItem(n);
+    }
+    // RSVP handlers for plan invitations
+    if (n.type === 'plan_invitation') {
+      const handleRSVP = async (status: 'accepted' | 'declined') => {
+        if (!user || !n.metadata?.planId) return;
+        try {
+          const idToken = await user.getIdToken();
+          const rsvpStatus = status === 'accepted' ? 'going' : 'not-going';
+          const result = await updateMyRSVPAction(n.metadata.planId, idToken, rsvpStatus);
+          if (result.success) {
+            toast.success(`RSVP updated to ${status === 'accepted' ? 'Going' : 'Not Going'}`);
+            if (n.id) await markNotificationAsRead(n.id, true);
+          } else {
+            toast.error(result.error || 'Failed to update RSVP');
+          }
+        } catch (error) {
+          console.error('Error handling RSVP:', error);
+          toast.error('Failed to update RSVP');
+        }
+      };
+      // Render plan invitation with RSVP buttons
+      return (
+        <li key={n.id} className="flex items-center justify-between rounded-lg transition bg-muted/10 p-3 mb-2">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="relative">
+              <Avatar className="w-10 h-10">
+                <AvatarImage src={n.avatarUrl || undefined} alt={getPreferredDisplayName(n)} />
+                <AvatarFallback className="text-xs font-bold text-muted-foreground border bg-muted">
+                  {getPreferredDisplayName(n)[0]?.toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="absolute" style={{ bottom: '-10px', right: '-6px' }}>
+                <span className="text-base">📨</span>
+              </div>
+            </div>
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-1">
+                <span className="truncate font-medium">{getPreferredDisplayName(n)}</span>
+                {n.createdAt && (
+                  <>
+                    <span className="text-muted-foreground">•</span>
+                    <span className="text-xs text-muted-foreground" title={format(
+                      toDateSafe(n.createdAt),
+                      'PPpp')
+                    }>
+                      {formatCompactTime(toDateSafe(n.createdAt))}
+                    </span>
+                  </>
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground truncate">
+                invited you to <span className="font-semibold text-foreground">{n.description || n.planName || 'a plan'}</span>
+              </span>
+            </div>
+          </div>
+          {/* RSVP Icon Buttons */}
+          <div className="flex gap-2 ml-2">
+            <Button size="icon" className="rounded-full bg-primary text-primary-foreground hover:bg-primary/90 focus:bg-primary/90" aria-label="Accept invitation" onClick={() => handleRSVP('accepted')}>
+              <Check className="h-5 w-5" />
+            </Button>
+            <Button size="icon" variant="outline" className="rounded-full" aria-label="Decline invitation" onClick={() => handleRSVP('declined')}>
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+        </li>
+      );
+    }
+    // Render other actionable notifications (e.g., future types)
+    return (
+      <li key={n.id} className="flex items-center justify-between cursor-pointer hover:bg-muted/30 rounded-lg transition"
+        onClick={async () => {
+          if (!user) return;
+          try {
+            if (!n.isRead && n.id) await markNotificationAsRead(n.id);
+          } catch (error) {
+            console.error('Error handling actionable notification click:', error);
+          }
+        }}
+      >
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="relative">
+            <Avatar className="w-10 h-10">
+              <AvatarImage src={n.avatarUrl || undefined} alt={getPreferredDisplayName(n)} />
+              <AvatarFallback className="text-xs font-bold text-muted-foreground border bg-muted">
+                {getPreferredDisplayName(n)[0]?.toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="absolute" style={{ bottom: '-10px', right: '-6px' }}>
+              <span className="text-base">👋</span>
+            </div>
+          </div>
+          <div className="flex flex-col min-w-0">
+            <div className="flex items-center gap-1">
+              <span className="truncate font-medium">{getPreferredDisplayName(n)}</span>
+              {n.createdAt && (
+                <>
+                  <span className="text-muted-foreground">•</span>
+                  <span className="text-xs text-muted-foreground" title={format(
+                    toDateSafe(n.createdAt),
+                    'PPpp')
+                  }>
+                    {formatCompactTime(toDateSafe(n.createdAt))}
+                  </span>
+                </>
+              )}
+            </div>
+            <span className="text-xs text-muted-foreground truncate">
+              {n.title || n.description}
+            </span>
+          </div>
+        </div>
+      </li>
     );
   };
 
@@ -278,24 +506,19 @@ export default function NotificationsPage() {
         >
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="relative">
-              {notification.senderAvatarUrl ? (
-                <img
-                  src={notification.senderAvatarUrl}
-                  alt={notification.senderName || 'User'}
-                  className="w-10 h-10 rounded-full object-cover border"
-                />
-              ) : (
-                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground border">
-                  {(notification.senderName || 'U')[0]?.toUpperCase()}
-                </div>
-              )}
-              <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-background border border-border flex items-center justify-center">
-                <div className="w-2.5 h-2.5 text-blue-500">💬</div>
+              <Avatar className="w-10 h-10">
+                <AvatarImage src={notification.senderAvatarUrl || undefined} alt={getPreferredDisplayName(notification)} />
+                <AvatarFallback className="text-xs font-bold text-muted-foreground border bg-muted">
+                  {getPreferredDisplayName(notification)[0]?.toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="absolute" style={{ bottom: '-10px', right: '-6px' }}>
+                <span className="text-base">💬</span>
               </div>
             </div>
             <div className="flex flex-col min-w-0 flex-1">
               <div className="flex items-center gap-1">
-                <span className="truncate font-medium">{notification.senderName || 'Unknown User'}</span>
+                <span className="truncate font-medium">{getPreferredDisplayName(notification)}</span>
                 {notification.createdAt && (
                   <>
                     <span className="text-muted-foreground">•</span>
@@ -311,6 +534,66 @@ export default function NotificationsPage() {
               <span className="text-xs text-muted-foreground truncate">{notification.messagePreview || notification.description}</span>
             </div>
           </div>
+          <div className="flex flex-col items-end gap-1">
+            {!notification.isRead && (
+              <div className="w-2 h-2 rounded-full bg-primary"></div>
+            )}
+          </div>
+        </li>
+      );
+    }
+    // RSVP response notifications (accepted/declined)
+    if (notification.type === 'plan_rsvp_response') {
+      return (
+        <li key={notification.id} className="flex items-center justify-between cursor-pointer hover:bg-muted/30 rounded-lg transition"
+          onClick={async () => {
+            if (!user) return;
+            try {
+              if (!notification.isRead) {
+                await markNotificationAsRead(notification.id);
+              }
+              // Optionally, navigate to plan details
+              if (notification.actionUrl) {
+                router.push(notification.actionUrl);
+              }
+            } catch (error) {
+              console.error('Error handling RSVP response notification click:', error);
+            }
+          }}
+        >
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="relative">
+              <Avatar className="w-10 h-10">
+                <AvatarImage src={notification.avatarUrl || undefined} alt={getPreferredDisplayName(notification)} />
+                <AvatarFallback className="text-xs font-bold text-muted-foreground border bg-muted">
+                  {getPreferredDisplayName(notification)[0]?.toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="absolute" style={{ bottom: '-10px', right: '-6px' }}>
+                <span className="text-base">{notification.metadata?.status === 'going' ? '🤝' : '❌'}</span>
+              </div>
+            </div>
+            <div className="flex flex-col min-w-0 flex-1">
+              <div className="flex items-center gap-1">
+                <span className="truncate font-medium">{getPreferredDisplayName(notification)}</span>
+                {notification.createdAt && (
+                  <>
+                    <span className="text-muted-foreground">•</span>
+                    <span className="text-xs text-muted-foreground" title={format(
+                      toDateSafe(notification.createdAt),
+                      'PPpp')
+                    }>
+                      {formatCompactTime(toDateSafe(notification.createdAt))}
+                    </span>
+                  </>
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground truncate">
+                {getNotificationDisplayText(notification)}
+              </span>
+            </div>
+          </div>
+          {/* Unread indicator */}
           <div className="flex flex-col items-end gap-1">
             {!notification.isRead && (
               <div className="w-2 h-2 rounded-full bg-primary"></div>
@@ -348,21 +631,12 @@ export default function NotificationsPage() {
           <div className="flex items-center gap-3 min-w-0 flex-1">
             {/* User Avatar with Action Overlay */}
             <div className="relative">
-              {notification.type !== 'system' && notification.avatarUrl ? (
-                <img
-                  src={notification.avatarUrl}
-                  alt={notification.userName || 'User'}
-                  className="w-10 h-10 rounded-full object-cover border"
-                />
-              ) : notification.type !== 'system' ? (
-                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground border">
-                  {(notification.userName || 'U')[0]?.toUpperCase()}
-                </div>
-              ) : (
-                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground border">
-                  ⚙️
-                </div>
-              )}
+              <Avatar className="w-10 h-10">
+                <AvatarImage src={notification.avatarUrl || undefined} alt={getPreferredDisplayName(notification)} />
+                <AvatarFallback className="text-xs font-bold text-muted-foreground border bg-muted">
+                  {getPreferredDisplayName(notification)[0]?.toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
               
               {/* Action Overlay Icon */}
               {notification.type !== 'system' && (
@@ -372,7 +646,7 @@ export default function NotificationsPage() {
                   ) : notification.type === 'plan_share' ? (
                     <span className="text-base">📝</span>
                   ) : notification.type === 'plan_invitation' ? (
-                    <span className="text-base">📅</span>
+                    <span className="text-base">📨</span>
                   ) : notification.type === 'plan_completion' ? (
                     <span className="text-base">🎉</span>
                   ) : notification.type === 'friend_request' || notification.type === 'follow_request' ? (
@@ -390,11 +664,7 @@ export default function NotificationsPage() {
             <div className="flex flex-col min-w-0 flex-1">
               <div className="flex items-center gap-1">
                 <span className="truncate font-medium">
-                  {notification.type === 'system' ? notification.title : 
-                   (notification.userName || 
-                    // Fallback for old notifications: try to extract name from title
-                    (notification.title && notification.title.includes(' ') ? 
-                     notification.title.split(' ')[0] : 'Someone'))}
+                  {notification.type === 'system' ? notification.title : getPreferredDisplayName(notification)}
                 </span>
                 {notification.createdAt && (
                   <>
@@ -418,7 +688,10 @@ export default function NotificationsPage() {
           {/* Right side - Visual preview and actions */}
           <div className="flex items-center gap-2">
             {/* Visual preview of the interacted item */}
-            {notification.type !== 'system' && (
+            {notification.type !== 'system' &&
+              notification.type !== 'follow_request' &&
+              notification.type !== 'follow_notice' &&
+              notification.type !== 'friend_request' && (
               <div className="w-12 h-12 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
                 {notification.type === 'plan_share' || notification.type === 'plan_invitation' || notification.type === 'plan_completion' ? (
                   notification.planImageUrl ? (
@@ -468,41 +741,32 @@ export default function NotificationsPage() {
       <div className="flex items-center gap-3 min-w-0 flex-1">
         {/* User Avatar with Action Overlay */}
         <div className="relative">
-          {notification.type !== 'system' && notification.avatarUrl ? (
-            <img
-              src={notification.avatarUrl}
-              alt={notification.userName || 'User'}
-              className="w-10 h-10 rounded-full object-cover border"
-            />
-          ) : notification.type !== 'system' ? (
-            <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground border">
-              {(notification.userName || 'U')[0]?.toUpperCase()}
-            </div>
-          ) : (
-            <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground border">
-              ⚙️
-            </div>
-          )}
+          <Avatar className="w-10 h-10">
+            <AvatarImage src={notification.avatarUrl || undefined} alt={getPreferredDisplayName(notification)} />
+            <AvatarFallback className="text-xs font-bold text-muted-foreground border bg-muted">
+              {notification.type !== 'system'
+                ? getPreferredDisplayName(notification)[0]?.toUpperCase()
+                : '⚙️'}
+            </AvatarFallback>
+          </Avatar>
           
           {/* Action Overlay Icon */}
           {notification.type !== 'system' && (
-            <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-background border border-border flex items-center justify-center shadow-sm">
+            <div className="absolute" style={{ bottom: '-10px', right: '-6px' }}>
               {notification.type === 'post_interaction' ? (
-                <div className="w-3 h-3">
-                  {notification.metadata?.interactionType === 'like' ? '❤️' : '💬'}
-                </div>
+                <span className="text-base">{notification.metadata?.interactionType === 'like' ? '❤️' : '💬'}</span>
               ) : notification.type === 'plan_share' ? (
-                <div className="w-3 h-3">📝</div>
+                <span className="text-base">📝</span>
               ) : notification.type === 'plan_invitation' ? (
-                <div className="w-3 h-3">📅</div>
+                <span className="text-base">📨</span>
               ) : notification.type === 'plan_completion' ? (
-                <div className="w-3 h-3">🎉</div>
-              ) : notification.type === 'friend_request' || notification.type === 'follow_request' ? (
-                <div className="w-3 h-3">👋</div>
+                <span className="text-base">🎉</span>
+              ) : notification.type === 'friend_request' || notification.type === 'follow_request' || notification.type === 'follow_notice' ? (
+                <span className="text-base">👋</span>
               ) : notification.type === 'chat_message' ? (
-                <div className="w-3 h-3">💬</div>
+                <span className="text-base">💬</span>
               ) : (
-                <div className="w-3 h-3">🔔</div>
+                <span className="text-base">🔔</span>
               )}
             </div>
           )}
@@ -512,11 +776,7 @@ export default function NotificationsPage() {
         <div className="flex flex-col min-w-0 flex-1">
           <div className="flex items-center gap-1">
             <span className="truncate font-medium">
-                {notification.type === 'system' ? notification.title : 
-                 (notification.userName || 
-                  // Fallback for old notifications: try to extract name from title
-                  (notification.title && notification.title.includes(' ') ? 
-                   notification.title.split(' ')[0] : 'Someone'))}
+                {notification.type === 'system' ? notification.title : getPreferredDisplayName(notification)}
             </span>
             {notification.createdAt && (
               <>
@@ -542,6 +802,7 @@ export default function NotificationsPage() {
         {/* Visual preview of the interacted item */}
         {notification.type !== 'system' &&
           notification.type !== 'follow_request' &&
+          notification.type !== 'follow_notice' &&
           notification.type !== 'friend_request' && (
             <div className="w-12 h-12 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
               {notification.type === 'plan_share' || notification.type === 'plan_invitation' || notification.type === 'plan_completion' ? (
@@ -595,7 +856,7 @@ export default function NotificationsPage() {
             🔔
           </div>
           <div className="flex flex-col min-w-0 flex-1">
-            <span className="truncate font-medium">{notification.userName || 'Unknown User'}</span>
+            <span className="truncate font-medium">{getPreferredDisplayName(notification)}</span>
             <span className="text-xs text-muted-foreground truncate">
               {notification.description || `Unknown notification type: ${notification.type}`}
             </span>
@@ -621,10 +882,6 @@ export default function NotificationsPage() {
     );
   };
 
-  // Helper: actionable types
-  const isActionable = (n: any) =>
-    (n.type === 'friend_request' || n.type === 'follow_request' || n.type === 'plan_invitation' || (n.type === 'plan_share' && n.status))
-    && n.handled === false;
   // Helper: informational types (show all, not just unread)
   const isInformational = (n: any) =>
     !isActionable(n);
@@ -704,32 +961,38 @@ export default function NotificationsPage() {
       <div className="flex-1 overflow-y-auto flex flex-col">
         {activeTab === 'requests' && (
           <div className="flex-1 flex flex-col items-center justify-center px-4">
-            {isLoadingPendingRequests ? (
+            {isLoadingPendingRequests && isLoadingOtherNotifications ? (
               <div className="text-center space-y-4 mt-32">
                 <div className="w-20 h-20 rounded-full bg-muted/20 flex items-center justify-center mx-auto">
                   <Loader2 className="h-10 w-10 text-muted-foreground animate-spin" />
                 </div>
                 <div className="space-y-2">
                   <h3 className="text-lg font-semibold text-foreground">Loading requests...</h3>
-                  <p className="text-muted-foreground text-sm">Checking for pending follow requests</p>
+                  <p className="text-muted-foreground text-sm">Checking for pending requests</p>
                 </div>
               </div>
-            ) : pendingFollowRequests.length === 0 ? (
+            ) : actionableNotifications.length === 0 ? (
               <div className="text-center space-y-4 mt-32">
                 <div className="w-20 h-20 rounded-full bg-muted/20 flex items-center justify-center mx-auto">
                   <Users className="h-10 w-10 text-muted-foreground" />
                 </div>
                 <div className="space-y-2">
                   <h3 className="text-lg font-semibold text-foreground">No pending requests</h3>
-                  <p className="text-muted-foreground text-sm">All clear! 🎉 Your friend requests are up to date.</p>
+                  <p className="text-muted-foreground text-sm">All clear! 🎉 Your requests are up to date.</p>
                 </div>
               </div>
             ) : (
               <div className="w-full max-w-md">
-                {renderGroup('Today', groupedRequests.today)}
-                {renderGroup('Yesterday', groupedRequests.yesterday)}
-                {renderGroup('Last 7 days', groupedRequests.last7Days)}
-                {renderGroup('Last 30 days', groupedRequests.last30Days)}
+                {Object.entries(groupedActionable).map(([label, group]) =>
+                  group.length > 0 && (
+                    <div key={label} className="mb-6">
+                      <h3 className="text-sm font-medium text-muted-foreground mb-3 px-1">{label.charAt(0).toUpperCase() + label.slice(1)}</h3>
+                      <ul className="space-y-2">
+                        {group.map(renderActionableItem)}
+                      </ul>
+                    </div>
+                  )
+                )}
               </div>
             )}
           </div>
@@ -788,4 +1051,16 @@ function getInitials(name?: string, username?: string, email?: string) {
   if (username) return username[0]?.toUpperCase();
   if (email) return email[0]?.toUpperCase();
   return 'U';
+} 
+
+function getNotificationDisplayText(notification: any): string {
+  if (notification.type === 'plan_rsvp_response') {
+    const status = notification.metadata?.status;
+    if (status === 'going') {
+      return `${getPreferredDisplayName(notification)} accepted your RSVP to the plan.`;
+    } else if (status === 'not-going') {
+      return `${getPreferredDisplayName(notification)} declined your RSVP to the plan.`;
+    }
+  }
+  return notification.description || notification.title || 'a notification';
 } 

@@ -38,7 +38,8 @@ const interactionLevelOptions = ["Mostly observing", "Balanced", "Very talkative
 const travelToleranceOptions = ["Within walking distance", "Up to 15 minutes", "Up to 30 minutes", "Up to 1 hour", "Any distance for the right event"];
 
 const editProfileSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),
+  firstName: z.string().min(1, 'First name is required').max(50, 'First name must be less than 50 characters'),
+  lastName: z.string().min(1, 'Last name is required').max(50, 'Last name must be less than 50 characters'),
   bio: z.string().max(160, 'Bio must be less than 160 characters').optional(),
   selectedCountryCode: z.string().nullable().optional(),
   phoneNumber: z.string().optional(),
@@ -199,37 +200,48 @@ export default function EditProfilePage() {
   const [isCountryPickerOpen, setIsCountryPickerOpen] = useState(false);
   const [countrySearchTerm, setCountrySearchTerm] = useState('');
 
+  // Fallback/migration: split legacy name if needed
+  function splitLegacyName(name: string | null | undefined): { firstName: string; lastName: string } {
+    if (!name) return { firstName: '', lastName: '' };
+    const parts = name.trim().split(' ');
+    return { firstName: parts[0] || '', lastName: parts.slice(1).join(' ') || '' };
+  }
+
+  const { firstName: legacyFirst, lastName: legacyLast } = splitLegacyName(currentUserProfile?.name);
+
   const form = useForm<EditProfileFormValues>({
     resolver: zodResolver(editProfileSchema),
     defaultValues: {
-      name: '',
-      bio: '',
+      firstName: currentUserProfile?.firstName || legacyFirst || '',
+      lastName: currentUserProfile?.lastName || legacyLast || '',
+      bio: currentUserProfile?.bio || '',
       selectedCountryCode: null,
-      phoneNumber: '',
-      birthDate: '',
+      phoneNumber: currentUserProfile?.phoneNumber || '',
+      birthDate: currentUserProfile?.birthDate && typeof currentUserProfile.birthDate !== 'string' && typeof (currentUserProfile.birthDate as any)?.toDate === 'function'
+        ? (currentUserProfile.birthDate as any).toDate().toISOString().split('T')[0]
+        : (typeof currentUserProfile?.birthDate === 'string' ? currentUserProfile.birthDate.split('T')[0] : ''),
       physicalAddress: {
-        street: '',
-        city: '',
-        state: '',
-        zipCode: '',
-        country: '',
+        street: currentUserProfile?.physicalAddress?.street || '',
+        city: currentUserProfile?.physicalAddress?.city || '',
+        state: currentUserProfile?.physicalAddress?.state || '',
+        zipCode: currentUserProfile?.physicalAddress?.zipCode || '',
+        country: currentUserProfile?.physicalAddress?.country || '',
       },
-      // Preferences and dietary information
-      allergies: [],
-      dietaryRestrictions: [],
-      generalPreferences: '',
-      favoriteCuisines: [],
-      physicalLimitations: [],
-      activityTypePreferences: [],
-      activityTypeDislikes: [],
-      environmentalSensitivities: [],
-      travelTolerance: '',
-      budgetFlexibilityNotes: '',
+      allergies: currentUserProfile?.allergies || [],
+      dietaryRestrictions: currentUserProfile?.dietaryRestrictions || [],
+      generalPreferences: currentUserProfile?.generalPreferences || '',
+      favoriteCuisines: currentUserProfile?.favoriteCuisines || [],
+      physicalLimitations: currentUserProfile?.physicalLimitations || [],
+      activityTypePreferences: currentUserProfile?.activityTypePreferences || [],
+      activityTypeDislikes: currentUserProfile?.activityTypeDislikes || [],
+      environmentalSensitivities: currentUserProfile?.environmentalSensitivities || [],
+      travelTolerance: currentUserProfile?.travelTolerance || '',
+      budgetFlexibilityNotes: currentUserProfile?.budgetFlexibilityNotes || '',
       socialPreferences: {
-        preferredGroupSize: null,
-        interactionLevel: null,
+        preferredGroupSize: currentUserProfile?.socialPreferences?.preferredGroupSize || null,
+        interactionLevel: currentUserProfile?.socialPreferences?.interactionLevel || null,
       },
-      availabilityNotes: '',
+      availabilityNotes: currentUserProfile?.availabilityNotes || '',
     },
   });
 
@@ -246,8 +258,10 @@ export default function EditProfilePage() {
   // Load current profile data into form
   useEffect(() => {
     if (currentUserProfile) {
+      const { firstName: legacyFirst, lastName: legacyLast } = splitLegacyName(currentUserProfile.name);
       form.reset({
-        name: currentUserProfile.name || user?.displayName || '',
+        firstName: currentUserProfile.firstName || legacyFirst || '',
+        lastName: currentUserProfile.lastName || legacyLast || '',
         bio: currentUserProfile.bio || '',
         selectedCountryCode: countries.find((c: any) => c.dialCode === currentUserProfile.countryDialCode)?.code ||
                            countries.find((c: any) => c.code === currentUserProfile.countryDialCode)?.code || 
@@ -263,7 +277,6 @@ export default function EditProfilePage() {
           zipCode: currentUserProfile.physicalAddress?.zipCode || '',
           country: currentUserProfile.physicalAddress?.country || '',
         },
-        // Preferences and dietary information
         allergies: currentUserProfile.allergies || [],
         dietaryRestrictions: currentUserProfile.dietaryRestrictions || [],
         generalPreferences: currentUserProfile.generalPreferences || '',
@@ -281,7 +294,7 @@ export default function EditProfilePage() {
         availabilityNotes: currentUserProfile.availabilityNotes || '',
       });
     }
-  }, [currentUserProfile, user, form]);
+  }, [currentUserProfile]);
 
   const onSubmit = async (data: EditProfileFormValues) => {
     if (!user) {
@@ -291,11 +304,14 @@ export default function EditProfilePage() {
 
     setIsSubmitting(true);
     try {
-      const selectedCountryObject = countries.find((c: any) => c.code === data.selectedCountryCode);
-      const countryDialCode = selectedCountryObject ? selectedCountryObject.dialCode : null;
-
+      const countryDialCode = data.selectedCountryCode
+        ? countries.find((c: any) => c.code === data.selectedCountryCode)?.dialCode || null
+        : null;
       const profileData = {
-        name: data.name,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        // For legacy compatibility, combine first and last name
+        name: [data.firstName, data.lastName].filter(Boolean).join(' '),
         bio: data.bio || '',
         countryDialCode,
         phoneNumber: data.phoneNumber || '',
@@ -307,7 +323,6 @@ export default function EditProfilePage() {
           zipCode: '',
           country: '',
         },
-        // Preferences and dietary information
         allergies: data.allergies || [],
         dietaryRestrictions: data.dietaryRestrictions || [],
         generalPreferences: data.generalPreferences || '',
@@ -460,13 +475,31 @@ export default function EditProfilePage() {
                     <CardContent className="relative space-y-6">
                       <FormField
                         control={form.control}
-                        name="name"
+                        name="firstName"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>📝 Full Name *</FormLabel>
+                            <FormLabel>📝 First Name *</FormLabel>
                             <FormControl>
                               <Input 
-                                placeholder="Enter your full name" 
+                                placeholder="Enter your first name" 
+                                {...field} 
+                                disabled={isSubmitting}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="lastName"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>📝 Last Name *</FormLabel>
+                            <FormControl>
+                              <Input 
+                                placeholder="Enter your last name" 
                                 {...field} 
                                 disabled={isSubmitting}
                               />

@@ -41,3 +41,11 @@ export function sanitizeItineraryUUIDs(itinerary: any[]): any[] {
     id: ensureValidUUID(item.id || crypto.randomUUID())
   }));
 }
+
+export function getFullName(profile: { firstName?: string | null; lastName?: string | null; name?: string | null }): string | null {
+  if (profile.firstName || profile.lastName) {
+    const full = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim();
+    return full && full.length > 0 ? full : null;
+  }
+  return profile.name ?? null;
+}

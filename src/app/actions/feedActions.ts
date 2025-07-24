@@ -64,7 +64,7 @@ export async function createFeedPostAction(
 
     const newPostData: Omit<FeedPost, 'id' | 'createdAt'> & { createdAt: FieldValue } = {
       userId: userId,
-      userName: userProfile.name || `User (${userId.substring(0,5)})`,
+      userName: userProfile.username || userProfile.firstName || userProfile.name || `User (${userId.substring(0,5)})`,
       username: userProfile.username || null,
       userAvatarUrl: userProfile.avatarUrl,
       userRole: userProfile.role || 'user',
@@ -194,7 +194,7 @@ export async function addCommentToPostServerAction(
     const commentDataForService: Omit<FeedComment, 'id' | 'createdAt'> = {
       postId,
       userId,
-      userName: userProfile.name,
+      userName: userProfile.username || userProfile.firstName || userProfile.name,
       username: profileInfo?.username ?? userProfile.username ?? null,
       userAvatarUrl: profileInfo?.userAvatarUrl ?? userProfile.avatarUrl ?? null,
       userRole: profileInfo?.userRole ?? userProfile.role ?? 'user',

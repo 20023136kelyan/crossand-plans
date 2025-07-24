@@ -78,7 +78,7 @@ export async function uploadAndProcessImage(
       const imageProcessingType = options.type === 'chat_message' ? 'post' : options.type;
       const processingOptions = getOptimalProcessingOptions(imageProcessingType as 'avatar' | 'post' | 'highlight');
       processedImage = await processImage(file, processingOptions);
-      console.log(`[uploadAndProcessImage] Image processed. Original: ${file.size} bytes, Processed: ${processedImage.size} bytes`);
+
     } catch (error: any) {
       console.error(`[uploadAndProcessImage] Image processing error:`, error);
       return { success: false, error: `Failed to process image: ${error.message || 'Unknown processing error'}` };
@@ -142,7 +142,7 @@ export async function uploadAndProcessImage(
       // Get public URL
       const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
       
-      console.log(`[uploadAndProcessImage] Successfully uploaded ${options.type} image for user ${options.userId}`);
+
       
       return {
         success: true,

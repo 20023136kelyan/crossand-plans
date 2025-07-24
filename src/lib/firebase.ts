@@ -124,7 +124,7 @@ const initRecaptchaVerifier = async (): Promise<RecaptchaVerifier | null> => {
     // Create a unique container for this reCAPTCHA instance
     const containerId = createRecaptchaContainer();
     
-    console.log('[firebase.ts] Initializing reCAPTCHA verifier...');
+
     
     // Create a simple invisible reCAPTCHA verifier
     // Firebase will automatically use the correct site key from your project
@@ -132,9 +132,9 @@ const initRecaptchaVerifier = async (): Promise<RecaptchaVerifier | null> => {
       'size': 'invisible'
     });
     
-    console.log('[firebase.ts] Rendering reCAPTCHA...');
+    
     recaptchaVerifier.render().then(() => {
-      console.log('reCAPTCHA rendered successfully');
+      
       recaptchaInitialized = true;
       recaptchaInitializing = false;
     }).catch((error) => {
@@ -181,14 +181,14 @@ const clearRecaptchaVerifier = () => {
 };
 
 export function forceClearAllRecaptcha() {
-  console.log('[firebase.ts] Force clearing all reCAPTCHA instances...');
+  
   
   // Clear any existing verifier
   if (recaptchaVerifier) {
     try {
       recaptchaVerifier.clear();
     } catch (error) {
-      console.log('[firebase.ts] Error clearing existing verifier:', error);
+
     }
     recaptchaVerifier = null;
   }
@@ -202,7 +202,7 @@ export function forceClearAllRecaptcha() {
     try {
       element.remove();
     } catch (error) {
-      console.log('[firebase.ts] Error removing reCAPTCHA element:', error);
+
     }
   });
   
@@ -213,7 +213,7 @@ export function forceClearAllRecaptcha() {
       try {
         (window as any).grecaptcha.reset();
       } catch (error) {
-        console.log('[firebase.ts] Error resetting grecaptcha:', error);
+  
       }
     }
     
@@ -228,7 +228,7 @@ export function forceClearAllRecaptcha() {
         try {
           delete (window as any)[key];
         } catch (error) {
-          console.log('[firebase.ts] Error clearing reCAPTCHA key:', key, error);
+    
         }
       }
     });
@@ -243,7 +243,7 @@ export function forceClearAllRecaptcha() {
     }
   }
   
-  console.log('[firebase.ts] All reCAPTCHA instances cleared');
+  
 }
 
 export const app = initFirebase();

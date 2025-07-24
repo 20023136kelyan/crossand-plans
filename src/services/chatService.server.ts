@@ -29,7 +29,7 @@ export const createDirectChatAdmin = async (
     console.error("[createDirectChatAdmin] Firestore Admin SDK is not initialized.");
     throw new Error("Firestore Admin SDK not available");
   }
-  console.log(`[createDirectChatAdmin] Creating chat between ${currentUserProcessedInfo.uid} and ${friendProcessedInfo.uid}`);
+  
 
   const participantsArray = [currentUserProcessedInfo.uid, friendProcessedInfo.uid].sort();
   const now = FieldValue.serverTimestamp();
@@ -67,7 +67,7 @@ export const createDirectChatAdmin = async (
       lastMessageTimestamp: now, // Changed from null to now
       participantReadTimestamps: initialReadTimestamps, 
     });
-    console.log('[createDirectChatAdmin] Direct chat created successfully with ID (Admin SDK):', newChatDocRef.id);
+    
     return newChatDocRef.id;
   } catch (error) {
     console.error('[createDirectChatAdmin] Error creating direct chat (Admin SDK):', error);
@@ -80,7 +80,7 @@ export const getExistingDirectChatIdAdmin = async (
   friendUid: string
 ): Promise<string | null> => {
 
-  console.log(`[getExistingDirectChatIdAdmin] Checking for existing chat between ${currentUserUid} and ${friendUid}`);
+  
   const participantsArray = [currentUserUid, friendUid].sort();
   const q = FirebaseQueryBuilder.getFilteredQuery(COLLECTIONS.CHATS, {
     type: 'direct' as ChatType,
@@ -89,10 +89,10 @@ export const getExistingDirectChatIdAdmin = async (
   try {
     const querySnapshot = await q.get();
     if (!querySnapshot.empty) {
-      console.log(`[getExistingDirectChatIdAdmin] Existing chat found: ${querySnapshot.docs[0].id}`);
+
       return querySnapshot.docs[0].id;
     }
-    console.log(`[getExistingDirectChatIdAdmin] No existing chat found.`);
+    
     return null;
   } catch (error) {
     console.error('[getExistingDirectChatIdAdmin] Error in getExistingDirectChatIdAdmin (Admin SDK):', error);
@@ -101,7 +101,7 @@ export const getExistingDirectChatIdAdmin = async (
 };
 
 export const deleteChatAdmin = async (chatId: string, requestingUserId: string): Promise<void> => {
-  console.log(`[deleteChatAdmin] Attempting to delete chat ${chatId} by user ${requestingUserId}`);
+  
   const chatDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.CHATS, chatId);
   try {
     const chatDocSnap = await chatDocRef.get();
@@ -131,9 +131,9 @@ export const deleteChatAdmin = async (chatId: string, requestingUserId: string):
     if (count > 0) {
         await batch.commit();
     }
-    console.log(`[deleteChatAdmin] Deleted ${messagesSnapshot.docs.length} messages for chat ${chatId}.`);
+    
     await chatDocRef.delete();
-    console.log(`[deleteChatAdmin] Chat ${chatId} deleted successfully by user ${requestingUserId}.`);
+    
   } catch (error) {
     console.error(`[deleteChatAdmin] Error deleting chat ${chatId} (Admin SDK):`, error);
     throw error;
@@ -165,6 +165,11 @@ export const sendMessageAdmin = async (
       senderId,
       timestamp: nowServerTimestamp,
       hiddenBy: [], // Initialize hiddenBy as empty array
+      readBy: {
+        [senderId]: nowServerTimestamp // Sender has seen their own message
+      },
+      status: 'sent',
+      updatedAt: nowServerTimestamp
     };
 
     if (text && typeof text === 'string' && text.trim()) {
@@ -207,7 +212,7 @@ export const sendMessageAdmin = async (
 
     // Fetch sender profile
     const senderProfile = await getUserProfileAdmin(senderId);
-    const senderName = senderProfile?.name || senderProfile?.username || 'Someone';
+    const senderName = senderProfile?.username || senderProfile?.firstName || senderProfile?.name || 'Someone';
     const senderAvatarUrl = senderProfile?.avatarUrl || undefined;
     // Message preview
     let messagePreview = text && text.trim() ? text.trim().slice(0, 50) : (mediaUrl ? '[Image]' : 'Message');
@@ -247,10 +252,74 @@ export const markChatAsFullyReadAdmin = async (
   try {
     const chatDocRef = FirebaseQueryBuilder.doc(COLLECTIONS.CHATS, chatId);
     const now = FieldValue.serverTimestamp(); 
+    
+    // First, get the current chat to check last read timestamp
+    const chatDoc = await chatDocRef.get();
+    const chatData = chatDoc.data();
+    const previousReadTimestamp = chatData?.participantReadTimestamps?.[userId];
+    const previousReadTime = previousReadTimestamp ? 
+      (typeof previousReadTimestamp.toDate === 'function' ? previousReadTimestamp.toDate() : previousReadTimestamp) : 
+      new Date(0);
+    
+    // Update the chat's read timestamp for this user
     await chatDocRef.update({
       [`participantReadTimestamps.${userId}`]: now,
       updatedAt: now, 
     });
+    
+    // Mark all unread messages as read by this user
+    const messagesRef = FirebaseQueryBuilder.subcollection(COLLECTIONS.CHATS, chatId, 'messages');
+    let unreadMessagesQuery;
+    
+    if (previousReadTime) {
+      unreadMessagesQuery = await messagesRef
+        .where('timestamp', '>', previousReadTime instanceof Date ? 
+          AdminTimestamp.fromDate(previousReadTime) : previousReadTime)
+        .where('senderId', '!=', userId) // Only mark others' messages as read
+        .get();
+    } else {
+      unreadMessagesQuery = await messagesRef
+        .where('senderId', '!=', userId) // Only mark others' messages as read
+        .get();
+    }
+    
+    // Update each message with readBy information
+    const batch = firestoreAdmin!.batch();
+    let updatedCount = 0;
+    
+    for (const doc of unreadMessagesQuery.docs) {
+      const messageData = doc.data() as ChatMessage;
+      const messageRef = messagesRef.doc(doc.id);
+      
+      // Only update if not already read by this user
+      if (!messageData.readBy?.[userId]) {
+        const updateData: any = {
+          [`readBy.${userId}`]: now,
+          updatedAt: now
+        };
+        
+        // Only update status to 'read' if it's currently 'sent' or undefined
+        if (messageData.status === 'sent' || messageData.status === undefined) {
+          updateData.status = 'read';
+        }
+        
+        batch.update(messageRef, updateData);
+        updatedCount++;
+      }
+    }
+    
+    if (updatedCount > 0) {
+      try {
+        await batch.commit();
+        console.log(`[markChatAsFullyReadAdmin] Successfully committed batch update for ${updatedCount} messages for user ${userId}`);
+      } catch (batchError) {
+        console.error(`[markChatAsFullyReadAdmin] Batch commit error:`, batchError);
+        throw new Error(`Failed to update read receipts: ${batchError instanceof Error ? batchError.message : 'Unknown error'}`);
+      }
+    } else {
+      console.log(`[markChatAsFullyReadAdmin] No messages needed to be marked as read for user ${userId}`);
+    }
+    
     // Mark all chat_message notifications for this chat as read
     const notificationsRef = FirebaseQueryBuilder.collection(COLLECTIONS.USERS).doc(userId).collection('notifications');
     const chatNotifQuery = await notificationsRef
@@ -259,6 +328,7 @@ export const markChatAsFullyReadAdmin = async (
       .where('isRead', '==', false)
       .get();
     await Promise.all(chatNotifQuery.docs.map(doc => markNotificationAsRead(userId, doc.id)));
+    
     console.log(`[markChatAsFullyReadAdmin] Chat ${chatId} marked as read for user ${userId} successfully.`);
   } catch (error) {
     console.error(`[markChatAsFullyReadAdmin] Error marking chat ${chatId} as read for user ${userId}:`, error);

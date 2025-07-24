@@ -18,6 +18,7 @@ interface FriendMultiSelectInputProps {
   onSelectedUserIdsChange: (ids: string[]) => void;
   onOpenChange?: (isOpen: boolean) => void;
   autoOpen?: boolean;
+  control?: any; // Added for compatibility with parent forms (e.g. React Hook Form)
 }
 
 export function FriendMultiSelectInput({
@@ -25,6 +26,7 @@ export function FriendMultiSelectInput({
   onSelectedUserIdsChange,
   onOpenChange,
   autoOpen = false,
+  control, // Accept the prop, even if unused
 }: FriendMultiSelectInputProps) {
   const { user, loading: authLoading } = useAuth();
   const [allFriendshipEntries, setAllFriendshipEntries] = useState<FriendEntry[]>([]);

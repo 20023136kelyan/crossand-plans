@@ -34,19 +34,18 @@ export const createPlanAdmin = async (
   const hostProfile = await getUserProfileAdmin(hostId);
 
   try {
+    // Filter out hostId from invitedParticipantUserIds for safety
+    const safeInvitedParticipantUserIds = (planData.invitedParticipantUserIds || []).filter(uid => uid !== hostId);
+
     const participantResponses: { [userId: string]: string } = {}; 
     participantResponses[hostId] = 'going'; 
-
-    if (planData.invitedParticipantUserIds) {
-      planData.invitedParticipantUserIds.forEach(uid => {
-        if (uid !== hostId) {
-          participantResponses[uid] = 'pending';
-        }
-      });
-    }
+    safeInvitedParticipantUserIds.forEach(uid => {
+      participantResponses[uid] = 'pending';
+    });
 
     const dataToAdd = {
       ...planData,
+      invitedParticipantUserIds: safeInvitedParticipantUserIds,
       hostId: hostId, 
       hostName: hostProfile?.name || null,
       hostAvatarUrl: hostProfile?.avatarUrl || null,
@@ -60,6 +59,24 @@ export const createPlanAdmin = async (
 
     // // console.log('[createPlanAdmin] Data being added to Firestore:', JSON.stringify(dataToAdd, null, 2).substring(0, 300) + "...");
     const docRef = await firestoreAdmin.collection(PLANS_COLLECTION).add(dataToAdd);
+    // --- Send actionable notifications to invited users (on plan creation) ---
+    if (safeInvitedParticipantUserIds.length > 0) {
+      const notificationData: any = {
+        type: 'plan_invitation',
+        title: 'invited you to a plan',
+        description: planData.name || 'A plan',
+        userName: hostProfile?.username || hostProfile?.firstName || hostProfile?.name || 'Someone',
+        actionUrl: `/plans/${docRef.id}`,
+        isRead: false,
+        handled: false, // actionable!
+        metadata: { planId: docRef.id },
+        planImageUrl: planData.images && planData.images.length > 0 ? planData.images[0].url : undefined,
+      };
+      if (hostProfile?.avatarUrl) {
+        notificationData.avatarUrl = hostProfile.avatarUrl;
+      }
+      await createNotificationForMultipleUsers(safeInvitedParticipantUserIds, notificationData);
+    }
     // console.log(`[createPlanAdmin] Plan created successfully with ID: ${docRef.id}`);
     return docRef.id;
   } catch (error) {
@@ -154,10 +171,12 @@ export const updatePlanAdmin = async (
         type: 'plan_invitation',
         title: 'invited you to a plan',
         description: currentPlanData?.name || 'A plan',
-        userName: hostProfile?.name || hostProfile?.username || 'Someone',
+        userName: hostProfile?.username || hostProfile?.firstName || hostProfile?.name || 'Someone',
         actionUrl: `/plans/${planId}`,
         isRead: false,
+        handled: false, // <-- actionable!
         metadata: { planId },
+        planImageUrl: currentPlanData?.images && currentPlanData.images.length > 0 ? currentPlanData.images[0].url : undefined,
       };
       
       if (hostProfile?.avatarUrl) {
@@ -173,10 +192,10 @@ export const updatePlanAdmin = async (
           // Get participant profile for notification
           const participantProfile = await getUserProfileAdmin(change.uid);
           const notificationData: any = {
-            type: 'plan_invitation',
+            type: 'plan_rsvp_response',
             title: `${change.newStatus === 'going' ? 'accepted' : 'declined'} your invitation`,
             description: `to your plan`,
-            userName: participantProfile?.name || participantProfile?.username || 'Someone',
+            userName: participantProfile?.username || participantProfile?.firstName || participantProfile?.name || 'Someone',
             actionUrl: `/plans/${planId}`,
             isRead: false,
             metadata: { planId, participantId: change.uid, status: change.newStatus },
@@ -201,10 +220,11 @@ export const updatePlanAdmin = async (
           type: 'plan_share',
           title: 'updated the plan',
           description: 'Event details, location, or participants have been modified',
-          userName: updaterProfile?.name || updaterProfile?.username || 'Someone',
+          userName: updaterProfile?.username || updaterProfile?.firstName || updaterProfile?.name || 'Someone',
           actionUrl: `/plans/${planId}`,
           isRead: false,
           metadata: { planId },
+          planImageUrl: currentPlanData?.images && currentPlanData.images.length > 0 ? currentPlanData.images[0].url : undefined,
         };
         
         if (updaterProfile?.avatarUrl) {
@@ -299,7 +319,7 @@ export const getPublishedPlansByCategoryAdmin = async (categoryName: string): Pr
     return [];
   }
   try {
-    console.log(`[getPublishedPlansByCategoryAdmin] Fetching plans for category: ${categoryName}`);
+    
     const query = FirebaseQueryBuilder.getFilteredQuery(
       COLLECTIONS.PLANS,
       { status: 'published', eventTypeLowercase: categoryName.toLowerCase() },
@@ -307,7 +327,7 @@ export const getPublishedPlansByCategoryAdmin = async (categoryName: string): Pr
     );
     const querySnapshot = await query.get();
     
-    console.log(`[getPublishedPlansByCategoryAdmin] Found ${querySnapshot.size} plans`);
+    
     const plans: Plan[] = [];
     querySnapshot.forEach(docSnap => {
       plans.push(mapAdminDocToPlan(docSnap));
@@ -383,10 +403,11 @@ export const setRatingAdmin = async (
         type: 'plan_completion',
         title: 'rated your plan',
         description: `${ratingValue} stars`,
-        userName: raterProfile?.name || raterProfile?.username || 'Someone',
+        userName: raterProfile?.username || raterProfile?.firstName || raterProfile?.name || 'Someone',
         actionUrl: `/plans/${planId}`,
         isRead: false,
         metadata: { planId, raterId: userId, ratingValue },
+        planImageUrl: currentPlan.images && currentPlan.images.length > 0 ? currentPlan.images[0].url : undefined,
       });
     }
     return { 
@@ -715,6 +736,26 @@ export const createPlanShareInviteAdmin = async (
     updatedAt: FieldValue.serverTimestamp(),
   };
   await newShareRef.set(shareData);
+
+  // Get the original plan to fetch its image
+  const originalPlan = await getPlanByIdAdminService(originalPlanId);
+
+  // --- Create informational notification for the recipient ---
+  const notificationData: any = {
+    type: 'plan_share',
+    title: 'shared a plan with you',
+    description: originalPlanName,
+    userName: sharedByName,
+    avatarUrl: sharedByAvatarUrl,
+    actionUrl: `/plans/${originalPlanId}`,
+    isRead: false,
+    handled: true, // informational, not actionable
+    status: 'informational',
+    metadata: { planId: originalPlanId, shareId: newShareRef.id },
+    planImageUrl: originalPlan?.images && originalPlan.images.length > 0 ? originalPlan.images[0].url : undefined,
+  };
+  await createNotification(sharedWithUid, notificationData);
+
   return newShareRef.id;
 };
 
@@ -745,7 +786,7 @@ export const getCompletedPlansAdmin = async (): Promise<Plan[]> => {
     return [];
   }
   try {
-    console.log("[getCompletedPlansAdmin] Starting to fetch completed plans...");
+    
     const plansRef = firestoreAdmin.collection(PLANS_COLLECTION);
     
     // Query for plans that are:
@@ -761,11 +802,11 @@ export const getCompletedPlansAdmin = async (): Promise<Plan[]> => {
     // Process completed plans
     completedPlansSnapshot.forEach(docSnap => {
       const plan = mapAdminDocToPlan(docSnap);
-      console.log(`[getCompletedPlansAdmin] Including completed plan: ${plan.id}, name: ${plan.name}, completedAt: ${plan.completedAt}`);
+      
       plans.push(plan);
     });
 
-    console.log(`[getCompletedPlansAdmin] Successfully processed ${plans.length} completed plans`);
+    
     return plans;
   } catch (error) {
     console.error('[getCompletedPlansAdmin] Error fetching completed plans (Admin SDK):', error);
@@ -829,7 +870,7 @@ export const getUserPlansAdmin = async (userId: string): Promise<Plan[]> => {
       return timeB - timeA;
     });
     
-    console.log(`[getUserPlansAdmin] Found ${plans.length} plans for user ${userId}`);
+    
     return plans;
   } catch (error) {
     console.error(`[getUserPlansAdmin] Error fetching plans for user ${userId}:`, error);

@@ -602,7 +602,7 @@ export default function MessagesPage() {
 
       const currentUserInfo: RawBasicUserInfo = {
         uid: user.uid,
-        name: currentUserProfile.name,
+        name: currentUserProfile.name || null,
         avatarUrl: currentUserProfile.avatarUrl
       };
 
@@ -715,113 +715,252 @@ export default function MessagesPage() {
   const pinnedChats = [];
 
   return (
-    <div className="min-h-screen flex flex-col text-white">
+    <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-4 bg-background sticky top-0 z-20">
-        <h1 className="text-2xl font-bold tracking-tight">Messages</h1>
-        <div className="flex items-center gap-3">
-          {/* Only keep the compose/new chat button, remove the search button */}
-          <button className="p-2 rounded-full hover:bg-muted transition"><svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 19v-6m0 0V5m0 8H6m6 0h6"/></svg></button>
+      <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-sm border-b border-border">
+        <div className="max-w-4xl mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <h1 className="text-xl font-bold tracking-tight">Messages</h1>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setIsFriendPickerOpen(true)}
+                className="p-2 rounded-full hover:bg-muted transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                aria-label="Start new chat"
+              >
+                <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path d="M12 19v-6m0 0V5m0 8H6m6 0h6"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Search Bar */}
+        <div className="border-t border-border/50 bg-background/50 px-4 py-3">
+          <div className="relative max-w-4xl mx-auto">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search messages..."
+              className="w-full pl-9 pr-4 py-2 bg-muted/50 border-0 rounded-xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              value={searchTermChats}
+              onChange={(e) => setSearchTermChats(e.target.value)}
+            />
+          </div>
         </div>
       </header>
 
-      {/* Search Bar */}
-      <div className="px-4 pt-3 pb-5">
-        <Input
-          type="search"
-          placeholder="Search..."
-          className="rounded-full bg-muted/40 border-none focus:ring-2 focus:ring-primary/40 text-sm px-4 py-2"
-        />
-      </div>
-
       {/* Online Now */}
-      <section className="px-4 pb-3 bg-background">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-muted-foreground font-semibold">Online Now</span>
-          <button className="text-xs text-primary/80 hover:underline">Archive</button>
-        </div>
-        <div className="flex gap-3 overflow-x-auto pb-2 hide-scrollbar">
-          {onlineUsers.length === 0 ? (
-            <span className="text-muted-foreground text-xs">No one online</span>
-          ) : (
-            onlineUsers.map((user, idx) => (
-              <div key={user.uid || idx} className="relative flex flex-col items-center w-16">
-                <span className="block h-11 w-11 rounded-full bg-muted overflow-hidden border-2 border-border">
-                  {user.avatarUrl ? (
-                    <img src={user.avatarUrl} alt={user.name || 'User'} className="h-full w-full object-cover" />
-                  ) : (
-                    <span className="flex h-full w-full items-center justify-center text-lg font-bold bg-muted text-white">{user.name?.charAt(0) || '?'}</span>
-                  )}
-                </span>
-                <span className="absolute bottom-1 right-1 h-3 w-3 rounded-full bg-green-500 border-2 border-background" />
-                <span className="mt-1 text-xs text-center truncate w-full text-muted-foreground">{user.name || 'User'}</span>
-              </div>
-            ))
-          )}
+      <section className="border-b border-border bg-background/50">
+        <div className="max-w-4xl mx-auto px-4 py-3">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Online Now</span>
+            <button 
+              className="text-xs font-medium text-primary hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded px-1.5 py-0.5 -mr-1.5"
+              onClick={() => {}}
+            >
+              See All
+            </button>
+          </div>
+          
+          <div className="relative">
+            <div className="flex space-x-4 pb-1 -mx-1 overflow-x-auto hide-scrollbar">
+              {onlineUsers.length === 0 ? (
+                <div className="flex items-center justify-center w-full py-2">
+                  <p className="text-sm text-muted-foreground">No contacts online</p>
+                </div>
+              ) : (
+                onlineUsers.map((onlineUser, idx) => (
+                  <div 
+                    key={onlineUser?.uid || idx} 
+                    className="flex flex-col items-center flex-shrink-0 w-14 group"
+                  >
+                    <div className="relative">
+                      <div className="h-12 w-12 rounded-full bg-muted overflow-hidden border-2 border-foreground/10 group-hover:border-primary/30 transition-colors">
+                        {onlineUser?.avatarUrl ? (
+                          <img 
+                            src={onlineUser.avatarUrl} 
+                            alt={onlineUser.name || 'User'} 
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <span className="flex h-full w-full items-center justify-center text-lg font-medium bg-muted text-foreground/80">
+                            {onlineUser?.name?.charAt(0) || '?'}
+                          </span>
+                        )}
+                      </div>
+                      <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 border-2 border-background shadow-sm" />
+                    </div>
+                    <span className="mt-2 text-xs text-center font-medium text-foreground/90 truncate w-full px-1">
+                      {onlineUser?.name?.split(' ')[0] || 'User'}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+            
+            {/* Fade effect for scrollable content */}
+            <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none" />
+          </div>
         </div>
       </section>
 
-      {/* Pinned Conversations */}
+      {/* Pinned Conversations - Hidden when empty */}
       {pinnedChats.length > 0 && (
-        <section className="px-4 py-2 bg-background">
-          <span className="flex items-center gap-1 text-xs text-muted-foreground font-semibold">
-            <Pin className="h-4 w-4 mr-1 text-muted-foreground fill-current" fill="currentColor" />
-            Pinned Conversations
-          </span>
-          <div> {/* Render pinned chats here if needed */} </div>
+        <section className="bg-muted/30 border-y border-border/50">
+          <div className="max-w-4xl mx-auto px-4 py-2">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground px-2 py-1.5">
+              <Pin className="h-3.5 w-3.5 text-muted-foreground/80" />
+              <span>Pinned Conversations</span>
+            </div>
+            <div className="space-y-1">
+              {/* Pinned chat items would go here */}
+            </div>
+          </div>
         </section>
       )}
 
       {/* All Messages */}
-      <section className="flex-1 flex flex-col bg-background overflow-y-auto">
-        <span className="flex items-center gap-1 px-4 pt-4 pb-2 text-xs text-muted-foreground font-semibold">
-          <MessageCircle className="h-4 w-4 mr-1 text-muted-foreground fill-current" fill="currentColor" />
-          All Messages
-        </span>
-        <div className="flex flex-col">
+      <section className="flex-1 flex flex-col overflow-hidden bg-background">
+        {/* Section Header - Sticky */}
+        <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border/50">
+          <div className="max-w-4xl mx-auto px-4 pt-3 pb-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground px-2">
+              <MessageCircleIcon className="h-4 w-4 flex-shrink-0" />
+              <span>All Messages</span>
+              {filteredChats.length > 0 && (
+                <span className="ml-auto text-xs text-muted-foreground/80">
+                  {filteredChats.length} {filteredChats.length === 1 ? 'conversation' : 'conversations'}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        
+        {/* Message List */}
+        <div className="flex-1 overflow-y-auto">
           {filteredChats.length === 0 ? (
-            <div className="text-center text-muted-foreground py-10">No chats found.</div>
+            <div className="h-full flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto">
+              <div className="bg-muted/50 rounded-full p-4 mb-4">
+                <MessageCircleIcon className="h-10 w-10 text-muted-foreground/50" />
+              </div>
+              <h3 className="text-lg font-semibold mb-1.5">No messages yet</h3>
+              <p className="text-sm text-muted-foreground mb-6">
+                Your conversations will appear here. Start a new chat to connect with others.
+              </p>
+              <Button 
+                onClick={() => setIsFriendPickerOpen(true)}
+                className="rounded-full px-6 shadow-sm"
+                size="sm"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                New Message
+              </Button>
+            </div>
           ) : (
-            filteredChats.map((chat) => {
-              const display = getDisplayInfo(chat);
-              const lastMessageDate = getTimestampAsDate(chat.lastMessageTimestamp);
-              const lastMessageTime = lastMessageDate ?
-                lastMessageDate.getHours().toString().padStart(2, '0') + ':' + lastMessageDate.getMinutes().toString().padStart(2, '0') : '';
-              const isOnline = true; // Replace with real online logic
-              const unreadCount = 0; // Replace with real unread logic
-              const isTyping = false; // Replace with real typing logic
-              return (
-                <Link key={chat.id} href={`/messages/${chat.id}`} className="flex items-center gap-3 px-4 py-3 transition group">
-                  <div className="relative">
-                    <span className="block h-11 w-11 rounded-full bg-muted overflow-hidden border-2 border-border">
-                      {display.avatarUrl ? (
-                        <img src={display.avatarUrl} alt={display.name} className="h-full w-full object-cover" />
-                      ) : (
-                        <span className="flex h-full w-full items-center justify-center text-lg font-bold bg-muted text-white">{display.initial}</span>
-                      )}
-                    </span>
-                    {isOnline && <span className="absolute bottom-1 right-1 h-3 w-3 rounded-full bg-green-500 border-2 border-background" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold truncate group-hover:text-primary transition-colors">{display.name}</span>
-                      <span className="text-xs text-muted-foreground ml-2 whitespace-nowrap">{lastMessageTime}</span>
-                    </div>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-xs text-muted-foreground truncate">
-                        {isTyping ? <span className="text-green-400">Typing...</span> : chat.lastMessageText || 'No messages yet.'}
-                      </span>
-                      {unreadCount > 0 && (
-                        <span className="ml-2 bg-blue-500 text-white text-xs rounded-full px-2 py-0.5 font-bold">{unreadCount}</span>
-                      )}
-                    </div>
-                  </div>
-                </Link>
-              );
-            })
+            <ul className="divide-y divide-border/50">
+              {filteredChats.map((chat) => {
+                const display = getDisplayInfo(chat);
+                const lastMessageDate = getTimestampAsDate(chat.lastMessageTimestamp);
+                const lastMessageTime = lastMessageDate ? 
+                  formatDistanceToNowStrict(lastMessageDate, { addSuffix: true }) : '';
+                // Calculate unread messages based on read timestamps
+                const unreadCount = chat.participantReadTimestamps && user?.uid && chat.lastMessageSenderId !== user.uid &&
+                  (!chat.participantReadTimestamps[user.uid] || 
+                   (chat.lastMessageTimestamp && 
+                    (typeof chat.lastMessageTimestamp === 'string' 
+                      ? new Date(chat.lastMessageTimestamp).getTime() 
+                      : chat.lastMessageTimestamp.toDate().getTime()) > 
+                    (typeof chat.participantReadTimestamps[user.uid] === 'string' 
+                      ? new Date(chat.participantReadTimestamps[user.uid] as string).getTime() 
+                      : (chat.participantReadTimestamps[user.uid] as any)?.toDate?.().getTime() || 0)))
+                  ? 1 // Show 1 unread if the last message is newer than the user's last read timestamp
+                  : 0;
+                const isPinned = false; // Replace with real pinned logic
+                const isMuted = false; // Replace with real muted logic
+                
+                return (
+                  <li 
+                    key={chat.id} 
+                    className="group hover:bg-muted/30 transition-colors"
+                  >
+                    <Link href={`/messages/${chat.id}`} className="block">
+                      <div className="px-4 py-3 flex items-start gap-3 max-w-4xl mx-auto">
+                        {/* Avatar */}
+                        <div className="relative flex-shrink-0">
+                          <div className="h-12 w-12 rounded-full bg-muted/80 overflow-hidden border border-border/50 group-hover:border-border transition-colors">
+                            {display.avatarUrl ? (
+                              <img 
+                                src={display.avatarUrl} 
+                                alt={display.name} 
+                                className="h-full w-full object-cover"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <span className="flex h-full w-full items-center justify-center text-lg font-medium bg-muted text-foreground/80">
+                                {typeof display.initial === 'string' ? display.initial : display.initial}
+                              </span>
+                            )}
+                          </div>
+                          {isPinned && (
+                            <Pin className="absolute -top-1 -right-1 h-4 w-4 text-amber-500 rotate-45" />
+                          )}
+                        </div>
+                        
+                        {/* Message Preview */}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className="font-medium text-foreground truncate">
+                              {display.name}
+                              {display.role === 'admin' && (
+                                <span className="ml-1.5 text-[10px] font-medium bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                                  Admin
+                                </span>
+                              )}
+                            </h3>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                {lastMessageTime}
+                              </span>
+                              {isMuted && (
+                                <svg className="h-3.5 w-3.5 text-muted-foreground/70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-.707-1.707l5.586-5.586a1 1 0 000-1.414l-1.293-1.293a1 1 0 011.414-1.414l11.293 11.293a1 1 0 010 1.414l-11.293 11.293a1 1 0 01-1.414-1.414l1.293-1.293a1 1 0 000-1.414L4.707 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l9.707-9.707a1 1 0 011.414 0l1.586 1.586a1 1 0 010 1.414L5.586 15z" />
+                                </svg>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <p className="text-sm text-muted-foreground truncate flex-1">
+                              {chat.lastMessageText || 'No messages yet'}
+                            </p>
+                            
+                            {unreadCount > 0 && (
+                              <span className="bg-primary text-primary-foreground text-[10px] font-medium rounded-full h-5 min-w-5 flex items-center justify-center">
+                                {unreadCount > 9 ? '9+' : unreadCount}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
       </section>
+
+      {/* Friend Picker Dialog for new chats */}
+      <FriendPickerDialog
+        open={isFriendPickerOpen}
+        onOpenChange={setIsFriendPickerOpen}
+        onFriendSelect={handleFriendSelectForChat}
+        title="Start New Chat"
+        description="Select a friend to start a conversation with."
+      />
     </div>
   );
 }

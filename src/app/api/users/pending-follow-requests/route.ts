@@ -21,14 +21,23 @@ export async function GET(request: NextRequest) {
     const notificationsRef = firestoreAdmin!.collection('users').doc(currentUserId).collection('notifications');
     const snapshot = await notificationsRef.where('type', '==', 'follow_request').where('isRead', '==', false).orderBy('createdAt', 'desc').get();
     
-    const pendingFollowRequests = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })) as Array<{ id: string; fromUserId: string; createdAt?: any; type: string; isRead: boolean }>;
+    type PendingRequest = { id: string; fromUserId?: string; createdAt?: any; type: string; isRead: boolean };
+    const pendingFollowRequests = (snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }) as PendingRequest)
+      .filter(request => !!request.fromUserId)) as PendingRequest[];
 
     // Fetch user profiles for each pending request
     const enrichedRequests = await Promise.all(
       pendingFollowRequests.map(async (request) => {
+        if (!request.fromUserId) {
+          // Should not happen due to filter, but guard for type safety
+          return {
+            ...request,
+            requesterName: 'Unknown User',
+            requesterAvatarUrl: null,
+            requesterUsername: null
+          };
+        }
         try {
           const userProfileRef = firestoreAdmin!.collection('users').doc(request.fromUserId);
           const userProfileDoc = await userProfileRef.get();
@@ -37,7 +46,7 @@ export async function GET(request: NextRequest) {
             const userData = userProfileDoc.data();
             return {
               ...request,
-              requesterName: userData?.name || 'Unknown User',
+              requesterName: userData?.username || userData?.firstName || userData?.name || 'Unknown User',
               requesterAvatarUrl: userData?.avatarUrl || null,
               requesterUsername: userData?.username || null
             };

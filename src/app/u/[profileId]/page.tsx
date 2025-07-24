@@ -44,6 +44,15 @@ interface ProfilePageData {
   userStats: UserStats | null;
 }
 
+// Helper to get full name from user profile
+function getFullName(profile: { firstName?: string | null; lastName?: string | null; name?: string | null }): string | null {
+  if (profile.firstName || profile.lastName) {
+    const full = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim();
+    return full && full.length > 0 ? full : null;
+  }
+  return profile.name ?? null;
+}
+
 export default function PublicProfilePage() {
   const params = useParams();
   const router = useRouter();
@@ -157,7 +166,7 @@ export default function PublicProfilePage() {
       let result: { success: boolean; error?: string; message?: string };
       const targetUserInfoForAction: SearchedUser = { 
         uid: userProfile.uid,
-        name: userProfile.name,
+        name: getFullName(userProfile),
         username: userProfile.username,
         email: userProfile.email,
         avatarUrl: userProfile.avatarUrl,
@@ -208,12 +217,12 @@ export default function PublicProfilePage() {
       const result = await initiateDirectChatAction(
         { 
           uid: userProfile.uid, 
-          name: userProfile.name, 
+          name: getFullName(userProfile),
           avatarUrl: userProfile.avatarUrl,
         },
         {
           uid: currentUser.uid,
-          name: currentUserProfile?.name || currentUser.displayName,
+          name: getFullName(currentUserProfile) || currentUser.displayName || null,
           avatarUrl: currentUserProfile?.avatarUrl || currentUser.photoURL,
         }
       );
@@ -311,16 +320,25 @@ export default function PublicProfilePage() {
                 </div>
                 <div className="flex-1 min-w-0 space-y-3">
                   <div className="space-y-2">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">@{userProfile.username || "user"}</h1>
-                      <VerificationBadgeInline role={userProfile.role} isVerified={userProfile.isVerified} />
+                    <div className="relative flex items-center justify-start">
+                      <div className="flex items-center gap-2">
+                        <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">@{userProfile.username || "user"}</h1>
+                        {isOwnProfile && (
+                                                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0 rounded-md hover:bg-primary/10 transition-all duration-200" asChild>
+                          <Link href={`/users/settings?tab=profile&returnUrl=${encodeURIComponent(`/u/${userProfile.uid}`)}`}>
+                            <Edit3 className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                          </Link>
+                        </Button>
+                        )}
+                        <VerificationBadgeInline role={userProfile.role} isVerified={userProfile.isVerified} />
+                      </div>
                     </div>
                     <div className="flex gap-2 flex-wrap">
                       {isOwnProfile ? (
                         <>
                           <Button size="sm" variant="outline" className="h-8 px-3 text-xs font-medium rounded-lg border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all duration-200" asChild>
-                            <Link href="/settings">
-                              Edit Profile
+                            <Link href={`/users/settings?tab=preferences&returnUrl=${encodeURIComponent(`/u/${userProfile.uid}`)}`}>
+                              Edit Preferences
                             </Link>
                           </Button>
                           <Button size="sm" variant="outline" className="h-8 w-8 p-0 rounded-lg border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all duration-200" asChild>

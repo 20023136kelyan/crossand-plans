@@ -100,16 +100,19 @@ export default function PlanComments({
         id: doc.id, 
         ...doc.data() 
       } as Comment));
-      
       // Debug logging to understand comment data structure
-      console.log('Fetched comments:', fetchedComments.map(comment => ({
-        id: comment.id,
-        text: comment.text,
-        createdAt: comment.createdAt,
-        createdAtType: typeof comment.createdAt,
-        isTimestamp: comment.createdAt instanceof Timestamp
-      })));
-      
+      // Uncomment for debugging:
+      /*
+      fetchedComments.forEach(comment => {
+        console.log({
+          id: comment.id,
+          text: comment.text,
+          createdAt: comment.createdAt,
+          createdAtType: typeof comment.createdAt,
+          isTimestamp: comment.createdAt instanceof Timestamp
+        });
+      });
+      */
       setComments(fetchedComments);
       setLoading(false);
       }),
@@ -133,7 +136,7 @@ export default function PlanComments({
     setCommentLoading(true);
     try {
       // Debug: log currentUserProfile
-      console.log('Submitting comment with currentUserProfile:', currentUserProfile);
+      
       await addDoc(collection(db!, 'plans', planId, 'comments'), {
         userId: currentUserId,
         userName: currentUserProfile?.name || null,

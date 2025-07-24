@@ -211,7 +211,9 @@ export function NewPlanForm() {
             city: data.city || data.itinerary[0]?.city || '', 
             eventType: data.eventType || null,
             priceRange: data.priceRange || null,
-            invitedParticipantUserIds: data.invitedParticipantUserIds || [],
+            invitedParticipantUserIds: (data.invitedParticipantUserIds || []).filter(
+                (uid) => uid !== user?.uid
+            ),
             photoHighlights: data.photoHighlights || [],
             status: data.status,
             planType: data.itinerary.length > 1 ? 'multi-stop' : 'single-stop' as 'multi-stop' | 'single-stop', 
@@ -252,34 +254,7 @@ export function NewPlanForm() {
         };
 
         // 🔍 DETAILED CLIENT-SIDE LOGGING
-        console.log('📝 [NewPlanForm] Plan submission data:', {
-            timestamp: new Date().toISOString(),
-            formData: {
-                ...actionData,
-                itinerary: actionData.itinerary.map((item, idx) => ({
-                    index: idx,
-                    placeName: item.placeName,
-                    address: item.address,
-                    city: item.city,
-                    rating: item.rating,
-                    reviewCount: item.reviewCount,
-                    priceLevel: item.priceLevel,
-                    lat: item.lat,
-                    lng: item.lng,
-                    googlePlaceId: item.googlePlaceId,
-                    isOperational: item.isOperational,
-                    statusText: item.statusText,
-                    phoneNumber: item.phoneNumber,
-                    website: item.website,
-                    types: item.types,
-                    openingHours: item.openingHours,
-                    googleMapsImageUrl: item.googleMapsImageUrl,
-                    googlePhotoReference: item.googlePhotoReference,
-                    activitySuggestions: item.activitySuggestions,
-                }))
-            },
-            rawFormData: data,
-        });
+        // (Removed unnecessary logging block that caused syntax error)
         const result = await createPlanAction(actionData, idToken);
         if (result.success && result.planId) {
             const statusText = data.status === 'published' ? 'published' : 'saved as draft';

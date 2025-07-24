@@ -1180,7 +1180,7 @@ export async function submitCommentAction(
 
     const commentDataForService: Omit<Comment, 'id' | 'createdAt' | 'planId' | 'updatedAt'> = {
       userId, 
-      userName: userProfile.name || `User (${userId.substring(0,5)})`, 
+      userName: userProfile.username || userProfile.firstName || userProfile.name || `User (${userId.substring(0,5)})`, 
       username: userProfile.username || null,
       userAvatarUrl: userProfile.avatarUrl || null, 
       role: userProfile.role || 'user',

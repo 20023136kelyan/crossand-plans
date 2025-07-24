@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { 
   Send, ChevronLeft, Loader2, UserCircle, Paperclip, XCircle as XIcon, EyeOff, MoreVertical, Phone, Video,
-  ShieldCheck, CheckCircle as CheckCircleIcon, MessageSquare // Added for MessageSquare
+  ShieldCheck, CheckCircle as CheckCircleIcon, MessageSquare, CheckCheck, Check
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -24,7 +24,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn, commonImageExtensions } from "@/lib/utils";
 import Link from 'next/link';
 import { FileValidators } from '@/lib/fileValidation';
-import { doc, onSnapshot, collection, query, orderBy } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, orderBy, serverTimestamp, setDoc, getDoc, arrayRemove, arrayUnion } from 'firebase/firestore';
 import { getDb } from '@/services/clientServices';
 
 const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, isVerified: boolean }) => {
@@ -68,6 +68,9 @@ export default function ChatPage() {
   const [newMessage, setNewMessage] = useState('');
   const [loadingChat, setLoadingChat] = useState(true);
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [typingUsers, setTypingUsers] = useState<{uid: string, name: string}[]>([]);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
@@ -110,36 +113,178 @@ export default function ChatPage() {
   }, []); // Removed newMessage and selectedFile from deps as ResizeObserver handles size changes
 
   const handleMarkChatAsRead = useCallback(async () => {
-    const currentChatId = chatId; // Capture chatId at the time of callback definition
-    const currentUser = user; // Capture user
-    const currentChatDetails = chatDetailsRef.current; // Use ref
-    const currentMessages = messagesRef.current; // Use ref
+    try {
+      const currentChatId = chatId;
+      const currentUser = user;
+      const currentChatDetails = chatDetailsRef.current;
+      const currentMessages = messagesRef.current;
 
-    if (!currentChatId || !currentUser || !currentChatDetails || !currentMessages) return;
-    
-    const lastMsg = currentMessages.length > 0 ? currentMessages[currentMessages.length - 1] : null;
-    if (!lastMsg || lastMsg.senderId === currentUser.uid) return;
-
-    const lastMsgTimeISO = typeof lastMsg.timestamp === 'string' ? lastMsg.timestamp : (lastMsg.timestamp as Date)?.toISOString();
-    if (!lastMsgTimeISO || !isValid(parseISO(lastMsgTimeISO))) return;
-    
-    const lastMsgTime = parseISO(lastMsgTimeISO).getTime();
-    const userReadTimestampISO = currentChatDetails.participantReadTimestamps?.[currentUser.uid] as string | undefined;
-    const userReadTime = userReadTimestampISO && isValid(parseISO(userReadTimestampISO)) 
-        ? parseISO(userReadTimestampISO).getTime() : 0;
-
-    if (lastMsgTime > userReadTime) { 
-      try {
-        const idToken = await currentUser.getIdToken(true);
-        await markChatAsReadAction(currentChatId, idToken);
-      } catch (err: any) {
-        console.error("[ChatPage] Failed to mark chat as read via action:", err.message);
-        // Optionally, toast an error here if needed, but often this is a background task
+      if (!currentChatId || !currentUser?.uid || !currentChatDetails) {
+        console.log('[handleMarkChatAsRead] Missing required data to mark as read');
+        return;
       }
+      
+      // Get the last message (if any)
+      const lastMsg = currentMessages?.length > 0 ? currentMessages[currentMessages.length - 1] : null;
+      
+      // If there are no messages, we can still mark the chat as read
+      if (!lastMsg) {
+        console.log('[handleMarkChatAsRead] No messages to mark as read');
+        const idToken = await currentUser.getIdToken(true);
+        const result = await markChatAsReadAction(currentChatId, idToken);
+        console.log('[handleMarkChatAsRead] Marked empty chat as read:', result);
+        return;
+      }
+
+      // Don't mark as read if the last message is from the current user
+      if (lastMsg.senderId === currentUser.uid) {
+        console.log('[handleMarkChatAsRead] Last message is from current user, not marking as read');
+        return;
+      }
+
+      // Check if we've already marked this message as read
+      const lastReadTimestamp = currentChatDetails.participantReadTimestamps?.[currentUser.uid];
+      const lastReadDate = getTimestampAsDate(lastReadTimestamp);
+      const lastMsgDate = getTimestampAsDate(lastMsg.timestamp);
+      
+      console.log('[handleMarkChatAsRead] Read status check:', {
+        lastReadTimestamp,
+        lastReadDate: lastReadDate?.toISOString(),
+        lastMsgDate: lastMsgDate?.toISOString(),
+        lastMsgId: lastMsg.id,
+        lastMsgText: lastMsg.text ? (lastMsg.text.substring(0, 30) + (lastMsg.text.length > 30 ? '...' : '')) : ''
+      });
+      
+      if (lastReadDate && lastMsgDate) {
+        // Add a small buffer (1 second) to account for clock skew
+        const bufferMs = 1000;
+        const lastReadWithBuffer = new Date(lastReadDate.getTime() - bufferMs);
+        
+        if (lastMsgDate <= lastReadWithBuffer) {
+          console.log('[handleMarkChatAsRead] Message already marked as read (with buffer)');
+          return;
+        }
+      }
+
+      console.log('[handleMarkChatAsRead] Marking chat as read');
+      const idToken = await currentUser.getIdToken(true);
+      const result = await markChatAsReadAction(currentChatId, idToken);
+      console.log('[handleMarkChatAsRead] Mark as read result:', result);
+      
+      // Force a re-render to update the UI
+      setChatDetails(prev => prev ? { ...prev } : null);
+      
+    } catch (err: any) {
+      console.error("[ChatPage] Error in handleMarkChatAsRead:", err);
+      // Don't show error to user as this runs in the background
     }
-  }, [chatId, user]); // Stable dependencies
+  }, [chatId, user]);
 
   // Effect for fetching chat details
+  // Handle typing indicator updates
+  useEffect(() => {
+    if (!user?.uid || !chatId) return;
+
+    const typingRef = doc(getDb(), 'chats', chatId, 'typing', 'status');
+    
+    // Set up real-time listener for typing status
+    const unsubscribeTyping = onSnapshot(typingRef, {
+      next: (doc) => {
+        const typingData = doc.data() || {};
+        console.log('Typing status updated:', typingData);
+        const typingUsersList: Array<{uid: string, name: string}> = [];
+        
+        // Get all typing users except current user
+        Object.entries(typingData).forEach(([uid, userData]) => {
+          if (uid && userData && typeof userData === 'object' && 'name' in userData) {
+            // Only include if the user is not the current user and has a valid name
+            if (uid !== user?.uid && userData.name) {
+              typingUsersList.push({
+                uid,
+                name: userData.name
+              });
+            }
+          }
+        });
+        
+        console.log('Setting typing users:', typingUsersList);
+        setTypingUsers(typingUsersList);
+      },
+      error: (error) => {
+        console.error('Error in typing status listener:', error);
+      }
+    });
+
+    // Clean up typing status when component unmounts
+    return () => {
+      unsubscribeTyping();
+      // Clear local typing status
+      updateTypingStatus(false);
+    };
+  }, [user?.uid, chatId]);
+
+  // Update typing status in Firestore
+  const updateTypingStatus = async (typing: boolean) => {
+    console.log('updateTypingStatus called with:', { typing, userId: user?.uid, chatId });
+    if (!user?.uid || !chatId || !currentUserProfile) {
+      console.log('Missing required data:', { hasUser: !!user, userId: user?.uid, chatId, hasProfile: !!currentUserProfile });
+      return;
+    }
+    
+    const typingRef = doc(getDb(), 'chats', chatId, 'typing', 'status');
+    
+    try {
+      if (typing) {
+        // Set typing status with merge: true to preserve other users' status
+        await setDoc(typingRef, {
+          [user.uid]: {
+            name: currentUserProfile.name,
+            timestamp: serverTimestamp(),
+            userId: user.uid  // Add userId for easier querying
+          }
+        }, { merge: true });
+        console.log('Typing status set for user:', user.uid);
+      } else {
+        // Get current status
+        const currentStatus = await getDoc(typingRef);
+        if (currentStatus.exists()) {
+          const updatedStatus = { ...currentStatus.data() };
+          if (user.uid in updatedStatus) {
+            delete updatedStatus[user.uid];
+            // If there are no more users typing, set an empty object
+            if (Object.keys(updatedStatus).length === 0) {
+              await setDoc(typingRef, {});
+            } else {
+              await setDoc(typingRef, updatedStatus, { merge: true });
+            }
+            console.log('Typing status cleared for user:', user.uid);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error updating typing status:', error);
+    }
+  };
+
+  // Handle typing events
+  const handleTyping = () => {
+    console.log('handleTyping called, current isTyping:', isTyping);
+    if (!isTyping) {
+      setIsTyping(true);
+      updateTypingStatus(true);
+    }
+    
+    // Reset typing status after delay
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    typingTimeoutRef.current = setTimeout(() => {
+      setIsTyping(false);
+      updateTypingStatus(false);
+    }, 2000); // 2 seconds of inactivity before clearing typing status
+  };
+
   useEffect(() => {
     if (authLoading) {
       setLoadingChat(true);
@@ -152,36 +297,59 @@ export default function ChatPage() {
     }
     if (chatId && user.uid) {
       setLoadingChat(true);
-      // Real-time listener for chat details
-      const chatDocRef = doc(getDb(), 'chats', chatId);
-      const unsubChat = onSnapshot(chatDocRef, (docSnap) => {
-        if (docSnap.exists()) {
-          setChatDetails({ id: docSnap.id, ...docSnap.data() } as Chat);
-        } else {
+      
+      // Add retry mechanism for new chats
+      let retryCount = 0;
+      const maxRetries = 3;
+      const retryDelay = 1000; // 1 second
+      
+      const setupChatListeners = () => {
+        // Real-time listener for chat details
+        const chatDocRef = doc(getDb(), 'chats', chatId);
+        const unsubChat = onSnapshot(chatDocRef, (docSnap) => {
+          if (docSnap.exists()) {
+            setChatDetails({ id: docSnap.id, ...docSnap.data() } as Chat);
+            setLoadingChat(false);
+          } else {
+            // If chat doesn't exist and we haven't exceeded retries, try again
+            if (retryCount < maxRetries) {
+              retryCount++;
+              console.log(`[ChatPage] Chat ${chatId} not found, retrying... (${retryCount}/${maxRetries})`);
+              setTimeout(() => {
+                setupChatListeners();
+              }, retryDelay);
+            } else {
+              setChatDetails(null);
+              setLoadingChat(false);
+              toast({ title: 'Chat not found', description: 'The chat could not be loaded. It may have been deleted or you may not have permission to view it.', variant: 'destructive' });
+            }
+          }
+        }, (error) => {
           setChatDetails(null);
-        }
-        setLoadingChat(false);
-      }, (error) => {
-        setChatDetails(null);
-        setLoadingChat(false);
-        toast({ title: 'Error loading chat', description: error.message || 'Could not load chat.', variant: 'destructive' });
-      });
-      // Real-time listener for messages
-      const messagesQuery = query(collection(getDb(), 'chats', chatId, 'messages'), orderBy('timestamp', 'asc'));
-      const unsubMessages = onSnapshot(messagesQuery, (snapshot) => {
-        const msgs: ChatMessage[] = [];
-        snapshot.forEach((doc) => {
-          msgs.push({ id: doc.id, ...doc.data() } as ChatMessage);
+          setLoadingChat(false);
+          toast({ title: 'Error loading chat', description: error.message || 'Could not load chat.', variant: 'destructive' });
         });
-        setMessages(msgs);
-      }, (error) => {
-        setMessages([]);
-        toast({ title: 'Error loading messages', description: error.message || 'Could not load messages.', variant: 'destructive' });
-      });
-      return () => {
-        unsubChat();
-        unsubMessages();
+        
+        // Real-time listener for messages
+        const messagesQuery = query(collection(getDb(), 'chats', chatId, 'messages'), orderBy('timestamp', 'asc'));
+        const unsubMessages = onSnapshot(messagesQuery, (snapshot) => {
+          const msgs: ChatMessage[] = [];
+          snapshot.forEach((doc) => {
+            msgs.push({ id: doc.id, ...doc.data() } as ChatMessage);
+          });
+          setMessages(msgs);
+        }, (error) => {
+          setMessages([]);
+          toast({ title: 'Error loading messages', description: error.message || 'Could not load messages.', variant: 'destructive' });
+        });
+        
+        return () => {
+          unsubChat();
+          unsubMessages();
+        };
       };
+      
+      return setupChatListeners();
     } else {
       setChatDetails(null);
       setMessages([]);
@@ -210,17 +378,23 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior });
   },[]);
 
-  // Effect for scrolling and initial mark as read
+  // Effect for scrolling and marking messages as read
   useEffect(() => {
+    // Scroll to bottom when messages change
     if (messages.length > 0) {
       const lastMessage = messages[messages.length - 1];
       const scrollBehavior = (lastMessage?.senderId === user?.uid && initialMarkAsReadDoneRef.current) ? "smooth" : "auto";
       scrollToBottom(scrollBehavior);
     }
     
-    // Only attempt initial mark as read if not loading, chat details and messages are present, and it hasn't been done yet.
-    if (!loadingChat && chatDetails && messages.length > 0 && !initialMarkAsReadDoneRef.current && user?.uid) {
-      handleMarkChatAsRead(); 
+    // Mark as read when:
+    // 1. Chat is loaded and we have messages, or
+    // 2. New messages arrive and the chat is visible
+    const shouldMarkAsRead = !loadingChat && chatDetails && user?.uid && 
+      (messages.length > 0 || !initialMarkAsReadDoneRef.current);
+      
+    if (shouldMarkAsRead) {
+      handleMarkChatAsRead();
       initialMarkAsReadDoneRef.current = true;
     }
   }, [messages, loadingChat, chatDetails, user?.uid, scrollToBottom, handleMarkChatAsRead]);
@@ -228,42 +402,59 @@ export default function ChatPage() {
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      // Use centralized validation
-      const validation = FileValidators.chatMessage(file);
-      if (!validation.valid) {
-        toast({ title: "File Validation Error", description: validation.error, variant: "destructive" });
-        if(fileInputRef.current) fileInputRef.current.value = "";
-        setSelectedFile(null);
-        if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl);
-        setFilePreviewUrl(null);
-        return;
-      }
-      
-      let isValidClientSide = false;
-      const clientMimeType = file.type;
-      const fileName = file.name;
-      const fileExtension = fileName.split('.').pop()?.toLowerCase();
-
-      if (clientMimeType && clientMimeType.startsWith('image/')) {
-          isValidClientSide = true;
-      } else if (fileExtension && commonImageExtensions.includes(fileExtension)) {
-          isValidClientSide = true;
-      }
-
-      if (!isValidClientSide) {
-         toast({ title: "Invalid file type", description: `Please select an image (JPG, PNG, GIF, WEBP, etc). Detected: ${clientMimeType || 'unknown'}. File: ${fileName}`, variant: "destructive" });
-         if(fileInputRef.current) fileInputRef.current.value = ""; 
-         setSelectedFile(null);
-         if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl);
-         setFilePreviewUrl(null);
-         return;
-      }
-
-      setSelectedFile(file);
-      if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl);
-      setFilePreviewUrl(URL.createObjectURL(file));
+    
+    // Reset the input value to allow selecting the same file again if needed
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
+
+    if (!file) return;
+
+    // Check file size (max 5MB)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      toast({
+        title: 'File too large',
+        description: 'Maximum file size is 5MB. Please choose a smaller image.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    const fileType = file.type.toLowerCase();
+    const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
+    const isValidType = validTypes.includes(fileType) || 
+                       ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension);
+
+    if (!isValidType) {
+      toast({
+        title: 'Unsupported file type',
+        description: 'Please upload an image file (JPEG, PNG, GIF, or WebP).',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Create preview URL
+    const previewUrl = URL.createObjectURL(file);
+    
+    // Clean up previous preview URL if it exists
+    if (filePreviewUrl) {
+      URL.revokeObjectURL(filePreviewUrl);
+    }
+
+    setSelectedFile(file);
+    setFilePreviewUrl(previewUrl);
+    
+    // Auto-focus the send button for better UX
+    setTimeout(() => {
+      const sendButton = document.querySelector('button[type="submit"]') as HTMLButtonElement;
+      if (sendButton) {
+        sendButton.focus();
+      }
+    }, 100);
   };
 
   const removeSelectedFile = () => {
@@ -276,57 +467,124 @@ export default function ChatPage() {
   };
 
   const handleSendMessage = async () => {
-    if ((!newMessage.trim() && !selectedFile) || !user || !chatId || !currentUserProfile) return;
+    // Validate inputs - allow sending if either there's a message or a file
+    if ((!newMessage?.trim() && !selectedFile) || !user || !chatId || !currentUserProfile) {
+      return;
+    }
+    
     if (sendingMessage) return;
     
     setSendingMessage(true);
     
+    // Create form data with message and file
     const formData = new FormData();
-    if (newMessage.trim()) formData.append('text', newMessage.trim());
-    if (selectedFile) formData.append('image', selectedFile, selectedFile.name);
-
-    const tempMessageText = newMessage.trim();
+    if (newMessage.trim()) {
+      formData.append('text', newMessage.trim());
+    }
     
+    // Add file if selected
+    if (selectedFile) {
+      formData.append('image', selectedFile, selectedFile.name);
+    }
+
+    // Store current state in case of failure
+    const tempMessageText = newMessage.trim();
+    const tempSelectedFile = selectedFile;
+    
+    // Reset form
     setNewMessage('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
+      textareaRef.current.focus();
     }
-    const tempSelectedFile = selectedFile; 
-    removeSelectedFile(); 
+    
+    // Clear file preview but keep the file in memory until upload is confirmed
+    if (filePreviewUrl) {
+      URL.revokeObjectURL(filePreviewUrl);
+      setFilePreviewUrl(null);
+    }
 
     try {
-      const idToken = await user.getIdToken(true); 
+      // Get fresh ID token
+      const idToken = await user.getIdToken(true);
       if (!idToken) {
-        toast({ title: "Authentication Error", description: "Could not get authentication token. Please try again.", variant: "destructive"});
-        setNewMessage(tempMessageText); 
-        setSelectedFile(tempSelectedFile); 
-        if (tempSelectedFile) setFilePreviewUrl(URL.createObjectURL(tempSelectedFile));
-        throw new Error("ID Token not available");
+        throw new Error("Authentication token not available. Please try again.");
       }
-      const result = await sendMessageAction(chatId, formData, idToken); 
+
+      // Show uploading toast if there's a file
+      let uploadToast: { id: string; dismiss: () => void } | undefined;
+      if (selectedFile) {
+        uploadToast = toast({
+          title: 'Uploading...',
+          description: 'Sending your image',
+          variant: 'default',
+          duration: 5000,
+        });
+      }
+
+      // Send the message
+      const result = await sendMessageAction(chatId, formData, idToken);
+      
+      // Dismiss uploading toast if it exists
+      if (uploadToast) {
+        uploadToast.dismiss();
+      }
+
       if (!result.success) {
-        toast({ title: "Error Sending Message", description: result.error || "Could not send message.", variant: "destructive" });
-        setNewMessage(tempMessageText); 
-        setSelectedFile(tempSelectedFile);
-        if (tempSelectedFile) setFilePreviewUrl(URL.createObjectURL(tempSelectedFile));
+        throw new Error(result.error || 'Failed to send message');
       }
+      
+      // Clear the selected file after successful send
+      setSelectedFile(null);
+      
     } catch (error: any) {
-      toast({ title: "Send Error", description: error.message || "Could not send message.", variant: "destructive" });
+      console.error('Error sending message:', error);
+      
+      // Restore form state on error
       setNewMessage(tempMessageText);
       setSelectedFile(tempSelectedFile);
-      if (tempSelectedFile) setFilePreviewUrl(URL.createObjectURL(tempSelectedFile));
+      
+      // Restore preview if there was a file
+      if (tempSelectedFile) {
+        setFilePreviewUrl(URL.createObjectURL(tempSelectedFile));
+      }
+      
+      // Show error toast
+      toast({
+        title: 'Failed to send message',
+        description: error.message || 'An error occurred while sending your message',
+        variant: 'destructive',
+      });
+      
     } finally {
       setSendingMessage(false);
     }
   };
   
   const handleTextareaInput = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setNewMessage(event.target.value);
+    const value = event.target.value;
+    setNewMessage(value);
     const textarea = event.target;
     textarea.style.height = 'auto'; 
     const newScrollHeight = textarea.scrollHeight;
     textarea.style.height = `${Math.min(newScrollHeight, 120)}px`;
-    // Footer height update is now primarily handled by ResizeObserver
+    
+    // Always trigger typing indicator when user is typing
+    if (!isTyping) {
+      setIsTyping(true);
+      updateTypingStatus(true);
+    }
+    
+    // Reset the typing timer on each keystroke
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    // Set a timeout to clear typing status after 2 seconds of inactivity
+    typingTimeoutRef.current = setTimeout(() => {
+      setIsTyping(false);
+      updateTypingStatus(false);
+    }, 2000);
   };
 
   const handleHideMessage = async (messageId: string) => {
@@ -377,60 +635,77 @@ export default function ChatPage() {
   const otherParticipantInitial = otherParticipantFirstName ? otherParticipantFirstName.charAt(0).toUpperCase() : (otherParticipant?.uid ? otherParticipant.uid.charAt(0).toUpperCase() : <UserCircle className="h-5 w-5" />);
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
-      <header 
-        className="absolute top-0 left-0 right-0 shrink-0 flex items-center p-3 border-b border-muted-foreground/50 bg-background z-20 shadow-sm"
-        style={{ height: `${HEADER_HEIGHT_PX}px` }}
-      >
-        <Button variant="ghost" size="icon" onClick={() => router.back()} className="mr-2 text-foreground hover:bg-foreground/10">
-          <ChevronLeft className="h-6 w-6" />
+    <div className="flex flex-col h-[100dvh] bg-background text-foreground overflow-hidden">
+      {/* Fixed Header */}
+      <header className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b flex items-center p-3 h-14 flex-shrink-0">
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          onClick={() => router.back()}
+          className="mr-2 text-foreground hover:bg-foreground/10"
+        >
+          <ChevronLeft className="h-5 w-5" />
         </Button>
+        
         {otherParticipant ? (
           <Link 
             href={`/users/${otherParticipant.uid}`}
-            className="flex items-center flex-1 min-w-0 group transition-transform hover:scale-[1.02] active:scale-[0.98]"
+            className="flex items-center flex-1 min-w-0 group"
           >
-            <Avatar className="h-9 w-9 mr-3 transition-shadow group-hover:shadow-md">
+            <Avatar className="h-8 w-8 mr-2 transition-shadow group-hover:shadow-md">
               {otherParticipant.avatarUrl ? (
                 <AvatarImage src={otherParticipant.avatarUrl} alt={otherParticipantFirstName} />
               ) : (
-                <AvatarFallback className="text-sm bg-muted text-muted-foreground">{otherParticipantInitial}</AvatarFallback>
+                <AvatarFallback className="text-xs bg-muted text-muted-foreground">
+                  {otherParticipantInitial}
+                </AvatarFallback>
               )}
             </Avatar>
             <div className="flex-1 min-w-0">
-              <div className="font-semibold flex items-center text-foreground text-md truncate group-hover:text-primary transition-colors">
+              <div className="font-medium flex items-center text-sm truncate">
                 {otherParticipantFirstName}
                 {otherParticipant && <VerificationBadge role={otherParticipant.role} isVerified={otherParticipant.isVerified} />}
               </div>
-              <p className="text-xs text-muted-foreground">Last seen recently</p>
+              {typingUsers.length > 0 ? (
+                <p className="text-xs text-muted-foreground truncate">
+                  {typingUsers.map(u => u.name).join(', ')} {typingUsers.length === 1 ? 'is' : 'are'} typing...
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground truncate">
+                  {/* Online status not available in current data model */}
+                </p>
+              )}
             </div>
           </Link>
         ) : (
-          <div className="flex items-center flex-1 min-w-0">
-            <Avatar className="h-9 w-9 mr-3">
-              <AvatarFallback className="text-sm bg-muted text-muted-foreground">?</AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold flex items-center text-foreground text-md truncate">
-                Unknown User
-              </div>
-              <p className="text-xs text-muted-foreground">Last seen recently</p>
-            </div>
+          <div className="flex-1">
+            <p className="font-medium text-sm">Loading...</p>
           </div>
         )}
-        <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="text-foreground hover:bg-foreground/10" aria-label="Call">
-                <Phone className="h-5 w-5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="text-foreground hover:bg-foreground/10" aria-label="Video Call">
-                <Video className="h-5 w-5" />
-            </Button>
+        
+        <div className="flex items-center space-x-1">
+          <Button variant="ghost" size="icon" className="h-8 w-8">
+            <Phone className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8">
+            <Video className="h-4 w-4" />
+          </Button>
         </div>
       </header>
-      <main className="flex-1 flex flex-col overflow-y-auto p-4" style={{ marginTop: HEADER_HEIGHT_PX, marginBottom: footerHeight }}>
+        
+      {/* Scrollable Messages */}
+      <main 
+        className="flex-1 overflow-y-auto p-4 space-y-2"
+        style={{
+          scrollBehavior: 'smooth',
+          WebkitOverflowScrolling: 'touch',
+          paddingBottom: `${footerHeight}px`
+        }}
+      >
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center flex-1 text-primary py-10 text-lg font-semibold">
-            No messages yet. Say hi!
+          <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+            <MessageSquare className="h-12 w-12 mb-2 opacity-30" />
+            <p className="text-sm">No messages yet. Say hi!</p>
           </div>
         ) : (
           <div className="flex flex-col gap-2 flex-1">
@@ -452,60 +727,122 @@ export default function ChatPage() {
               const showAvatar = !isSender && (!prevMessage || prevMessage.senderId !== msg.senderId || !isSameSenderAndMinute(prevMessage, msg));
               const isContinuingBlock = isSameSenderAndMinute(prevMessage, msg);
 
-              const bubblePadding = (msg.mediaUrl && !msg.text) ? "p-1.5" : "px-3.5 py-2.5";
-              const roundedCorners = cn(
-                "rounded-2xl", 
-                isSender ? (isContinuingBlock ? "rounded-tr-md rounded-br-lg" : "rounded-br-md") : (isContinuingBlock ? "rounded-tl-md rounded-bl-lg" : "rounded-bl-md")
+              // Calculate bubble styles based on message type and sender
+              const hasMedia = !!msg.mediaUrl;
+              const hasText = !!msg.text?.trim();
+              const isMediaOnly = hasMedia && !hasText;
+              const isTextOnly = !hasMedia && hasText;
+              const hasBoth = hasMedia && hasText;
+
+              const bubblePadding = cn(
+                "px-3.5 py-2.5",
+                isMediaOnly && "p-1.5"
               );
               
+              const bubbleStyles = cn(
+                "shadow-md max-w-[70%] sm:max-w-[65%] break-words group-hover:bg-opacity-80 cursor-pointer",
+                "transition-all duration-200",
+                hasMedia && 'bg-transparent shadow-none',
+                isTextOnly && isSender && 'bg-[#23232a] text-primary-foreground group-hover:opacity-90',
+                isTextOnly && !isSender && 'bg-[#3b82f6] text-white group-hover:bg-[#2563eb]',
+                hasBoth && 'bg-transparent',
+                isSender ? 'rounded-2xl rounded-br-md' : 'rounded-2xl rounded-bl-md',
+                isContinuingBlock && (isSender ? 'rounded-tr-md rounded-br-lg' : 'rounded-tl-md rounded-bl-lg')
+              );
+
               return (
-                <div key={msg.id} className={`flex w-full items-end gap-2 ${isSender ? 'justify-end' : 'justify-start'} ${isContinuingBlock ? 'mt-0.5' : 'mt-2'} group`}>
-                  {!isSender && (
-                    showAvatar && otherParticipant ? (
-                      <Avatar className="h-7 w-7 self-end mb-1 flex-shrink-0">
-                        {otherParticipant.avatarUrl ? (
-                            <AvatarImage src={otherParticipant.avatarUrl} alt={otherParticipantFirstName}/>
-                        ) : (
-                            <AvatarFallback className="text-xs bg-muted text-muted-foreground">{otherParticipantInitial}</AvatarFallback>
-                        )}
-                      </Avatar>
-                    ) : (<div className="w-7 h-7 flex-shrink-0"></div>) 
+                <div 
+                  key={msg.id} 
+                  className={`flex w-full items-end gap-2 ${isSender ? 'justify-end' : 'justify-start'} ${isContinuingBlock ? 'mt-0.5' : 'mt-2'} group`}
+                  data-message-type={isMediaOnly ? 'media' : hasBoth ? 'media-text' : 'text'}
+                >
+                  {chatDetails?.participantInfo.length > 2 && !isSender && !isContinuingBlock && (
+                    <Avatar className="h-7 w-7 flex-shrink-0">
+                      {otherParticipant?.avatarUrl ? (
+                        <AvatarImage src={otherParticipant.avatarUrl} alt={otherParticipantFirstName} />
+                      ) : (
+                        <AvatarFallback className="text-xs bg-muted text-muted-foreground">
+                          {otherParticipantInitial}
+                        </AvatarFallback>
+                      )}
+                    </Avatar>
                   )}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <div className={cn(
-                          bubblePadding, roundedCorners, "shadow-md max-w-[70%] sm:max-w-[65%] break-words group-hover:bg-opacity-80 cursor-pointer",
-                          isSender ? 'bg-gradient-to-r from-[hsl(var(--button-primary-gradient-start))] to-[hsl(var(--button-primary-gradient-end))] text-primary-foreground group-hover:opacity-90' 
-                                   : 'bg-card text-foreground group-hover:bg-card/80'
-                        )}>
-                          {msg.mediaUrl && (
-                            <div 
-                              className={cn("relative w-full rounded-md overflow-hidden cursor-pointer active:opacity-70 transition-opacity", msg.text ? "mb-1.5" : "mb-0")} 
-                              onClick={(e) => { e.stopPropagation(); window.open(msg.mediaUrl, '_blank'); }}
-                            >
-                               <NextImage 
-                                src={msg.mediaUrl} alt="Chat image" 
-                                width={280} height={350} 
-                                style={{ display: 'block', width: '100%', height: 'auto', objectFit: 'contain', maxHeight: '350px' }}
-                                className="rounded-md" data-ai-hint="chat media"
+                  
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <div className={cn(bubblePadding, bubbleStyles)}>
+                        {/* Media Content */}
+                        {hasMedia && (
+                          <div className={cn(
+                            "relative mb-1.5 overflow-hidden rounded-lg",
+                            hasText && "border border-border/50"
+                          )}>
+                            <div className="relative w-full h-auto max-h-[350px] flex items-center justify-center">
+                              <NextImage 
+                                src={msg.mediaUrl!} 
+                                alt={msg.text || 'Chat image'}
+                                width={280} 
+                                height={350}
+                                className="object-contain max-h-[350px] w-auto max-w-full rounded-md cursor-pointer active:opacity-70 transition-opacity"
                                 unoptimized={!msg.mediaUrl?.startsWith('http') || msg.mediaUrl?.includes('placehold.co') || msg.mediaUrl.includes('firebasestorage.googleapis.com')} 
+                                onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  window.open(msg.mediaUrl, '_blank'); 
+                                }}
                               />
                             </div>
-                          )}
-                          {msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
-                          {messageTimestamp && (
-                            <p className={cn("text-[10px] opacity-70", (msg.mediaUrl && !msg.text) ? "mt-0.5" : "mt-1", isSender ? "text-primary-foreground/80 text-right" : "text-muted-foreground text-left")}>
-                              {formatDistanceToNowStrict(messageTimestamp, { addSuffix: true })}
+                          </div>
+                        )}
+
+                        {/* Text Content */}
+                        {hasText && (
+                          <div className="break-words">
+                            <p className={cn(
+                              "text-sm whitespace-pre-wrap",
+                              hasMedia && "px-2 pb-1.5",
+                              !isSender && hasMedia && "text-foreground",
+                              isSender && hasMedia && "text-foreground"
+                            )}>
+                              {msg.text}
                             </p>
+                          </div>
+                        )}
+
+                        {/* Timestamp and Read Receipt */}
+                        <div className={cn(
+                          "flex items-center gap-1 mt-0.5",
+                          isSender ? "justify-end" : "justify-start",
+                          hasText && !hasMedia && "pt-1"
+                        )}>
+                          <p className={cn(
+                            "text-[10px] opacity-70",
+                            isSender 
+                              ? hasMedia ? "text-foreground/70" : "text-primary-foreground/80"
+                              : hasMedia ? "text-foreground/70" : "text-white/70"
+                          )}>
+                            {messageTimestamp && formatDistanceToNowStrict(messageTimestamp, { addSuffix: true })}
+                          </p>
+                          {isSender && (
+                            <span className="ml-0.5">
+                              {msg.status === 'read' ? (
+                                <CheckCheck className="h-3 w-3 text-blue-400" />
+                              ) : (
+                                <Check className="h-3 w-3 opacity-50" />
+                              )}
+                            </span>
                           )}
                         </div>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align={isSender ? "end" : "start"} className="bg-popover text-popover-foreground">
-                        <DropdownMenuItem onClick={() => handleHideMessage(msg.id)} className="text-xs text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer">
-                          <EyeOff className="mr-2 h-3.5 w-3.5" /> Hide for Me
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                      </div>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align={isSender ? "end" : "start"} className="bg-popover text-popover-foreground">
+                      <DropdownMenuItem 
+                        onClick={() => handleHideMessage(msg.id)} 
+                        className="text-xs text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
+                      >
+                        <EyeOff className="mr-2 h-3.5 w-3.5" /> Hide for Me
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               );
             })}
@@ -514,50 +851,85 @@ export default function ChatPage() {
         <div ref={messagesEndRef} />
       </main>
 
+      {/* Sticky Input Area */}
       <footer 
         ref={footerRef}
-        className="absolute bottom-0 left-0 right-0 shrink-0 px-2.5 py-2 border-t border-muted-foreground/20 bg-background/80 backdrop-blur-md z-20"
+        className="sticky bottom-0 left-0 right-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-t p-2 pt-3 pb-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]"
+        style={{
+          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)'
+        }}
       >
         {filePreviewUrl && (
-          <div className="mb-2 px-1 py-1.5 border border-border/30 rounded-md bg-card/30 relative w-fit shadow-sm">
-            <NextImage src={filePreviewUrl} alt="Preview" width={50} height={50} className="rounded object-cover" data-ai-hint="upload preview"/>
-            <Button
-              variant="ghost" size="icon"
-              className="absolute -top-2 -right-2 h-6 w-6 text-muted-foreground hover:text-destructive bg-background/70 hover:bg-destructive/20 rounded-full shadow-md"
-              onClick={removeSelectedFile} aria-label="Remove selected image" disabled={sendingMessage}
-            ><XIcon className="h-4 w-4" /></Button>
+          <div className="relative mb-2 rounded-lg overflow-hidden border">
+            <div className="relative w-full h-40">
+              <img
+                src={filePreviewUrl}
+                alt="Preview"
+                className="w-full h-full object-cover"
+              />
+              <button
+                onClick={removeSelectedFile}
+                className="absolute top-2 right-2 bg-black/70 rounded-full p-1"
+                aria-label="Remove image"
+              >
+                <XIcon className="h-4 w-4 text-white" />
+              </button>
+            </div>
           </div>
         )}
-        <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="flex items-end gap-2">
-          <Button 
-            type="button" 
-            variant="ghost" 
-            size="icon" 
-            onClick={() => fileInputRef.current?.click()} 
+        
+        <div className="flex items-end gap-2">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileSelect}
+            accept="image/*"
+            className="hidden"
             disabled={sendingMessage}
-            className="h-10 w-10 rounded-full flex-shrink-0 text-muted-foreground hover:text-primary bg-transparent" 
-            aria-label={selectedFile ? "Change image" : "Attach image"}
-          >
-            {selectedFile ? <XIcon className="h-5 w-5 text-destructive" onClick={(e) => { e.stopPropagation(); removeSelectedFile(); }} /> : <Paperclip className="h-5 w-5" />}
-          </Button>
-          <input type="file" id="chat-file-input" ref={fileInputRef} onChange={handleFileSelect} accept="image/png, image/jpeg, image/gif, image/webp, image/*" className="hidden" />
-          <Textarea
-            ref={textareaRef} value={newMessage} onChange={handleTextareaInput}
-            placeholder="Write a message" disabled={sendingMessage}
-            className="text-sm flex-1 rounded-full py-2.5 px-4 min-h-[44px] max-h-[120px] resize-none custom-scrollbar-vertical bg-muted/30 border-transparent focus:border-primary/30 focus:ring-1 focus:ring-primary/30 placeholder:text-muted-foreground/50" 
-            rows={1}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); }}}
           />
-          <Button 
-            type="submit" 
-            disabled={(!newMessage.trim() && !selectedFile) || sendingMessage} 
+          <Button
+            type="button"
+            variant="ghost"
             size="icon"
-            className="h-10 w-10 rounded-full flex-shrink-0 bg-gradient-to-r from-[hsl(var(--button-primary-gradient-start))] to-[hsl(var(--button-primary-gradient-end))] hover:opacity-90 text-primary-foreground shadow-sm" 
-            aria-label="Send message"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={sendingMessage}
+            className="shrink-0 h-10 w-10"
           >
-            {sendingMessage ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+            <Paperclip className="h-5 w-5" />
           </Button>
-        </form>
+          
+          <div className="flex-1 relative">
+            <Textarea
+              ref={textareaRef}
+              value={newMessage}
+              onChange={handleTextareaInput}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+              placeholder="Type a message..."
+              className="min-h-[40px] max-h-32 resize-none pr-12"
+              rows={1}
+              disabled={sendingMessage}
+            />
+          </div>
+          
+          <Button
+            type="button"
+            size="icon"
+            onClick={handleSendMessage}
+            disabled={(!newMessage.trim() && !selectedFile) || sendingMessage}
+            className="shrink-0 h-10 w-10"
+          >
+            {sendingMessage ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Send className="h-5 w-5" />
+            )}
+          </Button>
+        </div>
       </footer>
     </div>
   );

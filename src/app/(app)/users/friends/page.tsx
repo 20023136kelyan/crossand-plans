@@ -86,7 +86,11 @@ const UserCard = ({ user, currentUser, onFollowToggle, isFollowing, isLoading, i
         <Button
           variant={isFollowing ? "outline" : "default"}
           size="icon"
-          onClick={onFollowToggle}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onFollowToggle();
+          }}
           disabled={isLoading}
           className="shrink-0 rounded-full w-9 h-9 flex items-center justify-center"
           aria-label={isFollowing ? "Unfollow" : "Follow"}

@@ -1017,7 +1017,7 @@ export async function getTemplatesByOriginalPlanId(originalPlanId: string): Prom
   if (!originalPlanId) return [];
 
   try {
-    console.log('🔍 Querying templates for originalPlanId:', originalPlanId);
+    
     
     const templatesQuery = query(
       collection(getDb(), 'plans'),

@@ -194,7 +194,7 @@ export const createDefaultUserCollections = async (uid: string): Promise<void> =
       updatedAt: AdminTimestamp.now()
     });
     
-    console.log(`[createDefaultUserCollections] Created default collections for user ${uid}`);
+    
   } catch (error) {
     console.error(`[createDefaultUserCollections] Error creating default collections for user ${uid}:`, error);
     // Don't throw error - this is not critical for user creation
@@ -234,7 +234,7 @@ export const createUserProfileAdmin = async (
         username = 'user' + Date.now().toString().slice(-6);
       }
       
-      console.log(`[createUserProfileAdmin] Generated username '${username}' for user ${uid}`);
+
     }
 
     // Complete profile data including all preferences
@@ -282,7 +282,7 @@ export const createUserProfileAdmin = async (
       await createDefaultUserCollections(uid);
     }
     
-    console.log('[createUserProfileAdmin] User profile created/updated successfully with Admin SDK for UID:', uid);
+    
   } catch (error) {
     console.error('[createUserProfileAdmin] Error creating/updating user profile with Admin SDK:', error);
     throw error;
@@ -300,7 +300,7 @@ export const updateUserProfileAvatarAdmin = async (userId: string, newAvatarUrl:
     // Also update avatar URL in feed posts
     await updateUserAvatarInFeedAdmin(userId, newAvatarUrl);
 
-    console.log(`[updateUserProfileAvatarAdmin] Updated avatar URL for user ${userId}`);
+    
   } catch (error) {
     console.error(`[updateUserProfileAvatarAdmin] Error updating avatar URL for user ${userId}:`, error);
     throw error;
@@ -320,21 +320,13 @@ export const updateUserProfileAdmin = async (userId: string, profileData: Partia
   }
 
   try {
-    console.log(`[updateUserProfileAdmin] Updating profile for user ${userId}`, {
-      fieldsToUpdate: Object.keys(profileData)
-    });
-    
     const userRef = FirebaseQueryBuilder.doc(COLLECTIONS.USERS, userId);
-    
     // Always update the updatedAt timestamp
     const dataToUpdate = {
       ...profileData,
       updatedAt: AdminTimestamp.now()
     };
-    
     await userRef.update(dataToUpdate);
-    
-    console.log(`[updateUserProfileAdmin] Successfully updated profile for user ${userId}`);
   } catch (error) {
     console.error(`[updateUserProfileAdmin] Error updating profile for user ${userId}:`, error);
     throw error;
@@ -451,10 +443,10 @@ export const searchUsersAdmin = async (searchTerm: string, currentUserId: string
     const data = docSnap.data() as UserProfile;
     const userObj: SearchResultWithRanking = {
       uid: docSnap.id,
-      name: data.name,
+      name: data.name || null,
       username: data.username || null,
-      email: data.email,
-      avatarUrl: data.avatarUrl,
+      email: data.email || null,
+      avatarUrl: data.avatarUrl || null,
       role: data.role || 'user',
       isVerified: data.isVerified || false,
       friendshipStatus: friendshipStatuses.get(docSnap.id) || 'not_friends',
@@ -501,8 +493,8 @@ export const searchUsersAdmin = async (searchTerm: string, currentUserId: string
         if (docSnap.id === currentUserId || resultsMap.has(docSnap.id)) return;
         
         const data = docSnap.data() as UserProfile;
-        const name = data.name;
-        const username = data.username;
+        const name = data.name || null;
+        const username = data.username || null;
         
         // Check for exact matches first (highest scores)
         if (exactMatch(name, trimmedSearchTerm)) {
@@ -690,7 +682,6 @@ export const followUserAdmin = async (currentUserId: string, targetUserId: strin
   const batch = firestoreAdmin.batch();
   const now = FieldValue.serverTimestamp();
 
-  // When adding a pending follow request, also add a notification with a server-side timestamp
   if (targetUserProfile.isPrivate) {
     // Add to pendingFollowRequests and sentFollowRequests
     batch.update(targetUserDocRef, {
@@ -707,10 +698,10 @@ export const followUserAdmin = async (currentUserId: string, targetUserId: strin
       type: 'follow_request',
       fromUserId: currentUserId,
       title: 'requested to follow you',
-      userName: currentUserProfile.name || currentUserProfile.username || 'Someone',
+      userName: currentUserProfile.username || currentUserProfile.firstName || currentUserProfile.name || 'Someone',
       createdAt: now,
-      isRead: false
-      // status and handled will be set by notificationService as 'pending' and false
+      isRead: false,
+      handled: false // <-- Ensure this is set for actionable requests
     };
     if (currentUserProfile.avatarUrl) {
       notificationData.avatarUrl = currentUserProfile.avatarUrl;
@@ -728,9 +719,9 @@ export const followUserAdmin = async (currentUserId: string, targetUserId: strin
     });
     // Notify user of new follower
     const notificationData: any = {
-      type: 'follow_request',
+      type: 'follow_notice', // CHANGED from 'follow_request'
       title: 'is now following you',
-      userName: currentUserProfile.name || currentUserProfile.username || 'Someone',
+      userName: currentUserProfile.username || currentUserProfile.firstName || currentUserProfile.name || 'Someone',
       actionUrl: `/u/${currentUserId}`,
       isRead: false,
       metadata: { followerId: currentUserId },
@@ -768,6 +759,24 @@ export const approveFollowRequestAdmin = async (currentUserId: string, requester
   await batch.commit();
   // --- Friendship sync ---
   await updateFriendshipStatus(currentUserId, requesterId);
+  // Create informational notification for the target user (currentUserId) that requesterId is now following them
+  const requesterProfile = await getUserProfileAdmin(requesterId);
+  if (requesterProfile) {
+    const notificationData: any = {
+      type: 'follow_notice', // CHANGED from 'follow_request'
+      title: 'is now following you',
+      userName: requesterProfile.username || requesterProfile.firstName || requesterProfile.name || 'Someone',
+      actionUrl: `/u/${requesterId}`,
+      isRead: false,
+      metadata: { followerId: requesterId },
+      status: 'informational',
+      handled: true
+    };
+    if (requesterProfile.avatarUrl) {
+      notificationData.avatarUrl = requesterProfile.avatarUrl;
+    }
+    await createNotification(currentUserId, notificationData);
+  }
 };
 
 // Deny follow request
@@ -813,7 +822,7 @@ export const unfollowUserAdmin = async (currentUserId: string, targetUserId: str
   await batch.commit();
   // --- Friendship sync ---
   await updateFriendshipStatus(currentUserId, targetUserId);
-  console.log(`User ${currentUserId} unfollowed ${targetUserId}`);
+  
 };
 
 // === Premium Status and Activity Score Functions ===

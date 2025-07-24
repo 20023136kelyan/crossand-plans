@@ -138,12 +138,12 @@ const EditableItineraryItemCardImpl = ({
   
   // Handle place selection from autocomplete
   const handlePlaceSelect = useCallback((place: any) => {
-    console.log('=== EDITABLE ITINERARY ITEM CARD - PLACE SELECT ===');
-    console.log('handlePlaceSelect called with place:', place);
-    console.log('Place object keys:', Object.keys(place));
-    console.log('Place photos field:', place.photos);
-    console.log('Place photos type:', typeof place.photos);
-    console.log('Place photos length:', place.photos?.length);
+
+    
+    
+    
+    
+    
     
     // Extract city from address components
     let city = '';
@@ -160,15 +160,15 @@ const EditableItineraryItemCardImpl = ({
     
     // Extract photo reference from place photos
     let photoReference = null;
-    console.log('=== PHOTO REFERENCE EXTRACTION ===');
-    console.log('Checking place.photos:', place.photos);
-    console.log('place.photos exists:', !!place.photos);
-    console.log('place.photos is array:', Array.isArray(place.photos));
+    
+    
+    
+    
     
     if (place.photos && place.photos.length > 0) {
-      console.log('Photos array has', place.photos.length, 'items');
-      console.log('First photo object:', place.photos[0]);
-      console.log('First photo keys:', Object.keys(place.photos[0]));
+      
+      
+      
       
       // Extract photo reference - copy the exact pipeline from place-autocomplete.tsx
       const firstPhoto = place.photos[0];
@@ -177,25 +177,22 @@ const EditableItineraryItemCardImpl = ({
       if (typeof firstPhoto.getUrl === 'function') {
         try {
           photoReference = firstPhoto.getUrl({ maxWidth: 400 });
-          console.log('Generated photo URL using getUrl() (primary method):', photoReference);
+
         } catch (error) {
           console.error('Error calling getUrl (primary method):', error);
           // Fallback to photo_reference if getUrl fails
           photoReference = firstPhoto.photo_reference || null;
-          console.log('Using photo_reference as fallback:', photoReference);
+
         }
       } else {
         // If no getUrl function, use photo_reference (for REST API or other sources)
         photoReference = firstPhoto.photo_reference || null;
-        console.log('No getUrl function, using photo_reference:', photoReference);
+        
       }
       
-      console.log('Photo reference type:', typeof photoReference);
-      
-      console.log('Final extracted photo reference:', photoReference);
-      console.log('Photo reference type:', typeof photoReference);
+
     } else {
-      console.log('No photos available - place.photos is:', place.photos);
+
     }
     
     // Update form fields with place details
@@ -225,8 +222,8 @@ const EditableItineraryItemCardImpl = ({
       shouldDirty: true 
     });
     // Set the photo reference if available
-    console.log('=== SETTING PHOTO REFERENCE IN FORM ===');
-    console.log('About to set googlePhotoReference to:', photoReference);
+
+    
     setValue(getFieldPath('googlePhotoReference'), photoReference, { 
       shouldValidate: true, 
       shouldDirty: true 
@@ -234,10 +231,10 @@ const EditableItineraryItemCardImpl = ({
     
     // Verify the value was set correctly
     const setPhotoRef = getValues(getFieldPath('googlePhotoReference'));
-    console.log('Photo reference set in form:', setPhotoRef);
-    console.log('Photo reference matches what we set:', setPhotoRef === photoReference);
+
+
     
-    console.log('Updated form fields with place details, city:', city, 'googlePlaceId:', place.place_id, 'photoReference:', photoReference);
+
     setShowPlaceEditor(false);
   }, [setValue, getFieldPath]);
   
@@ -357,7 +354,7 @@ const EditableItineraryItemCardImpl = ({
       service.textSearch(request, (results: google.maps.places.PlaceResult[] | null, status: google.maps.places.PlacesServiceStatus) => {
         if (status === window.google.maps.places.PlacesServiceStatus.OK && results && results.length > 0) {
           const newPlace = results[0];
-          console.log('Successfully refreshed Place ID:', newPlace.place_id);
+  
           
           // Update the form with the new Place ID
           setValue(getFieldPath('googlePlaceId'), newPlace.place_id, { shouldValidate: false });
@@ -409,7 +406,7 @@ const EditableItineraryItemCardImpl = ({
       isGoogleMapsApiLoaded &&
       window.google?.maps?.places
     ) {
-      console.log('[EditableItineraryItemCard] Auto-refreshing missing image for:', currentItem.placeName);
+      
       
       const service = new window.google.maps.places.PlacesService(document.createElement('div'));
       const request = {
@@ -425,25 +422,25 @@ const EditableItineraryItemCardImpl = ({
           if (typeof firstPhoto.getUrl === 'function') {
             try {
               const photoUrl = firstPhoto.getUrl({ maxWidth: 400 });
-              console.log('[EditableItineraryItemCard] Auto-generated photo URL using getUrl():', photoUrl);
+  
               
               // Verify the URL is valid before setting it
               if (photoUrl && (photoUrl.startsWith('http://') || photoUrl.startsWith('https://'))) {
                 setValue(getFieldPath('googlePhotoReference'), photoUrl, { shouldValidate: false });
-                console.log('[EditableItineraryItemCard] Successfully set direct photo URL');
+  
               } else {
                 console.warn('[EditableItineraryItemCard] getUrl() returned invalid URL:', photoUrl);
               }
             } catch (error) {
               console.error('[EditableItineraryItemCard] Error calling getUrl() during auto-refresh:', error);
               // Do NOT fallback to photo_reference to avoid 400 errors
-              console.log('[EditableItineraryItemCard] Skipping photo_reference fallback to prevent 400 errors');
+
             }
           } else {
-            console.log('[EditableItineraryItemCard] No getUrl function available, skipping photo refresh to avoid 400 errors');
+            
           }
         } else {
-          console.log('[EditableItineraryItemCard] No photos available for auto-refresh:', currentItem.placeName);
+          
         }
       });
     }
@@ -468,7 +465,7 @@ const EditableItineraryItemCardImpl = ({
       await fetchPlaceInfo();
     } else {
       // Form has validation errors, keep editing mode
-      console.log('Form validation failed, staying in edit mode');
+      
     }
   }, [trigger, getFieldPath, fetchPlaceInfo]);
   
@@ -492,31 +489,32 @@ const EditableItineraryItemCardImpl = ({
   
   // Memoize the photo URL calculation
   const itemPhotoUrl = useMemo(() => {
-  const placeNameStr = typeof placeName === 'string' ? placeName : '';
-  
-  console.log('[EditableItineraryItemCard] Photo URL generation:', {
-    placeName: placeNameStr,
-    hasGooglePhotoReference: !!googlePhotoReference,
-    googlePhotoReference,
-    hasGoogleMapsImageUrl: !!currentItem?.googleMapsImageUrl,
-    hasCoordinates: !!(lat && lng),
-    hasStaticMapApiKey: !!staticMapApiKey
-  });
-  
-  // Priority 1: Google photo reference
-  if (googlePhotoReference && staticMapApiKey) {
-          // Check if it's already a direct URL (from place-autocomplete)
-          const googlePhotoRefStr = String(googlePhotoReference);
-          const photoUrl = (googlePhotoRefStr.startsWith('http://') || googlePhotoRefStr.startsWith('https://')) 
-            ? googlePhotoRefStr 
-            : getGooglePlacePhotoUrl(googlePhotoRefStr, 600, 300, staticMapApiKey || '');
-    console.log('[EditableItineraryItemCard] Using Google photo reference:', photoUrl);
-    return photoUrl;
-  }
+    const placeNameStr = typeof placeName === 'string' ? placeName : '';
+    // Remove stray object literal here if not used
+    // If you want to debug, use:
+    // console.log({
+    //   placeName: placeNameStr,
+    //   hasGooglePhotoReference: !!googlePhotoReference,
+    //   googlePhotoReference,
+    //   hasGoogleMapsImageUrl: !!currentItem?.googleMapsImageUrl,
+    //   hasCoordinates: !!(lat && lng),
+    //   hasStaticMapApiKey: !!staticMapApiKey
+    // });
+    // Otherwise, just continue with the rest of the function
+
+    // Priority 1: Google photo reference
+    if (googlePhotoReference && staticMapApiKey) {
+      // Check if it's already a direct URL (from place-autocomplete)
+      const googlePhotoRefStr = String(googlePhotoReference);
+      const photoUrl = (googlePhotoRefStr.startsWith('http://') || googlePhotoRefStr.startsWith('https://')) 
+        ? googlePhotoRefStr 
+        : getGooglePlacePhotoUrl(googlePhotoRefStr, 600, 300, staticMapApiKey || '');
+      return photoUrl;
+    }
   
   // Priority 2: Existing Google Maps image URL
   if (currentItem?.googleMapsImageUrl) {
-    console.log('[EditableItineraryItemCard] Using existing Google Maps image:', currentItem.googleMapsImageUrl);
+    
     return currentItem.googleMapsImageUrl;
   }
   

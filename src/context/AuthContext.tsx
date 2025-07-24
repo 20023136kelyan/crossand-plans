@@ -27,6 +27,7 @@ import { setSessionCookie, clearSessionCookie } from '@/lib/sessionCookie';
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  authLoading: boolean; // Added for guarding listeners
   profileExists: boolean | null;
   currentUserProfile: UserProfile | null;
   isNewUserJustSignedUp: boolean;
@@ -60,12 +61,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const refreshProfileDataInternal = useCallback(async (uid: string | null) => {
     const logPrefix = "[AuthContext refreshProfileDataInternal]";
     if (!uid) {
-      console.log(`${logPrefix} No UID, setting profile not exists.`);
+
       setProfileExists(false);
       setCurrentUserProfile(null);
       return { exists: false, profile: null, error: false };
     }
-    console.log(`${logPrefix} Fetching profile for UID: ${uid}`);
+    
     try {
         // Check if profile exists by trying to get it
         const profileData = await getUserProfile(uid);
@@ -76,7 +77,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             !!profileData.uid && 
             !!profileData.email &&
             !!profileData.createdAt;
-        console.log(`${logPrefix} Profile exists: ${exists} for UID: ${uid}. Profile data fetched: ${!!profileData}`);
+
         // These setters will trigger re-renders if values change.
         setProfileExists(exists);
         setCurrentUserProfile(profileData);
@@ -96,12 +97,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setLoading(false);
       return () => {};
     }
-    console.log(`${logPrefix} Setting up listener. Initializing loading to true.`);
+    
     setLoading(true);
 
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       const currentUid = fbUser?.uid || null;
-      console.log(`${logPrefix} Auth state changed. Current fbUser UID: ${currentUid}`);
+      
       setUser(fbUser); // Update user state first
 
       if (fbUser) {
@@ -124,7 +125,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         // Handle new user state for onboarding trigger
         if (profileCheckResult.exists === false && currentUid !== previousUserUidRef.current && !profileCheckResult.error) {
-          console.log(`${logPrefix} New user or profile definitively not found. UID: ${fbUser.uid}. Setting isNewUserJustSignedUp=true.`);
+
           setIsNewUserJustSignedUp(true);
         } else {
           setIsNewUserJustSignedUp(false);
@@ -132,18 +133,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         previousUserUidRef.current = currentUid;
       } else {
         // No user, reset all related states
-        console.log(`${logPrefix} No Firebase user. Resetting states.`);
+        
         previousUserUidRef.current = null;
         setProfileExists(null); // Use null to indicate unknown/not applicable for logged out state
         setCurrentUserProfile(null);
         setIsNewUserJustSignedUp(false);
       }
-      console.log(`${logPrefix} Setting loading to false after auth and profile checks for UID: ${currentUid}.`);
+      
       setLoading(false); // Loading is complete for this auth state change
     });
 
     return () => {
-      console.log(`${logPrefix} Cleaning up listener.`);
+      
       unsubscribe();
     };
   }, [auth, refreshProfileDataInternal, profileExists]); // Added profileExists: if it changes outside this effect, we might need to re-evaluate
@@ -156,10 +157,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const currentUser = auth.currentUser;
       if (currentUser) {
         try {
-          console.log('[AuthContext TokenRefresh] Refreshing token and session cookie');
+      
           await currentUser.getIdToken(true); // Force refresh client-side token
           await setSessionCookie(currentUser); // Update server-side session cookie
-          console.log('[AuthContext TokenRefresh] Token refreshed and session cookie updated');
+          
         } catch (error) {
           console.error('[AuthContext TokenRefresh] Error refreshing token:', error);
           // Optionally handle sign-out if token refresh persistently fails
@@ -172,7 +173,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 
   const acknowledgeNewUserWelcome = useCallback(() => {
-    console.log("[AuthContext] Welcome acknowledged, setting isNewUserJustSignedUp to false.");
+
     setIsNewUserJustSignedUp(false);
   }, []);
 
@@ -182,7 +183,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
     const currentAuthUser = auth.currentUser;
-    console.log("[AuthContext refreshProfileStatus] Called. Current auth user UID:", currentAuthUser?.uid);
+
     if (currentAuthUser?.uid) {
       setLoading(true); // Indicate loading during refresh
       await refreshProfileDataInternal(currentAuthUser.uid);
@@ -395,6 +396,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     <AuthContext.Provider value={{
       user,
       loading,
+      authLoading: loading, // Provide loading as authLoading for compatibility
       profileExists,
       currentUserProfile,
       isNewUserJustSignedUp,

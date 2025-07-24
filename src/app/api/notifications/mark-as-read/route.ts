@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     const userId = decodedToken.uid;
 
     const body = await request.json();
-    const { notificationId, markAll } = body;
+    const { notificationId, markAll, handled } = body;
 
     if (markAll) {
       // Mark all notifications as read
@@ -43,10 +43,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: 'Notification not found' }, { status: 404 });
       }
       
-      await notificationRef.update({ 
-        isRead: true, 
-        readAt: FieldValue.serverTimestamp() 
-      });
+      const updateData: any = { isRead: true, readAt: FieldValue.serverTimestamp() };
+      if (handled) updateData.handled = true;
+      await notificationRef.update(updateData);
       
       return NextResponse.json({ success: true, message: 'Notification marked as read' });
     } else {

@@ -174,7 +174,7 @@ export async function recordPlanCompletion(
     }, { limit: 1 }).get();
     
     if (!existingQuery.empty) {
-      console.log(`[recordPlanCompletion] User ${userId} already has completion record for plan ${planId}`);
+
       return true; // Already recorded, consider it successful
     }
 

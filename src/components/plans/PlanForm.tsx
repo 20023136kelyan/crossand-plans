@@ -55,6 +55,7 @@ import { EditableItineraryItemCard } from './EditableItineraryItemCard';
 import { FriendMultiSelectInput } from './FriendMultiSelectInput';
 import { useJsApiLoader, type Libraries } from '@react-google-maps/api';
 import { Separator } from '../ui/separator';
+import { useAuth } from '@/context/AuthContext';
 
 // Constants
 const GOOGLE_MAPS_LIBRARIES: Libraries = ['places', 'geocoding', 'marker'];
@@ -876,6 +877,7 @@ export function PlanForm({
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [allowSubmission, setAllowSubmission] = useState(false);
   const formMode = propFormMode || (initialData?.id ? 'edit' : 'create');
+  const { user } = useAuth();
 
   // Step navigation
   const goToStep = (step: number) => {
@@ -1040,16 +1042,18 @@ export function PlanForm({
 
   const processAndSubmit = async (data: PlanFormValues, event?: React.FormEvent) => {
     // Debug logging to track automatic submissions
-    console.log('Form submission triggered:', {
-      currentStep,
-      formMode,
-      hasInitialData: !!initialData,
-      isInitialLoad,
-      eventType: event?.type,
-      eventTarget: event?.target,
-      eventIsTrusted: event?.isTrusted,
-      timestamp: new Date().toISOString()
-    });
+    // If you want to debug, use:
+    // console.log({
+    //   currentStep,
+    //   formMode,
+    //   hasInitialData: !!initialData,
+    //   isInitialLoad,
+    //   eventType: event?.type,
+    //   eventTarget: event?.target,
+    //   eventIsTrusted: event?.isTrusted,
+    //   timestamp: new Date().toISOString()
+    // });
+    // Otherwise, just continue with the rest of the function
     
     // Prevent submission during initial load
     if (isInitialLoad) {
@@ -1087,7 +1091,14 @@ export function PlanForm({
     
     try {
       setIsSubmittingForm(true);
-      await onSubmit(data);
+      const filteredInvitedIds = (data.invitedParticipantUserIds || []).filter(
+        (uid) => uid !== user?.uid
+      );
+      const submissionData = {
+        ...data,
+        invitedParticipantUserIds: filteredInvitedIds,
+      };
+      await onSubmit(submissionData);
     } catch (error) {
       console.error("Error during form submission:", error);
       toast({ 

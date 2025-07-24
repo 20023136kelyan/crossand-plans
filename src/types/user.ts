@@ -18,15 +18,20 @@ export type PlanTypeType = 'single-stop' | 'multi-stop';
 export type PriceRangeType = '$' | '$$' | '$$$' | '$$$$' | 'Free';
 
 export interface UserProfile {
-  uid: string; 
-  name: string | null; // Full name of the user
+  uid: string;
+  /**
+   * @deprecated Use firstName and lastName instead. This will be removed in a future version.
+   */
+  name?: string | null; // Full name (legacy)
+  firstName: string | null;
+  lastName: string | null;
   username: string | null; // Unique username for the user
-  name_lowercase?: string | null; 
+  name_lowercase?: string | null;
   email: string | null; // Should be unique
-  bio?: string | null; 
+  bio?: string | null;
   countryDialCode: string | null;
   phoneNumber: string | null; // Store local part, countryDialCode stored separately
-  birthDate: AppTimestamp | null; 
+  birthDate: AppTimestamp | null;
   physicalAddress: {
     street?: string | null;
     city?: string | null;
@@ -49,7 +54,7 @@ export interface UserProfile {
   activityTypeDislikes: string[];
   environmentalSensitivities: string[];
   preferredTransitModes?: TransitMode[];
-  
+
   // Planning Style
   travelTolerance: string; // e.g., "Up to 1 hour", "Any distance for the right event"
   budgetFlexibilityNotes: string; // e.g., "Prefers free/cheap, splurges occasionally"
@@ -77,13 +82,13 @@ export interface UserProfile {
   followersCount?: number; // Count of followers for display
   ratingsCount?: number; // Count of ratings for display
   // 'friends' is derived from mutual follows + friendships subcollection
-  
+
   // Saved content
   savedPlans: string[]; // Array of plan IDs that the user has saved
 
   // Timestamps
-  createdAt: AppTimestamp; 
-  updatedAt: AppTimestamp; 
+  createdAt: AppTimestamp;
+  updatedAt: AppTimestamp;
 
   // Combined preferences for AI
   preferences: string[]; // Derived from all specific preference fields
@@ -100,6 +105,8 @@ export interface UserProfile {
 // Data collected during onboarding, subset of UserProfile
 export type OnboardingProfileData = Pick<
   UserProfile,
+  | 'firstName'
+  | 'lastName'
   | 'countryDialCode'
   | 'phoneNumber'
   | 'bio'
@@ -117,11 +124,12 @@ export type OnboardingProfileData = Pick<
   | 'budgetFlexibilityNotes'
   | 'socialPreferences'
   | 'availabilityNotes'
-> & { 
-  birthDate?: string | null; 
-  name?: string | null | undefined; 
-  username?: string | null; 
-  email?: string | null; 
+> & {
+  birthDate?: string | null;
+  firstName?: string | null | undefined;
+  lastName?: string | null | undefined;
+  username?: string | null;
+  email?: string | null;
   avatarUrl?: string | null;
   // Allow undefined for optional fields that might not be set during form submission
   physicalAddress?: {
@@ -137,14 +145,14 @@ export type OnboardingProfileData = Pick<
 export type FriendStatus = 'pending_sent' | 'pending_received' | 'friends';
 
 export interface FriendEntry {
-  friendUid: string; 
+  friendUid: string;
   status: FriendStatus;
   name: string | null;
   avatarUrl: string | null;
   role?: UserRoleType | null;
   isVerified?: boolean;
   requestedAt?: AppTimestamp | null;
-  friendsSince?: AppTimestamp | null; 
+  friendsSince?: AppTimestamp | null;
 }
 
 export interface SearchedUser {
@@ -162,13 +170,13 @@ export interface UserStats {
   postCount: number;
   plansCreatedCount: number;
   plansSharedOrExperiencedCount: number;
-  followersCount: number; 
-  followingCount: number; 
+  followersCount: number;
+  followingCount: number;
 }
 
 export interface ChatParticipantInfo {
   uid: string;
-  name: string; 
+  name: string;
   username: string | null;
   avatarUrl: string | null;
   role: UserRoleType | null;
@@ -184,7 +192,7 @@ export interface Chat {
   type: ChatType;
   lastMessageText?: string;
   lastMessageSenderId?: string;
-  lastMessageTimestamp?: AppTimestamp | null; 
+  lastMessageTimestamp?: AppTimestamp | null;
   participantReadTimestamps?: { [userId: string]: AppTimestamp }; // UID: Timestamp
   groupName?: string; // For group chats
   groupAvatarUrl?: string | null; // For group chats
@@ -195,21 +203,30 @@ export interface Chat {
 export interface ChatMessage {
   id: string;
   senderId: string;
-  text?: string; 
-  mediaUrl?: string; 
+  text?: string;
+  mediaUrl?: string;
   mediaContentType?: string;
   timestamp: AppTimestamp;
   hiddenBy?: string[]; // Array of UIDs who have hidden this message for themselves
+  readBy?: {
+    [userId: string]: AppTimestamp; // userId: timestamp when they read the message
+  };
+  status?: 'sending' | 'sent' | 'delivered' | 'read';
 }
 
 // Interface for creating chat messages with server timestamps
 export interface ChatMessageCreate {
   senderId: string;
-  text?: string; 
-  mediaUrl?: string; 
+  text?: string;
+  mediaUrl?: string;
   mediaContentType?: string;
   timestamp: ServerFieldValue; // FieldValue.serverTimestamp() for server-side creation
   hiddenBy?: string[]; // Array of UIDs who have hidden this message for themselves
+  readBy?: {
+    [userId: string]: ServerFieldValue; // userId: timestamp when they read the message
+  };
+  status?: 'sending' | 'sent' | 'delivered' | 'read';
+  updatedAt?: ServerFieldValue;
 }
 export type RSVPStatusType = 'going' | 'maybe' | 'not-going' | 'pending';
 
@@ -361,21 +378,21 @@ export interface Rating {
   userId: string; // User who gave the rating
   planId: string; // Plan being rated
   value: number; // 1-5
-  createdAt: AppTimestamp; 
+  createdAt: AppTimestamp;
 }
 
 export interface Comment {
-  id: string; 
-  userId: string; 
-  planId: string; 
-  userName: string | null; 
-  username: string | null; 
-  userAvatarUrl: string | null; 
-  role?: UserRoleType | null; 
-  isVerified?: boolean;       
+  id: string;
+  userId: string;
+  planId: string;
+  userName: string | null;
+  username: string | null;
+  userAvatarUrl: string | null;
+  role?: UserRoleType | null;
+  isVerified?: boolean;
   text: string;
   createdAt: AppTimestamp;
-  updatedAt?: AppTimestamp; 
+  updatedAt?: AppTimestamp;
 }
 
 export type PlanCollectionType = 'curated_by_team' | 'influencer_picks' | 'user_playlist' | 'algorithmic';
@@ -384,11 +401,11 @@ export interface PlanCollection {
   id: string;
   title: string;
   description?: string;
-  curatorName?: string; 
+  curatorName?: string;
   curatorAvatarUrl?: string | null;
-  planIds: string[]; 
-  coverImageUrl?: string | null; 
-  dataAiHint?: string; 
+  planIds: string[];
+  coverImageUrl?: string | null;
+  dataAiHint?: string;
   type: PlanCollectionType;
   tags?: string[];
   isFeatured?: boolean;
@@ -419,12 +436,12 @@ export interface FeedPost {
   likesCount: number;
   likedBy?: string[]; // Array of UIDs who liked
   commentsCount: number;
-  sharesCount?: number; 
+  sharesCount?: number;
   // isFeatured?: boolean; // For promoting specific posts, admin controlled
-  createdAt: AppTimestamp; 
+  createdAt: AppTimestamp;
 }
 
-export interface FeedComment { 
+export interface FeedComment {
   id: string;
   postId: string;
   userId: string;
@@ -458,10 +475,10 @@ export type PlanShareStatus = 'pending' | 'accepted' | 'declined';
 export interface PlanShare {
   id: string;
   originalPlanId: string;
-  originalPlanName: string; 
+  originalPlanName: string;
   sharedByUid: string;
-  sharedByName: string; 
-  sharedByAvatarUrl: string | null; 
+  sharedByName: string;
+  sharedByAvatarUrl: string | null;
   sharedWithUid: string;
   status: PlanShareStatus;
   createdAt: AppTimestamp;

@@ -9,7 +9,7 @@ export const setSessionCookie = async (user: User): Promise<void> => {
   let retryCount = 0;
   let lastError: any = null;
 
-  console.log(`[setSessionCookie] Attempting to set session cookie for user: ${user.uid}`);
+  
 
   while (retryCount <= MAX_RETRIES) {
     try {
@@ -20,9 +20,9 @@ export const setSessionCookie = async (user: User): Promise<void> => {
       
       let idToken: string;
       try {
-        console.log(`[setSessionCookie] Attempt ${retryCount + 1}: Getting ID token (force refresh)...`);
+
         idToken = await user.getIdToken(true); // Force refresh
-        console.log(`[setSessionCookie] Attempt ${retryCount + 1}: Got fresh ID token, length: ${idToken?.length}`);
+        
       } catch (tokenError: any) {
         console.error(`[setSessionCookie] Attempt ${retryCount + 1}: Error getting ID token:`, tokenError?.code, tokenError?.message);
         lastError = new Error(`Failed to get ID token: ${tokenError?.message || 'Unknown token error'}`);
@@ -41,7 +41,7 @@ export const setSessionCookie = async (user: User): Promise<void> => {
         throw new Error('Invalid ID token: token is empty or not a string');
       }
 
-      console.log(`[setSessionCookie] Attempt ${retryCount + 1}: Calling /api/auth/session to set cookie.`);
+      
       const response = await fetch('/api/auth/session', {
         method: 'POST',
         headers: {
@@ -67,7 +67,7 @@ export const setSessionCookie = async (user: User): Promise<void> => {
         throw lastError; // Throw to trigger retry or final failure
       }
 
-      console.log('[setSessionCookie] Session cookie set successfully via API.');
+      
       return; // Success
     } catch (error: any) {
       lastError = error; // Ensure lastError is always updated
@@ -75,7 +75,7 @@ export const setSessionCookie = async (user: User): Promise<void> => {
       
       if (retryCount < MAX_RETRIES) {
         const delay = Math.pow(2, retryCount) * 1000;
-        console.log(`[setSessionCookie] Retrying in ${delay}ms...`);
+
         await new Promise(resolve => setTimeout(resolve, delay));
         retryCount++;
       } else {
@@ -93,7 +93,7 @@ export const setSessionCookie = async (user: User): Promise<void> => {
 
 export const clearSessionCookie = async (): Promise<void> => {
   try {
-    console.log('[clearSessionCookie] Attempting to clear session cookie via API.');
+
     const response = await fetch('/api/auth/session', {
       method: 'DELETE',
     });
@@ -102,7 +102,7 @@ export const clearSessionCookie = async (): Promise<void> => {
       const errorData = await response.json().catch(() => ({ error: "Failed to parse error response from /api/auth/session DELETE" }));
       throw new Error(`Failed to clear session cookie: ${response.status} ${errorData?.error || ''}`);
     }
-    console.log('[clearSessionCookie] Session cookie cleared successfully via API.');
+    
   } catch (error) {
     console.error('[clearSessionCookie] Error clearing session cookie:', error);
     throw error;

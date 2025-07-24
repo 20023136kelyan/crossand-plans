@@ -39,7 +39,8 @@ interface AuthUserData {
 }
 
 const clientOnboardingFormSchema = z.object({
-  name: z.string().min(1, "Name is required.").max(100).nullable(),
+  firstName: z.string().min(1, "First name is required.").max(50).nullable(),
+  lastName: z.string().min(1, "Last name is required.").max(50).nullable(),
   bio: z.string().max(160, { message: "Bio cannot exceed 160 characters."}).optional().nullable(),
   selectedCountryCode: z.string().optional().nullable(),
   phoneNumber: z.string().optional().nullable(),
@@ -113,12 +114,20 @@ export async function completeOnboardingAction(
     
     // Convert form data to profile data format
     const profileData: OnboardingProfileData & {
-      name: string | null;
+      firstName: string | null;
+      lastName: string | null;
       username: string | null;
       email: string | null;
       avatarUrl: string | null;
+      /**
+       * @deprecated Remove after all code is migrated to firstName/lastName
+       */
+      name: string | null;
     } = {
-      name: authUserData.displayName || null,
+      firstName: clientProfileFormData.firstName || null,
+      lastName: clientProfileFormData.lastName || null,
+      // For legacy compatibility, combine first and last name
+      name: [clientProfileFormData.firstName, clientProfileFormData.lastName].filter(Boolean).join(' ') || null,
       username: authUserData.email?.split('@')[0] || null,
       email: authUserData.email,
       avatarUrl: avatarUrl, // Use existing uploaded avatar or null
