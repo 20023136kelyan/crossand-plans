@@ -1,11 +1,12 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { 
   Send, ChevronLeft, Loader2, UserCircle, Paperclip, XCircle as XIcon, EyeOff, MoreVertical, Phone, Video,
-  ShieldCheck, CheckCircle as CheckCircleIcon, MessageSquare, CheckCheck, Check
+  ShieldCheck, CheckCircle as CheckCircleIcon, MessageSquare, CheckCheck, Check, Image as ImageIcon
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -26,6 +27,8 @@ import Link from 'next/link';
 import { FileValidators } from '@/lib/fileValidation';
 import { doc, onSnapshot, collection, query, orderBy, serverTimestamp, setDoc, getDoc, arrayRemove, arrayUnion } from 'firebase/firestore';
 import { getDb } from '@/services/clientServices';
+import { MediaMessage } from '@/components/messages/MediaMessage';
+import { GifPicker } from '@/components/messages/GifPicker';
 
 const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, isVerified: boolean }) => {
   if (role === 'admin') {
@@ -74,7 +77,19 @@ export default function ChatPage() {
   
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
+  
+  // Handle file removal
+  const removeFile = useCallback(() => {
+    setSelectedFile(null);
+    setFilePreviewUrl(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, []);
   const [locallyHiddenMessageIds, setLocallyHiddenMessageIds] = useState<Set<string>>(new Set());
+  const [showGifPicker, setShowGifPicker] = useState(false);
+  const [gifUrl, setGifUrl] = useState<string | null>(null);
+  const gifPickerRef = useRef<HTMLDivElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -179,6 +194,23 @@ export default function ChatPage() {
       // Don't show error to user as this runs in the background
     }
   }, [chatId, user]);
+
+  // Close GIF picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (gifPickerRef.current && !gifPickerRef.current.contains(event.target as Node)) {
+        setShowGifPicker(false);
+      }
+    };
+
+    if (showGifPicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showGifPicker]);
 
   // Effect for fetching chat details
   // Handle typing indicator updates
@@ -425,13 +457,27 @@ export default function ChatPage() {
     const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     const fileType = file.type.toLowerCase();
     const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
+    const isGif = fileType === 'image/gif' || fileExtension === 'gif';
     const isValidType = validTypes.includes(fileType) || 
                        ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension);
+    
+    // Validate file size (5MB max for images, 10MB for GIFs)
+    const maxSizeForGif = 10 * 1024 * 1024; // 10MB for GIFs
+    const isValidSize = isGif ? file.size <= maxSizeForGif : file.size <= maxSize;
 
     if (!isValidType) {
       toast({
         title: 'Unsupported file type',
         description: 'Please upload an image file (JPEG, PNG, GIF, or WebP).',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!isValidSize) {
+      toast({
+        title: 'File too large',
+        description: `Maximum file size is ${isGif ? '10MB' : '5MB'}. Please choose a smaller image.`,
         variant: 'destructive',
       });
       return;
@@ -466,14 +512,17 @@ export default function ChatPage() {
     if(fileInputRef.current) fileInputRef.current.value = ""; 
   };
 
-  const handleSendMessage = async () => {
-    // Validate inputs - allow sending if either there's a message or a file
-    if ((!newMessage?.trim() && !selectedFile) || !user || !chatId || !currentUserProfile) {
-      return;
-    }
-    
-    if (sendingMessage) return;
-    
+  const handleGifSelect = (gifUrl: string) => {
+    setGifUrl(gifUrl);
+    // Auto-send the GIF when selected
+    handleSendMessage(undefined, gifUrl);
+  };
+
+  const handleSendMessage = async (e?: React.FormEvent, gifUrlToSend?: string) => {
+    if (e) e.preventDefault();
+    const gifToSend = gifUrlToSend || gifUrl;
+    if ((!newMessage.trim() && !selectedFile && !gifToSend) || !user) return;
+
     setSendingMessage(true);
     
     // Create form data with message and file
@@ -483,7 +532,12 @@ export default function ChatPage() {
     }
     
     // Add file if selected
-    if (selectedFile) {
+    if (gifToSend) {
+      // If sending a GIF, we send it as a special media URL
+      formData.append('mediaUrl', gifToSend);
+      formData.append('isGif', 'true');
+      setGifUrl(null); // Clear the GIF URL after sending
+    } else if (selectedFile) {
       formData.append('image', selectedFile, selectedFile.name);
     }
 
@@ -777,18 +831,12 @@ export default function ChatPage() {
                             "relative mb-1.5 overflow-hidden rounded-lg",
                             hasText && "border border-border/50"
                           )}>
-                            <div className="relative w-full h-auto max-h-[350px] flex items-center justify-center">
-                              <NextImage 
-                                src={msg.mediaUrl!} 
-                                alt={msg.text || 'Chat image'}
-                                width={280} 
-                                height={350}
-                                className="object-contain max-h-[350px] w-auto max-w-full rounded-md cursor-pointer active:opacity-70 transition-opacity"
-                                unoptimized={!msg.mediaUrl?.startsWith('http') || msg.mediaUrl?.includes('placehold.co') || msg.mediaUrl.includes('firebasestorage.googleapis.com')} 
-                                onClick={(e) => { 
-                                  e.stopPropagation(); 
-                                  window.open(msg.mediaUrl, '_blank'); 
-                                }}
+                            <div className="w-full">
+                              <MediaMessage 
+                                src={msg.mediaUrl!}
+                                alt={msg.text || 'Chat media'}
+                                isGif={msg.mediaUrl?.toLowerCase().endsWith('.gif')}
+                                onClick={() => window.open(msg.mediaUrl, '_blank')}
                               />
                             </div>
                           </div>
@@ -852,40 +900,47 @@ export default function ChatPage() {
       </main>
 
       {/* Sticky Input Area */}
-      <footer 
-        ref={footerRef}
-        className="sticky bottom-0 left-0 right-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-t p-2 pt-3 pb-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]"
-        style={{
-          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)'
-        }}
-      >
+      <footer className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-3">
         {filePreviewUrl && (
-          <div className="relative mb-2 rounded-lg overflow-hidden border">
-            <div className="relative w-full h-40">
-              <img
+          <div className="relative mb-3 max-w-xs">
+            <div className="relative">
+              <Image
                 src={filePreviewUrl}
                 alt="Preview"
-                className="w-full h-full object-cover"
+                width={200}
+                height={200}
+                className="rounded-md object-cover h-32 w-auto"
               />
               <button
-                onClick={removeSelectedFile}
-                className="absolute top-2 right-2 bg-black/70 rounded-full p-1"
-                aria-label="Remove image"
+                type="button"
+                onClick={removeFile}
+                className="absolute -right-2 -top-2 rounded-full bg-destructive p-1 text-destructive-foreground shadow-sm hover:bg-destructive/90"
               >
-                <XIcon className="h-4 w-4 text-white" />
+                <XIcon className="h-4 w-4" />
+                <span className="sr-only">Remove</span>
               </button>
             </div>
           </div>
         )}
         
-        <div className="flex items-end gap-2">
+        <div className="flex items-end gap-2 relative">
+            {/* GIF Picker */}
+            <div 
+              ref={gifPickerRef}
+              className={`absolute bottom-full right-0 mb-2 z-50 transition-all duration-200 ${showGifPicker ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <GifPicker 
+                onSelect={handleGifSelect} 
+                onClose={() => setShowGifPicker(false)}
+              />
+            </div>
           <input
             type="file"
             ref={fileInputRef}
             onChange={handleFileSelect}
             accept="image/*"
             className="hidden"
-            disabled={sendingMessage}
           />
           <Button
             type="button"
@@ -897,7 +952,22 @@ export default function ChatPage() {
           >
             <Paperclip className="h-5 w-5" />
           </Button>
-          
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowGifPicker(prev => !prev);
+            }}
+            disabled={sendingMessage}
+            className={`shrink-0 h-10 w-10 relative ${showGifPicker ? 'bg-accent' : ''}`}
+            aria-expanded={showGifPicker}
+            aria-haspopup="true"
+          >
+            <ImageIcon className="h-5 w-5" />
+            <span className="absolute -top-1 -right-1 bg-primary text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center">GIF</span>
+          </Button>
           <div className="flex-1 relative">
             <Textarea
               ref={textareaRef}

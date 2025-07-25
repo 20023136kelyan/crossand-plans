@@ -2,6 +2,7 @@ import { messaging } from '../lib/firebase';
 import { getAuth } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { registerServiceWorker } from './registerServiceWorker';
 
 // Get VAPID key from environment variable or use a placeholder
 const VAPID_KEY = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || '';
@@ -35,8 +36,13 @@ export async function saveFcmToken() {
 
     const { getToken } = await import('firebase/messaging');
     
-    // Register the service worker and pass it to getToken
-    const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    // Register the service worker
+    const registration = await registerServiceWorker();
+    
+    // Wait a moment to ensure the service worker is ready
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Get the FCM token
     const token = await getToken(messaging, { 
       vapidKey: VAPID_KEY, 
       serviceWorkerRegistration: registration 

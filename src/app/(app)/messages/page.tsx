@@ -869,12 +869,39 @@ export default function MessagesPage() {
                 const unreadCount = chat.participantReadTimestamps && user?.uid && chat.lastMessageSenderId !== user.uid &&
                   (!chat.participantReadTimestamps[user.uid] || 
                    (chat.lastMessageTimestamp && 
-                    (typeof chat.lastMessageTimestamp === 'string' 
-                      ? new Date(chat.lastMessageTimestamp).getTime() 
-                      : chat.lastMessageTimestamp.toDate().getTime()) > 
-                    (typeof chat.participantReadTimestamps[user.uid] === 'string' 
-                      ? new Date(chat.participantReadTimestamps[user.uid] as string).getTime() 
-                      : (chat.participantReadTimestamps[user.uid] as any)?.toDate?.().getTime() || 0)))
+                    (() => {
+                      // Handle lastMessageTimestamp which could be string, Date, or Timestamp
+                      let lastMessageTime: number;
+                      if (typeof chat.lastMessageTimestamp === 'string') {
+                        lastMessageTime = new Date(chat.lastMessageTimestamp).getTime();
+                      } else if (chat.lastMessageTimestamp instanceof Date) {
+                        lastMessageTime = chat.lastMessageTimestamp.getTime();
+                      } else {
+                        // It's a Firestore Timestamp
+                        lastMessageTime = 'toDate' in chat.lastMessageTimestamp 
+                          ? chat.lastMessageTimestamp.toDate().getTime()
+                          : 0;
+                      }
+
+                      // Handle participantReadTimestamps[user.uid] which could be string, Date, or Timestamp
+                      let lastReadTime: number;
+                      const readTimestamp = chat.participantReadTimestamps[user.uid];
+                      
+                      if (!readTimestamp) return true; // No read timestamp, consider unread
+                      
+                      if (typeof readTimestamp === 'string') {
+                        lastReadTime = new Date(readTimestamp).getTime();
+                      } else if (readTimestamp instanceof Date) {
+                        lastReadTime = readTimestamp.getTime();
+                      } else {
+                        // It's a Firestore Timestamp or similar
+                        lastReadTime = 'toDate' in readTimestamp 
+                          ? readTimestamp.toDate().getTime()
+                          : 0;
+                      }
+                      
+                      return lastMessageTime > lastReadTime;
+                    })()))
                   ? 1 // Show 1 unread if the last message is newer than the user's last read timestamp
                   : 0;
                 const isPinned = false; // Replace with real pinned logic

@@ -13,6 +13,10 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  env: {
+    // Explicitly expose the GIPHY API key to the client
+    NEXT_PUBLIC_GIPHY_API_KEY: process.env.NEXT_PUBLIC_GIPHY_API_KEY,
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: 10 * 6000 * 6000, // 10MB
@@ -43,7 +47,19 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'maps.googleapis.com', // For Google Static Maps & Places Photos
         port: '',
-        pathname: '/**', 
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'media*.giphy.com', // For GIPHY media
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'i.giphy.com', // For GIPHY media
+        port: '',
+        pathname: '/**',
       },
       { 
         protocol: 'https',

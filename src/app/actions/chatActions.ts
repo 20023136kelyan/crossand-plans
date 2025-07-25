@@ -146,15 +146,22 @@ export async function sendMessageAction(
 
   const text = formData.get('text') as string | null;
   const imageFile = formData.get('image') as File | null;
+  const mediaUrl = formData.get('mediaUrl') as string | null;
+  const isGif = formData.get('isGif') === 'true';
   
-  if ((!text || !text.trim()) && !imageFile) {
+  if ((!text || !text.trim()) && !imageFile && !mediaUrl) {
     return { success: false, error: 'Message must contain text or an image.' };
   }
 
-  let mediaUrlForService: string | null = null;
-  let determinedContentType: string | null = null;
+  let mediaUrlForService: string | null = mediaUrl || null;
+  let determinedContentType: string | null = isGif ? 'image/gif' : null;
 
-  if (imageFile) {
+  // If we have a direct media URL (like a GIF), use that
+  if (mediaUrl) {
+    console.log(`[sendMessageAction] Using provided media URL: ${mediaUrl}`);
+  } 
+  // Otherwise, handle file upload if present
+  else if (imageFile) {
     console.log(`[sendMessageAction] Received image. Name: ${imageFile.name}, Client-side Type: ${imageFile.type}, Size: ${imageFile.size}`);
     
     // Upload image using centralized posting system

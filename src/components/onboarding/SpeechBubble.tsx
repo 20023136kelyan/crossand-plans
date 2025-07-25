@@ -27,64 +27,99 @@ export const SpeechBubble: React.FC<SpeechBubbleProps> = ({
   onComplete
 }) => {
   const [displayedText, setDisplayedText] = React.useState('');
-  const [currentIndex, setCurrentIndex] = React.useState(0);
-  const [hasCompleted, setHasCompleted] = React.useState(false);
+  const [isComplete, setIsComplete] = React.useState(false);
+  const animationRef = React.useRef<number>();
+  const completionCalledRef = React.useRef(false);
+  const startTimeRef = React.useRef<number>(0);
+  const frameRef = React.useRef<number>();
 
   // Function to complete the typing animation immediately
   const completeTyping = React.useCallback(() => {
+    if (frameRef.current) {
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = undefined;
+    }
+    
     setDisplayedText(text);
-    setCurrentIndex(text.length);
-    setHasCompleted(true);
-    if (onComplete) {
-      onComplete();
+    setIsComplete(true);
+    
+    if (onComplete && !completionCalledRef.current) {
+      completionCalledRef.current = true;
+      // Use requestAnimationFrame to ensure this runs after render
+      requestAnimationFrame(() => {
+        onComplete();
+      });
     }
   }, [text, onComplete]);
 
-  // Handle click on the speech bubble
-  const handleBubbleClick = () => {
-    if (isTyping && currentIndex < text.length) {
+  const handleBubbleClick = React.useCallback(() => {
+    if (isTyping && !isComplete) {
       completeTyping();
     }
-  };
+  }, [isTyping, isComplete, completeTyping]);
+
+  // Animation frame based typing effect
+  const animateTyping = React.useCallback((timestamp: number) => {
+    if (!startTimeRef.current) {
+      startTimeRef.current = timestamp;
+    }
+
+    const elapsed = timestamp - startTimeRef.current;
+    const charsToShow = Math.min(
+      Math.floor(elapsed / typingSpeed),
+      text.length
+    );
+
+    if (charsToShow <= text.length) {
+      setDisplayedText(text.slice(0, charsToShow));
+    }
+
+    if (charsToShow < text.length) {
+      frameRef.current = requestAnimationFrame(animateTyping);
+    } else if (!isComplete) {
+      setIsComplete(true);
+      if (onComplete && !completionCalledRef.current) {
+        completionCalledRef.current = true;
+        requestAnimationFrame(() => {
+          onComplete();
+        });
+      }
+    }
+  }, [text, typingSpeed, isComplete, onComplete]);
 
   React.useEffect(() => {
     if (isTyping) {
       setDisplayedText('');
-      setCurrentIndex(0);
-      setHasCompleted(false);
+      setIsComplete(false);
+      completionCalledRef.current = false;
+      startTimeRef.current = 0;
       
-      const interval = setInterval(() => {
-        setCurrentIndex(prev => {
-          if (prev >= text.length) {
-            clearInterval(interval);
-            setHasCompleted(true);
-            if (onComplete) {
-              onComplete();
-            }
-            return prev;
-          }
-          setDisplayedText(text.slice(0, prev + 1));
-          return prev + 1;
-        });
-      }, typingSpeed);
-      
-      return () => clearInterval(interval);
+      if (typingSpeed > 0) {
+        frameRef.current = requestAnimationFrame(animateTyping);
+      } else {
+        completeTyping();
+      }
+
+      return () => {
+        if (frameRef.current) {
+          cancelAnimationFrame(frameRef.current);
+          frameRef.current = undefined;
+        }
+      };
     } else {
       setDisplayedText(text);
-      setCurrentIndex(text.length);
-      setHasCompleted(false);
+      setIsComplete(true);
     }
-  }, [text, isTyping, typingSpeed, onComplete]);
+  }, [text, isTyping, typingSpeed, animateTyping, completeTyping]);
 
-  // Call onComplete after the component has rendered
+  // Cleanup on unmount
   React.useEffect(() => {
-    if (hasCompleted && onComplete) {
-      const timer = setTimeout(() => {
-        onComplete();
-      }, 0);
-      return () => clearTimeout(timer);
-    }
-  }, [hasCompleted, onComplete]);
+    return () => {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+      }
+    };
+  }, []);
 
   return (
     <motion.div
@@ -95,14 +130,14 @@ export const SpeechBubble: React.FC<SpeechBubbleProps> = ({
       onClick={handleBubbleClick}
       className="bg-white rounded-2xl p-6 shadow-lg max-w-md mx-auto relative cursor-pointer hover:bg-gray-50 transition-colors"
     >
-      <div className="text-gray-800 text-lg leading-relaxed">
-        {isTyping ? (
-          <span>
+      <div className="text-gray-800 text-lg leading-relaxed whitespace-pre-line">
+        {isTyping && !isComplete ? (
+          <>
             {displayedText}
             <span className="animate-pulse">|</span>
-          </span>
+          </>
         ) : (
-          displayedText
+          text
         )}
       </div>
       

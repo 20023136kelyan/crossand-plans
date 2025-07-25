@@ -388,10 +388,10 @@ export default function OnboardingPage() {
     {
       id: 'welcome',
       text: hasPrefilledName && displayName
-        ? `Bonjour, ${displayName}! I am Crossy, your flaky guide to this buttery adventure! 🥐`
-        : "Bonjour! I am Crossy, your flaky guide to this buttery adventure! 🥐",
+        ? `Bonjour, ${displayName}! I am Crossy, your flaky guide to this buttery adventure! 🥐\n\nLet's get to know you better so I can recommend the best experiences for you! 🎯`
+        : "Bonjour! I am Crossy, your flaky guide to this buttery adventure! 🥐\n\nLet's get to know you better so I can recommend the best experiences for you! 🎯",
       type: 'button',
-      buttonText: hasPrefilledName ? "Let's get started! 👋" : "Nice to meet you! 👋"
+      buttonText: hasPrefilledName ? "Let's get started! 🚀" : "Nice to meet you! 👋"
     },
     {
       id: 'name',
@@ -399,12 +399,6 @@ export default function OnboardingPage() {
       type: 'custom', // Use 'custom' for the combined name step
       placeholder: '',
       required: true
-    },
-    {
-      id: 'ready',
-      text: "Perfect! Now let's get to know you better so I can recommend the best experiences for you! 🎯",
-      type: 'button',
-      buttonText: "I'm ready! 🚀"
     },
     {
       id: 'birthDate',
