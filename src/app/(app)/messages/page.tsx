@@ -959,8 +959,22 @@ export default function MessagesPage() {
                           </div>
                           
                           <div className="flex items-center gap-2 mt-0.5">
-                            <p className="text-sm text-muted-foreground truncate flex-1">
-                              {chat.lastMessageText || 'No messages yet'}
+                            <p className="text-sm text-muted-foreground truncate flex-1 flex items-center gap-1.5">
+                              {chat.lastMessageMediaType === 'voice' ? (
+                                <>
+                                  <Mic className="h-3.5 w-3.5 flex-shrink-0" />
+                                  <span>Voice message</span>
+                                </>
+                              ) : chat.lastMessageMediaType === 'image' || chat.lastMessageMediaType === 'gif' ? (
+                                <>
+                                  <ImageIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                                  <span>Photo</span>
+                                </>
+                              ) : chat.lastMessageText ? (
+                                chat.lastMessageText
+                              ) : (
+                                'No messages yet'
+                              )}
                             </p>
                             
                             {unreadCount > 0 && (

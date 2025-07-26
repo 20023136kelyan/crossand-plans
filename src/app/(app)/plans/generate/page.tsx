@@ -280,6 +280,7 @@ function GeneratePlanPage() {
   const [isAutocompleteFocused, setIsAutocompleteFocused] = useState(false);
   const [isRadiusFocused, setIsRadiusFocused] = useState(false);
   const [manualMapControl, setManualMapControl] = useState(false);
+  const [isDraggingCircle, setIsDraggingCircle] = useState(false);
   const [mapMode, setMapMode] = useState<MapMode>('light');
   const [isMapPopupOpen, setIsMapPopupOpen] = useState(false);
   
@@ -322,19 +323,19 @@ function GeneratePlanPage() {
 
   // Hooks
   const router = useRouter();
-  const { user } = useAuth();
+  const { user: currentUser } = useAuth();
   const { theme } = useTheme();
   
   // Memoize greeting and welcome message to prevent regeneration on every render
   const { greeting, welcomeMessage } = useMemo(() => {
     const hour = new Date().getHours();
-    const firstName = user?.displayName?.split(' ')[0] || 'there';
+    const firstName = currentUser?.displayName?.split(' ')[0] || 'there';
     
     return {
-      greeting: getGreetingForHour(hour, user?.displayName || ''),
+      greeting: getGreetingForHour(hour, currentUser?.displayName || ''),
       welcomeMessage: getRandomWelcomeMessage()
     };
-  }, [user?.displayName]); // Only regenerate when user's display name changes
+  }, [currentUser?.displayName]); // Only regenerate when user's display name changes
 
   useEffect(() => {
     if (!scrollContainerRef.current || !generatedPlan) return;
@@ -571,7 +572,7 @@ function GeneratePlanPage() {
 
   // Effect to auto-zoom when radius or location changes with minimal debouncing for responsiveness
   useEffect(() => {
-    if (mapRef.current && selectedLat && selectedLng && watchedSearchRadius && watchedSearchRadius !== null) {
+    if (mapRef.current && selectedLat && selectedLng && watchedSearchRadius && watchedSearchRadius !== null && !isDraggingCircle) {
       // Minimal debounce for responsive zoom changes
       const timeoutId = setTimeout(() => {
         fitRadiusInView();
@@ -579,7 +580,7 @@ function GeneratePlanPage() {
       
       return () => clearTimeout(timeoutId);
     }
-  }, [selectedLat, selectedLng, watchedSearchRadius, fitRadiusInView]);
+  }, [selectedLat, selectedLng, watchedSearchRadius, fitRadiusInView, isDraggingCircle]);
 
   // Memoized map options
   const mapOptions = useMemo(() => ({
@@ -781,7 +782,7 @@ function GeneratePlanPage() {
 
   // Form submission handlers
   const handleGeneratePlan = async (data: PlanGenerationFormData) => {
-    if (!user?.uid) {
+    if (!currentUser?.uid) {
       toast({
         title: 'Authentication required',
         description: 'Please log in to generate a plan.',
@@ -804,11 +805,11 @@ function GeneratePlanPage() {
           ...data,
           planDateTime: format(data.planDateTime, "yyyy-MM-dd'T'HH:mm:ss"),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          hostUid: user.uid,
+          hostUid: currentUser.uid,
           selectedLocationLat: data.latitude,
           selectedLocationLng: data.longitude,
         },
-        await user.getIdToken()
+        await currentUser.getIdToken()
       );
       
       if (result.success && result.plan) {
@@ -857,7 +858,7 @@ function GeneratePlanPage() {
   };
 
   const handleSaveGeneratedPlan = async (planData: PlanFormValues) => {
-    if (!user?.uid) {
+    if (!currentUser?.uid) {
       toast({
         title: 'Authentication required',
         description: 'Please log in to save the plan.',
@@ -868,7 +869,7 @@ function GeneratePlanPage() {
 
     setIsGenerating(true);
     try {
-      const authToken = await user.getIdToken();
+      const authToken = await currentUser.getIdToken();
       const result = await createPlanAction(planData as PlanFormValues, authToken);
       
       if (result.success) {
@@ -977,9 +978,9 @@ function GeneratePlanPage() {
                    <div className="flex -space-x-2">
                      {/* Host Avatar */}
                      <Avatar className="h-10 w-10 ring-2 ring-background">
-                       <AvatarImage src={user?.photoURL || undefined} alt={user?.displayName || 'You'} />
+                       <AvatarImage src={currentUser?.photoURL || undefined} alt={currentUser?.displayName || 'You'} />
                         <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                          {user?.displayName?.charAt(0) || 'U'}
+                          {currentUser?.displayName?.charAt(0) || 'U'}
                         </AvatarFallback>
                       </Avatar>
                       {/* Invited participants */}
@@ -1069,7 +1070,7 @@ function GeneratePlanPage() {
                     ))}
                   </div>
                   
-                  {/* Validate Playground Button - Bottom Center */}
+                  {/* Modern Validate Playground Button - Bottom Center */}
                   {!isMapCollapsed && (
                     <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-50 pointer-events-auto">
                       <Button
@@ -1079,13 +1080,17 @@ function GeneratePlanPage() {
                           document.body.style.overflow = '';
                         }}
                         className={cn(
-                          "bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-6 rounded-full shadow-lg",
-                          "font-medium text-base transition-all duration-300 transform hover:scale-105",
-                          "flex items-center gap-2"
+                          "bg-white/90 hover:bg-white text-black px-8 py-4 rounded-2xl shadow-2xl",
+                          "font-semibold text-base transition-all duration-300 transform hover:scale-105",
+                          "flex items-center gap-3 border border-white/20",
+                          "backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.5)]",
+                          "active:scale-95"
                         )}
                       >
-                        <CheckCircle className="w-5 h-5" />
-                        Validate Playground
+                        <div className="bg-emerald-500 p-2 rounded-xl">
+                          <CheckCircle className="w-5 h-5 text-white" />
+                        </div>
+                        <span>Validate Playground</span>
                       </Button>
                     </div>
                   )}
@@ -1105,7 +1110,7 @@ function GeneratePlanPage() {
                 />
               )}
 
-              {/* Floating Action Button */}
+              {/* Modern Floating Action Buttons */}
               <div className={cn(
                 'fixed bottom-6 right-6 flex flex-col items-end space-y-3 transition-all duration-300 z-50',
                 isFooterVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
@@ -1119,30 +1124,31 @@ function GeneratePlanPage() {
                   'transform-gpu'
                 )}>
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="lg"
                     onClick={() => {
                       setShowEditForm(true);
                       setIsExpanded(false);
                     }}
                     className={cn(
-                      'h-14 w-20 rounded-full p-0 justify-center transition-all duration-300 bg-background/90 backdrop-blur-sm',
-                      'hover:bg-accent/80 hover:scale-105 hover:shadow-lg',
-                      'border-2 border-border/40 hover:border-blue-400/50',
-                      'group',
-                      'min-w-[5rem]' // Ensure minimum width
+                      'h-14 w-20 rounded-2xl p-0 justify-center transition-all duration-300',
+                      'bg-white/10 backdrop-blur-xl border border-white/20',
+                      'hover:bg-blue-500/90 hover:scale-105 hover:shadow-lg',
+                      'text-white hover:text-white group',
+                      'min-w-[5rem]',
+                      'shadow-[0_8px_32px_rgba(0,0,0,0.3)]'
                     )}
                   >
-                    <>
-                      <Pencil className="h-4 w-4 text-foreground/80 group-hover:text-blue-600 transition-colors flex-shrink-0" />
-                      <span className="text-xs font-medium text-foreground/70 group-hover:text-blue-600 transition-colors">
-                        Edit
-                      </span>
-                    </>
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="bg-white/10 p-1.5 rounded-lg group-hover:bg-white/20 transition-colors">
+                        <Pencil className="h-4 w-4 flex-shrink-0" />
+                      </div>
+                      <span className="text-xs font-medium">Edit</span>
+                    </div>
                   </Button>
 
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="lg"
                     onClick={() => {
                       const currentValues = form.getValues();
@@ -1167,19 +1173,20 @@ function GeneratePlanPage() {
                       setIsExpanded(false);
                     }}
                     className={cn(
-                      'h-14 w-20 rounded-full p-0 justify-center transition-all duration-300 bg-background/90 backdrop-blur-sm',
-                      'hover:bg-accent/80 hover:scale-105 hover:shadow-lg',
-                      'border-2 border-border/40 hover:border-blue-400/50',
-                      'group',
-                      'min-w-[5rem]' // Ensure minimum width
+                      'h-14 w-20 rounded-2xl p-0 justify-center transition-all duration-300',
+                      'bg-white/10 backdrop-blur-xl border border-white/20',
+                      'hover:bg-orange-500/90 hover:scale-105 hover:shadow-lg',
+                      'text-white hover:text-white group',
+                      'min-w-[5rem]',
+                      'shadow-[0_8px_32px_rgba(0,0,0,0.3)]'
                     )}
                   >
-                    <>
-                      <RefreshCw className="h-4 w-4 text-foreground/80 group-hover:text-blue-600 transition-colors flex-shrink-0" />
-                      <span className="text-xs font-medium text-foreground/70 group-hover:text-blue-600 transition-colors">
-                        Refresh
-                      </span>
-                    </>
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="bg-white/10 p-1.5 rounded-lg group-hover:bg-white/20 transition-colors">
+                        <RefreshCw className="h-4 w-4 flex-shrink-0" />
+                      </div>
+                      <span className="text-xs font-medium">Refresh</span>
+                    </div>
                   </Button>
 
                   <Button
@@ -1223,23 +1230,24 @@ function GeneratePlanPage() {
                       setIsExpanded(false);
                     }}
                     className={cn(
-                      'h-12 w-auto px-4 rounded-full transition-all duration-300',
-                      'bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800',
-                      'hover:scale-105 hover:shadow-lg hover:shadow-blue-500/20',
+                      'h-14 w-auto px-6 rounded-2xl transition-all duration-300',
+                      'bg-white/90 hover:bg-white text-black',
+                      'hover:scale-105 hover:shadow-lg border border-white/20',
+                      'backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.3)]',
                       'group',
                       isGenerating ? 'opacity-70' : '',
-                      'min-w-[6rem]', // Ensure minimum width
-                      'flex items-center justify-center gap-2' // Center icon and text
+                      'min-w-[6rem]',
+                      'flex items-center justify-center gap-3'
                     )}
                   >
                     {isGenerating ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-white" />
+                      <Loader2 className="h-5 w-5 animate-spin text-black" />
                     ) : (
                       <>
-                        <Check className="h-4 w-4 text-white group-hover:scale-110 transition-transform flex-shrink-0" />
-                        <span className="text-xs font-medium text-white/90 group-hover:text-white">
-                          Publish
-                        </span>
+                        <div className="bg-emerald-500 p-1.5 rounded-lg">
+                          <Check className="h-4 w-4 text-white" />
+                        </div>
+                        <span className="text-sm font-semibold">Publish</span>
                       </>
                     )}
                   </Button>
@@ -1248,15 +1256,17 @@ function GeneratePlanPage() {
                 {/* Main FAB */}
                 <Button
                   size="lg"
-                  variant={isExpanded ? 'destructive' : 'default'}
+                  variant="ghost"
                   className={cn(
-                    'h-14 w-14 rounded-full transition-all duration-300',
-                    'shadow-xl hover:shadow-2xl',
+                    'h-16 w-16 rounded-2xl transition-all duration-300',
+                    'shadow-[0_8px_32px_rgba(0,0,0,0.3)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.4)]',
                     isHovered || isExpanded ? 'scale-110' : 'scale-100',
                     isExpanded ? 'rotate-180' : 'rotate-0',
-                    'group',
-                    'flex items-center justify-center',
-                    isExpanded ? 'bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700' : 'bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800'
+                    'group flex items-center justify-center',
+                    'backdrop-blur-xl border border-white/20',
+                    isExpanded 
+                      ? 'bg-red-500/90 hover:bg-red-600/90 text-white' 
+                      : 'bg-white/10 hover:bg-emerald-500/90 text-white hover:text-white'
                   )}
                   onMouseEnter={() => setIsHovered(true)}
                   onMouseLeave={() => setIsHovered(false)}
@@ -1267,9 +1277,9 @@ function GeneratePlanPage() {
                   }}
                 >
                   {isExpanded || isHovered ? (
-                    <X className="h-6 w-6 text-white transition-transform duration-300" />
+                    <X className="h-7 w-7 transition-transform duration-300" />
                   ) : (
-                    <Check className="h-6 w-6 text-white transition-transform duration-300" />
+                    <Check className="h-7 w-7 transition-transform duration-300" />
                   )}
                 </Button>
               </div>
@@ -1333,10 +1343,10 @@ function GeneratePlanPage() {
               "relative transition-all duration-500 ease-in-out overflow-hidden border-border/20 shadow-sm",
               isMapCollapsed ? "h-20 mx-4 md:mx-0 border rounded-xl" : "fixed inset-0 z-40 h-screen w-screen"
             )}>
-              {/* Close fullscreen button */}
+              {/* Modern Bottom Controls */}
               {!isMapCollapsed && (
-                <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-4">
-                  {/* Validate Button */}
+                <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-3">
+                  {/* Modern Validate Button */}
                   <Button
                     type="button"
                     onClick={() => {
@@ -1344,20 +1354,17 @@ function GeneratePlanPage() {
                       document.body.style.overflow = '';
                     }}
                     className={cn(
-                      "bg-black hover:bg-gray-900 text-white px-6 py-3 rounded-full",
-                      "font-semibold text-sm transition-all duration-300 transform hover:scale-105",
-                      "flex items-center gap-2 border border-gray-900",
-                      "dark:bg-black dark:hover:bg-gray-900 dark:text-white dark:border-gray-800",
-                      "backdrop-blur-sm shadow-[0_4px_20px_rgba(0,0,0,0.3)] hover:shadow-[0_6px_25px_rgba(0,0,0,0.4)]"
+                      "h-14 w-14 rounded-2xl bg-emerald-500/90 hover:bg-emerald-600/90 text-white",
+                      "border border-emerald-500/50 hover:border-emerald-600/50 transition-all duration-300",
+                      "flex items-center justify-center hover:scale-105 active:scale-95",
+                      "backdrop-blur-xl shadow-[0_8px_32px_rgba(16,185,129,0.4)] hover:shadow-[0_12px_40px_rgba(16,185,129,0.6)]",
+                      "group"
                     )}
                   >
-                    <div className="bg-primary/10 p-1.5 rounded-full">
-                      <Check className="w-4 h-4 text-primary" />
-                    </div>
-                    <span>Validate Selection</span>
+                    <Check className="w-6 h-6 transition-transform group-hover:rotate-12" />
                   </Button>
 
-                  {/* Close Button - Compact red close button */}
+                  {/* Modern Close Button */}
                   <Button
                     type="button"
                     variant="ghost"
@@ -1367,13 +1374,14 @@ function GeneratePlanPage() {
                       document.body.style.overflow = '';
                     }}
                     className={cn(
-                      "h-10 w-10 rounded-full bg-red-600 hover:bg-red-700 text-white",
-                      "border border-red-700 hover:border-red-800 transition-all duration-300",
+                      "h-14 w-14 rounded-2xl bg-red-500/90 hover:bg-red-600/90 text-white",
+                      "border border-red-500/50 hover:border-red-600/50 transition-all duration-300",
                       "flex items-center justify-center hover:scale-105 active:scale-95",
-                      "backdrop-blur-sm shadow-[0_4px_20px_rgba(0,0,0,0.3)] hover:shadow-[0_6px_25px_rgba(0,0,0,0.4)]"
+                      "backdrop-blur-xl shadow-[0_8px_32px_rgba(220,38,38,0.4)] hover:shadow-[0_12px_40px_rgba(220,38,38,0.6)]",
+                      "group"
                     )}
                   >
-                    <X className="w-4 h-4" />
+                    <X className="w-6 h-6 transition-transform group-hover:rotate-90" />
                   </Button>
                 </div>
               )}
@@ -1426,6 +1434,11 @@ function GeneratePlanPage() {
                         zoom={mapZoom}
                         options={mapOptions}
                         onClick={(e) => {
+                          // If circle is being dragged, don't handle map clicks
+                          if (isDraggingCircle) {
+                            return;
+                          }
+                          
                           // If any map popup is open, close them but don't interact with the map
                           if (isMapPopupOpen || !isLocationSearchCollapsed || (!isSearchRadiusCollapsed && isRadiusFocused)) {
                             setIsLocationSearchCollapsed(true);
@@ -1453,11 +1466,45 @@ function GeneratePlanPage() {
                                 center={{ lat: selectedLat, lng: selectedLng }} 
                                 radius={watchedSearchRadius * 1000} 
                                 options={{ 
-                                  strokeColor: 'hsl(var(--primary))', 
-                                  strokeOpacity: 0.6, 
-                                  strokeWeight: 1, 
-                                  fillColor: 'hsl(var(--primary))', 
-                                  fillOpacity: 0.15 
+                                  strokeColor: '#3b82f6', 
+                                  strokeOpacity: isDraggingCircle ? 0.8 : 0.6, 
+                                  strokeWeight: isDraggingCircle ? 3 : 2, 
+                                  fillColor: '#3b82f6', 
+                                  fillOpacity: isDraggingCircle ? 0.25 : 0.15,
+                                  draggable: true
+                                }}
+                                onDragEnd={(e) => {
+                                  setIsDraggingCircle(false);
+                                  const center = e.latLng;
+                                  if (center) {
+                                    const lat = center.lat();
+                                    const lng = center.lng();
+                                    
+                                    // Update form values with new center position
+                                    form.setValue('latitude', lat);
+                                    form.setValue('longitude', lng);
+                                    
+                                    // Reverse geocode to update location query
+                                    const geocoder = new google.maps.Geocoder();
+                                    geocoder.geocode({ location: { lat, lng } })
+                                      .then((result) => {
+                                        if (result.results && result.results.length > 0) {
+                                          const address = result.results[0].formatted_address;
+                                          form.setValue('locationQuery', address);
+                                          setSearchValue(address);
+                                        }
+                                      })
+                                      .catch((error) => {
+                                        console.error('Reverse geocoding error:', error);
+                                      });
+                                  }
+                                }}
+                                onDrag={(e) => {
+                                  // Prevent any automatic map adjustments during drag
+                                  // The circle position updates automatically
+                                }}
+                                onDragStart={(e) => {
+                                  setIsDraggingCircle(true);
                                 }}
                               />
                             )}
@@ -1475,22 +1522,23 @@ function GeneratePlanPage() {
                     )}
                   </div>
                   
-                  {/* Bottom Fade Effect */}
-                  <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
+
                   
-                  {/* Unified Floating Interface */}
-                  <div className="absolute inset-2 z-20 pointer-events-none transition-opacity duration-300">
-                    {/* Top Center: All Control Buttons */}
-                    <div className="absolute top-24 left-1/2 transform -translate-x-1/2 pointer-events-auto">
-                      {/* Horizontal Button Container - Hide when popup is open */}
+                  {/* Modern Floating Interface */}
+                  <div className="absolute inset-4 z-20 pointer-events-none transition-opacity duration-300">
+                    {/* Top Center: Modern Control Button Group */}
+                    <div className="absolute top-16 left-1/2 transform -translate-x-1/2 pointer-events-auto">
+                      {/* Glassmorphism Button Container */}
                       <div className={cn(
-                        "flex items-center gap-3 transition-all duration-500 ease-out transform",
-                        isMapPopupOpen ? "opacity-0 pointer-events-none scale-95 -translate-y-10" : "opacity-100 scale-100 translate-y-0"
+                        "flex items-center gap-2 p-2 rounded-2xl transition-all duration-500 ease-out transform",
+                        "bg-black/20 backdrop-blur-xl border border-white/10",
+                        "shadow-[0_8px_32px_rgba(0,0,0,0.3)]",
+                        isMapPopupOpen ? "opacity-0 pointer-events-none scale-95 -translate-y-4" : "opacity-100 scale-100 translate-y-0"
                       )}>
                         {/* Search Toggle Button */}
                         <Button
                           type="button"
-                          variant="secondary"
+                          variant="ghost"
                           size="icon"
                           onClick={() => {
                             setIsLocationSearchCollapsed(false);
@@ -1504,10 +1552,11 @@ function GeneratePlanPage() {
                             }, 100);
                           }}
                           className={cn(
-                            "w-12 h-12 rounded-full shadow-lg border-2 transition-all duration-500 ease-out transform",
+                            "w-11 h-11 rounded-xl transition-all duration-300 ease-out",
+                            "hover:scale-110 active:scale-95",
                             !isLocationSearchCollapsed 
-                              ? "bg-primary text-primary-foreground border-primary scale-110 rotate-180" 
-                              : "bg-background border-border hover:border-primary/50 hover:scale-105 hover:rotate-12"
+                              ? "bg-blue-500/90 text-white shadow-lg shadow-blue-500/25 scale-105" 
+                              : "bg-white/10 text-white/90 hover:bg-white/20 hover:text-white"
                           )}
                         >
                           <SearchIcon className="w-5 h-5" />
@@ -1516,14 +1565,16 @@ function GeneratePlanPage() {
                         {/* Location Detection Button */}
                         <Button
                           type="button"
-                          variant="secondary"
+                          variant="ghost"
                           size="icon"
                           onClick={detectUserLocation}
                           disabled={!isLoaded || isDetectingLocation}
                           className={cn(
-                            "w-12 h-12 rounded-full shadow-lg border-2 transition-all duration-500 ease-out transform",
-                            "bg-background border-border hover:border-primary/50 disabled:opacity-50 hover:scale-105 hover:rotate-12 active:scale-95",
-                            isDetectingLocation && "animate-pulse"
+                            "w-11 h-11 rounded-xl transition-all duration-300 ease-out",
+                            "hover:scale-110 active:scale-95",
+                            "bg-white/10 text-white/90 hover:bg-white/20 hover:text-white",
+                            "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100",
+                            isDetectingLocation && "bg-emerald-500/90 shadow-lg shadow-emerald-500/25"
                           )}
                           title="Detect my location"
                         >
@@ -1537,7 +1588,7 @@ function GeneratePlanPage() {
                         {/* Radius Button */}
                         <Button
                           type="button"
-                          variant="secondary"
+                          variant="ghost"
                           size="icon"
                           onClick={() => {
                             setIsSearchRadiusCollapsed(false);
@@ -1546,29 +1597,34 @@ function GeneratePlanPage() {
                             setIsMapPopupOpen(true);
                           }}
                           className={cn(
-                            "w-12 h-12 rounded-full shadow-lg border-2 transition-all duration-500 ease-out transform text-xs font-bold",
+                            "w-11 h-11 rounded-xl transition-all duration-300 ease-out",
+                            "hover:scale-110 active:scale-95 text-xs font-bold",
                             !isSearchRadiusCollapsed 
-                              ? "bg-primary text-primary-foreground border-primary scale-110 rotate-180" 
-                              : "bg-background border-border hover:border-primary/50 hover:scale-105 hover:rotate-12"
+                              ? "bg-purple-500/90 text-white shadow-lg shadow-purple-500/25 scale-105" 
+                              : "bg-white/10 text-white/90 hover:bg-white/20 hover:text-white"
                           )}
                         >
-                          {form.watch('searchRadius') === null ? 'B' : `${form.watch('searchRadius')}`}
+                          <span className="text-sm font-semibold">
+                            {form.watch('searchRadius') === null ? 'B' : `${form.watch('searchRadius')}`}
+                          </span>
                         </Button>
                       </div>
                       
-                      {/* Expandable Search Bar */}
+                      {/* Modern Expandable Search Bar */}
                       {!isLocationSearchCollapsed && (
                         <div
                           className={cn(
-                            "absolute top-24 left-1/2 transform -translate-x-1/2 -translate-y-2",
-                            "bg-black/80 backdrop-blur-md border border-gray-600/50 rounded-2xl shadow-2xl",
-                            "transition-all duration-300 ease-out flex items-center gap-3 p-3",
-                            "w-[28rem] h-12 min-w-0 max-w-[calc(100vw-4rem)]",
-                            "animate-in slide-in-from-top-10 fade-in-0"
+                            "absolute top-20 left-1/2 transform -translate-x-1/2 -translate-y-2",
+                            "bg-white/10 backdrop-blur-2xl border border-white/20 rounded-3xl shadow-2xl",
+                            "transition-all duration-500 ease-out flex items-center gap-3 p-4",
+                            "w-[32rem] h-14 min-w-0 max-w-[calc(100vw-2rem)]",
+                            "animate-in slide-in-from-top-10 fade-in-0 zoom-in-95",
+                            "shadow-[0_16px_48px_rgba(0,0,0,0.4)]"
                           )}
                           onClick={(e) => e.stopPropagation()}
                           data-search-element
                         >
+
                           <div className="flex-1 min-w-0" data-search-element>
                             <PlaceAutocomplete
                               value={searchValue}
@@ -1581,7 +1637,7 @@ function GeneratePlanPage() {
                                 setIsAutocompleteFocused(false);
                               }}
                               placeholder="Search for places, addresses..."
-                              className="w-full"
+                              className="w-full bg-transparent border-none text-white placeholder:text-white/50 focus:ring-0 focus:outline-none text-base"
                               locationBias={selectedLat && selectedLng ? {
                                 center: { lat: selectedLat, lng: selectedLng },
                                 radius: 50000
@@ -1593,53 +1649,62 @@ function GeneratePlanPage() {
                         </div>
                       )}
                       
-                      {/* Expandable Radius Slider */}
+                      {/* Modern Expandable Radius Slider */}
                       {!isSearchRadiusCollapsed && isRadiusFocused && (
                         <div 
                           className={cn(
-                            "absolute top-24 left-1/2 transform -translate-x-1/2 -translate-y-2 w-[28rem] bg-background/90 backdrop-blur-lg rounded-2xl shadow-2xl",
-                            "border border-border/50 p-4 z-30 min-w-0 max-w-[calc(100vw-4rem)]",
-                            "transition-all duration-300 ease-out animate-in slide-in-from-top-10 fade-in-0"
+                            "absolute top-20 left-1/2 transform -translate-x-1/2 -translate-y-2 w-[32rem]",
+                            "bg-white/10 backdrop-blur-2xl border border-white/20 rounded-3xl shadow-2xl",
+                            "p-6 z-30 min-w-0 max-w-[calc(100vw-2rem)]",
+                            "transition-all duration-500 ease-out animate-in slide-in-from-top-10 fade-in-0 zoom-in-95",
+                            "shadow-[0_16px_48px_rgba(0,0,0,0.4)]"
                           )}
                           onClick={(e) => e.stopPropagation()}
                           data-radius-element
                         >
-                          <div className="flex items-center gap-3">
-                            <span className="text-sm font-medium whitespace-nowrap">Radius:</span>
-                            <FormField
-                              control={form.control}
-                              name="searchRadius"
-                              render={({ field }) => (
-                                <FormItem className="flex-1">
-                                  <FormControl>
-                                    <Slider 
-                                      value={[field.value ?? 52]} 
-                                      onValueChange={(value) => field.onChange(value[0] === 52 ? null : value[0])} 
-                                      min={2} max={52} step={2} 
-                                      disabled={!selectedLat || !selectedLng} 
-                                      className="[&>span:first-child]:h-3 [&>span>span]:h-3 [&>button]:h-8 [&>button]:w-8 [&>button]:border-2 [&>button]:shadow-md [&>button]:touch-manipulation py-2"
-                                      data-radius-element
-                                      onBlur={(event) => {
-                                        setTimeout(() => {
-                                          const activeElement = document.activeElement;
-                                          const radiusContainer = event.currentTarget?.closest('[data-radius-element]');
-                                          
-                                          if (!radiusContainer?.contains(activeElement) && !activeElement?.closest('[data-radius-element]')) {
-                                            setIsSearchRadiusCollapsed(true);
-                                            setIsRadiusFocused(false);
-                                            setIsMapPopupOpen(false);
-                                          }
-                                        }, 150);
-                                      }}
-                                    />
-                                  </FormControl>
-                                  <FormMessage className="text-xs" />
-                                </FormItem>
-                              )}
-                            />
-                            <span className="text-sm font-semibold text-primary whitespace-nowrap">
-                              {form.watch('searchRadius') === null ? 'Broad' : `${form.watch('searchRadius')} km`}
-                            </span>
+                          <div className="flex items-center gap-4">
+                            <div className="bg-white/5 rounded-2xl p-2 flex-shrink-0">
+                              <Target className="w-5 h-5 text-white/70" />
+                            </div>
+                            <div className="flex-1 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium text-white/90">Search Radius</span>
+                                <span className="text-lg font-bold text-white bg-white/10 px-3 py-1 rounded-xl">
+                                  {form.watch('searchRadius') === null ? 'Broad' : `${form.watch('searchRadius')} km`}
+                                </span>
+                              </div>
+                              <FormField
+                                control={form.control}
+                                name="searchRadius"
+                                render={({ field }) => (
+                                  <FormItem className="flex-1">
+                                    <FormControl>
+                                      <Slider 
+                                        value={[field.value ?? 52]} 
+                                        onValueChange={(value) => field.onChange(value[0] === 52 ? null : value[0])} 
+                                        min={2} max={52} step={2} 
+                                        disabled={!selectedLat || !selectedLng} 
+                                        className="[&>span:first-child]:h-2 [&>span:first-child]:bg-white/20 [&>span>span]:h-2 [&>span>span]:bg-white [&>button]:h-6 [&>button]:w-6 [&>button]:border-0 [&>button]:bg-white [&>button]:shadow-lg [&>button]:touch-manipulation py-3"
+                                        data-radius-element
+                                        onBlur={(event) => {
+                                          setTimeout(() => {
+                                            const activeElement = document.activeElement;
+                                            const radiusContainer = event.currentTarget?.closest('[data-radius-element]');
+                                            
+                                            if (!radiusContainer?.contains(activeElement) && !activeElement?.closest('[data-radius-element]')) {
+                                              setIsSearchRadiusCollapsed(true);
+                                              setIsRadiusFocused(false);
+                                              setIsMapPopupOpen(false);
+                                            }
+                                          }, 150);
+                                        }}
+                                      />
+                                    </FormControl>
+                                    <FormMessage className="text-xs text-red-300" />
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
                           </div>
                         </div>
                       )}

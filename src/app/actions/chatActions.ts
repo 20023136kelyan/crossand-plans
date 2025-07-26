@@ -121,6 +121,10 @@ export async function sendMessageAction(
   idToken: string
 ): Promise<{ success: boolean; error?: string }> {
   console.log('[sendMessageAction] Action started.');
+  console.log('[sendMessageAction] FormData entries:');
+  for (const [key, value] of formData.entries()) {
+    console.log(`  ${key}:`, value);
+  }
   if (!authAdmin) {
     console.error("[sendMessageAction] Firebase Admin Auth service not available.");
     return { success: false, error: "Server error: Authentication service not available." };
@@ -146,21 +150,45 @@ export async function sendMessageAction(
 
   const text = formData.get('text') as string | null;
   const imageFile = formData.get('image') as File | null;
+  const audioFile = formData.get('audio') as File | null;
   const mediaUrl = formData.get('mediaUrl') as string | null;
   const isGif = formData.get('isGif') === 'true';
+  const isVoice = formData.get('isVoice') === 'true';
+  const voiceDurationStr = formData.get('voiceDuration');
+  const voiceDuration = voiceDurationStr ? parseInt(voiceDurationStr as string, 10) : undefined;
+  console.log('Chat action - voiceDurationStr:', voiceDurationStr, 'voiceDuration:', voiceDuration);
   
-  if ((!text || !text.trim()) && !imageFile && !mediaUrl) {
-    return { success: false, error: 'Message must contain text or an image.' };
+  if ((!text || !text.trim()) && !imageFile && !mediaUrl && !audioFile) {
+    return { success: false, error: 'Message must contain text, image, or audio.' };
   }
 
   let mediaUrlForService: string | null = mediaUrl || null;
-  let determinedContentType: string | null = isGif ? 'image/gif' : null;
+  let determinedContentType: string | null = isGif ? 'image/gif' : isVoice ? 'audio/webm' : null;
 
   // If we have a direct media URL (like a GIF), use that
   if (mediaUrl) {
     console.log(`[sendMessageAction] Using provided media URL: ${mediaUrl}`);
+    console.log(`[sendMessageAction] isGif flag: ${isGif}, determinedContentType: ${determinedContentType}`);
   } 
-  // Otherwise, handle file upload if present
+  // Handle audio file upload
+  else if (audioFile) {
+    console.log(`[sendMessageAction] Processing audio file: ${audioFile.name}, Type: ${audioFile.type}, Size: ${audioFile.size} bytes`);
+    try {
+      const uploadResult = await uploadChatMessage(audioFile, senderId, idToken, chatId);
+      if (uploadResult.success && uploadResult.data?.url) {
+        mediaUrlForService = uploadResult.data.url;
+        determinedContentType = audioFile.type || 'audio/webm';
+        console.log(`[sendMessageAction] Audio uploaded successfully. URL: ${mediaUrlForService}`);
+      } else {
+        console.error(`[sendMessageAction] Audio upload failed: ${uploadResult.error}`);
+        return { success: false, error: 'Failed to upload audio message. Please try again.' };
+      }
+    } catch (error) {
+      console.error(`[sendMessageAction] Error uploading audio:`, error);
+      return { success: false, error: 'An error occurred while uploading the audio message.' };
+    }
+  }
+  // Handle image file upload if present
   else if (imageFile) {
     console.log(`[sendMessageAction] Received image. Name: ${imageFile.name}, Client-side Type: ${imageFile.type}, Size: ${imageFile.size}`);
     
@@ -181,10 +209,16 @@ export async function sendMessageAction(
   }
   
   const finalMediaUrl = (typeof mediaUrlForService === 'string' && mediaUrlForService.startsWith('https://')) ? mediaUrlForService : null;
-  console.log(`[sendMessageAction] Calling sendMessageAdminService. Text: '${text ? text.substring(0,20)+"..." : 'N/A'}', MediaURL: ${finalMediaUrl}, ContentType: ${determinedContentType}`);
+  console.log(`[sendMessageAction] Calling sendMessageAdminService with:`);
+  console.log(`  - Text: '${text ? text.substring(0,20)+"..." : 'N/A'}'`);
+  console.log(`  - MediaURL: ${finalMediaUrl}`);
+  console.log(`  - ContentType: ${determinedContentType}`);
+  console.log(`  - isGif: ${isGif}`);
+  console.log(`  - isVoice: ${isVoice}`);
+  console.log(`  - voiceDuration: ${voiceDuration}`);
 
   try {
-    await sendMessageAdminService(chatId, senderId, text, finalMediaUrl, determinedContentType); 
+    await sendMessageAdminService(chatId, senderId, text, finalMediaUrl, determinedContentType, voiceDuration); 
     revalidatePath(`/messages/${chatId}`);
     revalidatePath('/messages'); // To update last message in chat list
     return { success: true };

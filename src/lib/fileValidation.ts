@@ -12,12 +12,14 @@ export const FILE_VALIDATION_CONFIG = {
   // Supported file formats
   FORMATS: {
     IMAGE: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'svg', 'avif', 'tiff'],
+    AUDIO: ['mp3', 'wav', 'ogg', 'webm', 'm4a'],
     DOCUMENT: ['pdf', 'doc', 'docx', 'txt'],
-    ALL: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'svg', 'avif', 'tiff', 'pdf', 'doc', 'docx', 'txt']
+    ALL: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'svg', 'avif', 'tiff', 'mp3', 'wav', 'ogg', 'webm', 'm4a', 'pdf', 'doc', 'docx', 'txt']
   },
   
   // MIME type mappings
   MIME_TYPES: {
+    // Images
     'jpg': 'image/jpeg',
     'jpeg': 'image/jpeg',
     'png': 'image/png',
@@ -27,6 +29,13 @@ export const FILE_VALIDATION_CONFIG = {
     'svg': 'image/svg+xml',
     'avif': 'image/avif',
     'tiff': 'image/tiff',
+    // Audio
+    'mp3': 'audio/mpeg',
+    'wav': 'audio/wav',
+    'ogg': 'audio/ogg',
+    'webm': 'audio/webm',
+    'm4a': 'audio/mp4',
+    // Documents
     'pdf': 'application/pdf',
     'doc': 'application/msword',
     'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -35,7 +44,7 @@ export const FILE_VALIDATION_CONFIG = {
 } as const;
 
 export type FileValidationType = 'avatar' | 'chat_message' | 'post_highlight' | 'general_upload';
-export type FileFormatType = 'image' | 'document' | 'all';
+export type FileFormatType = 'image' | 'audio' | 'document' | 'all';
 
 export interface FileValidationResult {
   valid: boolean;
@@ -158,12 +167,19 @@ export function validateFile(file: File, options: FileValidationOptions): FileVa
     warnings.push('No MIME type provided by browser');
   }
   
-  // Additional validation for images
-  if (options.allowedFormats === 'image' || allowedFormats.includes(extension)) {
+  // Additional validation for media types
+  if (options.allowedFormats === 'image' || (allowedFormats.includes(extension) && getMimeTypeFromExtension(extension)?.startsWith('image/'))) {
     if (!file.type.startsWith('image/') && !getMimeTypeFromExtension(extension)?.startsWith('image/')) {
       return {
         valid: false,
         error: 'File does not appear to be a valid image.'
+      };
+    }
+  } else if (options.allowedFormats === 'audio' || (allowedFormats.includes(extension) && getMimeTypeFromExtension(extension)?.startsWith('audio/'))) {
+    if (!file.type.startsWith('audio/') && !getMimeTypeFromExtension(extension)?.startsWith('audio/')) {
+      return {
+        valid: false,
+        error: 'File does not appear to be a valid audio file.'
       };
     }
   }
@@ -179,7 +195,13 @@ export function validateFile(file: File, options: FileValidationOptions): FileVa
  */
 export const FileValidators = {
   avatar: (file: File) => validateFile(file, { type: 'avatar', allowedFormats: 'image' }),
-  chatMessage: (file: File) => validateFile(file, { type: 'chat_message', allowedFormats: 'image' }),
+  chatMessage: (file: File, isAudio: boolean = false) => 
+    validateFile(file, { 
+      type: 'chat_message', 
+      allowedFormats: isAudio ? 'audio' : 'image',
+      // Use larger size limit for audio files (10MB) vs images (5MB)
+      customSizeLimit: isAudio ? 10 * 1024 * 1024 : undefined
+    }),
   postHighlight: (file: File) => validateFile(file, { type: 'post_highlight', allowedFormats: 'image' }),
   generalUpload: (file: File) => validateFile(file, { type: 'general_upload', allowedFormats: 'all' })
 };

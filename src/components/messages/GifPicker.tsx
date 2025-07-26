@@ -12,9 +12,10 @@ interface GifPickerProps {
   onSelect: (gifUrl: string) => void;
   onClose: () => void;
   className?: string;
+  isOpen?: boolean;
 }
 
-export function GifPicker({ onSelect, onClose, className }: GifPickerProps) {
+export function GifPicker({ onSelect, onClose, className, isOpen = true }: GifPickerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [gifs, setGifs] = useState<GifObject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -62,38 +63,69 @@ export function GifPicker({ onSelect, onClose, className }: GifPickerProps) {
     return () => clearTimeout(timer);
   }, [searchQuery, loadTrendingGifs]);
 
-  // Close picker when clicking outside
+  // Handle click outside to close the picker
   useEffect(() => {
+    if (!isOpen) return;
+
     const handleClickOutside = (event: MouseEvent) => {
+      console.log('[GifPicker] Click detected');
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        console.log('[GifPicker] Click outside detected, calling onClose');
         onClose();
+      } else {
+        console.log('[GifPicker] Click inside picker, not closing');
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [onClose]);
+    // Use a slight delay to ensure the event is attached after the click that opened the picker
+    const timer = setTimeout(() => {
+      console.log('[GifPicker] Adding click outside listener');
+      document.addEventListener('click', handleClickOutside, true); // Use capture phase
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      console.log('[GifPicker] Removing click outside listener');
+      document.removeEventListener('click', handleClickOutside, true);
+    };
+  }, [onClose, isOpen]);
 
   // Close on Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        console.log('[GifPicker] Escape key pressed, calling onClose');
         onClose();
       }
     };
 
+    console.log('[GifPicker] Adding Escape key listener');
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      console.log('[GifPicker] Removing Escape key listener');
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, [onClose]);
 
+  if (!isOpen) {
+    console.log('[GifPicker] Not rendering picker (closed)');
+    return null;
+  }
+
+  console.log('[GifPicker] Rendering picker');
   return (
-    <div 
+    <div
       ref={containerRef}
       className={cn(
-        'absolute bottom-full right-0 mb-2 w-80 bg-popover rounded-lg shadow-lg border border-border overflow-hidden z-50',
-        'animate-in fade-in-0 zoom-in-95',
+        "absolute bottom-full right-0 mb-2 w-80 h-80 bg-background border rounded-lg shadow-lg overflow-hidden flex flex-col z-50",
         className
       )}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          console.log('[GifPicker] Escape key pressed, calling onClose');
+          onClose();
+        }
+      }}
     >
       <div className="p-3 border-b border-border flex items-center">
         <div className="relative flex-1">
@@ -146,33 +178,60 @@ export function GifPicker({ onSelect, onClose, className }: GifPickerProps) {
                 {isSearching ? 'Searching...' : 'Trending'}
               </div>
             )}
-            {gifs.map((gif) => (
-              <div
-                key={gif.id}
-                role="button"
-                tabIndex={0}
-                className="relative aspect-square rounded-md overflow-hidden hover:ring-2 hover:ring-primary transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                onClick={() => {
+            {Array.from(new Map(gifs.map(gif => [gif.id, gif])).values()).map((gif) => {
+              // Main click handler for the GIF
+              const handleGifClick = (e: React.MouseEvent) => {
+                console.log('[GifPicker] Main GIF click handler triggered');
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('[GifPicker] GIF clicked:', gif);
+                console.log('[GifPicker] Calling onSelect with URL:', gif.images.original.url);
+                onSelect(gif.images.original.url);
+                onClose();
+              };
+
+              // Keyboard handler for accessibility
+              const handleKeyDown = (e: React.KeyboardEvent) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  console.log('[GifPicker] GIF selected with keyboard:', gif);
+                  console.log('[GifPicker] Calling onSelect with URL:', gif.images.original.url);
                   onSelect(gif.images.original.url);
                   onClose();
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    onSelect(gif.images.original.url);
-                    onClose();
-                  }
-                }}
-                aria-label={`Select GIF: ${gif.title}`}
-              >
-                <MediaMessage
-                  src={gif.images.fixed_width.url}
-                  alt={gif.title || 'GIF'}
-                  isGif={true}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            ))}
+                }
+              };
+
+              return (
+                <div
+                  key={gif.id}
+                  role="button"
+                  tabIndex={0}
+                  className="relative aspect-square rounded-md overflow-hidden hover:ring-2 hover:ring-primary transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer"
+                  style={{ 
+                    pointerEvents: 'auto',
+                    WebkitTapHighlightColor: 'transparent'
+                  }}
+                  onClick={handleGifClick}
+                  onKeyDown={handleKeyDown}
+                  onMouseDown={(e) => {
+                    console.log('[GifPicker] Mouse down on GIF');
+                    e.stopPropagation();
+                  }}
+                  onMouseUp={(e) => {
+                    console.log('[GifPicker] Mouse up on GIF');
+                    e.stopPropagation();
+                  }}
+                  aria-label={`Select GIF: ${gif.title}`}
+                >
+                  <MediaMessage
+                    src={gif.images.fixed_width.url}
+                    alt={gif.title || 'GIF'}
+                    isGif={true}
+                    className="w-full h-full object-cover pointer-events-none"
+                  />
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

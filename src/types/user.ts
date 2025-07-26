@@ -200,18 +200,22 @@ export interface Chat {
   updatedAt: AppTimestamp;
 }
 
+export type MediaType = 'image' | 'gif' | 'voice' | 'video' | 'file';
+
 export interface ChatMessage {
   id: string;
   senderId: string;
   text?: string;
   mediaUrl?: string;
-  mediaContentType?: string;
+  mediaType?: MediaType; // Type of media (image, gif, voice, video, file)
+  mediaContentType?: string; // MIME type of the media
   timestamp: AppTimestamp;
   hiddenBy?: string[]; // Array of UIDs who have hidden this message for themselves
   readBy?: {
     [userId: string]: AppTimestamp; // userId: timestamp when they read the message
   };
   status?: 'sending' | 'sent' | 'delivered' | 'read';
+  voiceDuration?: number; // Duration in seconds for voice messages
 }
 
 // Interface for creating chat messages with server timestamps
@@ -219,6 +223,7 @@ export interface ChatMessageCreate {
   senderId: string;
   text?: string;
   mediaUrl?: string;
+  mediaType?: MediaType; // Type of media (image, gif, voice, video, file)
   mediaContentType?: string;
   timestamp: ServerFieldValue; // FieldValue.serverTimestamp() for server-side creation
   hiddenBy?: string[]; // Array of UIDs who have hidden this message for themselves
@@ -227,6 +232,7 @@ export interface ChatMessageCreate {
   };
   status?: 'sending' | 'sent' | 'delivered' | 'read';
   updatedAt?: ServerFieldValue;
+  voiceDuration?: number; // Duration in seconds for voice messages
 }
 export type RSVPStatusType = 'going' | 'maybe' | 'not-going' | 'pending';
 

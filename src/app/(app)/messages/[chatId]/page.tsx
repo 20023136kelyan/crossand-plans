@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { 
   Send, ChevronLeft, Loader2, UserCircle, Paperclip, XCircle as XIcon, EyeOff, MoreVertical, Phone, Video,
-  ShieldCheck, CheckCircle as CheckCircleIcon, MessageSquare, CheckCheck, Check, Image as ImageIcon
+  ShieldCheck, CheckCircle as CheckCircleIcon, MessageSquare, CheckCheck, Check, Image as ImageIcon, Mic, StickyNote
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -29,6 +29,8 @@ import { doc, onSnapshot, collection, query, orderBy, serverTimestamp, setDoc, g
 import { getDb } from '@/services/clientServices';
 import { MediaMessage } from '@/components/messages/MediaMessage';
 import { GifPicker } from '@/components/messages/GifPicker';
+import { VoiceRecorder } from '@/components/messages/VoiceRecorder';
+import { AudioPlayer } from '@/components/messages/AudioPlayer';
 
 const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, isVerified: boolean }) => {
   if (role === 'admin') {
@@ -90,6 +92,9 @@ export default function ChatPage() {
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [gifUrl, setGifUrl] = useState<string | null>(null);
   const gifPickerRef = useRef<HTMLDivElement>(null);
+
+  const [isVoiceRecording, setIsVoiceRecording] = useState(false);
+  const [voiceRecordingBlob, setVoiceRecordingBlob] = useState<Blob | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -362,17 +367,46 @@ export default function ChatPage() {
           toast({ title: 'Error loading chat', description: error.message || 'Could not load chat.', variant: 'destructive' });
         });
         
-        // Real-time listener for messages
+        // Real-time listener for messages with optimized updates
         const messagesQuery = query(collection(getDb(), 'chats', chatId, 'messages'), orderBy('timestamp', 'asc'));
-        const unsubMessages = onSnapshot(messagesQuery, (snapshot) => {
-          const msgs: ChatMessage[] = [];
-          snapshot.forEach((doc) => {
-            msgs.push({ id: doc.id, ...doc.data() } as ChatMessage);
-          });
-          setMessages(msgs);
-        }, (error) => {
-          setMessages([]);
-          toast({ title: 'Error loading messages', description: error.message || 'Could not load messages.', variant: 'destructive' });
+        const unsubMessages = onSnapshot(messagesQuery, {
+          next: (snapshot) => {
+            setMessages(prevMessages => {
+              // Create a map of existing messages for quick lookup
+              const existingMessages = new Map(prevMessages.map(msg => [msg.id, msg]));
+              let hasChanges = false;
+              
+              // Check for any new or updated messages
+              snapshot.docChanges().forEach(change => {
+                const msg = { id: change.doc.id, ...change.doc.data() } as ChatMessage;
+                
+                if (change.type === 'added' || change.type === 'modified') {
+                  const existingMsg = existingMessages.get(msg.id);
+                  // Only update if message is new or has changed
+                  if (!existingMsg || JSON.stringify(existingMsg) !== JSON.stringify(msg)) {
+                    existingMessages.set(msg.id, msg);
+                    hasChanges = true;
+                  }
+                } else if (change.type === 'removed') {
+                  if (existingMessages.has(msg.id)) {
+                    existingMessages.delete(msg.id);
+                    hasChanges = true;
+                  }
+                }
+              });
+              
+              // Only update state if there are actual changes
+              return hasChanges ? Array.from(existingMessages.values()) : prevMessages;
+            });
+          },
+          error: (error) => {
+            console.error('Error in messages listener:', error);
+            toast({ 
+              title: 'Error loading messages', 
+              description: error.message || 'Could not load messages.', 
+              variant: 'destructive' 
+            });
+          }
         });
         
         return () => {
@@ -390,9 +424,9 @@ export default function ChatPage() {
   }, [chatId, user?.uid, authLoading, router, toast]);
 
 
-  // Effect for subscribing to messages
+  // Effect for subscribing to messages with optimized updates
   useEffect(() => {
-    if (!chatId || !user?.uid || !chatDetails /* Ensure chatDetails is loaded first */) return () => {}; 
+    if (!chatId || !user?.uid || !chatDetails) return () => {}; 
     
     // TODO: Replace with appropriate action calls or server functions
     // const unsubscribe = getMessagesForChat(chatId, (messages) => {
@@ -442,42 +476,35 @@ export default function ChatPage() {
 
     if (!file) return;
 
-    // Check file size (max 5MB)
-    const maxSize = 5 * 1024 * 1024; // 5MB
-    if (file.size > maxSize) {
-      toast({
-        title: 'File too large',
-        description: 'Maximum file size is 5MB. Please choose a smaller image.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    // Validate file type
-    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    // Check file type and set appropriate limits
     const fileType = file.type.toLowerCase();
     const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
-    const isGif = fileType === 'image/gif' || fileExtension === 'gif';
-    const isValidType = validTypes.includes(fileType) || 
-                       ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension);
     
-    // Validate file size (5MB max for images, 10MB for GIFs)
+    // Define valid file types and their max sizes
+    const validImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    const validAudioTypes = ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/mp4', 'audio/aac'];
+    const validImageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+    const validAudioExtensions = ['mp3', 'wav', 'ogg', 'webm', 'm4a', 'aac'];
+    
+    const isImage = validImageTypes.includes(fileType) || validImageExtensions.includes(fileExtension);
+    const isAudio = validAudioTypes.includes(fileType) || validAudioExtensions.includes(fileExtension);
+    const isGif = fileType === 'image/gif' || fileExtension === 'gif';
+    
+    // Set max sizes (10MB for audio, 10MB for GIFs, 5MB for other images)
+    const maxSizeForAudio = 10 * 1024 * 1024; // 10MB for audio
     const maxSizeForGif = 10 * 1024 * 1024; // 10MB for GIFs
-    const isValidSize = isGif ? file.size <= maxSizeForGif : file.size <= maxSize;
-
-    if (!isValidType) {
+    const maxSizeForImage = 5 * 1024 * 1024; // 5MB for other images
+    
+    let maxSize = maxSizeForImage;
+    if (isAudio) maxSize = maxSizeForAudio;
+    else if (isGif) maxSize = maxSizeForGif;
+    
+    // Use the centralized file validator
+    const validation = FileValidators.chatMessage(file, isAudio);
+    if (!validation.valid) {
       toast({
-        title: 'Unsupported file type',
-        description: 'Please upload an image file (JPEG, PNG, GIF, or WebP).',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (!isValidSize) {
-      toast({
-        title: 'File too large',
-        description: `Maximum file size is ${isGif ? '10MB' : '5MB'}. Please choose a smaller image.`,
+        title: 'Invalid file',
+        description: validation.error || 'This file cannot be sent. Please choose a different file.',
         variant: 'destructive',
       });
       return;
@@ -513,15 +540,76 @@ export default function ChatPage() {
   };
 
   const handleGifSelect = (gifUrl: string) => {
+    console.log('[handleGifSelect] GIF selected, URL:', gifUrl);
     setGifUrl(gifUrl);
     // Auto-send the GIF when selected
+    console.log('[handleGifSelect] Calling handleSendMessage with GIF URL');
     handleSendMessage(undefined, gifUrl);
   };
 
+  // Handle voice recording completion - just show the preview
+  const handleVoiceRecordingComplete = (audioBlob: Blob) => {
+    setVoiceRecordingBlob(audioBlob);
+    setIsVoiceRecording(false);
+  };
+
+  // Handle sending the recorded voice message
+  const handleSendVoiceMessage = async () => {
+    if (!voiceRecordingBlob) return;
+    
+    try {
+      const formData = new FormData();
+      formData.append('audio', voiceRecordingBlob, 'voice-message.webm');
+      formData.append('isVoice', 'true');
+      
+      // Extract duration from blob if available, fallback to 1 second
+      let duration = 1;
+      if (typeof (voiceRecordingBlob as any).duration === 'number' && isFinite((voiceRecordingBlob as any).duration)) {
+        duration = Math.max(1, Math.round((voiceRecordingBlob as any).duration));
+      }
+      formData.append('voiceDuration', duration.toString());
+      
+      const idToken = await user?.getIdToken(true);
+      if (!idToken) {
+        throw new Error('Authentication token not available');
+      }
+      
+      const result = await sendMessageAction(chatId, formData, idToken);
+      if (!result.success) {
+        toast({
+          title: 'Error',
+          description: result.error || 'Failed to send voice message',
+          variant: 'destructive',
+        });
+      } else {
+        setVoiceRecordingBlob(null);
+      }
+    } catch (error) {
+      console.error('Error sending voice message:', error);
+      toast({
+        title: 'Error',
+        description: 'An error occurred while sending the voice message',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Cancel voice recording
+  const handleCancelVoiceRecording = () => {
+    setVoiceRecordingBlob(null);
+    setIsVoiceRecording(false);
+  };
+
+  // Handle sending messages with optimistic updates
   const handleSendMessage = async (e?: React.FormEvent, gifUrlToSend?: string) => {
+    console.log('[handleSendMessage] Called with:', { hasEvent: !!e, gifUrlToSend });
     if (e) e.preventDefault();
     const gifToSend = gifUrlToSend || gifUrl;
-    if ((!newMessage.trim() && !selectedFile && !gifToSend) || !user) return;
+    
+    if ((!newMessage.trim() && !selectedFile && !gifToSend) || !user) {
+      console.log('[handleSendMessage] Early return - no content to send or no user');
+      return;
+    }
 
     setSendingMessage(true);
     
@@ -533,20 +621,61 @@ export default function ChatPage() {
     
     // Add file if selected
     if (gifToSend) {
+      console.log('[handleSendMessage] Preparing to send GIF:', gifToSend);
       // If sending a GIF, we send it as a special media URL
       formData.append('mediaUrl', gifToSend);
       formData.append('isGif', 'true');
+      formData.append('mediaType', 'image/gif'); // Set proper MIME type for GIF
+      
+      // Log form data for debugging
+      console.log('[handleSendMessage] FormData entries:');
+      for (const [key, value] of formData.entries()) {
+        console.log(`  ${key}:`, value);
+      }
+      
       setGifUrl(null); // Clear the GIF URL after sending
+      console.log('[handleSendMessage] GIF URL cleared from state');
     } else if (selectedFile) {
-      formData.append('image', selectedFile, selectedFile.name);
+      const fileType = selectedFile.type.toLowerCase();
+      const isAudio = fileType.startsWith('audio/') || 
+                     ['mp3', 'wav', 'ogg', 'webm', 'm4a', 'aac'].includes(
+                       selectedFile.name.split('.').pop()?.toLowerCase() || ''
+                     );
+      
+      if (isAudio) {
+        formData.append('audio', selectedFile, selectedFile.name);
+        formData.append('mediaType', 'audio');
+      } else {
+        formData.append('image', selectedFile, selectedFile.name);
+        formData.append('mediaType', 'image');
+      }
     }
 
     // Store current state in case of failure
     const tempMessageText = newMessage.trim();
     const tempSelectedFile = selectedFile;
     
+    // Create temporary message ID for optimistic update
+    const tempMessageId = `temp-${Date.now()}`;
+    const tempMessage: ChatMessage = {
+      id: tempMessageId,
+      senderId: user.uid,
+      text: newMessage.trim(),
+      timestamp: new Date().toISOString(),
+      mediaUrl: gifToSend || undefined,
+      mediaType: gifToSend ? 'gif' : undefined,
+      status: 'sending'
+    };
+    
+    // Optimistically add the message to the UI
+    setMessages(prev => [...prev, tempMessage]);
+    
     // Reset form
     setNewMessage('');
+    setGifUrl(null);
+    setSelectedFile(null);
+    setFilePreviewUrl(null);
+    
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.focus();
@@ -588,11 +717,15 @@ export default function ChatPage() {
         throw new Error(result.error || 'Failed to send message');
       }
       
-      // Clear the selected file after successful send
-      setSelectedFile(null);
+      // The real message will be added via the Firestore listener
+      // Remove the temporary message if it exists
+      setMessages(prev => prev.filter(msg => msg.id !== tempMessageId));
       
     } catch (error: any) {
       console.error('Error sending message:', error);
+      
+      // Remove the temporary message on error
+      setMessages(prev => prev.filter(msg => msg.id !== tempMessageId));
       
       // Restore form state on error
       setNewMessage(tempMessageText);
@@ -794,15 +927,21 @@ export default function ChatPage() {
               );
               
               const bubbleStyles = cn(
-                "shadow-md max-w-[70%] sm:max-w-[65%] break-words group-hover:bg-opacity-80 cursor-pointer",
+                "shadow-md max-w-[70%] sm:max-w-[65%] break-words group-hover:bg-opacity-80",
                 "transition-all duration-200",
-                hasMedia && 'bg-transparent shadow-none',
+                hasMedia && msg.mediaType !== 'voice' && 'bg-transparent shadow-none',
                 isTextOnly && isSender && 'bg-[#23232a] text-primary-foreground group-hover:opacity-90',
                 isTextOnly && !isSender && 'bg-[#3b82f6] text-white group-hover:bg-[#2563eb]',
                 hasBoth && 'bg-transparent',
                 isSender ? 'rounded-2xl rounded-br-md' : 'rounded-2xl rounded-bl-md',
-                isContinuingBlock && (isSender ? 'rounded-tr-md rounded-br-lg' : 'rounded-tl-md rounded-bl-lg')
+                isContinuingBlock && (isSender ? 'rounded-tr-md rounded-br-lg' : 'rounded-tl-md rounded-bl-lg'),
+                msg.mediaType === 'voice' && '!bg-transparent !shadow-none !p-0'
               );
+              
+              // Don't make voice messages clickable to open in new tab
+              const handleMediaClick = msg.mediaType === 'voice' 
+                ? undefined 
+                : () => window.open(msg.mediaUrl, '_blank');
 
               return (
                 <div 
@@ -832,12 +971,24 @@ export default function ChatPage() {
                             hasText && "border border-border/50"
                           )}>
                             <div className="w-full">
-                              <MediaMessage 
-                                src={msg.mediaUrl!}
-                                alt={msg.text || 'Chat media'}
-                                isGif={msg.mediaUrl?.toLowerCase().endsWith('.gif')}
-                                onClick={() => window.open(msg.mediaUrl, '_blank')}
-                              />
+                              {msg.mediaType === 'voice' ? (
+                                <div className="w-full max-w-[350px] bg-muted/30 rounded-xl p-3">
+                                  <MediaMessage 
+                                    src={msg.mediaUrl!}
+                                    alt="Voice message"
+                                    isVoice={true}
+                                    voiceDuration={msg.voiceDuration}
+                                    className="w-full"
+                                  />
+                                </div>
+                              ) : (
+                                <MediaMessage 
+                                  src={msg.mediaUrl!}
+                                  alt={msg.text || 'Chat media'}
+                                  isGif={msg.mediaUrl?.toLowerCase().endsWith('.gif')}
+                                  onClick={() => window.open(msg.mediaUrl, '_blank')}
+                                />
+                              )}
                             </div>
                           </div>
                         )}
@@ -882,14 +1033,6 @@ export default function ChatPage() {
                         </div>
                       </div>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align={isSender ? "end" : "start"} className="bg-popover text-popover-foreground">
-                      <DropdownMenuItem 
-                        onClick={() => handleHideMessage(msg.id)} 
-                        className="text-xs text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
-                      >
-                        <EyeOff className="mr-2 h-3.5 w-3.5" /> Hide for Me
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
               );
@@ -901,6 +1044,41 @@ export default function ChatPage() {
 
       {/* Sticky Input Area */}
       <footer className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-3">
+        {isVoiceRecording ? (
+          <div className="mb-3 p-3 bg-muted/50 rounded-lg">
+            <VoiceRecorder 
+              onRecordingComplete={handleVoiceRecordingComplete}
+              onCancel={handleCancelVoiceRecording}
+            />
+          </div>
+        ) : voiceRecordingBlob ? (
+          <div className="mb-3 p-3 bg-muted/50 rounded-lg flex items-center justify-between">
+            <AudioPlayer 
+              src={URL.createObjectURL(voiceRecordingBlob)} 
+              className="flex-1" 
+              duration={(voiceRecordingBlob as any).duration || 1}
+            />
+            <div className="flex space-x-2 ml-2">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={handleCancelVoiceRecording}
+                className="text-destructive hover:bg-destructive/10"
+              >
+                <XIcon className="h-4 w-4" />
+              </Button>
+              <Button 
+                variant="default" 
+                size="sm" 
+                onClick={handleSendVoiceMessage}
+                disabled={!voiceRecordingBlob}
+              >
+                <Send className="h-4 w-4 mr-1.5" /> Send
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
         {filePreviewUrl && (
           <div className="relative mb-3 max-w-xs">
             <div className="relative">
@@ -925,16 +1103,19 @@ export default function ChatPage() {
         
         <div className="flex items-end gap-2 relative">
             {/* GIF Picker */}
-            <div 
-              ref={gifPickerRef}
-              className={`absolute bottom-full right-0 mb-2 z-50 transition-all duration-200 ${showGifPicker ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'}`}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <GifPicker 
-                onSelect={handleGifSelect} 
-                onClose={() => setShowGifPicker(false)}
-              />
-            </div>
+            {showGifPicker && (
+              <div 
+                ref={gifPickerRef}
+                className="absolute bottom-full right-0 mb-2 z-50"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <GifPicker 
+                  onSelect={handleGifSelect} 
+                  onClose={() => setShowGifPicker(false)}
+                  isOpen={showGifPicker}
+                />
+              </div>
+            )}
           <input
             type="file"
             ref={fileInputRef}
@@ -942,16 +1123,28 @@ export default function ChatPage() {
             accept="image/*"
             className="hidden"
           />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={sendingMessage}
-            className="shrink-0 h-10 w-10"
-          >
-            <Paperclip className="h-5 w-5" />
-          </Button>
+          <div className="flex items-center space-x-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={sendingMessage}
+              className="shrink-0 h-10 w-10"
+            >
+              <Paperclip className="h-5 w-5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsVoiceRecording(true)}
+              disabled={sendingMessage}
+              className={`shrink-0 h-10 w-10 ${isVoiceRecording ? 'bg-destructive/10 text-destructive' : ''}`}
+            >
+              <Mic className="h-5 w-5" />
+            </Button>
+          </div>
           <Button
             type="button"
             variant="ghost"
@@ -965,8 +1158,7 @@ export default function ChatPage() {
             aria-expanded={showGifPicker}
             aria-haspopup="true"
           >
-            <ImageIcon className="h-5 w-5" />
-            <span className="absolute -top-1 -right-1 bg-primary text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center">GIF</span>
+            <StickyNote className="h-5 w-5" />
           </Button>
           <div className="flex-1 relative">
             <Textarea

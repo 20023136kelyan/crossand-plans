@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Loader2, ArrowLeft, Users, Bell, Clock, Check, X } from 'lucide-react';
+import { Loader2, ArrowLeft, Users, Bell, Clock, Check, X, Mic, Image as ImageIcon } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 
 import { formatDistanceToNow, format, isToday, isYesterday, isWithinInterval, subDays } from 'date-fns';
@@ -531,7 +531,21 @@ export default function NotificationsPage() {
                   </>
                 )}
               </div>
-              <span className="text-xs text-muted-foreground truncate">{notification.messagePreview || notification.description}</span>
+              <span className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                {notification.mediaType === 'voice' ? (
+                  <>
+                    <Mic className="h-3 w-3 flex-shrink-0" />
+                    <span>Voice message</span>
+                  </>
+                ) : notification.mediaType === 'image' || notification.mediaType === 'gif' ? (
+                  <>
+                    <ImageIcon className="h-3 w-3 flex-shrink-0" />
+                    <span>Photo</span>
+                  </>
+                ) : (
+                  notification.messagePreview || notification.description
+                )}
+              </span>
             </div>
           </div>
           <div className="flex flex-col items-end gap-1">

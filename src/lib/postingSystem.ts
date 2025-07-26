@@ -11,6 +11,7 @@ export interface PostingOptions {
   userId: string;
   idToken: string;
   additionalData?: Record<string, any>;
+  isAudio?: boolean; // Flag to indicate if the file is an audio file
 }
 
 export interface PostingResult {
@@ -61,9 +62,13 @@ export async function uploadAndProcessImage(
       options.type === 'chat_message' ? 'chat_message' :
       'post_highlight';
     
+    // For chat messages, allow both image and audio formats
+    const allowedFormats = (options.isAudio || options.type !== 'chat_message') ? 'all' : 'image';
+    
     const validation = validateFile(file, { 
       type: validationType, 
-      allowedFormats: 'image' 
+      allowedFormats,
+      customFormats: options.isAudio ? ['mp3', 'wav', 'ogg', 'webm', 'm4a', 'aac'] : undefined
     });
     
     if (!validation.valid) {
@@ -71,17 +76,43 @@ export async function uploadAndProcessImage(
       return { success: false, error: validation.error || 'Invalid file.' };
     }
 
-    // Process image
-    let processedImage;
-    try {
-      // Map posting types to image processing types
-      const imageProcessingType = options.type === 'chat_message' ? 'post' : options.type;
-      const processingOptions = getOptimalProcessingOptions(imageProcessingType as 'avatar' | 'post' | 'highlight');
-      processedImage = await processImage(file, processingOptions);
+    // Process file (only process images, skip processing for audio)
+    const arrayBuffer = await file.arrayBuffer();
+    const fileBuffer = Buffer.from(arrayBuffer);
+    
+    // Define the processed file type
+    interface ProcessedFile {
+      buffer: Buffer;
+      contentType: string;
+      size: number;
+      width: number;
+      height: number;
+    }
+    
+    let processedFile: ProcessedFile = {
+      buffer: fileBuffer,
+      contentType: file.type,
+      size: file.size,
+      width: 0,
+      height: 0
+    };
 
-    } catch (error: any) {
-      console.error(`[uploadAndProcessImage] Image processing error:`, error);
-      return { success: false, error: `Failed to process image: ${error.message || 'Unknown processing error'}` };
+    // Only process if it's an image and not an audio file
+    if (!options.isAudio) {
+      try {
+        // Map posting types to image processing types
+        const imageProcessingType = options.type === 'chat_message' ? 'post' : options.type;
+        const processingOptions = getOptimalProcessingOptions(imageProcessingType as 'avatar' | 'post' | 'highlight');
+        const processedImage = await processImage(file, processingOptions);
+        
+        processedFile = {
+          ...processedImage,
+          contentType: processedImage.contentType || file.type
+        };
+      } catch (error: any) {
+        console.error(`[uploadAndProcessImage] Image processing error:`, error);
+        return { success: false, error: `Failed to process file: ${error.message || 'Unknown processing error'}` };
+      }
     }
 
     // Upload to Firebase Storage
@@ -99,47 +130,74 @@ export async function uploadAndProcessImage(
         return { success: false, error: 'Storage service unavailable.' };
       }
 
-      // Generate file path based on type
+      // Generate a unique ID for the file
       const timestamp = Date.now();
       const uniqueId = crypto.randomUUID();
+      
+      // Determine the storage path and metadata based on the upload type
       let filePath: string;
+      let fileMetadata: any;
       
-      switch (options.type) {
-        case 'avatar':
-          filePath = `avatars/${options.userId}/${timestamp}_${uniqueId}.jpg`;
-          break;
-        case 'chat_message':
-          filePath = `chat-images/${options.userId}/${timestamp}_${uniqueId}.jpg`;
-          break;
-        case 'post_highlight':
-          const planId = options.additionalData?.planId || 'unknown';
-          filePath = `plan-highlights/${planId}/${timestamp}_${uniqueId}.jpg`;
-          break;
-        default:
-          filePath = `uploads/${options.userId}/${timestamp}_${uniqueId}.jpg`;
-      }
-
-      const fileRef = bucket.file(filePath);
-      
-      // Upload the processed image
-      await fileRef.save(processedImage.buffer, {
-        metadata: {
-          contentType: processedImage.contentType,
+      // For audio files, use audio-specific path and metadata
+      if (options.isAudio) {
+        const fileExt = file.name.split('.').pop()?.toLowerCase() || 'webm';
+        filePath = `messages/audio/${options.userId}/${timestamp}_${uniqueId}.${fileExt}`;
+        fileMetadata = {
+          contentType: file.type,
+          metadata: {
+            firebaseStorageDownloadTokens: crypto.randomUUID(),
+            uploadedBy: options.userId,
+            isAudio: 'true',
+            originalName: file.name,
+            uploadType: options.type,
+            uploadTimestamp: timestamp.toString(),
+            ...options.additionalData
+          },
+          cacheControl: 'no-cache, max-age=0' // Don't cache audio files
+        };
+      } else {
+        // For images, use the existing logic
+        switch (options.type) {
+          case 'avatar':
+            filePath = `avatars/${options.userId}.jpg`;
+            break;
+          case 'chat_message':
+            filePath = `chat-images/${options.userId}/${timestamp}_${uniqueId}.jpg`;
+            break;
+          case 'post_highlight':
+            const planId = options.additionalData?.planId || 'unknown';
+            filePath = `plans/${planId}/highlights/${timestamp}_${uniqueId}.jpg`;
+            break;
+          default:
+            filePath = `uploads/${options.userId}/${timestamp}_${uniqueId}.jpg`;
+        }
+        
+        fileMetadata = {
+          contentType: processedFile.contentType || 'image/jpeg',
           metadata: {
             uploadedBy: options.userId,
             uploadType: options.type,
-            originalSize: file.size.toString(),
-            processedSize: processedImage.size.toString(),
+            processedSize: processedFile.size.toString(),
             uploadTimestamp: timestamp.toString(),
             ...options.additionalData
-          }
-        }
+          },
+          cacheControl: 'public, max-age=31536000' // 1 year cache for images
+        };
+      }
+      
+      const fileRef = bucket.file(filePath);
+
+      // Upload the file
+      await fileRef.save(processedFile.buffer, {
+        ...fileMetadata,
+        resumable: false,
+        gzip: !options.isAudio, // Don't gzip audio files as they're already compressed
       });
 
-      // Make file publicly accessible
+      // Make the file publicly accessible
       await fileRef.makePublic();
-      
-      // Get public URL
+
+      // Get the public URL
       const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
       
 
@@ -149,15 +207,16 @@ export async function uploadAndProcessImage(
         data: {
           url: publicUrl,
           processedImage: {
-            size: processedImage.size,
-            width: processedImage.width,
-            height: processedImage.height
+            size: processedFile.size,
+            width: processedFile.width,
+            height: processedFile.height
           },
           metadata: {
-            filePath,
-            originalSize: file.size,
-            processedSize: processedImage.size,
-            uploadTimestamp: timestamp
+            ...fileMetadata.metadata,
+            size: processedFile.size,
+            width: processedFile.width,
+            height: processedFile.height,
+            isAudio: options.isAudio ? 'true' : 'false'
           }
         }
       };
@@ -181,11 +240,13 @@ export async function uploadAvatar(file: File, userId: string, idToken: string):
 }
 
 export async function uploadChatMessage(file: File, userId: string, idToken: string, chatId?: string): Promise<PostingResult> {
+  const isAudio = file.type.startsWith('audio/');
   return uploadAndProcessImage(file, { 
     type: 'chat_message', 
     userId, 
     idToken, 
-    additionalData: { chatId } 
+    additionalData: { chatId },
+    isAudio
   });
 }
 

@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import NextImage from 'next/image';
 import { cn } from '@/lib/utils';
-import { Play, Pause, Loader2 } from 'lucide-react';
+import { Play, Pause, Loader2, Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { AudioPlayer } from './AudioPlayer';
 
 interface MediaMessageProps {
   src: string;
@@ -13,6 +14,8 @@ interface MediaMessageProps {
   height?: number;
   className?: string;
   isGif?: boolean;
+  isVoice?: boolean;
+  voiceDuration?: number;
   onClick?: () => void;
 }
 
@@ -23,6 +26,8 @@ export function MediaMessage({
   height = 350, 
   className = '',
   isGif = false,
+  isVoice = false,
+  voiceDuration,
   onClick
 }: MediaMessageProps) {
   const [isPlaying, setIsPlaying] = useState(!isGif); // Autoplay non-GIFs by default
@@ -31,6 +36,7 @@ export function MediaMessage({
   const mediaRef = useRef<HTMLDivElement>(null);
   const isGifFile = isGif || src.toLowerCase().endsWith('.gif');
   const isVideo = src.toLowerCase().match(/\.(mp4|webm|ogg)$/);
+  const isAudio = isVoice || src.toLowerCase().match(/\.(mp3|wav|ogg|webm)$/);
   
   // Toggle play/pause for GIFs
   const togglePlayPause = (e: React.MouseEvent) => {
@@ -64,6 +70,18 @@ export function MediaMessage({
 
   // Render appropriate media element
   const renderMedia = () => {
+    if (isAudio) {
+      return (
+        <div className="w-full max-w-[280px]">
+          <AudioPlayer 
+            src={src} 
+            className="w-full" 
+            duration={voiceDuration ? Number(voiceDuration) : undefined}
+          />
+        </div>
+      );
+    }
+    
     if (isVideo) {
       return (
         <video
@@ -79,50 +97,71 @@ export function MediaMessage({
     }
 
     return (
-      <NextImage
-        src={src}
-        alt={alt}
-        width={width}
-        height={height}
-        className={cn(
-          'object-contain max-h-[350px] w-auto max-w-full rounded-md cursor-pointer transition-opacity',
-          !isPlaying && isGifFile ? 'opacity-80' : 'opacity-100',
-          className
-        )}
-        unoptimized={isGifFile || !src.startsWith('http') || 
-                   src.includes('placehold.co') || 
-                   src.includes('firebasestorage.googleapis.com')}
-        onLoad={() => setIsLoading(false)}
-        priority={false}
-        onClick={togglePlayPause}
-        style={{
-          contentVisibility: 'auto',
-          objectFit: 'contain',
-          ...(isGifFile && !isPlaying ? { filter: 'brightness(0.8)' } : {})
-        }}
-      />
+      <div className="relative w-full h-full overflow-hidden rounded-md">
+        <NextImage
+          src={src}
+          alt={alt}
+          width={width}
+          height={height}
+          className={cn(
+            'object-cover w-full h-full cursor-pointer transition-opacity',
+            !isPlaying && isGifFile ? 'opacity-80' : 'opacity-100',
+            className
+          )}
+          unoptimized={isGifFile || !src.startsWith('http') || 
+                     src.includes('placehold.co') || 
+                     src.includes('firebasestorage.googleapis.com')}
+          onLoad={() => setIsLoading(false)}
+          priority={false}
+          onClick={togglePlayPause}
+          style={{
+            contentVisibility: 'auto',
+            ...(isGifFile && !isPlaying ? { filter: 'brightness(0.8)' } : {})
+          }}
+        />
+      </div>
     );
   };
 
   return (
     <div 
       ref={mediaRef}
-      className="relative w-full h-auto flex items-center justify-center"
-      onMouseEnter={() => setShowControls(true)}
-      onMouseLeave={() => setShowControls(false)}
-      onFocus={() => setShowControls(true)}
-      onBlur={() => setShowControls(false)}
-      tabIndex={0}
-      onKeyDown={handleKeyDown}
+      className={cn(
+        'relative inline-block overflow-hidden',
+        isGifFile ? 'cursor-pointer' : '',
+        isAudio ? 'w-full' : 'rounded-md',
+        className
+      )}
+      onClick={isAudio ? undefined : togglePlayPause}
+      onMouseEnter={() => !isGifFile && !isAudio && setShowControls(true)}
+      onMouseLeave={() => !isGifFile && !isAudio && setShowControls(false)}
+      onKeyDown={isAudio ? undefined : handleKeyDown}
+      role={isAudio ? 'none' : 'button'}
+      tabIndex={isAudio ? undefined : 0}
+      aria-label={isAudio ? 'Voice message' : isGifFile ? 'Play/pause animation' : 'View media'}
     >
-      {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-muted/20 rounded-md">
+      {/* Loading overlay */}
+      {isLoading && !isAudio && (
+        <div className="absolute inset-0 flex items-center justify-center bg-muted/50 rounded-md">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       )}
-      
-      {renderMedia()}
-      
+
+      {/* Media content */}
+      <div className={cn(
+        'transition-opacity duration-200',
+        isLoading && !isAudio ? 'opacity-0' : 'opacity-100',
+        isAudio ? 'w-full' : ''
+      )}>
+        {isAudio && !src ? (
+          <div className="flex items-center justify-center p-4 bg-muted/50 rounded-md">
+            <Mic className="h-6 w-6 text-muted-foreground" />
+          </div>
+        ) : (
+          renderMedia()
+        )}
+      </div>
+
       {/* Play/Pause Controls for GIFs */}
       {isGifFile && showControls && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-md transition-opacity">

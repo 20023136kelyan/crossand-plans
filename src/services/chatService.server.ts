@@ -145,7 +145,8 @@ export const sendMessageAdmin = async (
   senderId: string,
   text?: string | null,
   mediaUrl?: string | null,
-  mediaContentType?: string | null 
+  mediaContentType?: string | null,
+  voiceDuration?: number // new argument
 ): Promise<void> => {
    if ((!text || !text.trim()) && !mediaUrl) {
     console.error("[sendMessageAdmin] Message text or mediaUrl must be provided.");
@@ -180,9 +181,28 @@ export const sendMessageAdmin = async (
       messagePayload.mediaUrl = mediaUrl;
       if (mediaContentType && typeof mediaContentType === 'string') {
         messagePayload.mediaContentType = mediaContentType;
+        // Determine mediaType based on content type
+        if (mediaContentType.startsWith('audio/')) {
+          messagePayload.mediaType = 'voice';
+          console.log('Server - voiceDuration received:', voiceDuration, 'type:', typeof voiceDuration);
+          if (voiceDuration && !isNaN(voiceDuration)) {
+            messagePayload.voiceDuration = voiceDuration;
+            console.log('Server - setting voiceDuration in payload:', voiceDuration);
+          } else {
+            console.log('Server - voiceDuration not set, invalid value:', voiceDuration);
+          }
+        } else if (mediaContentType === 'image/gif') {
+          messagePayload.mediaType = 'gif';
+        } else if (mediaContentType.startsWith('image/')) {
+          messagePayload.mediaType = 'image';
+        } else if (mediaContentType.startsWith('video/')) {
+          messagePayload.mediaType = 'video';
+        } else {
+          messagePayload.mediaType = 'file';
+        }
       }
     } else if (mediaUrl && typeof mediaUrl !== 'string') {
-         console.error(`[sendMessageAdmin] CRITICAL: mediaUrl was provided but is not a string. Type: ${typeof mediaUrl}. NOT including in payload.`);
+      console.error(`[sendMessageAdmin] CRITICAL: mediaUrl was provided but is not a string. Type: ${typeof mediaUrl}. NOT including in payload.`);
     }
     
     console.log('[sendMessageAdmin] Final messagePayload for Firestore:', JSON.stringify(messagePayload));

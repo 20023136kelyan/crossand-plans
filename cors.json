@@ -1,8 +1,26 @@
 [
   {
-    "origin": ["http://localhost:3000", "http://localhost:3001", "https://*.firebaseapp.com", "https://*.web.app"],
+    "origin": [
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "https://*.firebaseapp.com",
+      "https://*.web.app",
+      "https://*.crossand.ai",
+      "https://*.storage.googleapis.com"
+    ],
     "method": ["GET", "HEAD", "PUT", "POST", "DELETE", "OPTIONS"],
     "maxAgeSeconds": 3600,
-    "responseHeader": ["Content-Type", "Access-Control-Allow-Origin", "x-goog-resumable"]
+    "responseHeader": [
+      "Content-Type",
+      "Content-Range",
+      "Content-Length",
+      "Range",
+      "x-goog-resumable",
+      "Authorization",
+      "Content-Encoding",
+      "Content-Disposition",
+      "Cache-Control",
+      "X-Requested-With"
+    ]
   }
 ]
