@@ -3,14 +3,16 @@
 import { useState, useRef, useEffect } from 'react';
 import { Play, Pause, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 interface AudioPlayerProps {
   src: string | Blob;
   className?: string;
   duration?: number;
+  isSender?: boolean;
 }
 
-export function AudioPlayer({ src, className = '', duration: propDuration }: AudioPlayerProps) {
+export function AudioPlayer({ src, className = '', duration: propDuration, isSender = true }: AudioPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -171,7 +173,10 @@ export function AudioPlayer({ src, className = '', duration: propDuration }: Aud
             onClick={handleProgressClick}
           >
             <div 
-              className="h-full bg-primary transition-all duration-300 ease-out group-hover:bg-primary/90 rounded-full"
+              className={cn(
+                'h-full transition-all duration-300 ease-out group-hover:opacity-90 rounded-full',
+                isSender ? 'bg-[#23232a]' : 'bg-[#d97a1a]'
+              )}
               style={{ width: `${progress}%` }}
             />
             <div 
@@ -183,7 +188,10 @@ export function AudioPlayer({ src, className = '', duration: propDuration }: Aud
             />
           </div>
         </div>
-        <div className="bg-accent/80 rounded-full px-2.5 py-0.5">
+        <div className={cn(
+          'rounded-full px-2.5 py-0.5',
+          isSender ? 'bg-accent/80' : 'bg-[#d97a1a]/80'
+        )}>
           <div className="text-xs font-medium text-nowrap text-foreground/80">
             {isPlaying ? (
               <span>-{formatTime(duration - currentTime)}</span>

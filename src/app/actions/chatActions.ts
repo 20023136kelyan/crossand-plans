@@ -154,6 +154,7 @@ export async function sendMessageAction(
   const mediaUrl = formData.get('mediaUrl') as string | null;
   const isGif = formData.get('isGif') === 'true';
   const isVoice = formData.get('isVoice') === 'true';
+  const mediaType = formData.get('mediaType') as string | null; // Get explicit mediaType if provided
   const voiceDurationStr = formData.get('voiceDuration');
   const voiceDuration = voiceDurationStr ? parseInt(voiceDurationStr as string, 10) : undefined;
   console.log('Chat action - voiceDurationStr:', voiceDurationStr, 'voiceDuration:', voiceDuration);
@@ -163,7 +164,9 @@ export async function sendMessageAction(
   }
 
   let mediaUrlForService: string | null = mediaUrl || null;
-  let determinedContentType: string | null = isGif ? 'image/gif' : isVoice ? 'audio/webm' : null;
+  // Use explicitly provided mediaType, or determine from flags if not provided
+  let determinedContentType: string | null = mediaType || 
+    (isGif ? 'image/gif' : isVoice ? 'audio/webm' : null);
 
   // If we have a direct media URL (like a GIF), use that
   if (mediaUrl) {

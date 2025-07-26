@@ -234,29 +234,83 @@ export const sendMessageAdmin = async (
     const senderProfile = await getUserProfileAdmin(senderId);
     const senderName = senderProfile?.username || senderProfile?.firstName || senderProfile?.name || 'Someone';
     const senderAvatarUrl = senderProfile?.avatarUrl || undefined;
-    // Message preview
-    let messagePreview = text && text.trim() ? text.trim().slice(0, 50) : (mediaUrl ? '[Image]' : 'Message');
+    // Message preview with better media type handling
+    let messagePreview = text && text.trim() 
+      ? text.trim().slice(0, 50) 
+      : mediaUrl 
+        ? mediaContentType?.startsWith('audio/') 
+          ? '🎤 Voice message' 
+          : mediaContentType === 'image/gif' 
+            ? '🎬 GIF' 
+            : mediaContentType?.startsWith('image/') 
+              ? '🖼️ Image' 
+              : mediaContentType?.startsWith('video/') 
+                ? '🎥 Video' 
+                : mediaContentType?.startsWith('application/') || mediaContentType?.startsWith('text/') 
+                  ? '📄 File' 
+                  : '📎 Attachment'
+        : 'Message';
 
     // Create notification for each recipient
     await Promise.all(recipients.map(async (recipientId: string) => {
-      const notificationData: any = {
-        type: 'chat_message',
-        title: 'sent you a message',
-        description: messagePreview,
-        userName: senderName,
-        chatId,
-        senderId,
-        senderName,
-        messagePreview,
-        actionUrl: `/messages/${chatId}`,
-        isRead: false,
-      };
-      
-      if (senderAvatarUrl) {
-        notificationData.senderAvatarUrl = senderAvatarUrl;
+      try {
+        // Check if recipient is currently active in the chat (typing or recently active)
+        const typingStatusRef = FirebaseQueryBuilder.doc(COLLECTIONS.CHATS, chatId)
+          .collection('typing')
+          .doc('status');
+          
+        const typingStatusDoc = await typingStatusRef.get();
+        const typingStatus = typingStatusDoc.data() || {};
+        const recipientIsActive = typingStatus[recipientId] && 
+          typingStatus[recipientId].timestamp && 
+          (Date.now() - typingStatus[recipientId].timestamp.toDate().getTime() < 30000); // Active if typed in last 30 seconds
+        
+        // Only send notification if recipient is not active in the chat
+        if (!recipientIsActive) {
+          const notificationData: any = {
+            type: 'chat_message',
+            title: 'sent you a message',
+            description: messagePreview,
+            userName: senderName,
+            chatId,
+            senderId,
+            senderName,
+            messagePreview,
+            actionUrl: `/messages/${chatId}`,
+            isRead: false,
+          };
+          
+          if (senderAvatarUrl) {
+            notificationData.senderAvatarUrl = senderAvatarUrl;
+          }
+          
+          await createNotification(recipientId, notificationData);
+          console.log(`[sendMessageAdmin] Notification sent to ${recipientId} (inactive in chat)`);
+        } else {
+          console.log(`[sendMessageAdmin] Notification suppressed for ${recipientId} (active in chat)`);
+        }
+      } catch (error) {
+        console.error(`[sendMessageAdmin] Error checking recipient ${recipientId} active status:`, error);
+        // If there's an error checking status, send the notification to be safe
+        const notificationData: any = {
+          type: 'chat_message',
+          title: 'sent you a message',
+          description: messagePreview,
+          userName: senderName,
+          chatId,
+          senderId,
+          senderName,
+          messagePreview,
+          actionUrl: `/messages/${chatId}`,
+          isRead: false,
+        };
+        
+        if (senderAvatarUrl) {
+          notificationData.senderAvatarUrl = senderAvatarUrl;
+        }
+        
+        await createNotification(recipientId, notificationData);
       }
-      
-      await createNotification(recipientId, notificationData);
     }));
   } catch (error) {
     console.error(`[sendMessageAdmin] Error sending message to chat ${chatId}:`, error);

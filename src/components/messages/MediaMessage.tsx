@@ -15,6 +15,7 @@ interface MediaMessageProps {
   className?: string;
   isGif?: boolean;
   isVoice?: boolean;
+  isSender?: boolean;
   voiceDuration?: number;
   onClick?: () => void;
 }
@@ -27,6 +28,7 @@ export function MediaMessage({
   className = '',
   isGif = false,
   isVoice = false,
+  isSender = false,
   voiceDuration,
   onClick
 }: MediaMessageProps) {
@@ -75,8 +77,9 @@ export function MediaMessage({
         <div className="w-full max-w-[280px]">
           <AudioPlayer 
             src={src} 
-            className="w-full" 
             duration={voiceDuration ? Number(voiceDuration) : undefined}
+            className="w-full"
+            isSender={isSender}
           />
         </div>
       );
