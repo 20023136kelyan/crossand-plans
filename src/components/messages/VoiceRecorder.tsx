@@ -1,27 +1,40 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Button } from '@/components/ui/button';
 import { Mic, Square } from 'lucide-react';
 import { formatDuration, requestMicrophoneAccess, createMediaRecorder } from '@/lib/audioUtils';
+import { cn } from '@/lib/utils';
 
 interface VoiceRecorderProps {
   onRecordingComplete: (audioBlob: Blob) => void;
   onCancel: () => void;
   className?: string;
+  compact?: boolean;
 }
 
-export function VoiceRecorder({ onRecordingComplete, onCancel, className = '' }: VoiceRecorderProps) {
-  const [isRecording, setIsRecording] = useState(false);
+interface VoiceRecorderRef {
+  stopRecording: () => void;
+}
+
+export const VoiceRecorder = forwardRef<VoiceRecorderRef, VoiceRecorderProps>(({ onRecordingComplete, onCancel, className = '', compact = false }, ref) => {
+  const [isRecording, setIsRecording] = useState(true); // Start recording immediately
   const [recordingTime, setRecordingTime] = useState(0);
   const currentRecordingTime = useRef(0); // Ref to track current recording time
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const audioChunks = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout>();
+  const hasStartedRef = useRef(false); // Track if recording has been started
 
-  // Clean up on unmount
+  // Start recording when component mounts
   useEffect(() => {
+    if (!hasStartedRef.current) {
+      hasStartedRef.current = true;
+      startRecording();
+    }
+
+    // Clean up on unmount
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (mediaRecorder?.state !== 'inactive') {
@@ -144,7 +157,14 @@ export function VoiceRecorder({ onRecordingComplete, onCancel, className = '' }:
     }
   };
 
+  // Expose stopRecording via ref
+  useImperativeHandle(ref, () => ({
+    stopRecording: handleStopRecording
+  }));
 
+  const handleStopRecording = () => {
+    stopRecording();
+  };
 
   const handleCancel = () => {
     if (isRecording) {
@@ -156,36 +176,30 @@ export function VoiceRecorder({ onRecordingComplete, onCancel, className = '' }:
   };
 
   return (
-    <div className={`flex items-center space-x-2 ${className}`}>
-      {isRecording ? (
-        <div className="flex items-center w-full">
-          <Button
-            variant="destructive"
-            size="icon"
-            onClick={stopRecording}
-            aria-label="Stop recording"
-            className="flex-shrink-0"
-          >
-            <Square className="h-4 w-4" />
-          </Button>
-          <div className="flex-1 flex items-center justify-center">
-            <div className="flex items-center space-x-2">
-              <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-sm font-mono">{formatDuration(recordingTime)}</span>
-            </div>
+    <div className={cn('flex items-center justify-between w-full', className)}>
+      <div className="flex items-center space-x-3 flex-1">
+        <div className="relative">
+          <div className="h-6 w-6 rounded-full bg-red-500">
           </div>
+          <div className="absolute inset-0 rounded-full bg-red-500 opacity-75 animate-ping"></div>
         </div>
-      ) : (
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={startRecording}
-          className="bg-red-50 hover:bg-red-100 text-red-600"
-          aria-label="Start voice recording"
-        >
-          <Mic className="h-4 w-4" />
-        </Button>
-      )}
+        <div className="text-sm font-medium">
+          {formatDuration(recordingTime)}
+        </div>
+      </div>
+      
+      <Button 
+        variant="ghost" 
+        size={compact ? 'icon' : 'sm'} 
+        onClick={onCancel}
+        className={cn(
+          'text-muted-foreground hover:bg-muted',
+          compact ? 'h-8 w-8' : ''
+        )}
+        aria-label="Cancel recording"
+      >
+        {compact ? '×' : 'Cancel'}
+      </Button>
     </div>
   );
-}
+});

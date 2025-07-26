@@ -1,13 +1,14 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import Image from 'next/image';
 import { Button } from "@/components/ui/button";
 import { LinearBlur } from "progressive-blur";
 import { Textarea } from '@/components/ui/textarea';
 import { 
   Send, ChevronLeft, Loader2, UserCircle, Paperclip, XCircle as XIcon, EyeOff, MoreVertical, Phone, Video,
-  ShieldCheck, CheckCircle as CheckCircleIcon, MessageSquare, CheckCheck, Check, Image as ImageIcon, Mic, StickyNote
+  ShieldCheck, CheckCircle as CheckCircleIcon, MessageSquare, CheckCheck, Check, Image as ImageIcon, Mic, StickyNote, Trash2
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -15,7 +16,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { sendMessageAction, markChatAsReadAction, hideMessageForUserAction } from '@/app/actions/chatActions';
 import type { Chat, ChatMessage, UserProfile, UserRoleType, ChatParticipantInfo } from '@/types/user';
 import { useAuth } from '@/context/AuthContext';
@@ -96,6 +96,7 @@ export default function ChatPage() {
 
   const [isVoiceRecording, setIsVoiceRecording] = useState(false);
   const [voiceRecordingBlob, setVoiceRecordingBlob] = useState<Blob | null>(null);
+  const voiceRecorderRef = useRef<{ stopRecording: () => void } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1079,40 +1080,6 @@ export default function ChatPage() {
             }}
           />
           <div className="max-w-3xl mx-auto p-4">
-            {isVoiceRecording ? (
-              <div className="mb-3 p-3 bg-muted/50 rounded-lg">
-                <VoiceRecorder 
-                  onRecordingComplete={handleVoiceRecordingComplete}
-                  onCancel={handleCancelVoiceRecording}
-                />
-              </div>
-            ) : voiceRecordingBlob ? (
-              <div className="mb-3 p-3 bg-muted/50 rounded-lg flex items-center justify-between">
-                <AudioPlayer 
-                  src={URL.createObjectURL(voiceRecordingBlob)} 
-                  className="flex-1" 
-                  duration={(voiceRecordingBlob as any).duration || 1}
-                />
-                <div className="flex space-x-2 ml-2">
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    onClick={handleCancelVoiceRecording}
-                    className="text-destructive hover:bg-destructive/10"
-                  >
-                    <XIcon className="h-4 w-4" />
-                  </Button>
-                  <Button 
-                    variant="default" 
-                    size="sm" 
-                    onClick={handleSendVoiceMessage}
-                    disabled={!voiceRecordingBlob}
-                  >
-                    <Send className="h-4 w-4 mr-1.5" /> Send
-                  </Button>
-                </div>
-              </div>
-            ) : null}
 
             {filePreviewUrl && (
               <div className="relative mb-3 max-w-xs">
@@ -1137,98 +1104,136 @@ export default function ChatPage() {
             )}
             
             <div className="flex items-end gap-3">
-              <div className="relative flex-1">
-                {/* Hidden file input */}
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileSelect}
-                  accept="image/*"
-                  className="hidden"
-                />
-                
-                {/* GIF Picker */}
-                {showGifPicker && (
-                  <div 
-                    ref={gifPickerRef}
-                    className="absolute bottom-full right-0 mb-2 z-50"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <GifPicker 
-                      onSelect={handleGifSelect} 
-                      onClose={() => setShowGifPicker(false)}
-                      isOpen={showGifPicker}
+              <div className={cn(
+                'flex-1 transition-all duration-200 flex items-center',
+                isVoiceRecording || voiceRecordingBlob 
+                  ? 'bg-[#1a1a1a] border-2 border-gray-500/60 rounded-3xl shadow-lg px-4 h-12 text-white' 
+                  : ''
+              )}>
+                {isVoiceRecording ? (
+                  /* Show recording UI */
+                  <div className="flex items-center w-full h-8">
+                    <VoiceRecorder 
+                      ref={voiceRecorderRef}
+                      onRecordingComplete={handleVoiceRecordingComplete}
+                      onCancel={handleCancelVoiceRecording}
+                      compact={true}
                     />
                   </div>
+                ) : voiceRecordingBlob ? (
+                  /* Show preview UI */
+                  <div className="flex items-center w-full h-8">
+                    <AudioPlayer 
+                      src={URL.createObjectURL(voiceRecordingBlob)} 
+                      className="flex-1" 
+                      duration={(voiceRecordingBlob as any).duration || 1}
+                      compact={true}
+                    />
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={handleCancelVoiceRecording}
+                      className="h-8 w-8 rounded-full flex items-center justify-center text-destructive hover:bg-destructive/10 ml-2"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  /* Show regular input when not recording */
+                  <div className="relative flex-1">
+                    {/* Hidden file input */}
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileSelect}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                    
+                    {/* GIF Picker */}
+                    {showGifPicker && (
+                      <div 
+                        ref={gifPickerRef}
+                        className="absolute bottom-full right-0 mb-2 z-50"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <GifPicker 
+                          onSelect={handleGifSelect} 
+                          onClose={() => setShowGifPicker(false)}
+                          isOpen={showGifPicker}
+                        />
+                      </div>
+                    )}
+                    
+                    <div className="relative group">
+                      {/* Left side buttons (GIF) */}
+                      <div className="absolute left-2 bottom-2 z-10 flex items-center space-x-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowGifPicker(prev => !prev);
+                          }}
+                          disabled={sendingMessage}
+                          className={`h-8 w-8 rounded-full p-0 opacity-50 hover:opacity-100 transition-opacity ${
+                            showGifPicker ? 'opacity-100 bg-accent' : ''
+                          }`}
+                          aria-expanded={showGifPicker}
+                          aria-haspopup="true"
+                        >
+                          <StickyNote className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      
+                      {/* Textarea */}
+                      <Textarea
+                        ref={textareaRef}
+                        value={newMessage}
+                        onChange={handleTextareaInput}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSendMessage();
+                          }
+                        }}
+                        placeholder="Type a message..."
+                        className="resize-none pl-10 pr-24 py-2.5 rounded-3xl border-2 bg-[#1a1a1a] border-gray-500/60 text-white shadow-lg"
+                        style={{
+                          height: 'auto',
+                          minHeight: '48px',
+                          maxHeight: '152px',
+                          overflowY: 'hidden',
+                        }}
+                        rows={1}
+                        disabled={sendingMessage}
+                        onInput={(e) => {
+                          const target = e.target as HTMLTextAreaElement;
+                          target.style.height = 'auto';
+                          const newHeight = Math.min(target.scrollHeight, 152);
+                          target.style.height = `${newHeight}px`;
+                          target.style.overflowY = newHeight >= 152 ? 'auto' : 'hidden';
+                        }}
+                      />
+                      
+                      {/* Right side button (Upload) */}
+                      <div className="absolute right-2 bottom-2 z-10">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={sendingMessage}
+                          className="h-8 w-8 rounded-full p-0 opacity-50 hover:opacity-100 transition-opacity"
+                          title="Attach file"
+                        >
+                          <Paperclip className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 )}
-                
-                <div className="relative group">
-                  {/* Left side buttons (GIF) */}
-                  <div className="absolute left-2 bottom-2 z-10 flex items-center space-x-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowGifPicker(prev => !prev);
-                      }}
-                      disabled={sendingMessage}
-                      className={`h-8 w-8 p-0 opacity-50 hover:opacity-100 transition-opacity ${
-                        showGifPicker ? 'opacity-100 bg-accent' : ''
-                      }`}
-                      aria-expanded={showGifPicker}
-                      aria-haspopup="true"
-                    >
-                      <StickyNote className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  
-                  {/* Textarea */}
-                  <Textarea
-                    ref={textareaRef}
-                    value={newMessage}
-                    onChange={handleTextareaInput}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage();
-                      }
-                    }}
-                    placeholder="Type a message..."
-                    className="resize-none pl-10 pr-24 py-2.5 rounded-3xl border-2 bg-[#1a1a1a] border-gray-500/60 text-white shadow-lg"
-                    style={{
-                      height: 'auto',
-                      minHeight: '48px',
-                      maxHeight: '152px',
-                      overflowY: 'hidden',
-                    }}
-                    rows={1}
-                    disabled={sendingMessage}
-                    onInput={(e) => {
-                      const target = e.target as HTMLTextAreaElement;
-                      target.style.height = 'auto';
-                      const newHeight = Math.min(target.scrollHeight, 152);
-                      target.style.height = `${newHeight}px`;
-                      target.style.overflowY = newHeight >= 152 ? 'auto' : 'hidden';
-                    }}
-                  />
-                  
-                  {/* Right side button (Upload) */}
-                  <div className="absolute right-2 bottom-2 z-10">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={sendingMessage}
-                      className="h-8 w-8 p-0 opacity-50 hover:opacity-100 transition-opacity"
-                      title="Attach file"
-                    >
-                      <Paperclip className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
               </div>
               
               {/* Send/Record Button - Changes based on input state */}
@@ -1237,21 +1242,49 @@ export default function ChatPage() {
                   type="button"
                   variant="default"
                   size="icon"
-                  onClick={newMessage.trim() || selectedFile ? handleSendMessage : () => setIsVoiceRecording(true)}
+                  onClick={async () => {
+                    if (voiceRecordingBlob) {
+                      // If there's a recorded voice message, send it
+                      handleSendVoiceMessage();
+                    } else if (isVoiceRecording) {
+                      // If recording is active, stop the recording
+                      if (voiceRecorderRef.current) {
+                        voiceRecorderRef.current.stopRecording();
+                      } else {
+                        // Fallback to the cancel handler if we can't access the ref
+                        handleCancelVoiceRecording();
+                      }
+                    } else if (newMessage.trim() || selectedFile) {
+                      handleSendMessage();
+                    } else {
+                      setIsVoiceRecording(true);
+                    }
+                  }}
                   disabled={sendingMessage}
                   className={`h-12 w-12 rounded-full transition-all duration-200 ${
                     isVoiceRecording
                       ? 'bg-red-500 hover:bg-red-600' // Red when recording
-                      : newMessage.trim() || selectedFile
-                        ? 'bg-orange-500 hover:bg-orange-600' // Orange when sending
-                        : 'bg-[#1a1a1a] hover:bg-[#2a2a2a] border-2 border-gray-500/60' // Dark gray when idle
+                      : voiceRecordingBlob
+                        ? 'bg-green-500 hover:bg-green-600' // Green when ready to send voice message
+                        : newMessage.trim() || selectedFile
+                          ? 'bg-orange-500 hover:bg-orange-600' // Orange when sending text/image
+                          : 'bg-[#1a1a1a] hover:bg-[#2a2a2a] border-2 border-gray-500/60' // Dark gray when idle
                   }`}
-                  title={isVoiceRecording ? "Stop recording" : newMessage.trim() || selectedFile ? "Send message" : "Record voice message"}
+                  title={isVoiceRecording 
+                    ? "Stop recording" 
+                    : voiceRecordingBlob 
+                      ? "Send voice message" 
+                      : newMessage.trim() || selectedFile 
+                        ? "Send message" 
+                        : "Record voice message"
+                  }
                 >
                   {sendingMessage ? (
                     <Loader2 className="h-5 w-5 animate-spin text-white" />
                   ) : isVoiceRecording ? (
                     <div className="h-5 w-5 bg-white rounded-sm" /> // White square when recording
+                  ) : voiceRecordingBlob ? (
+                    <Send className="h-5 w-5 text-white" /> // Send icon when voice message is ready
                   ) : newMessage.trim() || selectedFile ? (
                     <Send className="h-5 w-5 text-white" />
                   ) : (

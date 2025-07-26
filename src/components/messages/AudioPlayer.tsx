@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Volume2, VolumeX } from 'lucide-react';
+import { Play, Pause } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -10,9 +10,16 @@ interface AudioPlayerProps {
   className?: string;
   duration?: number;
   isSender?: boolean;
+  compact?: boolean;
 }
 
-export function AudioPlayer({ src, className = '', duration: propDuration, isSender = true }: AudioPlayerProps) {
+export function AudioPlayer({ 
+  src, 
+  className = '', 
+  duration: propDuration, 
+  isSender = true, 
+  compact = false 
+}: AudioPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -106,19 +113,13 @@ export function AudioPlayer({ src, className = '', duration: propDuration, isSen
   }, [src, objectUrl]);
 
   // Handle play/pause
-  const togglePlayPause = async () => {
-    if (!audioRef.current) return;
-    
-    try {
-      if (isPlaying) {
-        await audioRef.current.pause();
-      } else {
-        await audioRef.current.play();
-      }
-      setIsPlaying(!isPlaying);
-    } catch (error) {
-      console.error('Error toggling play/pause:', error);
+  const togglePlayPause = () => {
+    if (isPlaying) {
+      audioRef.current?.pause();
+    } else {
+      audioRef.current?.play();
     }
+    setIsPlaying(!isPlaying);
   };
 
   // Handle seeking on progress bar click
@@ -149,27 +150,33 @@ export function AudioPlayer({ src, className = '', duration: propDuration, isSen
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className={`flex items-center w-full ${className}`} style={{ minWidth: '250px' }}>
+    <div className={cn('flex items-center w-full', className)}>
       <Button
         variant="ghost"
-        size="icon"
-        className="h-10 w-10 rounded-full flex-shrink-0 bg-background/50 hover:bg-background/70"
+        size={compact ? 'icon' : 'icon'}
         onClick={togglePlayPause}
         disabled={!isReady}
+        className={cn(
+          'flex-shrink-0 rounded-full',
+          compact ? 'h-8 w-8' : 'h-10 w-10 bg-background/50 hover:bg-background/70'
+        )}
         aria-label={isPlaying ? 'Pause' : 'Play'}
       >
         {isPlaying ? (
-          <Pause className="h-5 w-5" />
+          <Pause className={compact ? 'h-3.5 w-3.5' : 'h-5 w-5'} />
         ) : (
-          <Play className="h-5 w-5" />
+          <Play className={compact ? 'h-3.5 w-3.5' : 'h-5 w-5'} />
         )}
       </Button>
       
-      <div className="flex items-center ml-2 flex-1 min-w-0">
-        <div className="flex-1 min-w-0 mr-4">
+      <div className={cn(compact ? 'flex-1 min-w-0 mx-2' : 'flex-1 flex items-center gap-2')}>
+        <div className={cn('flex-1', compact ? '' : 'w-32')}>
           <div 
             ref={progressBarRef}
-            className="h-2.5 w-full bg-muted/50 rounded-full overflow-hidden cursor-pointer group relative"
+            className={cn(
+              'h-2.5 bg-muted/50 rounded-full overflow-hidden cursor-pointer group relative',
+              compact ? 'h-1.5 w-full' : 'w-full'
+            )}
             onClick={handleProgressClick}
           >
             <div 
@@ -179,27 +186,22 @@ export function AudioPlayer({ src, className = '', duration: propDuration, isSen
               )}
               style={{ width: `${progress}%` }}
             />
-            <div 
-              className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity"
-              style={{
-                background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%)',
-                pointerEvents: 'none'
-              }}
-            />
-          </div>
-        </div>
-        <div className={cn(
-          'rounded-full px-2.5 py-0.5',
-          isSender ? 'bg-accent/80' : 'bg-[#d97a1a]/80'
-        )}>
-          <div className="text-xs font-medium text-nowrap text-foreground/80">
-            {isPlaying ? (
-              <span>-{formatTime(duration - currentTime)}</span>
-            ) : (
-              <span>{formatTime(duration)}</span>
+            {!compact && (
+              <div 
+                className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{
+                  background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%)',
+                  pointerEvents: 'none'
+                }}
+              />
             )}
           </div>
         </div>
+        {!compact && (
+          <div className="px-2 flex items-center justify-center bg-muted/30 rounded-full text-xs text-muted-foreground min-w-[2.5rem] leading-none h-5">
+            {formatTime(duration - currentTime)}
+          </div>
+        )}
       </div>
     </div>
   );
