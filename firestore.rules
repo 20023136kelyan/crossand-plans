@@ -200,17 +200,23 @@ service cloud.firestore {
         allow read: if isSignedIn() && 
           request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
           
-        allow create, update: if isSignedIn() && 
+        allow create: if isSignedIn() && 
           request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants &&
-          // Allow setting/updating typing status for current user
-          (request.resource.data[request.auth.uid] != null && 
-           request.resource.data[request.auth.uid].name != null &&
-           request.resource.data[request.auth.uid].timestamp != null);
+          // Only allow updating the typing status for the current user
+          request.resource.data[request.auth.uid] != null &&
+          request.resource.data[request.auth.uid].name != null &&
+          request.resource.data[request.auth.uid].timestamp != null &&
+          // Ensure the document only contains the current user's typing status
+          request.resource.data.keys().hasOnly([request.auth.uid]);
           
-        allow update: if isSignedIn() &&
+        allow update: if isSignedIn() && 
           request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants &&
-          // Allow removing own typing status
-          (!(request.auth.uid in request.resource.data) || request.resource.data[request.auth.uid] == null);
+          // Allow updating own typing status
+          (request.resource.data[request.auth.uid] != null || 
+           !(request.auth.uid in request.resource.data)) &&
+          // Ensure the document only contains the current user's typing status
+          (request.resource.data.keys().hasOnly([request.auth.uid]) || 
+           request.resource.data.keys().hasOnly([]));
           
         allow delete: if false;
       }

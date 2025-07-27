@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Instagram Embeds */
+.instagram-embed {
+  min-height: 450px;
+  width: 100%;
+  max-width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
 /* Font Face Definitions for Landing Page */
 @font-face {
   font-family: 'Audiowide';
@@ -48,6 +57,14 @@
   src: url('/fonts/Alumni_Sans_Pinstripe,Audiowide,Cinzel,Funnel_Sans,Roboto_Condensed/Alumni_Sans_Pinstripe/AlumniSansPinstripe-Italic.ttf') format('truetype');
   font-weight: bold;
   font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'BarlowCondensed';
+  src: url('/fonts/Barlow_Condensed/BarlowCondensed-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
   font-display: swap;
 }
 
@@ -404,12 +421,131 @@
     }
   }
 
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+
+  @keyframes bounce-gentle {
+    0%, 100% {
+      transform: translateY(0);
+      animation-timing-function: cubic-bezier(0,0,0.2,1);
+    }
+    50% {
+      transform: translateY(-5px);
+      animation-timing-function: cubic-bezier(0.8,0,1,1);
+    }
+  }
+
+  @keyframes scale-pulse {
+    0%, 100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.05);
+    }
+  }
+
+  @keyframes gradient-shift {
+    0%, 100% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+  }
+
+  @keyframes slide-up {
+    from {
+      opacity: 0;
+      transform: translateY(40px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slide-down {
+    from {
+      opacity: 0;
+      transform: translateY(-40px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes zoom-in {
+    from {
+      opacity: 0;
+      transform: scale(0.8);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes rotate-in {
+    from {
+      opacity: 0;
+      transform: rotate(-5deg) scale(0.9);
+    }
+    to {
+      opacity: 1;
+      transform: rotate(0deg) scale(1);
+    }
+  }
+
   .animate-fade-in {
     animation: fade-in 0.8s ease-out;
   }
 
   .animate-slide-in-from-right {
     animation: slide-in-from-right 0.6s ease-out;
+    animation-fill-mode: both;
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  .animate-bounce-gentle {
+    animation: bounce-gentle 2s infinite;
+  }
+
+  .animate-scale-pulse {
+    animation: scale-pulse 2s ease-in-out infinite;
+  }
+
+  .animate-gradient-shift {
+    background-size: 200% 200%;
+    animation: gradient-shift 3s ease infinite;
+  }
+
+  .animate-slide-up {
+    animation: slide-up 0.6s ease-out;
+    animation-fill-mode: both;
+  }
+
+  .animate-slide-down {
+    animation: slide-down 0.6s ease-out;
+    animation-fill-mode: both;
+  }
+
+  .animate-zoom-in {
+    animation: zoom-in 0.5s ease-out;
+    animation-fill-mode: both;
+  }
+
+  .animate-rotate-in {
+    animation: rotate-in 0.7s ease-out;
     animation-fill-mode: both;
   }
 
@@ -460,6 +596,72 @@
   
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+
+  /* Enhanced modern animations for landing page */
+  .animate-hero-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  .animate-stagger-1 {
+    animation-delay: 0.1s;
+  }
+
+  .animate-stagger-2 {
+    animation-delay: 0.2s;
+  }
+
+  .animate-stagger-3 {
+    animation-delay: 0.3s;
+  }
+
+  .animate-stagger-4 {
+    animation-delay: 0.4s;
+  }
+
+  .animate-stagger-5 {
+    animation-delay: 0.5s;
+  }
+
+  .animate-stagger-6 {
+    animation-delay: 0.6s;
+  }
+
+  /* Modern hover effects */
+  .hover-lift {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 10px 10px -5px rgb(0 0 0 / 0.04);
+  }
+
+  .hover-glow {
+    transition: box-shadow 0.3s ease;
+  }
+
+  .hover-glow:hover {
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.3);
+  }
+
+  /* Parallax scroll effect */
+  .parallax-slow {
+    transform: translate3d(0, 0, 0);
+    will-change: transform;
+  }
+
+  /* Enhanced gradient animations */
+  .bg-gradient-animated {
+    background: linear-gradient(
+      -45deg,
+      hsl(var(--primary)),
+      hsl(var(--accent)),
+      hsl(var(--primary)),
+      hsl(var(--accent))
+    );
+    background-size: 400% 400%;
+    animation: gradient-shift 8s ease infinite;
   }
 }
 

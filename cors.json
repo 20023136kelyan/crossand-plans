@@ -6,7 +6,8 @@
       "https://*.firebaseapp.com",
       "https://*.web.app",
       "https://*.crossand.ai",
-      "https://*.storage.googleapis.com"
+      "https://*.storage.googleapis.com",
+      "https://palplanai.firebasestorage.app"
     ],
     "method": ["GET", "HEAD", "PUT", "POST", "DELETE", "OPTIONS"],
     "maxAgeSeconds": 3600,

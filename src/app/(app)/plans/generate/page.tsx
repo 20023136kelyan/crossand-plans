@@ -387,7 +387,8 @@ function GeneratePlanPage() {
       }
     };
 
-    container.addEventListener('scroll', handleScroll);
+    // Use passive event listener for better scroll performance
+    container.addEventListener('scroll', handleScroll, { passive: true });
     handleScroll(); // Initial check
 
     return () => container.removeEventListener('scroll', handleScroll);

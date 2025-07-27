@@ -10,6 +10,7 @@ import {
   Send, ChevronLeft, Loader2, UserCircle, Paperclip, XCircle as XIcon, EyeOff, MoreVertical, Phone, Video,
   ShieldCheck, CheckCircle as CheckCircleIcon, MessageSquare, CheckCheck, Check, Image as ImageIcon, Mic, StickyNote, Trash2
 } from 'lucide-react';
+import { TextWithLinkPreviews } from '@/components/messages/LinkPreview';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -961,12 +962,32 @@ export default function ChatPage() {
                 ? undefined 
                 : () => window.open(msg.mediaUrl, '_blank');
 
+              // Process the message text to get link previews
+              const { textContent, preview } = TextWithLinkPreviews({
+                text: msg.text || '',
+                className: cn(
+                  "break-words",
+                  isSender ? "text-primary-foreground" : "text-foreground"
+                )
+              });
+
               return (
                 <div 
                   key={msg.id} 
-                  className={`flex w-full items-end gap-2 ${isSender ? 'justify-end' : 'justify-start'} ${isContinuingBlock ? 'mt-0.5' : 'mt-2'} group`}
+                  className={`w-full flex flex-col ${isSender ? 'items-end' : 'items-start'} ${isContinuingBlock ? 'mt-0.5' : 'mt-2'} group`}
                   data-message-type={isMediaOnly ? 'media' : hasBoth ? 'media-text' : 'text'}
                 >
+                  {/* Link preview container - rendered above the message bubble */}
+                  {preview && (
+                    <div className={`w-full flex ${isSender ? 'justify-end' : 'justify-start'} mb-1`}>
+                      <div className={cn("w-full max-w-[85%] sm:max-w-[80%]", isSender ? 'text-right' : 'text-left')}>
+                        {preview}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Message bubble container */}
+                  <div className={`flex w-full items-end gap-2 ${isSender ? 'justify-end' : 'justify-start'}`}>
                   {chatDetails?.participantInfo.length > 2 && !isSender && !isContinuingBlock && (
                     <Avatar className="h-7 w-7 flex-shrink-0">
                       {otherParticipant?.avatarUrl ? (
@@ -1015,14 +1036,14 @@ export default function ChatPage() {
                         {/* Text Content */}
                         {hasText && (
                           <div className="break-words">
-                            <p className={cn(
-                              "text-sm whitespace-pre-wrap",
+                            <div className={cn(
+                              "text-sm whitespace-pre-wrap leading-relaxed",
                               hasMedia && "px-2 pb-1.5",
                               !isSender && hasMedia && "text-foreground",
                               isSender && hasMedia && "text-foreground"
                             )}>
-                              {msg.text}
-                            </p>
+                              {textContent}
+                            </div>
                           </div>
                         )}
 
@@ -1053,6 +1074,7 @@ export default function ChatPage() {
                       </div>
                     </DropdownMenuTrigger>
                   </DropdownMenu>
+                  </div>
                 </div>
               );
             })}

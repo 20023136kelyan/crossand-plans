@@ -19,8 +19,8 @@ export function BottomNavFade() {
       setIsVisible(!isAtBottom);
     };
 
-    // Add scroll listener
-    window.addEventListener('scroll', handleScroll);
+    // Add passive scroll listener
+    window.addEventListener('scroll', handleScroll, { passive: true });
     handleScroll(); // Initial check
     
     return () => {

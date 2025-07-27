@@ -38,9 +38,12 @@ export function HorizontalPlanCards({ plans, currentUserUid }: HorizontalPlanCar
     
     const scrollElement = scrollRef.current;
     if (scrollElement) {
-      scrollElement.addEventListener('scroll', checkScrollable);
-      // Also check on resize in case container size changes
-      window.addEventListener('resize', checkScrollable);
+      // Make scroll and resize listeners passive for better performance
+      const options = { passive: true };
+      scrollElement.addEventListener('scroll', checkScrollable, options);
+      
+      // Resize events don't need to block scrolling, so we can use passive
+      window.addEventListener('resize', checkScrollable, options);
       
       return () => {
         scrollElement.removeEventListener('scroll', checkScrollable);

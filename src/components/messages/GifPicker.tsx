@@ -117,7 +117,7 @@ export function GifPicker({ onSelect, onClose, className, isOpen = true }: GifPi
     <div
       ref={containerRef}
       className={cn(
-        "absolute bottom-full right-0 mb-2 w-80 h-80 bg-background border rounded-lg shadow-lg overflow-hidden flex flex-col z-50",
+        "fixed inset-x-0 bottom-0 w-full max-w-4xl h-[45vh] max-h-[400px] bg-background border-t rounded-t-lg shadow-2xl overflow-hidden flex flex-col z-50 mb-2",
         className
       )}
       onKeyDown={(e) => {
@@ -154,7 +154,7 @@ export function GifPicker({ onSelect, onClose, className, isOpen = true }: GifPi
         </Button>
       </div>
 
-      <div className="h-80 overflow-y-auto p-2">
+      <div className="flex-1 overflow-y-auto p-2 will-change-transform">
         {isLoading ? (
           <div className="h-full flex items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -171,7 +171,7 @@ export function GifPicker({ onSelect, onClose, className, isOpen = true }: GifPi
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="columns-3 gap-1 space-y-1">
             {!searchQuery && (
               <div className="col-span-2 px-2 py-1 text-xs text-muted-foreground flex items-center">
                 <TrendingUp className="h-3.5 w-3.5 mr-1.5" />
@@ -206,7 +206,7 @@ export function GifPicker({ onSelect, onClose, className, isOpen = true }: GifPi
                   key={gif.id}
                   role="button"
                   tabIndex={0}
-                  className="relative aspect-square rounded-md overflow-hidden hover:ring-2 hover:ring-primary transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer"
+                  className="relative rounded-md overflow-hidden hover:ring-2 hover:ring-primary transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer break-inside-avoid mb-1.5 w-full will-change-transform"
                   style={{ 
                     pointerEvents: 'auto',
                     WebkitTapHighlightColor: 'transparent'
@@ -218,17 +218,18 @@ export function GifPicker({ onSelect, onClose, className, isOpen = true }: GifPi
                     e.stopPropagation();
                   }}
                   onMouseUp={(e) => {
-                    console.log('[GifPicker] Mouse up on GIF');
                     e.stopPropagation();
                   }}
                   aria-label={`Select GIF: ${gif.title}`}
                 >
-                  <MediaMessage
-                    src={gif.images.fixed_width.url}
-                    alt={gif.title || 'GIF'}
-                    isGif={true}
-                    className="w-full h-full object-cover pointer-events-none"
-                  />
+                  <div className="w-full">
+                    <MediaMessage
+                      src={gif.images.fixed_width.url}
+                      alt={gif.title || 'GIF'}
+                      className="w-full h-auto max-w-full max-h-[180px] object-cover rounded-md block will-change-transform transform-gpu"
+                      isGif
+                    />
+                  </div>
                 </div>
               );
             })}

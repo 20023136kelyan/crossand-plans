@@ -1,5 +1,31 @@
 rules_version = '2';
 
+// Firebase Storage rules
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Secure audio file access
+    match /messages/audio/{userId}/{audioId} {
+      // Allow read if user is authenticated and either:
+      // 1. Is the owner of the audio file, or
+      // 2. Is a participant in a chat that contains this audio message
+      allow read: if request.auth != null && (
+        request.auth.uid == userId || 
+        exists(/databases/$(database)/documents/chats/$(chatId)/participants/$(request.auth.uid))
+      );
+      
+      // Only allow the owner to write/update/delete their own audio files
+      allow write: if request.auth != null && 
+                   request.auth.uid == userId;
+    }
+    
+    // Default deny-all rule for all other files
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+// Firestore rules (keeping existing rules)
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -149,7 +175,16 @@ service cloud.firestore {
                         )
                       )
                     ) ||
-                    // Case 2: Marking chat as read
+                    // Case 2: Updating typing status
+                    (
+                      request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['typingStatus']) &&
+                      request.resource.data.typingStatus is map &&
+                      request.resource.data.typingStatus[request.auth.uid] is map &&
+                      request.resource.data.typingStatus[request.auth.uid].userId == request.auth.uid &&
+                      request.resource.data.typingStatus[request.auth.uid].timestamp == request.time
+                    ) ||
+                    // Case 3: Marking chat as read
                     (
                       request.resource.data.diff(resource.data).affectedKeys()
                         .hasOnly(['participantReadTimestamps', 'updatedAt']) &&
@@ -160,6 +195,24 @@ service cloud.firestore {
                     )
                   );
       allow delete: if false;
+
+      match /typing/status {
+        allow read: if isSignedIn() && 
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        allow write: if isSignedIn() && 
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants &&
+          (
+            // Allow setting typing status
+            (request.write && request.writeFields.size() == 1 && 
+             request.writeFields[0] == request.auth.uid &&
+             request.resource.data[request.auth.uid].userId == request.auth.uid &&
+             request.resource.data[request.auth.uid].timestamp == request.time) ||
+            // Allow clearing typing status
+            (request.write && request.writeFields.size() == 0 && 
+             (!resource.exists || !(request.auth.uid in resource.data) || 
+              resource.data[request.auth.uid].userId == request.auth.uid))
+          );
+      }
 
       match /messages/{messageId} {
         allow read: if isSignedIn() &&
