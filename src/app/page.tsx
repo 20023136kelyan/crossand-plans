@@ -19,9 +19,8 @@ import {
   Check,
   ChevronDown,
   Mail,
-  Twitter,
   Instagram,
-  Facebook,
+  Linkedin,
   PlayCircle,
   Smartphone,
   BrainCircuit,
@@ -29,7 +28,10 @@ import {
   Calendar,
   UserPlus,
   TrendingUp,
-  Route
+  Route,
+  Quote,
+  Menu,
+  X
 } from 'lucide-react';
 import { useSettings } from '@/context/SettingsContext';
 import { useState } from 'react';
@@ -39,143 +41,294 @@ const CrossandLogo = ({ className }: { className?: string }) => (
 );
 
 const FeatureCard = ({ icon: Icon, title, description, delay = 0 }: { icon: any, title: string, description: string, delay?: number }) => (
-  <Card className="group hover:shadow-2xl transition-all duration-500 hover:scale-105 border-border/50 bg-card/80 backdrop-blur-sm hover:bg-card/90 animate-fade-in" style={{ animationDelay: `${delay}ms` }}>
-    <CardHeader className="text-center">
-      <div className="mx-auto mb-4 p-3 rounded-full bg-gradient-primary/20 w-fit group-hover:bg-gradient-primary/30 transition-all duration-300 group-hover:scale-110">
-        <Icon className="h-8 w-8 text-primary group-hover:text-primary/90 transition-colors" />
-      </div>
-      <CardTitle className="text-xl group-hover:text-primary transition-colors">{title}</CardTitle>
-    </CardHeader>
-    <CardContent>
-      <CardDescription className="text-center text-muted-foreground group-hover:text-foreground transition-colors">{description}</CardDescription>
-    </CardContent>
-  </Card>
+  <div className="group text-center p-8 hover:scale-105 transition-all duration-500 animate-fade-in" style={{ animationDelay: `${delay}ms` }}>
+    <div className="mx-auto mb-6 p-4 rounded-2xl bg-gradient-to-br from-orange-100 to-yellow-100 w-fit group-hover:scale-110 transition-all duration-300">
+      <Icon className="h-8 w-8 text-orange-600 group-hover:text-orange-700 transition-colors" />
+    </div>
+    <h3 className="text-xl font-bold mb-4 text-gray-800">{title}</h3>
+    <p className="text-gray-600 leading-relaxed">{description}</p>
+  </div>
 );
 
 const TestimonialCard = ({ name, role, content, rating, delay = 0 }: { name: string, role: string, content: string, rating: number, delay?: number }) => (
-  <Card className="bg-card/80 backdrop-blur-sm hover:shadow-xl transition-all duration-300 hover:scale-105 animate-fade-in" style={{ animationDelay: `${delay}ms` }}>
-    <CardContent className="p-6">
-      <div className="flex items-center gap-1 mb-4">
-        {[...Array(rating)].map((_, i) => (
-          <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-        ))}
-      </div>
-      <p className="text-foreground mb-4 italic">"{content}"</p>
-      <div>
-        <p className="font-semibold text-foreground">{name}</p>
-        <p className="text-sm text-muted-foreground">{role}</p>
-      </div>
-    </CardContent>
-  </Card>
+  <div className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all duration-300 animate-fade-in" style={{ animationDelay: `${delay}ms` }}>
+    <div className="flex items-center gap-1 mb-6">
+      {[...Array(rating)].map((_, i) => (
+        <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+      ))}
+    </div>
+    <div className="mb-6">
+      <Quote className="h-8 w-8 text-orange-200 mb-4" />
+      <p className="text-gray-700 leading-relaxed italic text-lg">"{content}"</p>
+    </div>
+    <div className="border-t pt-4">
+      <p className="font-bold text-gray-800">{name}</p>
+      <p className="text-sm text-gray-500">{role}</p>
+    </div>
+  </div>
 );
 
 const PricingCard = ({ title, price, period, features, highlighted = false, buttonText = "Get Started" }: { 
   title: string, price: string, period: string, features: string[], highlighted?: boolean, buttonText?: string 
 }) => (
-  <Card className={`relative ${highlighted ? 'ring-2 ring-primary shadow-2xl scale-105' : ''} bg-card/80 backdrop-blur-sm hover:shadow-xl transition-all duration-300 hover:scale-105`}>
+  <div className={`bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all duration-300 ${highlighted ? 'ring-2 ring-orange-500 transform scale-105' : ''}`}>
     {highlighted && (
-      <Badge className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-gradient-primary text-primary-foreground">
-        Recommended
-      </Badge>
-    )}
-    <CardHeader className="text-center">
-      <CardTitle className="text-xl">{title}</CardTitle>
-      <div className="text-3xl font-bold text-gradient-primary">
-        {price}<span className="text-sm text-muted-foreground font-normal">/{period}</span>
+      <div className="text-center mb-4">
+        <span className="bg-gradient-to-r from-orange-500 to-yellow-500 text-white px-4 py-1 rounded-full text-sm font-semibold">
+          Recommended
+        </span>
       </div>
-    </CardHeader>
-    <CardContent className="space-y-4">
-      <ul className="space-y-2">
-        {features.map((feature, index) => (
-          <li key={index} className="flex items-center gap-2">
-            <Check className="h-4 w-4 text-primary" />
-            <span className="text-sm">{feature}</span>
-          </li>
-        ))}
-      </ul>
-      <Button className={`w-full ${highlighted ? 'bg-gradient-primary hover:bg-gradient-primary-hover' : ''}`}>
-        {buttonText}
-      </Button>
-    </CardContent>
-  </Card>
+    )}
+    <div className="text-center mb-8">
+      <h3 className="text-2xl font-bold text-gray-800 mb-2">{title}</h3>
+      <div className="text-4xl font-bold text-orange-600 mb-2">
+        {price}<span className="text-lg text-gray-500 font-normal">/{period}</span>
+      </div>
+    </div>
+    <ul className="space-y-4 mb-8">
+      {features.map((feature, index) => (
+        <li key={index} className="flex items-start gap-3">
+          <Check className="h-5 w-5 text-orange-500 mt-0.5 flex-shrink-0" />
+          <span className="text-gray-700">{feature}</span>
+        </li>
+      ))}
+    </ul>
+    <Button className={`w-full py-3 rounded-full font-semibold ${highlighted ? 'bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}`}>
+      {buttonText}
+    </Button>
+  </div>
 );
 
 const FAQItem = ({ question, answer }: { question: string, answer: string }) => {
   const [isOpen, setIsOpen] = useState(false);
   
   return (
-    <Card className="bg-card/80 backdrop-blur-sm">
-      <CardContent className="p-0">
-        <button
-          className="w-full text-left p-6 flex justify-between items-center hover:bg-muted/50 transition-colors"
-          onClick={() => setIsOpen(!isOpen)}
-        >
-          <span className="font-semibold">{question}</span>
-          <ChevronDown className={`h-5 w-5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-        </button>
-        {isOpen && (
-          <div className="px-6 pb-6 text-muted-foreground animate-fade-in">
-            {answer}
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+      <button
+        className="w-full text-left p-6 flex justify-between items-center hover:bg-gray-50 transition-colors rounded-xl"
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <span className="font-semibold text-gray-800 text-lg">{question}</span>
+        <ChevronDown className={`h-5 w-5 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen && (
+        <div className="px-6 pb-6 text-gray-600 leading-relaxed animate-fade-in">
+          {answer}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Add Navigation component
+const Navigation = () => {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  const scrollToSection = (sectionId: string) => {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
+      setIsMobileMenuOpen(false); // Close mobile menu after navigation
+    }
+  };
+
+  return (
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm">
+      <div className="max-w-7xl mx-auto px-6">
+        <div className="flex items-center justify-between h-16">
+          {/* Logo and Company Name */}
+          <div className="flex items-center gap-3">
+            <CrossandLogo className="h-8 w-8" />
+            <span className="text-xl font-bold text-gray-900">Crossand</span>
+          </div>
+          
+          {/* Desktop Navigation Links */}
+          <div className="hidden md:flex items-center space-x-8">
+            <button
+              onClick={() => scrollToSection('hero')}
+              className="text-gray-700 hover:text-orange-600 font-medium transition-colors"
+            >
+              Home
+            </button>
+            <button
+              onClick={() => scrollToSection('how-it-works')}
+              className="text-gray-700 hover:text-orange-600 font-medium transition-colors"
+            >
+              How It Works
+            </button>
+            <button
+              onClick={() => scrollToSection('features')}
+              className="text-gray-700 hover:text-orange-600 font-medium transition-colors"
+            >
+              Features
+            </button>
+            <button
+              onClick={() => scrollToSection('testimonials')}
+              className="text-gray-700 hover:text-orange-600 font-medium transition-colors"
+            >
+              Testimonials
+            </button>
+            <button
+              onClick={() => scrollToSection('pricing')}
+              className="text-gray-700 hover:text-orange-600 font-medium transition-colors"
+            >
+              Pricing
+            </button>
+            <button
+              onClick={() => scrollToSection('faq')}
+              className="text-gray-700 hover:text-orange-600 font-medium transition-colors"
+            >
+              FAQ
+            </button>
+            <div className="relative group">
+              {/* Glowing background effect */}
+              <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-400 via-yellow-400 to-orange-400 rounded-full blur opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
+              
+              <Button asChild className="relative text-white font-medium px-6 py-2 rounded-full border-none ring-0 outline-none hover:scale-105 hover:shadow-xl group overflow-hidden transition-all duration-300" style={{background: 'linear-gradient(to right, hsl(43, 100%, 55%), hsl(30, 100%, 50%))'}}>
+                <Link href="/signup" className="relative z-10 flex items-center">
+                  {/* Shimmer effect overlay */}
+                  <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+                  
+                  <span className="relative z-20 font-bold tracking-wide">Join Waitlist</span>
+                  <ArrowRight className="relative z-20 ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform duration-300" />
+                </Link>
+              </Button>
+            </div>
+          </div>
+
+          {/* Mobile menu button */}
+          <div className="md:hidden">
+            <button
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="text-gray-700 hover:text-orange-600 transition-colors"
+            >
+              {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile Navigation Menu */}
+        {isMobileMenuOpen && (
+          <div className="md:hidden bg-white border-t border-gray-200">
+            <div className="px-6 py-4 space-y-4">
+              <button
+                onClick={() => scrollToSection('hero')}
+                className="block w-full text-left text-gray-700 hover:text-orange-600 font-medium transition-colors py-2"
+              >
+                Home
+              </button>
+              <button
+                onClick={() => scrollToSection('how-it-works')}
+                className="block w-full text-left text-gray-700 hover:text-orange-600 font-medium transition-colors py-2"
+              >
+                How It Works
+              </button>
+              <button
+                onClick={() => scrollToSection('features')}
+                className="block w-full text-left text-gray-700 hover:text-orange-600 font-medium transition-colors py-2"
+              >
+                Features
+              </button>
+              <button
+                onClick={() => scrollToSection('testimonials')}
+                className="block w-full text-left text-gray-700 hover:text-orange-600 font-medium transition-colors py-2"
+              >
+                Testimonials
+              </button>
+              <button
+                onClick={() => scrollToSection('pricing')}
+                className="block w-full text-left text-gray-700 hover:text-orange-600 font-medium transition-colors py-2"
+              >
+                Pricing
+              </button>
+              <button
+                onClick={() => scrollToSection('faq')}
+                className="block w-full text-left text-gray-700 hover:text-orange-600 font-medium transition-colors py-2"
+              >
+                FAQ
+              </button>
+              <div className="pt-4">
+                <div className="relative group">
+                  {/* Glowing background effect */}
+                  <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-400 via-yellow-400 to-orange-400 rounded-full blur opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
+                  
+                  <Button asChild className="relative w-full text-white font-medium py-3 rounded-full border-none ring-0 outline-none hover:scale-105 hover:shadow-xl group overflow-hidden transition-all duration-300" style={{background: 'linear-gradient(to right, hsl(43, 100%, 55%), hsl(30, 100%, 50%))'}}>
+                    <Link href="/signup" className="relative z-10 flex items-center justify-center">
+                      {/* Shimmer effect overlay */}
+                      <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+                      
+                      <span className="relative z-20 font-bold tracking-wide">Join Waitlist</span>
+                      <ArrowRight className="relative z-20 ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform duration-300" />
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </nav>
   );
 };
 
 export default function HomePage() {
   const { settings } = useSettings();
 
-  const siteDescription = settings?.siteDescription || 'Sweeten your social planning with Crossand';
+  const siteDescription = settings?.siteDescription || 'Monitor your social landscape with AI';
 
   const features = [
     {
+      icon: BrainCircuit,
+      title: "AI Social Monitoring",
+      description: "Our machine learning models analyze your social interactions and relationships to detect when connections begin to fade, prompting timely outreach."
+    },
+    {
       icon: Route,
-      title: "Generated Full Itineraries",
-      description: "Our AI creates complete plan itineraries tailored to your preferences, including activities, timing, and locations that make sense for your group."
-    },
-    {
-      icon: Heart,
-      title: "Personalized AI Assistant",
-      description: "AI that learns about you and your relationships' preferences, making smarter suggestions for activities that everyone will enjoy."
-    },
-    {
-      icon: Camera,
-      title: "Share Plan Memories",
-      description: "Capture and share photos, notes, and highlights from your completed plans, creating lasting memories for you and your friends."
-    },
-    {
-      icon: Globe,
-      title: "Explore & Copy Plans",
-      description: "Discover amazing plans created by other users and copy them to your own collection. Get inspired by what others are doing in your area."
+      title: "Automated Social Planning",
+      description: "Complete automated planning system with venue selection, calendar syncing, and bill splitting. Let AI handle the logistics while you focus on connection."
     },
     {
       icon: MessageCircle,
-      title: "Integrated Chat Interface",
-      description: "Communicate with your friends directly within the app. Coordinate plans, share updates, and stay connected all in one place."
+      title: "Interactive Messaging System",
+      description: "Smart messaging that makes your conversations more interactive and helps you understand context lost in text messages, while providing interaction prompts based on your relationship dynamics."
+    },
+    {
+      icon: TrendingUp,
+      title: "Relationship Dashboard",
+      description: "Comprehensive dashboard showing relationship health, interaction patterns, and personalized insights to help you maintain stronger connections."
+    },
+    {
+      icon: Heart,
+      title: "Emotion & Relationship Analysis",
+      description: "Advanced ML models analyze emotional context and relationship dynamics to provide intelligent recommendations for meaningful interactions."
+    },
+    {
+      icon: Calendar,
+      title: "Smart Scheduling & Coordination",
+      description: "Seamlessly coordinate with friends and family through integrated calendar syncing and group coordination features."
     }
   ];
 
   const howItWorksSteps = [
     {
       icon: UserPlus,
-      title: "Complete Your Profile",
-      description: "Add your preferences, allergies, interests, and dislikes so our AI can learn exactly what makes you happy and what to avoid."
+      title: "Connect Your Social Landscape",
+      description: "Add your friends, family, and colleagues to build your relationship network. Our AI begins learning your interaction patterns and preferences."
     },
     {
-      icon: Heart,
-      title: "Add Your People",
-      description: "Connect with friends, partners, family, or anyone that matters to you. Build your circle of meaningful relationships."
+      icon: BrainCircuit,
+      title: "AI Monitors Relationships",
+      description: "Our advanced ML models continuously analyze your social interactions to detect when connections begin to fade or need attention."
     },
     {
-      icon: Route,
-      title: "Generate Perfect Plans",
-      description: "Use a simple prompt to let our AI create plans that consider everyone's preferences, creating experiences everyone will love."
+      icon: MessageCircle,
+      title: "Receive Smart Prompts",
+      description: "Get intelligent suggestions for the right kind of interaction at the right time. From making your messages more engaging to planning get-togethers."
     },
     {
-      icon: Camera,
-      title: "Share Your Memories",
-      description: "Post about your experiences and memories, sharing highlights with your network and inspiring others in the community."
+      icon: Calendar,
+      title: "Effortless Planning",
+      description: "When it's time to meet up, our automated system handles venue selection, calendar syncing, and bill splitting so you can focus on connection."
     }
   ];
 
@@ -183,19 +336,19 @@ export default function HomePage() {
     {
       name: "Sarah Chen",
       role: "Beta Tester",
-      content: "The AI actually remembers that I'm vegetarian and my boyfriend hates crowded places! It creates plans that work perfectly for both of us with just one simple prompt.",
+      content: "The AI actually caught that I hadn't talked to my college friend in months and helped me understand the context of our past conversations to make my message more meaningful. It led to us planning a reunion weekend that we never would have organized otherwise!",
       rating: 5
     },
     {
       name: "Mike Rodriguez",
       role: "Early Supporter",
-      content: "I love how easy it is to add my friends and family, then generate plans that consider everyone's preferences. No more arguments about where to go!",
+      content: "The automated planning system is incredible - it handled venue selection, synced our calendars, and even split the bill. I spent time connecting with friends instead of managing logistics.",
       rating: 5
     },
     {
       name: "Emma Thompson",
-      role: "Community Leader",
-      content: "Being able to share our adventure memories as posts is amazing. It's like Instagram but for actual experiences, and it inspires others to try new things too.",
+      role: "Beta Community Member",
+      content: "The relationship dashboard opened my eyes to patterns I never noticed. I can see which friendships need attention and get prompts for meaningful interactions at just the right time.",
       rating: 5
     }
   ];
@@ -206,26 +359,30 @@ export default function HomePage() {
       price: "$0",
       period: "forever",
       features: [
-        "Full app access",
-        "20 plans per month",
-        "Add unlimited friends & family",
-        "Share memories and experiences",
-        "Chat with your network",
-        "Access to our standard AI model"
+        "Basic relationship monitoring",
+        "Limited AI social planning",
+        "Simple messaging features",
+        "Basic relationship insights",
+        "Community access"
       ]
     },
     {
       title: "Pro",
-      price: "$9.99",
-      period: "month",
+      price: "$2.99",
+      period: "week",
       features: [
         "Everything in Free",
-        "Unlimited standard AI plans",
-        "20 advanced AI plans per month",
-        "Access to our newest AI model",
-        "Early access to new features"
+        "Advanced AI models",
+        "Full social management system",
+        "Advanced social planning features",
+        "Complete interactive messaging",
+        "Detailed relationship analytics",
+        "Calendar syncing & bill splitting",
+        "Priority support",
+        "14-day free trial"
       ],
-      highlighted: true
+      highlighted: true,
+      buttonText: "Start Free Trial"
     }
   ];
 
@@ -235,16 +392,16 @@ export default function HomePage() {
       answer: "Absolutely. We take your privacy extremely seriously. Your personal data is fully protected and we do not share your information with anyone. All data is encrypted and stored securely, ensuring your preferences, relationships, and plans remain completely private."
     },
     {
-      question: "How does the AI planning work?",
-      answer: "Our AI learns from your profile preferences (allergies, interests, dislikes) and considers everyone in your group when creating plans. Just give it a simple prompt like 'plan a fun Saturday afternoon' and it generates a complete itinerary that works for everyone."
+      question: "How does the AI monitoring work?",
+      answer: "Our AI learns from your interaction patterns and relationship history to detect when connections begin to fade. It analyzes communication frequency, engagement levels, and other factors to suggest the perfect time and type of outreach."
     },
     {
-      question: "What's the difference between the standard and advanced AI models?",
-      answer: "The standard AI model is great for basic planning and works well for most situations. The advanced AI model has enhanced learning capabilities, better preference understanding, and creates more sophisticated, personalized plans."
+      question: "What's included in the automated planning?",
+      answer: "Our system handles venue research and booking, calendar coordination across your group, bill splitting calculations, and even sends reminders. You just focus on enjoying time with your people."
     },
     {
-      question: "What are the plan limits for each pricing tier?",
-      answer: "Free users get 20 plans per month using our standard AI model. Pro users get unlimited standard AI plans plus 20 advanced AI plans per month, giving you the best of both worlds."
+      question: "How quickly can I see results?",
+      answer: "Most users see improved relationship engagement within the first week. Our AI begins learning your patterns immediately and starts providing valuable insights and prompts within days."
     },
     {
       question: "Can I add my friends and family to coordinate plans together?",
@@ -253,63 +410,104 @@ export default function HomePage() {
   ];
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-gray-50">
+      <Navigation />
+      
       {/* Hero Section */}
-      <section className="relative w-screen h-screen min-h-screen flex items-center justify-center overflow-hidden" style={{ backgroundImage: "url(/images/Homepage.jpg)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat" }}>
-        <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-transparent to-accent/10 opacity-50" />
-        <div className="relative w-full h-full flex flex-col items-center justify-center text-center z-10 px-6">
-          <div className="animate-fade-in">
-            {/* Glowing Logo */}
-            <div className="relative flex justify-center items-center mb-8">
-              <span className="absolute inset-0 flex items-center justify-center">
-                <span className="block w-56 h-56 rounded-full bg-gradient-primary/30 blur-3xl animate-pulse" />
+      <section id="hero" className="relative bg-white overflow-hidden pt-16">
+        <div className="absolute inset-0 bg-gradient-to-br from-orange-50 to-yellow-50 opacity-60" />
+        <div className="relative max-w-7xl mx-auto px-6 py-20 lg:py-32">
+          <div className="text-center animate-fade-in">
+            <h1 className="font-bold text-5xl lg:text-7xl text-gray-900 mb-8 leading-tight">
+              Monitor your social landscape,<br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r" style={{backgroundImage: 'linear-gradient(to right, hsl(43, 100%, 55%), hsl(30, 100%, 50%))'}}>
+                strengthen every connection
               </span>
-              <CrossandLogo className="h-32 w-32 mx-auto drop-shadow-lg relative z-10 hover:scale-110 transition-transform duration-300" />
-            </div>
-
-            <h1 className="font-audiowide text-4xl md:text-6xl lg:text-7xl font-bold text-white mb-6 leading-tight uppercase">
-              DISCOVER. PLAN. CONNECT.
             </h1>
-            <p className="font-[600] text-lg md:text-xl lg:text-2xl text-white mb-8 max-w-4xl mx-auto leading-relaxed" style={{ fontFamily: 'BarlowCondensed, sans-serif' }}>
-              The relationship management platform that helps you nurture the connections that matter most. From friends and family to partners and colleagues, Crossand makes it effortless to plan together, communicate better, and never forget to show you care.
+            
+            <p className="text-xl lg:text-2xl text-gray-600 mb-12 max-w-4xl mx-auto leading-relaxed">
+              Crossand uses data analytics and AI to monitor your social landscape, keep track of your relationships, and detect when connections begin to fade. We prompt the right kind of interaction at the right time. From making your messages more interactive and meaningful to planning get-togethers. No stress. No overthinking. Just real connection.
             </p>
+
+            {/* Keep the existing Join Waitlist button exactly as it is */}
             <div className="flex justify-center items-center mb-12">
               <div className="relative group">
                 {/* Glowing background effect */}
-                <div className="absolute -inset-0.5 bg-gradient-to-r from-primary via-accent to-primary rounded-full blur opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
+                <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-400 via-yellow-400 to-orange-400 rounded-full blur opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
                 
-                <Button asChild size="lg" className="relative text-xl font-semibold px-12 py-8 bg-gradient-primary hover:bg-gradient-primary-hover transition-all duration-300 rounded-full border-none ring-0 outline-none hover:scale-105 hover:shadow-2xl group overflow-hidden">
+                <Button asChild size="lg" className="relative text-xl font-semibold px-12 py-8 transition-all duration-300 rounded-full border-none ring-0 outline-none hover:scale-105 hover:shadow-2xl group overflow-hidden" style={{background: 'linear-gradient(to right, hsl(43, 100%, 55%), hsl(30, 100%, 50%))'}}>
                   <Link href="/signup" className="relative z-10 flex items-center">
                     {/* Shimmer effect overlay */}
                     <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
                     
                     <span className="relative z-20 text-white font-bold tracking-wide">Join Waitlist</span>
                     <ArrowRight className="relative z-20 ml-3 h-6 w-6 text-white group-hover:translate-x-2 transition-transform duration-300" />
-                </Link>
-              </Button>
+                  </Link>
+                </Button>
+              </div>
+            </div>
+
+            {/* Hero Image Placeholder */}
+            <div className="max-w-5xl mx-auto">
+              <div className="bg-gradient-to-br from-orange-100 to-yellow-100 rounded-2xl p-8 shadow-xl">
+                <div className="bg-white rounded-xl p-6 text-center">
+                  <Users className="h-16 w-16 text-orange-600 mx-auto mb-4" />
+                  <p className="text-gray-600">Interactive relationship dashboard preview</p>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Features Section */}
-      <section className="relative py-20 bg-background">
-        <div className="container mx-auto px-6">
+      {/* How It Works Section */}
+      <section id="how-it-works" className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
-            <Badge variant="secondary" className="mb-4 bg-gradient-primary/10 text-primary">
+            <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-6">
+              How Crossand Works
+            </h2>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              From monitoring your social landscape to facilitating meaningful connections - here's how we help you nurture relationships effortlessly.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            {howItWorksSteps.map((step, idx) => (
+              <div key={idx} className="text-center group animate-fade-in" style={{ animationDelay: `${idx * 150}ms` }}>
+                <div className="relative mb-8">
+                  <div className="w-20 h-20 mx-auto bg-gradient-to-br from-orange-500 to-yellow-500 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-all duration-300">
+                    <step.icon className="h-10 w-10 text-white" />
+                  </div>
+                  <div className="absolute -top-2 -right-2 w-8 h-8 bg-orange-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                    {idx + 1}
+                  </div>
+                </div>
+                <h3 className="text-xl font-bold text-gray-800 mb-4">{step.title}</h3>
+                <p className="text-gray-600 leading-relaxed">{step.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section id="features" className="py-20 bg-gray-50">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center mb-16">
+            <span className="inline-flex items-center px-4 py-2 rounded-full bg-orange-100 text-orange-800 font-semibold text-sm mb-4">
               <Zap className="mr-2 h-4 w-4" />
               Powerful Features
-            </Badge>
-            <h2 className="text-4xl md:text-5xl font-bold mb-6 text-gradient-primary">
-              Current Features You Can Use Today
+            </span>
+            <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-6">
+              Beta Features Available Now
             </h2>
-            <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-              Discover what Crossand can already do to help you plan better experiences and strengthen your relationships.
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              Experience our core AI-powered relationship management tools that are already helping 100+ users strengthen their connections.
             </p>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-5xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {features.map((feature, idx) => (
               <FeatureCard 
                 key={idx} 
@@ -320,78 +518,74 @@ export default function HomePage() {
               />
             ))}
           </div>
-          
-          {/* More Features Coming Soon */}
-          <div className="text-center mt-16">
-            <Card className="max-w-md mx-auto bg-card/80 backdrop-blur-sm border-dashed border-2 border-primary/30 hover:border-primary/50 transition-colors duration-300">
-              <CardContent className="p-8">
-                <div className="mb-4">
-                  <div className="w-16 h-16 mx-auto bg-gradient-primary/20 rounded-full flex items-center justify-center mb-4">
-                    <Sparkles className="h-8 w-8 text-primary animate-pulse" />
-                  </div>
-                </div>
-                <h3 className="text-xl font-semibold mb-2 text-gradient-primary">More Features Coming Soon</h3>
-                <p className="text-muted-foreground">
-                  Smart reminders, relationship insights, group coordination, and many more features to help you nurture your connections.
-                </p>
-              </CardContent>
-            </Card>
-          </div>
         </div>
       </section>
 
-      {/* How It Works Section */}
-      <section className="py-20 bg-muted/30">
-        <div className="container mx-auto px-6">
+      {/* Beta Success Section */}
+      <section className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
-            <Badge variant="secondary" className="mb-4 bg-gradient-primary/10 text-primary">
-              <Clock className="mr-2 h-4 w-4" />
-              Simple Process
-            </Badge>
-            <h2 className="text-4xl md:text-5xl font-bold mb-6">
-              How Crossand Works
+            <span className="inline-flex items-center px-4 py-2 rounded-full bg-green-100 text-green-800 font-semibold text-sm mb-4">
+              <TrendingUp className="mr-2 h-4 w-4" />
+              Beta Success Story
+            </span>
+            <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-6">
+              From Idea to Reality in Just 2 Months
             </h2>
-            <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-              From discovering the perfect plan to sharing your memories - here's how to make the most of your time together.
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              Our rapid development and early validation show the strong demand for meaningful relationship technology.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {howItWorksSteps.map((step, idx) => (
-              <Card key={idx} className="relative text-center bg-card/80 backdrop-blur-sm hover:shadow-xl transition-all duration-300 hover:scale-105 animate-fade-in" style={{ animationDelay: `${idx * 150}ms` }}>
-                <CardContent className="p-6">
-                  <div className="mb-4">
-                    <div className="w-16 h-16 mx-auto bg-gradient-primary rounded-full flex items-center justify-center mb-4">
-                      <step.icon className="h-8 w-8 text-white" />
-                    </div>
-                    <div className="absolute -top-3 -right-3 w-8 h-8 bg-gradient-primary rounded-full flex items-center justify-center text-white font-bold text-sm">
-                      {idx + 1}
-                    </div>
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2">{step.title}</h3>
-                  <p className="text-muted-foreground">{step.description}</p>
-                </CardContent>
-              </Card>
-            ))}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="text-center bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all duration-300">
+              <div className="w-20 h-20 mx-auto bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center mb-6">
+                <Clock className="h-10 w-10 text-white" />
+              </div>
+              <h3 className="text-3xl font-bold text-gray-900 mb-2">2 Months</h3>
+              <p className="text-gray-600">From start to beta launch with full app skeleton and core features</p>
+            </div>
+
+            <div className="text-center bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all duration-300">
+              <div className="w-20 h-20 mx-auto bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center mb-6">
+                <Users className="h-10 w-10 text-white" />
+              </div>
+              <h3 className="text-3xl font-bold text-gray-900 mb-2">100+ Users</h3>
+              <p className="text-gray-600">30 beta testers + 70 users acquired completely organically with zero marketing spend</p>
+            </div>
+
+            <div className="text-center bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all duration-300">
+              <div className="w-20 h-20 mx-auto bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center mb-6">
+                <Zap className="h-10 w-10 text-white" />
+              </div>
+              <h3 className="text-3xl font-bold text-gray-900 mb-2">Strong Validation</h3>
+              <p className="text-gray-600">Early user feedback helping us rapidly iterate on what people actually want</p>
+            </div>
+          </div>
+
+          <div className="text-center mt-12">
+            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+              This early success validates our vision and positions us for rapid growth.
+            </p>
           </div>
         </div>
       </section>
 
       {/* Social Proof Section */}
-      <section className="py-20 bg-background">
-        <div className="container mx-auto px-6">
-                  <div className="text-center mb-16">
-          <Badge variant="secondary" className="mb-4 bg-gradient-primary/10 text-primary">
-            <Star className="mr-2 h-4 w-4" />
-            Early Access Feedback
-          </Badge>
-          <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            Excitement is Building
-          </h2>
-                      <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
+      <section id="testimonials" className="py-20 bg-gray-50">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center mb-16">
+            <span className="inline-flex items-center px-4 py-2 rounded-full bg-yellow-100 text-yellow-800 font-semibold text-sm mb-4">
+              <Star className="mr-2 h-4 w-4" />
+              What Beta Users Say
+            </span>
+            <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-6">
+              Real connections, guaranteed
+            </h2>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
               See what beta testers are saying about how Crossand is changing their approach to relationships.
             </p>
-        </div>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {testimonials.map((testimonial, idx) => (
@@ -406,18 +600,18 @@ export default function HomePage() {
       </section>
 
       {/* Pricing Section */}
-      <section className="py-20 bg-muted/30">
-        <div className="container mx-auto px-6">
+      <section id="pricing" className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
-            <Badge variant="secondary" className="mb-4 bg-gradient-primary/10 text-primary">
+            <span className="inline-flex items-center px-4 py-2 rounded-full bg-orange-100 text-orange-800 font-semibold text-sm mb-4">
               <TrendingUp className="mr-2 h-4 w-4" />
-              Simple Pricing
-            </Badge>
-            <h2 className="text-4xl md:text-5xl font-bold mb-6">
-              Choose Your Adventure
+              Sustainable Growth Strategy
+            </span>
+            <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-6">
+              Choose Your Plan
             </h2>
-            <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-              Start with full access for free, or upgrade to unlock our most advanced AI planning capabilities.
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              Start with core features for free, or unlock our latest AI models and social management tools. As we grow to 10,000+ local users, we'll partner with local businesses to create even more value for our community.
             </p>
           </div>
 
@@ -426,32 +620,26 @@ export default function HomePage() {
               <PricingCard key={idx} {...plan} />
             ))}
           </div>
-
-          <div className="text-center mt-12">
-            <p className="text-muted-foreground">
-              Questions about our plans? <Link href="/contact" className="text-primary hover:underline">Get in touch</Link>
-            </p>
-          </div>
         </div>
       </section>
 
       {/* FAQ Section */}
-      <section className="py-20 bg-background">
-        <div className="container mx-auto px-6">
+      <section id="faq" className="py-20 bg-gray-50">
+        <div className="max-w-4xl mx-auto px-6">
           <div className="text-center mb-16">
-            <Badge variant="secondary" className="mb-4 bg-gradient-primary/10 text-primary">
+            <span className="inline-flex items-center px-4 py-2 rounded-full bg-blue-100 text-blue-800 font-semibold text-sm mb-4">
               <Shield className="mr-2 h-4 w-4" />
               Questions & Answers
-            </Badge>
-            <h2 className="text-4xl md:text-5xl font-bold mb-6">
+            </span>
+            <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-6">
               Frequently Asked Questions
             </h2>
-            <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
+            <p className="text-xl text-gray-600">
               Everything you need to know about how Crossand can transform the way you manage and nurture your relationships.
             </p>
           </div>
 
-          <div className="max-w-3xl mx-auto space-y-4">
+          <div className="space-y-4">
             {faqItems.map((faq, idx) => (
               <FAQItem key={idx} {...faq} />
             ))}
@@ -460,22 +648,28 @@ export default function HomePage() {
       </section>
 
       {/* CTA Section */}
-      <section className="relative py-20 bg-gradient-primary overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-primary to-accent opacity-90" />
-        <div className="relative container mx-auto px-6 text-center">
-          <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
-            Be Among the First to Experience Crossand
+      <section className="py-20 bg-gradient-to-br from-orange-600 to-yellow-600">
+        <div className="max-w-4xl mx-auto px-6 text-center">
+          <h2 className="text-4xl lg:text-5xl font-bold text-white mb-6">
+            Transform how you nurture relationships
           </h2>
-          <p className="text-xl text-white/90 mb-8 max-w-2xl mx-auto">
-            Join our exclusive waitlist and be among the first to transform how you manage your relationships. Early subscribers get special perks!
+          <p className="text-xl text-white/90 mb-8">
+            Join our exclusive waitlist and be among the first to experience AI-powered relationship management. Early subscribers get special perks!
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button asChild size="lg" variant="secondary" className="text-lg px-8 py-6 rounded-full">
-              <Link href="/signup">
-                Join Waitlist <ArrowRight className="ml-2 h-5 w-5" />
-              </Link>
-            </Button>
-            <Button asChild size="lg" variant="outline" className="text-lg px-8 py-6 rounded-full border-white/30 text-white hover:bg-white/10">
+            <div className="relative group">
+              <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-400 via-yellow-400 to-orange-400 rounded-full blur opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
+              
+              <Button asChild size="lg" className="relative text-white px-8 py-4 rounded-full font-semibold text-lg border-none ring-0 outline-none hover:scale-105 hover:shadow-xl group overflow-hidden transition-all duration-300" style={{background: 'linear-gradient(to right, hsl(43, 100%, 55%), hsl(30, 100%, 50%))'}}>
+                <Link href="/signup" className="relative z-10 flex items-center">
+                  <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+                  
+                  <span className="relative z-20 font-bold tracking-wide">Join Waitlist</span>
+                  <ArrowRight className="relative z-20 ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform duration-300" />
+                </Link>
+              </Button>
+            </div>
+            <Button asChild size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10 px-8 py-4 rounded-full font-semibold text-lg">
               <Link href="/contact">
                 <Mail className="mr-2 h-5 w-5" />
                 Get Updates
@@ -486,62 +680,49 @@ export default function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-card border-t">
-        <div className="container mx-auto px-6 py-12">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+      <footer className="bg-white border-t border-gray-200">
+        <div className="max-w-7xl mx-auto px-6 py-12">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div>
               <div className="flex items-center gap-3 mb-4">
                 <CrossandLogo className="h-8 w-8" />
-                <span className="text-xl font-bold">Crossand</span>
+                <span className="text-xl font-bold text-gray-900">Crossand</span>
               </div>
-              <p className="text-muted-foreground mb-4">
-                The relationship management platform that helps you nurture the connections that matter most.
+              <p className="text-gray-600 mb-6 leading-relaxed">
+                Monitor your social landscape with AI that detects fading connections and prompts meaningful interactions at the right time.
               </p>
               <div className="flex gap-4">
-                <Link href="#" className="text-muted-foreground hover:text-primary transition-colors">
-                  <Twitter className="h-5 w-5" />
-                </Link>
-                <Link href="#" className="text-muted-foreground hover:text-primary transition-colors">
+                <Link href="https://www.instagram.com/crossand.ai/" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-orange-600 transition-colors">
                   <Instagram className="h-5 w-5" />
                 </Link>
-                <Link href="#" className="text-muted-foreground hover:text-primary transition-colors">
-                  <Facebook className="h-5 w-5" />
+                <Link href="https://www.linkedin.com/company/crossand/" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-orange-600 transition-colors">
+                  <Linkedin className="h-5 w-5" />
                 </Link>
               </div>
             </div>
             
             <div>
-              <h3 className="font-semibold mb-4">Product</h3>
+              <h3 className="font-semibold text-gray-900 mb-4">Company</h3>
               <ul className="space-y-2">
-                <li><Link href="/features" className="text-muted-foreground hover:text-primary transition-colors">Features</Link></li>
-                <li><Link href="/pricing" className="text-muted-foreground hover:text-primary transition-colors">Pricing</Link></li>
-                <li><Link href="/explore" className="text-muted-foreground hover:text-primary transition-colors">Explore</Link></li>
-                <li><Link href="/mobile" className="text-muted-foreground hover:text-primary transition-colors">Mobile App</Link></li>
+                <li><span className="text-gray-600 hover:text-orange-600 transition-colors cursor-pointer">About</span></li>
+                <li><span className="text-gray-600 hover:text-orange-600 transition-colors cursor-pointer">Blog</span></li>
+                <li><span className="text-gray-600 hover:text-orange-600 transition-colors cursor-pointer">Careers</span></li>
+                <li><span className="text-gray-600 hover:text-orange-600 transition-colors cursor-pointer">Contact</span></li>
               </ul>
             </div>
             
             <div>
-              <h3 className="font-semibold mb-4">Company</h3>
+              <h3 className="font-semibold text-gray-900 mb-4">Support</h3>
               <ul className="space-y-2">
-                <li><Link href="/about" className="text-muted-foreground hover:text-primary transition-colors">About</Link></li>
-                <li><Link href="/blog" className="text-muted-foreground hover:text-primary transition-colors">Blog</Link></li>
-                <li><Link href="/careers" className="text-muted-foreground hover:text-primary transition-colors">Careers</Link></li>
-                <li><Link href="/contact" className="text-muted-foreground hover:text-primary transition-colors">Contact</Link></li>
-              </ul>
-            </div>
-            
-            <div>
-              <h3 className="font-semibold mb-4">Support</h3>
-              <ul className="space-y-2">
-                <li><Link href="/help" className="text-muted-foreground hover:text-primary transition-colors">Help Center</Link></li>
-                <li><Link href="/privacy" className="text-muted-foreground hover:text-primary transition-colors">Privacy Policy</Link></li>
-                <li><Link href="/terms" className="text-muted-foreground hover:text-primary transition-colors">Terms of Service</Link></li>
-                <li><Link href="/status" className="text-muted-foreground hover:text-primary transition-colors">Status</Link></li>
+                <li><span className="text-gray-600 hover:text-orange-600 transition-colors cursor-pointer">Help Center</span></li>
+                <li><span className="text-gray-600 hover:text-orange-600 transition-colors cursor-pointer">Privacy Policy</span></li>
+                <li><span className="text-gray-600 hover:text-orange-600 transition-colors cursor-pointer">Terms of Service</span></li>
+                <li><span className="text-gray-600 hover:text-orange-600 transition-colors cursor-pointer">Status</span></li>
               </ul>
             </div>
           </div>
           
-          <div className="border-t mt-8 pt-8 text-center text-muted-foreground">
+          <div className="border-t border-gray-200 mt-8 pt-8 text-center text-gray-500">
             <p>&copy; 2024 Crossand. All rights reserved. Made with ❤️ for people who value meaningful relationships.</p>
           </div>
         </div>
@@ -549,3 +730,4 @@ export default function HomePage() {
     </div>
   );
 }
+
