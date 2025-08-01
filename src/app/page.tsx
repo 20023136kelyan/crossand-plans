@@ -4,14 +4,14 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Sparkles, 
-  Heart, 
-  Users, 
-  Camera, 
-  MapPin, 
-  Globe, 
-  ArrowRight, 
+import {
+  Sparkles,
+  Heart,
+  Users,
+  Camera,
+  MapPin,
+  Globe,
+  ArrowRight,
   Zap,
   Shield,
   Clock,
@@ -68,8 +68,8 @@ const TestimonialCard = ({ name, role, content, rating, delay = 0 }: { name: str
   </div>
 );
 
-const PricingCard = ({ title, price, period, features, highlighted = false, buttonText = "Get Started" }: { 
-  title: string, price: string, period: string, features: string[], highlighted?: boolean, buttonText?: string 
+const PricingCard = ({ title, price, period, features, highlighted = false, buttonText = "Get Started" }: {
+  title: string, price: string, period: string, features: string[], highlighted?: boolean, buttonText?: string
 }) => (
   <div className={`bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all duration-300 ${highlighted ? 'ring-2 ring-orange-500 transform scale-105' : ''}`}>
     {highlighted && (
@@ -101,7 +101,7 @@ const PricingCard = ({ title, price, period, features, highlighted = false, butt
 
 const FAQItem = ({ question, answer }: { question: string, answer: string }) => {
   const [isOpen, setIsOpen] = useState(false);
-  
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200">
       <button
@@ -123,7 +123,7 @@ const FAQItem = ({ question, answer }: { question: string, answer: string }) => 
 // Add Navigation component
 const Navigation = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  
+
   const scrollToSection = (sectionId: string) => {
     const element = document.getElementById(sectionId);
     if (element) {
@@ -141,7 +141,7 @@ const Navigation = () => {
             <CrossandLogo className="h-8 w-8" />
             <span className="text-xl font-bold text-gray-900">Crossand</span>
           </div>
-          
+
           {/* Desktop Navigation Links */}
           <div className="hidden md:flex items-center space-x-8">
             <button
@@ -183,12 +183,12 @@ const Navigation = () => {
             <div className="relative group">
               {/* Glowing background effect */}
               <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-400 via-yellow-400 to-orange-400 rounded-full blur opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
-              
-              <Button asChild className="relative text-white font-medium px-6 py-2 rounded-full border-none ring-0 outline-none hover:scale-105 hover:shadow-xl group overflow-hidden transition-all duration-300" style={{background: 'linear-gradient(to right, hsl(43, 100%, 55%), hsl(30, 100%, 50%))'}}>
+
+              <Button asChild className="relative text-white font-medium px-6 py-2 rounded-full border-none ring-0 outline-none hover:scale-105 hover:shadow-xl group overflow-hidden transition-all duration-300" style={{ background: 'linear-gradient(to right, hsl(43, 100%, 55%), hsl(30, 100%, 50%))' }}>
                 <Link href="/signup" className="relative z-10 flex items-center">
                   {/* Shimmer effect overlay */}
                   <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
-                  
+
                   <span className="relative z-20 font-bold tracking-wide">Join Waitlist</span>
                   <ArrowRight className="relative z-20 ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform duration-300" />
                 </Link>
@@ -251,12 +251,12 @@ const Navigation = () => {
                 <div className="relative group">
                   {/* Glowing background effect */}
                   <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-400 via-yellow-400 to-orange-400 rounded-full blur opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
-                  
-                  <Button asChild className="relative w-full text-white font-medium py-3 rounded-full border-none ring-0 outline-none hover:scale-105 hover:shadow-xl group overflow-hidden transition-all duration-300" style={{background: 'linear-gradient(to right, hsl(43, 100%, 55%), hsl(30, 100%, 50%))'}}>
+
+                  <Button asChild className="relative w-full text-white font-medium py-3 rounded-full border-none ring-0 outline-none hover:scale-105 hover:shadow-xl group overflow-hidden transition-all duration-300" style={{ background: 'linear-gradient(to right, hsl(43, 100%, 55%), hsl(30, 100%, 50%))' }}>
                     <Link href="/signup" className="relative z-10 flex items-center justify-center">
                       {/* Shimmer effect overlay */}
                       <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
-                      
+
                       <span className="relative z-20 font-bold tracking-wide">Join Waitlist</span>
                       <ArrowRight className="relative z-20 ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform duration-300" />
                     </Link>
@@ -412,19 +412,25 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation />
-      
+
       {/* Hero Section */}
       <section id="hero" className="relative bg-white overflow-hidden pt-16">
-        <div className="absolute inset-0 bg-gradient-to-br from-orange-50 to-yellow-50 opacity-60" />
+        {/* Background Image */}
+        <img
+          src="/images/Homepage.jpg"
+          alt="Background"
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{ zIndex: 0 }}
+        />
         <div className="relative max-w-7xl mx-auto px-6 py-20 lg:py-32">
           <div className="text-center animate-fade-in">
             <h1 className="font-bold text-5xl lg:text-7xl text-gray-900 mb-8 leading-tight">
               Monitor your social landscape,<br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r" style={{backgroundImage: 'linear-gradient(to right, hsl(43, 100%, 55%), hsl(30, 100%, 50%))'}}>
+              <span className="text-black">
                 strengthen every connection
               </span>
             </h1>
-            
+
             <p className="text-xl lg:text-2xl text-gray-600 mb-12 max-w-4xl mx-auto leading-relaxed">
               Crossand uses data analytics and AI to monitor your social landscape, keep track of your relationships, and detect when connections begin to fade. We prompt the right kind of interaction at the right time. From making your messages more interactive and meaningful to planning get-togethers. No stress. No overthinking. Just real connection.
             </p>
@@ -434,12 +440,12 @@ export default function HomePage() {
               <div className="relative group">
                 {/* Glowing background effect */}
                 <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-400 via-yellow-400 to-orange-400 rounded-full blur opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
-                
-                <Button asChild size="lg" className="relative text-xl font-semibold px-12 py-8 transition-all duration-300 rounded-full border-none ring-0 outline-none hover:scale-105 hover:shadow-2xl group overflow-hidden" style={{background: 'linear-gradient(to right, hsl(43, 100%, 55%), hsl(30, 100%, 50%))'}}>
+
+                <Button asChild size="lg" className="relative text-xl font-semibold px-12 py-8 transition-all duration-300 rounded-full border-none ring-0 outline-none hover:scale-105 hover:shadow-2xl group overflow-hidden" style={{ background: 'linear-gradient(to right, hsl(43, 100%, 55%), hsl(30, 100%, 50%))' }}>
                   <Link href="/signup" className="relative z-10 flex items-center">
                     {/* Shimmer effect overlay */}
                     <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
-                    
+
                     <span className="relative z-20 text-white font-bold tracking-wide">Join Waitlist</span>
                     <ArrowRight className="relative z-20 ml-3 h-6 w-6 text-white group-hover:translate-x-2 transition-transform duration-300" />
                   </Link>
@@ -506,13 +512,13 @@ export default function HomePage() {
               Experience our core AI-powered relationship management tools that are already helping 100+ users strengthen their connections.
             </p>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {features.map((feature, idx) => (
-              <FeatureCard 
-                key={idx} 
-                icon={feature.icon} 
-                title={feature.title} 
+              <FeatureCard
+                key={idx}
+                icon={feature.icon}
+                title={feature.title}
                 description={feature.description}
                 delay={idx * 100}
               />
@@ -589,7 +595,7 @@ export default function HomePage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {testimonials.map((testimonial, idx) => (
-              <TestimonialCard 
+              <TestimonialCard
                 key={idx}
                 {...testimonial}
                 delay={idx * 200}
@@ -659,11 +665,11 @@ export default function HomePage() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <div className="relative group">
               <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-400 via-yellow-400 to-orange-400 rounded-full blur opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
-              
-              <Button asChild size="lg" className="relative text-white px-8 py-4 rounded-full font-semibold text-lg border-none ring-0 outline-none hover:scale-105 hover:shadow-xl group overflow-hidden transition-all duration-300" style={{background: 'linear-gradient(to right, hsl(43, 100%, 55%), hsl(30, 100%, 50%))'}}>
+
+              <Button asChild size="lg" className="relative text-white px-8 py-4 rounded-full font-semibold text-lg border-none ring-0 outline-none hover:scale-105 hover:shadow-xl group overflow-hidden transition-all duration-300" style={{ background: 'linear-gradient(to right, hsl(43, 100%, 55%), hsl(30, 100%, 50%))' }}>
                 <Link href="/signup" className="relative z-10 flex items-center">
                   <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
-                  
+
                   <span className="relative z-20 font-bold tracking-wide">Join Waitlist</span>
                   <ArrowRight className="relative z-20 ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform duration-300" />
                 </Link>
@@ -700,7 +706,7 @@ export default function HomePage() {
                 </Link>
               </div>
             </div>
-            
+
             <div>
               <h3 className="font-semibold text-gray-900 mb-4">Company</h3>
               <ul className="space-y-2">
@@ -710,7 +716,7 @@ export default function HomePage() {
                 <li><span className="text-gray-600 hover:text-orange-600 transition-colors cursor-pointer">Contact</span></li>
               </ul>
             </div>
-            
+
             <div>
               <h3 className="font-semibold text-gray-900 mb-4">Support</h3>
               <ul className="space-y-2">
@@ -721,7 +727,7 @@ export default function HomePage() {
               </ul>
             </div>
           </div>
-          
+
           <div className="border-t border-gray-200 mt-8 pt-8 text-center text-gray-500">
             <p>&copy; 2024 Crossand. All rights reserved. Made with ❤️ for people who value meaningful relationships.</p>
           </div>
