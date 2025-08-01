@@ -157,6 +157,7 @@ export async function sendMessageAction(
   const mediaType = formData.get('mediaType') as string | null; // Get explicit mediaType if provided
   const voiceDurationStr = formData.get('voiceDuration');
   const voiceDuration = voiceDurationStr ? parseInt(voiceDurationStr as string, 10) : undefined;
+  const replyToMessageId = formData.get('replyToMessageId') as string | null; // Get replyToMessageId if present
   console.log('Chat action - voiceDurationStr:', voiceDurationStr, 'voiceDuration:', voiceDuration);
   
   if ((!text || !text.trim()) && !imageFile && !mediaUrl && !audioFile) {
@@ -219,9 +220,18 @@ export async function sendMessageAction(
   console.log(`  - isGif: ${isGif}`);
   console.log(`  - isVoice: ${isVoice}`);
   console.log(`  - voiceDuration: ${voiceDuration}`);
+  console.log(`  - replyToMessageId: ${replyToMessageId || 'N/A'}`);
 
   try {
-    await sendMessageAdminService(chatId, senderId, text, finalMediaUrl, determinedContentType, voiceDuration); 
+    await sendMessageAdminService(
+      chatId, 
+      senderId, 
+      text, 
+      finalMediaUrl, 
+      determinedContentType, 
+      voiceDuration,
+      replyToMessageId || undefined
+    ); 
     revalidatePath(`/messages/${chatId}`);
     revalidatePath('/messages'); // To update last message in chat list
     return { success: true };

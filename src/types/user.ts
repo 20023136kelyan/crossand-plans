@@ -202,6 +202,18 @@ export interface Chat {
 
 export type MediaType = 'image' | 'gif' | 'voice' | 'video' | 'file';
 
+export interface ReplyReference {
+  messageId: string;        // ID of the message being replied to
+  senderId: string;         // Original message sender's ID
+  senderName?: string;      // Cached sender name for display
+  textPreview?: string;     // First 100 chars of original message
+  mediaUrl?: string;        // If original had media
+  mediaType?: MediaType;    // Type of media if any
+  hasLinkPreview?: boolean; // If original had link preview
+  threadId?: string;        // ID of the root message in the thread (if any)
+  isThreadRoot?: boolean;   // Whether the replied message is a thread root
+}
+
 export interface ChatMessage {
   id: string;
   senderId: string;
@@ -215,7 +227,26 @@ export interface ChatMessage {
     [userId: string]: AppTimestamp; // userId: timestamp when they read the message
   };
   status?: 'sending' | 'sent' | 'delivered' | 'read';
-  voiceDuration?: number; // Duration in seconds for voice messages
+  voiceDuration?: number;
+  
+  // Reply information
+  replyTo?: ReplyReference;
+  isReply?: boolean;
+  
+  // Threading support
+  threadId?: string;           // ID of the root message in the thread
+  parentId?: string;           // Direct parent message ID (if in a thread)
+  lineage?: string[];          // Array of ancestor message IDs (oldest first, root to parent)
+  threadCount?: number;        // Number of messages in this thread (including root)
+  lastThreadActivity?: AppTimestamp; // When this thread was last active
+  isThreadRoot?: boolean;      // Whether this is the root of a thread
+  
+  // Denormalized data for performance
+  lastThreadMessagePreview?: {
+    text?: string;
+    senderId: string;
+    timestamp: AppTimestamp;
+  };
 }
 
 // Interface for creating chat messages with server timestamps
@@ -233,9 +264,28 @@ export interface ChatMessageCreate {
   status?: 'sending' | 'sent' | 'delivered' | 'read';
   updatedAt?: ServerFieldValue;
   voiceDuration?: number; // Duration in seconds for voice messages
+  
+  // Reply information
+  replyTo?: Omit<ReplyReference, 'senderName' | 'textPreview' | 'hasLinkPreview'>;
+  isReply?: boolean;
+  
+  // Threading support
+  threadId?: string;           // ID of the root message in the thread
+  parentId?: string;           // Direct parent message ID (if in a thread)
+  lineage?: string[];          // Array of ancestor message IDs (oldest first, root to parent)
+  threadCount?: number;        // Number of messages in this thread (including root)
+  lastThreadActivity?: ServerFieldValue; // When this thread was last active
+  isThreadRoot?: boolean;      // Whether this is the root of a thread
+  
+  // Denormalized data for performance
+  lastThreadMessagePreview?: {
+    text?: string;
+    senderId: string;
+    timestamp: ServerFieldValue;
+  };
 }
-export type RSVPStatusType = 'going' | 'maybe' | 'not-going' | 'pending';
 
+export type RSVPStatusType = 'going' | 'maybe' | 'not-going' | 'pending';
 
 export interface ItineraryItem {
   id: string;

@@ -16,8 +16,8 @@ interface EmailVerificationPromptProps {
   onVerified?: () => void;
 }
 
-const CrossandLogo = ({ className }: { className?: string }) => (
-  <img src="/images/crossand-logo.svg" alt="Crossand Logo" className={className} />
+const EmailIcon = ({ className }: { className?: string }) => (
+  <span className={`text-14xl ${className}`}>📧</span>
 );
 
 export function EmailVerificationPrompt({ email: initialEmail, onVerified }: EmailVerificationPromptProps) {
@@ -110,7 +110,7 @@ export function EmailVerificationPrompt({ email: initialEmail, onVerified }: Ema
       <CardHeader className="text-center space-y-3 pb-4">
         <div className="flex flex-col items-center">
           <Link href="/" className="flex items-center gap-2 mb-2">
-            <CrossandLogo className="h-8 w-8" />
+            <EmailIcon className="h-20 w-20" />
           </Link>
         </div>
       </CardHeader>

@@ -33,6 +33,7 @@ import { MediaMessage } from '@/components/messages/MediaMessage';
 import { GifPicker } from '@/components/messages/GifPicker';
 import { VoiceRecorder } from '@/components/messages/VoiceRecorder';
 import { AudioPlayer } from '@/components/messages/AudioPlayer';
+import { X } from 'lucide-react';
 
 const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, isVerified: boolean }) => {
   if (role === 'admin') {
@@ -44,7 +45,7 @@ const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, is
   return null;
 };
 
-const HEADER_HEIGHT_PX = 60; 
+const HEADER_HEIGHT_PX = 60;
 
 // Utility to normalize Firestore Timestamp, string, or Date to JS Date
 function getTimestampAsDate(ts: any): Date | null {
@@ -98,6 +99,58 @@ export default function ChatPage() {
   const [isVoiceRecording, setIsVoiceRecording] = useState(false);
   const [voiceRecordingBlob, setVoiceRecordingBlob] = useState<Blob | null>(null);
   const voiceRecorderRef = useRef<{ stopRecording: () => void } | null>(null);
+  
+  // State for reply functionality
+  const [replyingTo, setReplyingTo] = useState<{
+    messageId: string;
+    senderId: string;
+    senderName: string;
+    textPreview: string;
+    mediaUrl?: string;
+    mediaType?: 'image' | 'video' | 'audio' | 'gif' | 'voice';
+  } | null>(null);
+
+  // Reply Preview Component
+  const ReplyPreview = () => {
+    if (!replyingTo) return null;
+    
+    const isCurrentUser = replyingTo.senderId === user?.uid;
+    
+    return (
+      <div className="relative bg-muted/30 rounded-t-lg border-b border-border p-3 mb-2">
+        <div className="flex items-start gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="text-xs font-medium text-muted-foreground">
+                Replying to {isCurrentUser ? 'yourself' : replyingTo.senderName}
+              </span>
+            </div>
+            
+            <div className="text-sm text-muted-foreground line-clamp-1">
+              {replyingTo.textPreview}
+              {replyingTo.mediaType && !replyingTo.textPreview && (
+                <span className="text-xs italic">
+                  {replyingTo.mediaType === 'image' ? 'Photo' : 
+                   replyingTo.mediaType === 'video' ? 'Video' :
+                   replyingTo.mediaType === 'voice' ? 'Voice message' :
+                   replyingTo.mediaType === 'gif' ? 'GIF' : 'Media'}
+                </span>
+              )}
+            </div>
+          </div>
+          
+          <button
+            type="button"
+            onClick={() => setReplyingTo(null)}
+            className="p-1 -m-1.5 rounded-full hover:bg-muted/50 transition-colors"
+            aria-label="Cancel reply"
+          >
+            <X className="h-4 w-4 text-muted-foreground" />
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -622,6 +675,14 @@ export default function ChatPage() {
       formData.append('text', newMessage.trim());
     }
     
+    // Add reply metadata if replying to a message
+    if (replyingTo) {
+      formData.append('isReply', 'true');
+      formData.append('replyToMessageId', replyingTo.messageId);
+      // Clear the reply state after sending
+      setReplyingTo(null);
+    }
+    
     // Add file if selected
     if (gifToSend) {
       console.log('[handleSendMessage] Preparing to send GIF:', gifToSend);
@@ -1002,7 +1063,36 @@ export default function ChatPage() {
                   
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <div className={cn(bubblePadding, bubbleStyles)}>
+                      <div className={cn(bubblePadding, bubbleStyles, 'relative group')}>
+                        {/* Reply button that appears on hover */}
+                        {!isVoiceRecording && !voiceRecordingBlob && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const sender = chatDetails?.participantInfo?.find(p => p.uid === msg.senderId);
+                              setReplyingTo({
+                                messageId: msg.id,
+                                senderId: msg.senderId,
+                                senderName: sender?.name || 'User',
+                                textPreview: msg.text?.substring(0, 50) + (msg.text && msg.text.length > 50 ? '...' : '') || '',
+                                mediaUrl: msg.mediaUrl,
+                                mediaType: msg.mediaType as any
+                              });
+                              // Scroll to input
+                              setTimeout(() => {
+                                textareaRef.current?.focus();
+                              }, 100);
+                            }}
+                            className="absolute -top-2 right-0 opacity-0 group-hover:opacity-100 transition-opacity bg-foreground/10 hover:bg-foreground/20 rounded-full p-1.5 -mr-1 -mt-1"
+                            aria-label="Reply to message"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+                              <polyline points="9 10 4 15 9 20"></polyline>
+                              <path d="M20 4v7a4 4 0 0 1-4 4H4"></path>
+                            </svg>
+                          </button>
+                        )}
                         {/* Media Content */}
                         {hasMedia && (
                           <div className={cn(
@@ -1033,6 +1123,34 @@ export default function ChatPage() {
                           </div>
                         )}
 
+                        {/* Reply indicator */}
+                        {msg.replyTo && (
+                          <div className={cn(
+                            "flex items-start gap-2 mb-1.5 px-2 pt-1.5 text-xs text-muted-foreground border-l-2",
+                            isSender ? "border-primary/50" : "border-[#d97a1a]/50"
+                          )}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3 flex-shrink-0 mt-0.5">
+                              <polyline points="9 10 4 15 9 20"></polyline>
+                              <path d="M20 4v7a4 4 0 0 1-4 4H4"></path>
+                            </svg>
+                            <div className="truncate">
+                              <span className="font-medium">
+                                {msg.replyTo.senderId === user?.uid ? 'You' : msg.replyTo.senderName || 'User'}
+                              </span>
+                              {msg.replyTo.textPreview ? (
+                                <span className="ml-1">{msg.replyTo.textPreview}</span>
+                              ) : msg.replyTo.mediaType ? (
+                                <span className="ml-1 italic">
+                                  {msg.replyTo.mediaType === 'image' ? 'Photo' : 
+                                   msg.replyTo.mediaType === 'video' ? 'Video' : 
+                                   msg.replyTo.mediaType === 'gif' ? 'GIF' : 
+                                   msg.replyTo.mediaType === 'voice' ? 'Voice message' : 'Media'}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        )}
+                        
                         {/* Text Content */}
                         {hasText && (
                           <div className="break-words">
@@ -1040,7 +1158,8 @@ export default function ChatPage() {
                               "text-sm whitespace-pre-wrap leading-relaxed",
                               hasMedia && "px-2 pb-1.5",
                               !isSender && hasMedia && "text-foreground",
-                              isSender && hasMedia && "text-foreground"
+                              isSender && hasMedia && "text-foreground",
+                              msg.replyTo && (hasMedia ? 'pt-0' : 'pt-1')
                             )}>
                               {textContent}
                             </div>
@@ -1125,12 +1244,47 @@ export default function ChatPage() {
               </div>
             )}
             
+            {/* Reply Preview */}
+            {replyingTo && (
+              <div className="bg-muted/30 rounded-t-lg p-2 border-b border-border/50 text-sm text-muted-foreground">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-medium">Replying to {replyingTo.senderId === user?.uid ? 'yourself' : replyingTo.senderName}</span>
+                    {replyingTo.mediaType && (
+                      <span className="text-xs bg-foreground/10 px-1.5 py-0.5 rounded">
+                        {replyingTo.mediaType === 'image' ? 'Photo' : 
+                         replyingTo.mediaType === 'video' ? 'Video' : 
+                         replyingTo.mediaType === 'gif' ? 'GIF' : 
+                         replyingTo.mediaType === 'voice' ? 'Voice message' : 'Media'}
+                      </span>
+                    )}
+                    {replyingTo.textPreview && !replyingTo.mediaType && (
+                      <span className="truncate max-w-[200px] md:max-w-[300px] text-ellipsis">
+                        {replyingTo.textPreview}
+                      </span>
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => setReplyingTo(null)}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    <span className="sr-only">Cancel reply</span>
+                  </Button>
+                </div>
+              </div>
+            )}
+            
             <div className="flex items-end gap-3">
               <div className={cn(
                 'flex-1 transition-all duration-200 flex items-center',
                 isVoiceRecording || voiceRecordingBlob 
                   ? 'bg-[#1a1a1a] border-2 border-gray-500/60 rounded-3xl shadow-lg px-4 h-12 text-white' 
-                  : ''
+                  : '',
+                replyingTo && 'rounded-t-none'
               )}>
                 {isVoiceRecording ? (
                   /* Show recording UI */

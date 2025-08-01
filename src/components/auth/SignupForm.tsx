@@ -1,6 +1,7 @@
 
 'use client';
 
+import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
@@ -82,6 +83,8 @@ export function SignupForm() {
 
   const form = useForm<SignupFormValues>({
     resolver: zodResolver(signupFormSchema),
+    mode: 'onChange',
+    reValidateMode: 'onChange',
     defaultValues: {
       fullName: '',
       username: '',
@@ -91,6 +94,16 @@ export function SignupForm() {
       agreeToTerms: false,
     },
   });
+
+  // Debug form state changes
+  React.useEffect(() => {
+    const subscription = form.watch((value, { name, type }) => {
+      console.log('Form values:', value);
+      console.log('Form errors:', form.formState.errors);
+      console.log('Is form valid?', form.formState.isValid);
+    });
+    return () => subscription.unsubscribe();
+  }, [form]);
 
   // Password strength calculation
   const calculatePasswordStrength = (password: string) => {
@@ -396,7 +409,8 @@ export function SignupForm() {
             <Button 
               type="submit" 
               className="w-full h-10 bg-orange-500 hover:bg-orange-600 text-white font-medium transition-colors duration-200" 
-              disabled={isSubmitting || isGoogleSubmitting || !form.formState.isValid}
+              disabled={isSubmitting || isGoogleSubmitting || !form.formState.isValid || !form.formState.isDirty}
+              title={!form.formState.isDirty ? 'Please fill in all required fields' : !form.formState.isValid ? 'Please fix validation errors' : ''}
             >
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {isSubmitting ? 'Creating...' : 'Create Account'}
