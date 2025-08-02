@@ -41,12 +41,12 @@ const CrossandLogo = ({ className }: { className?: string }) => (
 );
 
 const FeatureCard = ({ icon: Icon, title, description, delay = 0 }: { icon: any, title: string, description: string, delay?: number }) => (
-  <div className="group text-center p-8 hover:scale-105 transition-all duration-500 animate-fade-in" style={{ animationDelay: `${delay}ms` }}>
-    <div className="mx-auto mb-6 p-4 rounded-2xl bg-gradient-to-br from-orange-100 to-yellow-100 w-fit group-hover:scale-110 transition-all duration-300">
+  <div className="group text-center p-8 rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 shadow-xl hover:scale-105 transition-all duration-500 animate-fade-in" style={{ animationDelay: `${delay}ms` }}>
+    <div className="mx-auto mb-6 p-4 rounded-2xl bg-gradient-to-br from-orange-100/80 to-yellow-100/80 backdrop-blur-sm w-fit group-hover:scale-110 transition-all duration-300">
       <Icon className="h-8 w-8 text-orange-600 group-hover:text-orange-700 transition-colors" />
     </div>
-    <h3 className="text-xl font-bold mb-4 text-gray-800">{title}</h3>
-    <p className="text-gray-600 leading-relaxed">{description}</p>
+    <h3 className="text-xl font-bold mb-4 text-white">{title}</h3>
+    <p className="text-white/90 leading-relaxed">{description}</p>
   </div>
 );
 
@@ -59,7 +59,7 @@ const TestimonialCard = ({ name, role, content, rating, delay = 0 }: { name: str
     </div>
     <div className="mb-6">
       <Quote className="h-8 w-8 text-orange-200 mb-4" />
-      <p className="text-gray-700 leading-relaxed italic text-lg">"{content}"</p>
+      <p className="text-gray-700 leading-relaxed italic text-lg" style={{ fontFamily: 'BarlowCondensed' }}>"{content}"</p>
     </div>
     <div className="border-t pt-4">
       <p className="font-bold text-gray-800">{name}</p>
@@ -139,7 +139,7 @@ const Navigation = () => {
           {/* Logo and Company Name */}
           <div className="flex items-center gap-3">
             <CrossandLogo className="h-8 w-8" />
-            <span className="text-xl font-bold text-gray-900">Crossand</span>
+            <span className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Nova_Round' }}>Crossand</span>
           </div>
 
           {/* Desktop Navigation Links */}
@@ -422,8 +422,27 @@ export default function HomePage() {
           className="absolute inset-0 w-full h-full object-cover"
           style={{ zIndex: 0 }}
         />
-        <div className="relative max-w-7xl mx-auto px-6 py-20 lg:py-32">
+        <div className="relative max-w-7xl mx-auto px-6 py-12 lg:py-20">
           <div className="text-center animate-fade-in">
+            {/* Crossand Logo */}
+            <div className="mb-8 relative">
+              {/* Seamless light glow effect */}
+              <div className="absolute inset-0 bg-white/80 rounded-full blur-3xl animate-pulse shadow-2xl" style={{
+                width: '300px',
+                height: '300px',
+                left: '50%',
+                top: '50%',
+                transform: 'translate(-50%, -50%)',
+                animation: 'pulse 3s ease-in-out infinite',
+                boxShadow: '0 0 60px rgba(255, 255, 255, 0.8), 0 0 120px rgba(255, 255, 255, 0.4)'
+              }}></div>
+              <img
+                src="/images/Crossand logo.png"
+                alt="Crossand Logo"
+                className="mx-auto h-40 w-auto relative z-10"
+              />
+            </div>
+
             <h1 className="font-bold text-5xl lg:text-7xl text-gray-900 mb-8 leading-tight">
               Monitor your social landscape,<br />
               <span className="text-black">
@@ -431,7 +450,7 @@ export default function HomePage() {
               </span>
             </h1>
 
-            <p className="text-xl lg:text-2xl text-gray-600 mb-12 max-w-4xl mx-auto leading-relaxed">
+            <p className="text-xl lg:text-2xl text-white mb-12 max-w-4xl mx-auto leading-relaxed" style={{ fontFamily: 'BarlowCondensed' }}>
               Crossand uses data analytics and AI to monitor your social landscape, keep track of your relationships, and detect when connections begin to fade. We prompt the right kind of interaction at the right time. From making your messages more interactive and meaningful to planning get-togethers. No stress. No overthinking. Just real connection.
             </p>
 
@@ -473,7 +492,7 @@ export default function HomePage() {
             <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-6">
               How Crossand Works
             </h2>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto" style={{ fontFamily: 'BarlowCondensed' }}>
               From monitoring your social landscape to facilitating meaningful connections - here's how we help you nurture relationships effortlessly.
             </p>
           </div>
@@ -490,7 +509,7 @@ export default function HomePage() {
                   </div>
                 </div>
                 <h3 className="text-xl font-bold text-gray-800 mb-4">{step.title}</h3>
-                <p className="text-gray-600 leading-relaxed">{step.description}</p>
+                <p className="text-gray-600 leading-relaxed" style={{ fontFamily: 'BarlowCondensed' }}>{step.description}</p>
               </div>
             ))}
           </div>
@@ -498,17 +517,24 @@ export default function HomePage() {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="py-20 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-6">
+      <section id="features" className="py-20 relative overflow-hidden">
+        {/* Background Image */}
+        <img
+          src="/images/homepage2.jpg"
+          alt="Background"
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{ zIndex: 0 }}
+        />
+        <div className="relative max-w-7xl mx-auto px-6" style={{ zIndex: 2 }}>
           <div className="text-center mb-16">
             <span className="inline-flex items-center px-4 py-2 rounded-full bg-orange-100 text-orange-800 font-semibold text-sm mb-4">
               <Zap className="mr-2 h-4 w-4" />
               Powerful Features
             </span>
-            <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-6">
+            <h2 className="text-4xl lg:text-5xl font-bold text-white mb-6">
               Beta Features Available Now
             </h2>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+            <p className="text-xl text-white/90 max-w-3xl mx-auto" style={{ fontFamily: 'BarlowCondensed' }}>
               Experience our core AI-powered relationship management tools that are already helping 100+ users strengthen their connections.
             </p>
           </div>
@@ -538,7 +564,7 @@ export default function HomePage() {
             <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-6">
               From Idea to Reality in Just 2 Months
             </h2>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto" style={{ fontFamily: 'BarlowCondensed' }}>
               Our rapid development and early validation show the strong demand for meaningful relationship technology.
             </p>
           </div>
@@ -549,7 +575,7 @@ export default function HomePage() {
                 <Clock className="h-10 w-10 text-white" />
               </div>
               <h3 className="text-3xl font-bold text-gray-900 mb-2">2 Months</h3>
-              <p className="text-gray-600">From start to beta launch with full app skeleton and core features</p>
+              <p className="text-gray-600" style={{ fontFamily: 'BarlowCondensed' }}>From start to beta launch with full app skeleton and core features</p>
             </div>
 
             <div className="text-center bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all duration-300">
@@ -557,7 +583,7 @@ export default function HomePage() {
                 <Users className="h-10 w-10 text-white" />
               </div>
               <h3 className="text-3xl font-bold text-gray-900 mb-2">100+ Users</h3>
-              <p className="text-gray-600">30 beta testers + 70 users acquired completely organically with zero marketing spend</p>
+              <p className="text-gray-600" style={{ fontFamily: 'BarlowCondensed' }}>30 beta testers + 70 users acquired completely organically with zero marketing spend</p>
             </div>
 
             <div className="text-center bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all duration-300">
@@ -565,12 +591,12 @@ export default function HomePage() {
                 <Zap className="h-10 w-10 text-white" />
               </div>
               <h3 className="text-3xl font-bold text-gray-900 mb-2">Strong Validation</h3>
-              <p className="text-gray-600">Early user feedback helping us rapidly iterate on what people actually want</p>
+              <p className="text-gray-600" style={{ fontFamily: 'BarlowCondensed' }}>Early user feedback helping us rapidly iterate on what people actually want</p>
             </div>
           </div>
 
           <div className="text-center mt-12">
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            <p className="text-lg text-gray-600 max-w-2xl mx-auto" style={{ fontFamily: 'BarlowCondensed' }}>
               This early success validates our vision and positions us for rapid growth.
             </p>
           </div>
@@ -588,7 +614,7 @@ export default function HomePage() {
             <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-6">
               Real connections, guaranteed
             </h2>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto" style={{ fontFamily: 'BarlowCondensed' }}>
               See what beta testers are saying about how Crossand is changing their approach to relationships.
             </p>
           </div>
@@ -616,7 +642,7 @@ export default function HomePage() {
             <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-6">
               Choose Your Plan
             </h2>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto" style={{ fontFamily: 'BarlowCondensed' }}>
               Start with core features for free, or unlock our latest AI models and social management tools. As we grow to 10,000+ local users, we'll partner with local businesses to create even more value for our community.
             </p>
           </div>
@@ -640,7 +666,7 @@ export default function HomePage() {
             <h2 className="text-4xl lg:text-5xl font-bold text-gray-900 mb-6">
               Frequently Asked Questions
             </h2>
-            <p className="text-xl text-gray-600">
+            <p className="text-xl text-gray-600" style={{ fontFamily: 'BarlowCondensed' }}>
               Everything you need to know about how Crossand can transform the way you manage and nurture your relationships.
             </p>
           </div>
@@ -659,7 +685,7 @@ export default function HomePage() {
           <h2 className="text-4xl lg:text-5xl font-bold text-white mb-6">
             Transform how you nurture relationships
           </h2>
-          <p className="text-xl text-white/90 mb-8">
+          <p className="text-xl text-white/90 mb-8" style={{ fontFamily: 'BarlowCondensed' }}>
             Join our exclusive waitlist and be among the first to experience AI-powered relationship management. Early subscribers get special perks!
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -694,7 +720,7 @@ export default function HomePage() {
                 <CrossandLogo className="h-8 w-8" />
                 <span className="text-xl font-bold text-gray-900">Crossand</span>
               </div>
-              <p className="text-gray-600 mb-6 leading-relaxed">
+              <p className="text-gray-600 mb-6 leading-relaxed" style={{ fontFamily: 'BarlowCondensed' }}>
                 Monitor your social landscape with AI that detects fading connections and prompts meaningful interactions at the right time.
               </p>
               <div className="flex gap-4">

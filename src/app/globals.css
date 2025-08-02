@@ -76,6 +76,14 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: 'Nova_Round';
+  src: url('/Fonts/Nova_Round/NovaRound-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Font utility classes for landing page */
 .font-audiowide {
   font-family: 'Audiowide', sans-serif;
@@ -92,8 +100,10 @@
 
 /* Hide scrollbar for IE, Edge and Firefox */
 .hide-scrollbar {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -102,84 +112,122 @@
     border-color: #555 !important;
     color: #fff !important;
   }
+
   .pac-item {
     color: #fff !important;
     border-top: 1px solid #555 !important;
   }
+
   .pac-item:hover {
     background-color: #444 !important;
   }
+
   .pac-item-query {
     color: #bbb !important;
   }
+
   .pac-matched {
     color: #fff !important;
     font-weight: bold;
   }
+
   .pac-icon {
     filter: invert(1) hue-rotate(180deg);
   }
+
   .hdpi .pac-icon {
-    background-image: url(https://maps.gstatic.com/mapfiles/api-3/images/autocomplete-icons.png) !important; 
+    background-image: url(https://maps.gstatic.com/mapfiles/api-3/images/autocomplete-icons.png) !important;
   }
+
   .pac-icon-marker {
-     background-position: -1px -167px !important;
+    background-position: -1px -167px !important;
   }
 }
 
 @layer base {
   :root {
     /* Light theme with sophisticated warm neutrals - inspired by travel apps */
-    --background: 35 15% 94%; /* Light warm beige base */
-    --foreground: 25 20% 15%; /* Rich dark brown for text */
+    --background: 35 15% 94%;
+    /* Light warm beige base */
+    --foreground: 25 20% 15%;
+    /* Rich dark brown for text */
 
-    --card: 40 20% 88%; /* Warmer cream cards with subtle orange hint */
-    --card-foreground: 25 20% 15%; /* Rich dark brown for card text */
+    --card: 40 20% 88%;
+    /* Warmer cream cards with subtle orange hint */
+    --card-foreground: 25 20% 15%;
+    /* Rich dark brown for card text */
 
-    --popover: 0 0% 98%; /* Clean off-white for popovers */
-    --popover-foreground: 25 20% 15%; /* Rich dark brown for popover text */
+    --popover: 0 0% 98%;
+    /* Clean off-white for popovers */
+    --popover-foreground: 25 20% 15%;
+    /* Rich dark brown for popover text */
 
-    --primary: 25 90% 48%; /* Much darker, richer orange for visibility */
-    --primary-foreground: 0 0% 100%; /* White text on orange */
+    --primary: 25 90% 48%;
+    /* Much darker, richer orange for visibility */
+    --primary-foreground: 0 0% 100%;
+    /* White text on orange */
 
     /* Orange gradient for buttons - darker for light backgrounds */
-    --button-primary-gradient-start: 25 90% 48%; /* Rich dark orange */
-    --button-primary-gradient-end: 15 85% 42%;  /* Even darker burnt orange */
-    --button-primary-gradient-start-hover: 25 90% 42%; /* Darker on hover */
-    --button-primary-gradient-end-hover: 15 85% 38%; /* Much darker on hover */
+    --button-primary-gradient-start: 25 90% 48%;
+    /* Rich dark orange */
+    --button-primary-gradient-end: 15 85% 42%;
+    /* Even darker burnt orange */
+    --button-primary-gradient-start-hover: 25 90% 42%;
+    /* Darker on hover */
+    --button-primary-gradient-end-hover: 15 85% 38%;
+    /* Much darker on hover */
 
-    --secondary: 30 25% 90%; /* Light peachy background for variety */
-    --secondary-foreground: 25 20% 15%; /* Rich dark brown */
+    --secondary: 30 25% 90%;
+    /* Light peachy background for variety */
+    --secondary-foreground: 25 20% 15%;
+    /* Rich dark brown */
 
-    --muted: 45 15% 85%; /* Subtle warm gray-beige for muted areas */
-    --muted-foreground: 25 15% 45%; /* Medium warm brown for muted text */
+    --muted: 45 15% 85%;
+    /* Subtle warm gray-beige for muted areas */
+    --muted-foreground: 25 15% 45%;
+    /* Medium warm brown for muted text */
 
-    --accent: 20 85% 45%; /* Darker burnt orange accent */
-    --accent-foreground: 0 0% 100%; /* White text on orange accent */
+    --accent: 20 85% 45%;
+    /* Darker burnt orange accent */
+    --accent-foreground: 0 0% 100%;
+    /* White text on orange accent */
 
-    --destructive: 0 84% 60%; /* Readable red on light background */
-    --destructive-foreground: 0 0% 98%; /* Light text on red */
+    --destructive: 0 84% 60%;
+    /* Readable red on light background */
+    --destructive-foreground: 0 0% 98%;
+    /* Light text on red */
 
-    --border: 35 20% 78%; /* Soft warm border */
-    --input: 40 25% 92%; /* Light cream input background */
-    --ring: 25 90% 48%; /* Darker orange focus ring for visibility */
+    --border: 35 20% 78%;
+    /* Soft warm border */
+    --input: 40 25% 92%;
+    /* Light cream input background */
+    --ring: 25 90% 48%;
+    /* Darker orange focus ring for visibility */
 
     --radius: 0.5rem;
 
-    --chart-1: hsl(var(--primary)); /* Rich dark orange */
-    --chart-2: hsl(var(--accent));  /* Burnt orange */
-    --chart-3: 35 15% 25%; /* Dark warm gray */
-    --chart-4: 30 80% 40%; /* Deep orange variant */
-    --chart-5: 300 70% 60%; /* Purple for contrast */
+    --chart-1: hsl(var(--primary));
+    /* Rich dark orange */
+    --chart-2: hsl(var(--accent));
+    /* Burnt orange */
+    --chart-3: 35 15% 25%;
+    /* Dark warm gray */
+    --chart-4: 30 80% 40%;
+    /* Deep orange variant */
+    --chart-5: 300 70% 60%;
+    /* Purple for contrast */
 
     /* Sidebar specific variables - sophisticated neutral variation */
-    --sidebar-background: 30 20% 90%; /* Lighter peachy-cream for sidebar */
-    --sidebar-foreground: 25 20% 15%; /* Rich dark brown text */
+    --sidebar-background: 30 20% 90%;
+    /* Lighter peachy-cream for sidebar */
+    --sidebar-foreground: 25 20% 15%;
+    /* Rich dark brown text */
     --sidebar-primary: hsl(var(--primary));
     --sidebar-primary-foreground: hsl(var(--primary-foreground));
     --sidebar-accent: hsl(var(--accent));
     --sidebar-accent-foreground: hsl(var(--accent-foreground));
-    --sidebar-border: 35 15% 82%; /* Soft warm border */
+    --sidebar-border: 35 15% 82%;
+    /* Soft warm border */
     --sidebar-ring: hsl(var(--ring));
   }
 
@@ -191,31 +239,31 @@
     --card-foreground: 25 20% 15%;
     --popover: 0 0% 98%;
     --popover-foreground: 25 20% 15%;
-    
+
     --primary: 25 90% 48%;
     --primary-foreground: 0 0% 100%;
-    
+
     --button-primary-gradient-start: 25 90% 48%;
     --button-primary-gradient-end: 15 85% 42%;
     --button-primary-gradient-start-hover: 25 90% 42%;
     --button-primary-gradient-end-hover: 15 85% 38%;
-    
+
     --secondary: 30 25% 90%;
     --secondary-foreground: 25 20% 15%;
-    
+
     --muted: 45 15% 85%;
     --muted-foreground: 25 15% 45%;
-    
+
     --accent: 20 85% 45%;
     --accent-foreground: 0 0% 100%;
-    
+
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
-    
+
     --border: 35 20% 78%;
     --input: 40 25% 92%;
     --ring: 25 90% 48%;
-    
+
     --sidebar-background: 30 20% 90%;
     --sidebar-foreground: 25 20% 15%;
     --sidebar-border: 35 15% 82%;
@@ -223,16 +271,19 @@
 
   .dark {
     /* Dark theme for users who prefer it */
-    --background: 240 15% 4%; /* Dark background */
-    --foreground: 0 0% 95%; /* Light text */
+    --background: 240 15% 4%;
+    /* Dark background */
+    --foreground: 0 0% 95%;
+    /* Light text */
 
-    --card: 240 10% 8%; 
+    --card: 240 10% 8%;
     --card-foreground: 0 0% 95%;
 
-    --popover: 240 10% 6%; 
+    --popover: 240 10% 6%;
     --popover-foreground: 0 0% 95%;
 
-    --primary: 43 100% 55%; /* Brighter orange for dark theme visibility */
+    --primary: 43 100% 55%;
+    /* Brighter orange for dark theme visibility */
     --primary-foreground: 0 0% 100%;
 
     --button-primary-gradient-start: 43 100% 55%;
@@ -253,7 +304,8 @@
     --destructive-foreground: 0 0% 95%;
 
     --border: 240 10% 18%;
-    --input: 240 10% 8%; /* Dark input background for dark theme */
+    --input: 240 10% 8%;
+    /* Dark input background for dark theme */
     --ring: 43 100% 55%;
 
     --sidebar-background: 240 10% 6%;
@@ -266,9 +318,10 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1,"calt" 1;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
 
@@ -297,68 +350,103 @@
   .custom-scrollbar-horizontal::-webkit-scrollbar {
     height: 6px;
   }
+
   .custom-scrollbar-horizontal::-webkit-scrollbar-track {
-    background-color: hsl(var(--card) / 0.1); 
+    background-color: hsl(var(--card) / 0.1);
     border-radius: 3px;
   }
+
   .custom-scrollbar-horizontal::-webkit-scrollbar-thumb {
-    background-color: hsl(var(--muted-foreground) / 0.3); 
+    background-color: hsl(var(--muted-foreground) / 0.3);
     border-radius: 3px;
     border: 1px solid transparent;
     background-clip: content-box;
   }
+
   .custom-scrollbar-horizontal::-webkit-scrollbar-thumb:hover {
     background-color: hsl(var(--muted-foreground) / 0.5);
   }
-   .custom-scrollbar-horizontal::-webkit-scrollbar-corner {
+
+  .custom-scrollbar-horizontal::-webkit-scrollbar-corner {
     background: transparent;
   }
+
   .custom-scrollbar-horizontal {
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--muted-foreground) / 0.3) hsl(var(--card) / 0.1);
   }
 
   .custom-scrollbar-vertical::-webkit-scrollbar {
-    width: 6px; 
+    width: 6px;
   }
+
   .custom-scrollbar-vertical::-webkit-scrollbar-track {
-    background: transparent; 
+    background: transparent;
     border-radius: 3px;
   }
+
   .custom-scrollbar-vertical::-webkit-scrollbar-thumb {
-    background-color: hsl(var(--muted-foreground) / 0.3); 
+    background-color: hsl(var(--muted-foreground) / 0.3);
     border-radius: 3px;
   }
+
   .custom-scrollbar-vertical::-webkit-scrollbar-thumb:hover {
     background-color: hsl(var(--muted-foreground) / 0.5);
   }
+
   .custom-scrollbar-vertical::-webkit-scrollbar-corner {
     background: transparent;
   }
+
   .custom-scrollbar-vertical {
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
   }
 
   @keyframes slideInFromRight {
-    from { transform: translateX(30px); opacity: 0; } /* Start slightly off-screen right */
-    to { transform: translateX(0); opacity: 1; }
+    from {
+      transform: translateX(30px);
+      opacity: 0;
+    }
+
+    /* Start slightly off-screen right */
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
   }
+
   @keyframes slideInFromLeft {
-    from { transform: translateX(-30px); opacity: 0; } /* Start slightly off-screen left */
-    to { transform: translateX(0); opacity: 1; }
+    from {
+      transform: translateX(-30px);
+      opacity: 0;
+    }
+
+    /* Start slightly off-screen left */
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
   }
+
   @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
   }
 
   .animate-slide-in-from-right {
     animation: slideInFromRight 0.35s ease-out forwards;
   }
+
   .animate-slide-in-from-left {
     animation: slideInFromLeft 0.35s ease-out forwards;
   }
+
   .animate-fade-in {
     animation: fadeIn 0.3s ease-out forwards;
   }
@@ -366,7 +454,7 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
-  
+
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
@@ -376,13 +464,16 @@
   .perspective-1000 {
     perspective: 1000px;
   }
+
   .transform-style-preserve-3d {
     transform-style: preserve-3d;
   }
+
   .backface-hidden {
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
   }
+
   .rotate-y-180 {
     transform: rotateY(180deg);
   }
@@ -404,6 +495,7 @@
       opacity: 0;
       transform: translateY(20px);
     }
+
     to {
       opacity: 1;
       transform: translateY(0);
@@ -415,6 +507,7 @@
       opacity: 0;
       transform: translateX(30px);
     }
+
     to {
       opacity: 1;
       transform: translateX(0);
@@ -422,38 +515,50 @@
   }
 
   @keyframes float {
-    0%, 100% {
+
+    0%,
+    100% {
       transform: translateY(0px);
     }
+
     50% {
       transform: translateY(-10px);
     }
   }
 
   @keyframes bounce-gentle {
-    0%, 100% {
+
+    0%,
+    100% {
       transform: translateY(0);
-      animation-timing-function: cubic-bezier(0,0,0.2,1);
+      animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
     }
+
     50% {
       transform: translateY(-5px);
-      animation-timing-function: cubic-bezier(0.8,0,1,1);
+      animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
     }
   }
 
   @keyframes scale-pulse {
-    0%, 100% {
+
+    0%,
+    100% {
       transform: scale(1);
     }
+
     50% {
       transform: scale(1.05);
     }
   }
 
   @keyframes gradient-shift {
-    0%, 100% {
+
+    0%,
+    100% {
       background-position: 0% 50%;
     }
+
     50% {
       background-position: 100% 50%;
     }
@@ -464,6 +569,7 @@
       opacity: 0;
       transform: translateY(40px);
     }
+
     to {
       opacity: 1;
       transform: translateY(0);
@@ -475,6 +581,7 @@
       opacity: 0;
       transform: translateY(-40px);
     }
+
     to {
       opacity: 1;
       transform: translateY(0);
@@ -486,6 +593,7 @@
       opacity: 0;
       transform: scale(0.8);
     }
+
     to {
       opacity: 1;
       transform: scale(1);
@@ -497,6 +605,7 @@
       opacity: 0;
       transform: rotate(-5deg) scale(0.9);
     }
+
     to {
       opacity: 1;
       transform: rotate(0deg) scale(1);
@@ -577,23 +686,23 @@
   }
 
   .text-gradient-primary-vertical {
-     background: linear-gradient(to bottom, hsl(var(--button-primary-gradient-start)), hsl(var(--button-primary-gradient-end)));
-     -webkit-background-clip: text;
-     background-clip: text;
-     -webkit-text-fill-color: transparent;
-     color: transparent;
-   }
+    background: linear-gradient(to bottom, hsl(var(--button-primary-gradient-start)), hsl(var(--button-primary-gradient-end)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
 
-   /* Font utilities */
-   .font-redressed {
-     font-family: var(--font-redressed), cursive;
-   }
+  /* Font utilities */
+  .font-redressed {
+    font-family: var(--font-redressed), cursive;
+  }
 
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
-  
+
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
@@ -653,13 +762,11 @@
 
   /* Enhanced gradient animations */
   .bg-gradient-animated {
-    background: linear-gradient(
-      -45deg,
-      hsl(var(--primary)),
-      hsl(var(--accent)),
-      hsl(var(--primary)),
-      hsl(var(--accent))
-    );
+    background: linear-gradient(-45deg,
+        hsl(var(--primary)),
+        hsl(var(--accent)),
+        hsl(var(--primary)),
+        hsl(var(--accent)));
     background-size: 400% 400%;
     animation: gradient-shift 8s ease infinite;
   }
@@ -721,7 +828,8 @@ gmp-place-autocomplete {
 
 /* Update for white search bar container */
 gmp-place-autocomplete input {
-  color: #374151 !important; /* Gray-700 for better contrast on white */
+  color: #374151 !important;
+  /* Gray-700 for better contrast on white */
   background-color: transparent !important;
   border: none !important;
   outline: none !important;
@@ -737,7 +845,8 @@ gmp-place-autocomplete input {
 }
 
 gmp-place-autocomplete input::placeholder {
-  color: #9CA3AF !important; /* Gray-400 for placeholder */
+  color: #9CA3AF !important;
+  /* Gray-400 for placeholder */
   line-height: 32px !important;
 }
 
@@ -774,8 +883,10 @@ gmp-place-autocomplete span {
   border-radius: 12px !important;
   box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1) !important;
   margin-top: 8px !important;
-  min-width: 384px !important; /* Changed from max-width to min-width */
-  width: auto !important; /* Allow width to expand */
+  min-width: 384px !important;
+  /* Changed from max-width to min-width */
+  width: auto !important;
+  /* Allow width to expand */
   z-index: 1000 !important;
   left: 0 !important;
 }
@@ -784,7 +895,8 @@ gmp-place-autocomplete span {
 .pac-container {
   /* Dynamic width calculation - will expand based on content */
   width: max-content !important;
-  max-width: calc(100vw - 2rem) !important; /* Prevent overflow on small screens */
+  max-width: calc(100vw - 2rem) !important;
+  /* Prevent overflow on small screens */
 }
 
 /* Hide the default Google logo in suggestions */
@@ -831,8 +943,10 @@ gmp-place-autocomplete input:focus-visible {
 }
 
 .hide-scrollbar {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
 }
 
 textarea:focus-visible {
@@ -845,6 +959,7 @@ textarea:focus-visible {
   0% {
     transform: translateX(-100%);
   }
+
   100% {
     transform: translateX(100%);
   }
@@ -859,6 +974,7 @@ textarea:focus-visible {
     transform: rotate(0deg) translateY(0px);
     opacity: 1;
   }
+
   100% {
     transform: rotate(360deg) translateY(-20px);
     opacity: 0;
@@ -873,6 +989,7 @@ textarea:focus-visible {
   0% {
     background-position: 0% 50%;
   }
+
   100% {
     background-position: 100% 50%;
   }
@@ -890,8 +1007,8 @@ textarea:focus-visible {
 
 /* Fix for Next.js Image component border radius in plan cards */
 .plan-card-image img,
-.plan-card-image > div,
-.plan-card-image > div > img {
+.plan-card-image>div,
+.plan-card-image>div>img {
   border-radius: inherit !important;
 }
 
@@ -902,6 +1019,6 @@ textarea:focus-visible {
 
 /* Specific fixes for plan cards */
 .group .relative img,
-.group .relative > div > img {
+.group .relative>div>img {
   border-radius: inherit;
 }
