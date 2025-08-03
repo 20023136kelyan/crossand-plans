@@ -12,7 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Copy, Calendar as CalendarIcon, MapPin, Clock, Users, Star, Image, CheckCircle, AlertCircle } from 'lucide-react';
+import { DocumentDuplicateIcon, CalendarIcon, MapPinIcon, ClockIcon, UserGroupIcon, StarIcon, PhotoIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { Plan, PriceRangeType } from '@/types/plan';
 import { User } from 'firebase/auth';
 import { format } from 'date-fns';
@@ -73,7 +73,7 @@ export function CopyPlanDialog({
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-orange-500" />
+              <ExclamationTriangleIcon className="h-5 w-5 text-orange-500" />
               Sign In Required
             </DialogTitle>
           </DialogHeader>
@@ -133,7 +133,7 @@ export function CopyPlanDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Copy className="h-5 w-5" />
+            <DocumentDuplicateIcon className="h-5 w-5" />
             {plan.isTemplate ? 'Use This Template' : 'Copy Plan to My Account'}
           </DialogTitle>
           {plan.isTemplate && (
@@ -149,18 +149,18 @@ export function CopyPlanDialog({
           <div className="p-4 rounded-lg bg-gray-50 border border-gray-200">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-primary/10">
-                <Star className="h-4 w-4 text-primary" />
+                <StarIcon className="h-4 w-4 text-primary" />
               </div>
               <div className="flex-1">
                 <h3 className="font-medium text-gray-900">{plan.name}</h3>
                 <p className="text-sm text-gray-600 mt-1">{plan.description}</p>
                 <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
                   <span className="flex items-center gap-1">
-                    <MapPin className="h-3 w-3" />
+                    <MapPinIcon className="h-3 w-3" />
                     {plan.city}
                   </span>
                   <span className="flex items-center gap-1">
-                    <Users className="h-3 w-3" />
+                    <UserGroupIcon className="h-3 w-3" />
                     {plan.itinerary.length} stops
                   </span>
                   <Badge variant="outline" className="text-xs">
@@ -351,7 +351,7 @@ export function CopyPlanDialog({
           {/* Attribution Notice */}
           <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
             <div className="flex items-start gap-2">
-              <CheckCircle className="h-4 w-4 text-blue-600 mt-0.5" />
+              <CheckCircleIcon className="h-4 w-4 text-blue-600 mt-0.5" />
               <div className="text-sm">
                 <p className="font-medium text-blue-800">Attribution</p>
                 <p className="text-blue-700">

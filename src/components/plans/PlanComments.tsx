@@ -18,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { MessageSquare, MoreHorizontal, Edit, Trash2, Loader2, Send, Heart, Reply, MessageCircle, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { ChatBubbleLeftRightIcon, EllipsisHorizontalIcon, PencilIcon, TrashIcon, ArrowPathIcon, PaperAirplaneIcon, HeartIcon, ArrowUturnLeftIcon, ChatBubbleLeftEllipsisIcon, ChevronDownIcon, ChevronUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { formatDistanceToNow } from 'date-fns';
 import { useState, useEffect, useCallback } from 'react';
 import { db, serverTimestamp } from '@/lib/firebase';
@@ -229,7 +229,7 @@ export default function PlanComments({
           size="icon"
           className="relative w-12 h-12 rounded-full bg-gradient-to-br from-background via-muted/5 to-muted/10 border border-border/50 shadow-lg backdrop-blur-sm hover:shadow-xl transition-all duration-200 hover:scale-110"
         >
-          <MessageCircle className="h-6 w-6" />
+          <ChatBubbleLeftEllipsisIcon className="h-6 w-6" />
           {comments.length > 0 && (
             <Badge 
               variant="default" 
@@ -250,7 +250,7 @@ export default function PlanComments({
             <div className="flex items-center justify-between p-4 border-b border-border/30 bg-gradient-to-r from-primary/5 via-primary/3 to-transparent">
               <div className="flex items-center gap-3">
                 <div className="relative p-2 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 ring-1 ring-primary/20">
-                  <MessageCircle className="h-5 w-5 text-primary" />
+                  <ChatBubbleLeftEllipsisIcon className="h-5 w-5 text-primary" />
                 </div>
                 <div>
                   <h3 className="font-semibold text-foreground text-lg tracking-tight">Discussion</h3>
@@ -265,7 +265,7 @@ export default function PlanComments({
                 onClick={() => setIsModalOpen(false)}
                 className="rounded-full bg-black/40 backdrop-blur-md hover:bg-black/60 text-white border border-white/20 transition-all duration-200"
               >
-                <X className="h-5 w-5" />
+                <XMarkIcon className="h-5 w-5" />
               </Button>
             </div>
 
@@ -275,14 +275,14 @@ export default function PlanComments({
               <div className="space-y-0">
                 {loading ? (
                   <div className="flex-1 flex flex-col items-center justify-center">
-                    <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                    <ArrowPathIcon className="h-10 w-10 animate-spin text-primary" />
                     <p className="text-sm text-muted-foreground mt-4">Loading comments...</p>
                   </div>
                 ) : comments.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center">
                     <div className="text-center">
                       <div className="mx-auto w-16 h-16 bg-gradient-to-br from-muted/30 to-muted/20 rounded-2xl flex items-center justify-center mb-4 ring-1 ring-border/30">
-                        <MessageSquare className="h-8 w-8 text-muted-foreground" />
+                        <ChatBubbleLeftRightIcon className="h-8 w-8 text-muted-foreground" />
                       </div>
                       <h3 className="font-semibold text-foreground mb-2 text-lg">
                         No comments yet
@@ -327,11 +327,11 @@ export default function PlanComments({
                           </div>
                           <div className="flex items-center gap-4 mt-1.5 text-xs text-muted-foreground">
                             <button className="flex items-center gap-1 hover:text-primary transition-colors">
-                              <Heart className="h-3 w-3" />
+                              <HeartIcon className="h-3 w-3" />
                               <span className="font-medium">Like</span>
                             </button>
                             <button className="flex items-center gap-1 hover:text-primary transition-colors">
-                              <Reply className="h-3 w-3" />
+                              <ArrowUturnLeftIcon className="h-3 w-3" />
                               <span className="font-medium">Reply</span>
                             </button>
                             {/* Add more actions if needed */}
@@ -373,9 +373,9 @@ export default function PlanComments({
                     aria-label="Post Comment"
                   >
                     {commentLoading ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <ArrowPathIcon className="h-5 w-5 animate-spin" />
                     ) : (
-                      <Send className="h-5 w-5 text-white" style={{ opacity: 1 }} />
+                      <PaperAirplaneIcon className="h-5 w-5 text-white" style={{ opacity: 1 }} />
                     )}
                   </Button>
                 </div>
@@ -390,7 +390,7 @@ export default function PlanComments({
         <DialogContent className="sm:max-w-lg bg-gradient-to-br from-background/95 to-muted/20 border-border/50 shadow-2xl backdrop-blur-sm">
           <DialogHeader className="text-center space-y-4">
             <div className="mx-auto w-16 h-16 bg-gradient-to-br from-destructive/20 to-destructive/10 rounded-2xl flex items-center justify-center ring-1 ring-destructive/20">
-              <Trash2 className="h-8 w-8 text-destructive" />
+              <TrashIcon className="h-8 w-8 text-destructive" />
             </div>
             <div className="space-y-2">
               <DialogTitle className="text-xl font-semibold">Delete Comment</DialogTitle>
@@ -412,7 +412,7 @@ export default function PlanComments({
               onClick={handleConfirmDeleteComment}
               className="flex-1 h-10 text-sm font-medium bg-gradient-to-r from-destructive to-destructive/80 hover:from-destructive/90 hover:to-destructive/70 shadow-lg hover:shadow-destructive/25 transition-all duration-200"
             >
-              <Trash2 className="h-4 w-4 mr-2" />
+              <TrashIcon className="h-4 w-4 mr-2" />
               Delete Comment
             </Button>
           </DialogFooter>

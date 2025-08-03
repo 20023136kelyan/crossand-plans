@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { MapPin, Star, Calendar, BadgeCheck } from "lucide-react";
+import { MapPinIcon, StarIcon, CalendarIcon, CheckBadgeIcon } from "@heroicons/react/24/outline";
 import type { Plan } from '@/types/user';
 import { format, parseISO, isValid } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
@@ -73,7 +73,7 @@ export const ExploreCard = React.memo(({ plan }: ExploreCardProps) => {
               </Avatar>
               <span className="truncate">by {plan.creatorUsername || plan.creatorName}</span>
               {plan.creatorIsVerified && (
-                <BadgeCheck className="h-3 w-3 text-primary ml-1" />
+                <CheckBadgeIcon className="h-3.5 w-3.5 text-blue-500 ml-1" />
               )}
             </div>
           )}
@@ -81,7 +81,7 @@ export const ExploreCard = React.memo(({ plan }: ExploreCardProps) => {
           {/* Location */}
           {plan.location && (
             <div className="flex items-center text-sm text-muted-foreground mb-2">
-              <MapPin className="h-4 w-4 mr-2 flex-shrink-0" />
+              <MapPinIcon className="h-4 w-4 mr-2 flex-shrink-0" />
               <span className="truncate" title={plan.location}>
                 {plan.location}
               </span>
@@ -92,12 +92,12 @@ export const ExploreCard = React.memo(({ plan }: ExploreCardProps) => {
           <div className="flex items-center text-sm text-muted-foreground">
             {(plan.averageRating !== undefined && plan.averageRating !== null && typeof plan.averageRating === 'number' && plan.averageRating > 0) ? (
               <>
-                <Star className="h-4 w-4 mr-1 text-amber-400 fill-amber-400 flex-shrink-0" />
+                <StarIcon className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500 flex-shrink-0" />
                 <span>{plan.averageRating.toFixed(1)}</span>
               </>
             ) : (
               <>
-                <Star className="h-4 w-4 mr-2 text-muted-foreground/50 flex-shrink-0" />
+                <MapPinIcon className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
                 <span>No reviews yet</span>
               </>
             )}

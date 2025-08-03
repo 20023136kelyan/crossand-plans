@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Share2 } from 'lucide-react';
+import { ArrowLeftIcon, ShareIcon } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { getPublicPlanByIdAction } from '@/app/actions/planActions';
@@ -166,7 +166,7 @@ export default function PublicPlanPage() {
             {error || "The plan you're looking for doesn't exist, has been moved, or is not public."}
           </p>
           <Button onClick={() => router.push('/')} variant="outline">
-            <ArrowLeft className="h-4 w-4 mr-2" />
+            <ArrowLeftIcon className="h-4 w-4 mr-2" />
             Go to Homepage
           </Button>
         </div>
@@ -187,7 +187,7 @@ export default function PublicPlanPage() {
           onClick={() => router.back()}
           className="text-muted-foreground hover:text-foreground transition-colors"
         >
-          <ArrowLeft className="h-5 w-5" />
+          <ArrowLeftIcon className="h-5 w-5" />
         </Button>
         <div className="flex items-center gap-2">
           <CrossandLogo />
@@ -197,7 +197,7 @@ export default function PublicPlanPage() {
           size="icon" 
           className="text-muted-foreground hover:text-foreground transition-colors"
         >
-          <Share2 className="h-5 w-5" />
+          <ShareIcon className="h-5 w-5" />
         </Button>
       </header>
 

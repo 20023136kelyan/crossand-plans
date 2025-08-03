@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
+import { ChevronDownIcon, ChevronUpIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { HorizontalCalendar } from './HorizontalCalendar';
@@ -140,9 +140,9 @@ export function PlansPageHeader({
                 className="h-8 w-8"
               >
                 {isSearchVisible ? (
-                  <X className="h-4 w-4" />
+                  <XMarkIcon className="h-4 w-4" />
                 ) : (
-                  <Search className="h-4 w-4" />
+                  <MagnifyingGlassIcon className="h-4 w-4" />
                 )}
               </Button>
             </div>
@@ -182,9 +182,9 @@ export function PlansPageHeader({
               </div>
               <div className="flex-shrink-0 p-1">
                 {isCalendarExpanded ? (
-                  <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                  <ChevronUpIcon className="w-4 h-4 text-muted-foreground" />
                 ) : (
-                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                  <ChevronDownIcon className="w-4 h-4 text-muted-foreground" />
                 )}
               </div>
             </div>
@@ -270,4 +270,4 @@ export function PlansPageHeader({
 
     </>
   );
-} 
+}

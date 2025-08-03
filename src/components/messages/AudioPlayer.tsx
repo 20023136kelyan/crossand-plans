@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Play, Pause } from 'lucide-react';
+import { PlayIcon, PauseIcon } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -163,9 +163,9 @@ export function AudioPlayer({
         aria-label={isPlaying ? 'Pause' : 'Play'}
       >
         {isPlaying ? (
-          <Pause className={compact ? 'h-3.5 w-3.5' : 'h-5 w-5'} />
+          <PauseIcon className="h-4 w-4" />
         ) : (
-          <Play className={compact ? 'h-3.5 w-3.5' : 'h-5 w-5'} />
+          <PlayIcon className="h-4 w-4" />
         )}
       </Button>
       

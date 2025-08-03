@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, FileText, DollarSign } from 'lucide-react';
+import { MapPinIcon, DocumentTextIcon, CurrencyDollarIcon } from '@heroicons/react/24/outline';
 import { Plan } from '@/types/plan';
 
 interface PlanInfoCardsProps {
@@ -18,7 +18,7 @@ export function PlanInfoCards({ plan }: PlanInfoCardsProps) {
           <CardHeader className="pb-3">
             <CardTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
               <div className="p-1.5 rounded-lg bg-primary/10">
-                <FileText className="h-4 w-4 text-primary" />
+                <DocumentTextIcon className="h-4 w-4 text-primary" />
               </div>
               About This Plan
             </CardTitle>
@@ -35,7 +35,7 @@ export function PlanInfoCards({ plan }: PlanInfoCardsProps) {
           <CardHeader className="pb-3">
             <CardTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
               <div className="p-1.5 rounded-lg bg-primary/10">
-                <DollarSign className="h-4 w-4 text-primary" />
+                <CurrencyDollarIcon className="h-4 w-4 text-primary" />
               </div>
               Budget Information
             </CardTitle>

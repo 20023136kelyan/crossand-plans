@@ -4,7 +4,13 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
-import { Loader2, RefreshCw, Mail, Check, X } from 'lucide-react';
+import { 
+  ArrowPathIcon as Loader2,
+  ArrowPathIcon as RefreshCw,
+  EnvelopeIcon as Mail,
+  CheckIcon as Check,
+  XMarkIcon as X 
+} from '@heroicons/react/24/outline';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import { sendEmailVerification, updateEmail } from 'firebase/auth';

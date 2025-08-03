@@ -2,7 +2,7 @@
 
 import { Plan } from '@/types/plan';
 import { format, parseISO, isValid, isPast, isFuture } from 'date-fns';
-import { MapPin, Calendar, Users, CheckCircle, Edit3, UsersIcon, MailQuestion, History, MoreVertical, Eye, Trash2, Play, HelpCircle, Check, X, AlertCircle } from 'lucide-react';
+
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -15,6 +15,8 @@ import { useRef, useEffect, useState } from 'react';
 import { PlanImageLoader } from './PlanImageLoader';
 import { usePlansPageContext } from '@/context/PlansPageContext';
 import { PlanDropdownMenu } from './PlanDropdownMenu';
+
+import { MapPinIcon, CalendarIcon, UsersIcon, CheckCircleIcon, PencilIcon, UsersIcon as UsersIconAlt, EnvelopeOpenIcon, ClockIcon, EllipsisVerticalIcon, EyeIcon, TrashIcon, PlayIcon, QuestionMarkCircleIcon, CheckIcon, XMarkIcon, ExclamationCircleIcon, Cog6ToothIcon } from '@heroicons/react/24/outline';
 
 interface HorizontalPlanCardsProps {
   plans: Plan[];
@@ -99,31 +101,31 @@ const userPlanViewStatusConfig: Record<UserPlanViewStatus, {
 }> = {
   [UserPlanViewStatus.INVITED_TO_PLAN]: { 
     label: 'Invited', 
-    icon: MailQuestion, 
+    icon: EnvelopeOpenIcon, 
     color: 'text-blue-600',
     bgColor: 'bg-blue-100/90'
   },
   [UserPlanViewStatus.MY_DRAFT_UPCOMING]: { 
     label: 'Draft', 
-    icon: Edit3, 
+    icon: PencilIcon, 
     color: 'text-orange-600',
     bgColor: 'bg-orange-100/90'
   },
   [UserPlanViewStatus.MY_AWAITING_RESPONSES]: { 
     label: 'Awaiting', 
-    icon: UsersIcon, 
+    icon: UsersIconAlt, 
     color: 'text-yellow-600',
     bgColor: 'bg-yellow-100/90'
   },
   [UserPlanViewStatus.MY_CONFIRMED_READY]: { 
     label: 'Ready', 
-    icon: CheckCircle, 
+    icon: CheckCircleIcon, 
     color: 'text-green-600',
     bgColor: 'bg-green-100/90'
   },
   [UserPlanViewStatus.COMPLETED]: { 
     label: 'Done', 
-    icon: CheckCircle, 
+    icon: CheckCircleIcon, 
     color: 'text-green-700',
     bgColor: 'bg-green-200/90'
   },
@@ -227,7 +229,7 @@ function HorizontalPlanCard({ plan, currentUserUid }: HorizontalPlanCardProps) {
           {formattedDate && (
             <div className="absolute bottom-24 left-2 bg-white/95 backdrop-blur-sm rounded-lg px-2 py-1 text-xs font-medium text-gray-900 z-20">
               <div className="flex items-center gap-1">
-                <Calendar className="h-3 w-3" />
+                <CalendarIcon className="h-3 w-3" />
                 {formattedDate}
                 {formattedTime && <span className="text-gray-600">• {formattedTime}</span>}
               </div>
@@ -245,7 +247,7 @@ function HorizontalPlanCard({ plan, currentUserUid }: HorizontalPlanCardProps) {
 
             {/* Location */}
             <div className="flex items-center gap-1 text-xs text-white/90 mb-1 drop-shadow-sm">
-              <MapPin className="h-4 w-4 mr-1 flex-shrink-0" />
+              <MapPinIcon className="h-4 w-4 mr-1 flex-shrink-0" />
               <span className="truncate" title={`${plan.location}, ${plan.city}`}>
                 {plan.location}, {plan.city}
               </span>
@@ -295,7 +297,7 @@ function HorizontalPlanCard({ plan, currentUserUid }: HorizontalPlanCardProps) {
             <div className="flex items-center mt-auto">
               {attendeeCount > 0 && (
                 <div className="flex items-center text-xs text-white/90 drop-shadow-sm">
-                  <Users className="h-3 w-3 mr-1" />
+                  <UsersIcon className="h-3 w-3 mr-1" />
                   <span>
                     {attendeeCount}
                     {maxAttendees && ` / ${maxAttendees}`}
@@ -330,13 +332,13 @@ function HorizontalPlanCard({ plan, currentUserUid }: HorizontalPlanCardProps) {
                  statusType === 'declined' ? "Declined" : 
                  "No RSVP yet"}
         >
-          {statusType === 'completed' && <CheckCircle className="h-4 w-4" />}
-          {statusType === 'attended' && <CheckCircle className="h-4 w-4" />}
-          {statusType === 'ongoing' && <Play className="h-3.5 w-3.5" />}
-          {statusType === 'going' && <Check className="h-4 w-4" />}
-          {statusType === 'maybe' && <HelpCircle className="h-3.5 w-3.5" />}
-          {statusType === 'declined' && <X className="h-4 w-4" />}
-          {statusType === 'noresponse' && <AlertCircle className="h-3.5 w-3.5" />}
+          {statusType === 'completed' && <CheckCircleIcon className="h-4 w-4" />}
+          {statusType === 'attended' && <CheckCircleIcon className="h-4 w-4" />}
+          {statusType === 'ongoing' && <PlayIcon className="h-3.5 w-3.5" />}
+          {statusType === 'going' && <CheckIcon className="h-4 w-4" />}
+          {statusType === 'maybe' && <QuestionMarkCircleIcon className="h-3.5 w-3.5" />}
+          {statusType === 'declined' && <XMarkIcon className="h-4 w-4" />}
+          {statusType === 'noresponse' && <ExclamationCircleIcon className="h-3.5 w-3.5" />}
         </div>
       </div>
 
@@ -355,4 +357,4 @@ function HorizontalPlanCard({ plan, currentUserUid }: HorizontalPlanCardProps) {
       </div>
     </div>
   );
-} 
+}

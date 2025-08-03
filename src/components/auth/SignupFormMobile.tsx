@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useRouter } from 'next/navigation';
-import { Loader2, Eye, EyeOff, ChevronLeft, User, Mail, Lock } from 'lucide-react';
+import { ArrowPathIcon as Loader2, EyeIcon, EyeSlashIcon, ChevronLeftIcon, UserIcon, EnvelopeIcon, LockClosedIcon } from '@heroicons/react/24/outline';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import { useSettings } from '@/context/SettingsContext';
@@ -196,7 +196,7 @@ export default function SignupFormMobile() {
           onClick={() => router.push('/login')}
           className="w-12 h-12 rounded-full bg-black/20 backdrop-blur-sm flex items-center justify-center"
         >
-          <ChevronLeft className="h-7 w-7 text-white" />
+          <ChevronLeftIcon className="h-7 w-7 text-white" />
         </button>
         <div className="w-12"></div> {/* Spacer for centering */}
       </div>
@@ -227,7 +227,7 @@ export default function SignupFormMobile() {
                     form.formState.errors.fullName ? 'border-red-500' : ''
                   }`}
                 />
-                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <UserIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               </div>
               {form.formState.errors.fullName && (
                 <p className="text-red-400 text-xs mt-1">
@@ -249,7 +249,7 @@ export default function SignupFormMobile() {
                     form.formState.errors.email ? 'border-red-500' : ''
                   }`}
                 />
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <EnvelopeIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               </div>
               {form.formState.errors.email && (
                 <p className="text-red-400 text-xs mt-1">
@@ -269,13 +269,13 @@ export default function SignupFormMobile() {
                     form.formState.errors.password ? 'border-red-500' : ''
                   }`}
                 />
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <LockClosedIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-orange-500"
                 >
-                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
                 </button>
               </div>
               {form.formState.errors.password && (
@@ -317,13 +317,13 @@ export default function SignupFormMobile() {
                     form.formState.errors.confirmPassword ? 'border-red-500' : ''
                   }`}
                 />
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <LockClosedIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-orange-500"
                 >
-                  {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  {showConfirmPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
                 </button>
               </div>
               {form.formState.errors.confirmPassword && (

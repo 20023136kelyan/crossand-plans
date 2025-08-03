@@ -3,9 +3,16 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutGrid, Search, PlusCircle, LayoutList, User as UserIcon,
-  Sparkles, Edit3, Camera, MessageSquare // Removed Wallet as WalletIcon
-} from 'lucide-react';
+  HomeIcon,
+  MagnifyingGlassIcon as Search,
+  PlusCircleIcon as PlusCircle,
+  ListBulletIcon as LayoutList,
+  UserIcon,
+  SparklesIcon as Sparkles,
+  PencilSquareIcon as Edit3,
+  CameraIcon as Camera,
+  ChatBubbleLeftRightIcon as MessageSquare,
+} from '@heroicons/react/24/outline';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useAuth } from '@/context/AuthContext';
@@ -54,8 +61,8 @@ function LinkItem({ navItem, currentPathname, notificationCount, currentUserProf
     const userInitial = currentUserProfile.name ? currentUserProfile.name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase() : (currentUserProfile.email ? currentUserProfile.email[0].toUpperCase() : 'U');
     return (
        <Link href={navItem.href} className={cn(commonLinkClasses, isActive ? 'text-primary' : 'text-muted-foreground hover:text-primary')} aria-label={navItem.ariaLabel} aria-current={isActive ? "page" : undefined}>
-        <div className="flex h-full w-full items-center justify-center rounded-full relative">
-          <Avatar className={cn("h-7 w-7", isActive && "ring-1 ring-primary ring-offset-1 ring-offset-background")}>
+        <div className={cn("flex h-full w-full items-center justify-center rounded-full relative", isActive && "-translate-y-2")}>
+          <Avatar className={cn("h-7 w-7 transition-all duration-300 ease-out", isActive && "ring-1 ring-primary ring-offset-1 ring-offset-background scale-110")}>
             <AvatarImage src={currentUserProfile.avatarUrl || undefined} alt={currentUserProfile.name || 'Profile'} data-ai-hint="user avatar"/>
             <AvatarFallback className="text-[10px]">{userInitial}</AvatarFallback>
           </Avatar>
@@ -64,23 +71,31 @@ function LinkItem({ navItem, currentPathname, notificationCount, currentUserProf
               {notificationCount > 9 ? '9+' : notificationCount}
             </span>
           )}
+          <div className={cn(
+            "absolute bottom-2 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-primary transition-all duration-300 ease-out",
+            isActive ? "opacity-100 scale-100" : "opacity-0 scale-0"
+          )} />
         </div>
       </Link>
     );
   }
 
   return (
-    <Link href={navItem.href} className={cn(commonLinkClasses, isActive ? 'text-primary' : 'text-muted-foreground hover:text-primary')} aria-label={navItem.ariaLabel} aria-current={isActive ? "page" : undefined}>
-      <div className="flex h-full w-full items-center justify-center rounded-full relative">
-        <IconComponent className="h-6 w-6" />
-        {notificationCount > 0 && (
-          <span className="absolute top-0.5 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-destructive-foreground shadow-md -translate-x-0.5 -translate-y-0.5">
-             {notificationCount > 9 ? '9+' : notificationCount}
-          </span>
-        )}
-      </div>
-    </Link>
-  );
+      <Link href={navItem.href} className={cn(commonLinkClasses, isActive ? 'text-primary' : 'text-muted-foreground hover:text-primary')} aria-label={navItem.ariaLabel} aria-current={isActive ? "page" : undefined}>
+        <div className={cn("flex h-full w-full items-center justify-center rounded-full relative", isActive && "-translate-y-1.5")}>
+          <IconComponent className={cn("h-6 w-6 transition-all duration-300 ease-out", isActive ? "text-primary scale-110" : "text-muted-foreground scale-100", "hover:scale-105")} />
+          {notificationCount > 0 && (
+            <span className="absolute top-0.5 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-destructive-foreground shadow-md -translate-x-0.5 -translate-y-0.5">
+              {notificationCount > 9 ? '9+' : notificationCount}
+            </span>
+          )}
+          <div className={cn(
+            "absolute bottom-2.5 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-primary transition-all duration-300 ease-out",
+            isActive ? "opacity-100 scale-100" : "opacity-0 scale-0"
+          )} />
+        </div>
+      </Link>
+    );
 }
 
 export function BottomNav(props: BottomNavProps) {
@@ -96,7 +111,7 @@ export function BottomNav(props: BottomNavProps) {
 
   // Define base navigation items - only include profile/login if we have user data
   const navItems: NavItem[] = [
-    { href: '/feed', label: 'Feed', icon: LayoutGrid, id: 'feed', ariaLabel: "Feed & Explore" },
+    { href: '/feed', label: 'Home', icon: HomeIcon, id: 'feed', ariaLabel: "Home" },
     { href: '/messages', label: 'Messages', icon: MessageSquare, id: 'messages', ariaLabel: "Messages" },
     { action: () => setIsQuickAddPopoverOpen(true), label: 'Create', icon: PlusCircle, id: 'quick-add', ariaLabel: "Quick Add Menu" },
     { href: '/plans', label: 'Plans', icon: LayoutList, id: 'plans', ariaLabel: "My Plans" },
@@ -110,7 +125,7 @@ export function BottomNav(props: BottomNavProps) {
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border/30 bg-background/95 backdrop-blur-sm md:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border/30 bg-background/95 backdrop-blur-sm md:hidden rounded-t-3xl">
       <div className="container mx-auto grid h-16 items-center justify-around px-1" style={{ gridTemplateColumns: `repeat(${navItems.length}, 1fr)`}}>
         {navItems.map((item) => {
           if (item.id === 'quick-add' && item.action) {

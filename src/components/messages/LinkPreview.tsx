@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { ExternalLink, Globe, Link2 } from 'lucide-react';
+import { ArrowTopRightOnSquareIcon, GlobeAltIcon, LinkIcon } from '@heroicons/react/24/outline';
 import { cn } from '@/lib/utils';
 import { getDomain, isImageUrl, isVideoUrl, detectUrls } from '@/lib/linkUtils';
 
@@ -646,7 +646,7 @@ export function LinkPreview({ url, className, onLoad }: LinkPreviewProps) {
                 </p>
               )}
             </div>
-            <ExternalLink className="ml-2 h-4 w-4 flex-shrink-0 text-muted-foreground" />
+            <ArrowTopRightOnSquareIcon className="ml-2 h-4 w-4 flex-shrink-0 text-muted-foreground" />
           </div>
           
           {metadata.siteName && (
@@ -734,7 +734,7 @@ function LinkItem({ url, index }: { url: string; index: number }) {
           }}
         />
         <span className="truncate">{pageName}</span>
-        <ExternalLink className="h-2.5 w-2.5 ml-1.5 opacity-70 flex-shrink-0" />
+        <ArrowTopRightOnSquareIcon className="h-2.5 w-2.5 ml-1.5 opacity-70 flex-shrink-0" />
       </a>
     );
   } catch (e) {
@@ -748,9 +748,9 @@ function LinkItem({ url, index }: { url: string; index: number }) {
         className="inline-flex items-center bg-muted hover:bg-muted/80 text-foreground rounded-full px-2.5 py-0.5 text-sm font-medium transition-colors mx-0.5 my-0.5 border border-border hover:border-foreground/20"
         onClick={(e) => e.stopPropagation()}
       >
-        <Link2 className="h-3 w-3 mr-1.5 flex-shrink-0" />
+        <LinkIcon className="h-3 w-3 mr-1.5 flex-shrink-0" />
         <span className="truncate">Link</span>
-        <ExternalLink className="h-2.5 w-2.5 ml-1.5 opacity-70 flex-shrink-0" />
+        <ArrowTopRightOnSquareIcon className="h-2.5 w-2.5 ml-1.5 opacity-70 flex-shrink-0" />
       </a>
     );
   }

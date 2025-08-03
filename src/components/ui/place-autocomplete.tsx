@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useState, useEffect, useRef, useCallback } from "react"
-import { MapPin, Search, X } from "lucide-react"
+import { MapPinIcon, MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/24/outline"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
@@ -349,89 +349,89 @@ export function PlaceAutocomplete({
   }
 
   return (
-    <div ref={containerRef} className={cn("relative w-full", className)}>
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          ref={inputRef}
-          type="text"
-          value={inputValue || ""}
-          onChange={handleInputChange}
-          onFocus={handleInputFocus}
-          onBlur={handleInputBlur}
-          placeholder={placeholder}
-          disabled={disabled}
-          className="w-full h-full pl-10 pr-3 text-base bg-transparent border-none rounded-lg placeholder:text-muted-foreground text-foreground focus:outline-none focus:ring-0 transition-all duration-200"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-            }
-            if (e.key === 'Escape') {
-              setShowSuggestions(false)
-              onBlur?.()
-            }
-          }}
-        />
-        {inputValue && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 p-0 hover:bg-white/10 rounded-full transition-colors"
-            onClick={handleClear}
-          >
-            <X className="h-3 w-3 text-muted-foreground" />
-          </Button>
-        )}
-      </div>
-      
-      {/* Suggestions Dropdown */}
-      {showSuggestions && (predictions.length > 0 || loading) && (
-        <div className="absolute top-full left-0 right-0 z-50 mt-2 bg-popover backdrop-blur-lg border border-border shadow-2xl rounded-xl overflow-hidden max-h-80">
-          {loading && (
-            <div className="py-6 text-center text-sm text-muted-foreground">
-              Searching...
-            </div>
-          )}
-          {!loading && predictions.length === 0 && inputValue.trim() && (
-            <div className="py-6 text-center text-sm text-muted-foreground">
-              No places found.
-            </div>
-          )}
-          {!loading && predictions.length > 0 && (
-            <div className="max-h-72 overflow-y-auto">
-              {predictions.map((prediction, index) => (
-                <div
-                  key={prediction.place_id}
-                  className="cursor-pointer px-4 py-3 hover:bg-accent/10 transition-colors border-b border-border/50 last:border-b-0 flex items-start gap-3"
-                  onMouseDown={(e) => {
-                    e.preventDefault(); // Prevent input blur
-                    console.log('Suggestion mousedown:', prediction);
-                  }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    console.log('Suggestion clicked:', prediction);
-                    handlePlaceSelect(prediction);
-                  }}
-                >
-                  <MapPin className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <span className="font-medium text-foreground truncate">
-                      {prediction.structured_formatting.main_text}
-                    </span>
-                    {prediction.structured_formatting.secondary_text && (
-                      <span className="text-sm text-muted-foreground truncate">
-                        {prediction.structured_formatting.secondary_text}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+  <div ref={containerRef} className={cn("relative w-full", className)}>
+    <div className="relative">
+      <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <input
+        ref={inputRef}
+        type="text"
+        value={inputValue || ""}
+        onChange={handleInputChange}
+        onFocus={handleInputFocus}
+        onBlur={handleInputBlur}
+        placeholder={placeholder}
+        disabled={disabled}
+        className="w-full h-full pl-10 pr-3 text-base bg-transparent border-none rounded-lg placeholder:text-muted-foreground text-foreground focus:outline-none focus:ring-0 transition-all duration-200"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+          }
+          if (e.key === 'Escape') {
+            setShowSuggestions(false)
+            onBlur?.()
+          }
+        }}
+      />
+      {inputValue && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 p-0 hover:bg-white/10 rounded-full transition-colors"
+          onClick={handleClear}
+        >
+          <XMarkIcon className="h-4 w-4 text-muted-foreground" />
+        </Button>
       )}
     </div>
-  )
+    
+    {/* Suggestions Dropdown */}
+    {showSuggestions && (predictions.length > 0 || loading) && (
+      <div className="absolute top-full left-0 right-0 z-50 mt-2 bg-popover backdrop-blur-lg border border-border shadow-2xl rounded-xl overflow-hidden max-h-80">
+        {loading && (
+          <div className="py-6 text-center text-sm text-muted-foreground">
+            Searching...
+          </div>
+        )}
+        {!loading && predictions.length === 0 && inputValue.trim() && (
+          <div className="py-6 text-center text-sm text-muted-foreground">
+            No places found.
+          </div>
+        )}
+        {!loading && predictions.length > 0 && (
+          <div className="max-h-72 overflow-y-auto">
+            {predictions.map((prediction, index) => (
+              <div
+                key={prediction.place_id}
+                className="cursor-pointer px-4 py-3 hover:bg-accent/10 transition-colors border-b border-border/50 last:border-b-0 flex items-start gap-3"
+                onMouseDown={(e) => {
+                  e.preventDefault(); // Prevent input blur
+                  console.log('Suggestion mousedown:', prediction);
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log('Suggestion clicked:', prediction);
+                  handlePlaceSelect(prediction);
+                }}
+              >
+                <MapPinIcon className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                <div className="flex flex-col min-w-0 flex-1">
+                  <span className="font-medium text-foreground truncate">
+                    {prediction.structured_formatting.main_text}
+                  </span>
+                  {prediction.structured_formatting.secondary_text && (
+                    <span className="text-sm text-muted-foreground truncate">
+                      {prediction.structured_formatting.secondary_text}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )}
+  </div>
+)
 }

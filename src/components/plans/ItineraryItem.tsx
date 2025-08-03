@@ -3,7 +3,7 @@
 import { useFormContext, Controller, useFieldArray } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { format, addHours } from 'date-fns';
-import { Clock, FileText, Trash2, MapPin, Plus, Lightbulb, Settings, ChevronDown, ArrowUpDown } from 'lucide-react';
+import { ClockIcon, DocumentTextIcon, TrashIcon, MapPinIcon, PlusIcon, LightBulbIcon, Cog6ToothIcon, ChevronDownIcon, ArrowsUpDownIcon } from '@heroicons/react/24/outline';
 import type { NewPlanFormValues } from './NewPlanForm';
 import { PlaceAutocomplete } from '../ui/place-autocomplete';
 import { Textarea } from '../ui/textarea';
@@ -672,4 +672,4 @@ export function ItineraryItem({ index, isGoogleMapsApiLoaded, onRemove, isActive
         </div>
     </div>
   );
-} 
+}

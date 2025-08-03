@@ -16,7 +16,29 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import Link from "next/link";
-import { X, ChevronLeft, ChevronRight, ChevronDown, MessageSquare, Heart, Share2, ExternalLink, ShieldCheck as AdminIcon, CheckCircle, Send, Trash2, Loader2, MoreVertical, ZoomIn, ZoomOut, Copy, Bookmark, Flag, User } from "lucide-react";
+import { 
+  XMarkIcon, 
+  ChevronLeftIcon, 
+  ChevronRightIcon, 
+  ChevronDownIcon, 
+  ChatBubbleLeftRightIcon, 
+  HeartIcon, 
+  ShareIcon, 
+  ArrowTopRightOnSquareIcon, 
+  ShieldCheckIcon, 
+  CheckCircleIcon, 
+  PaperAirplaneIcon, 
+  TrashIcon, 
+  ArrowPathIcon, 
+  EllipsisVerticalIcon, 
+  MagnifyingGlassPlusIcon, 
+  MagnifyingGlassMinusIcon, 
+  DocumentDuplicateIcon, 
+  BookmarkIcon, 
+  FlagIcon, 
+  UserIcon 
+} from "@heroicons/react/24/outline";
+import { HeartIcon as SolidHeartIcon, BookmarkIcon as SolidBookmarkIcon } from "@heroicons/react/20/solid";
 import Image from 'next/image';
 import type { FeedPost, FeedComment } from "@/types/user";
 import type { UserProfile } from "@/types/user";
@@ -42,10 +64,10 @@ interface PostDetailModalProps {
 
 const VerificationBadgeModal = ({ role, isVerified }: { role: UserProfile['role'], isVerified: UserProfile['isVerified'] }) => {
   if (role === 'admin') {
-    return <AdminIcon className="ml-1 h-4 w-4 text-amber-400 fill-amber-500 shrink-0" aria-label="Admin" />;
+    return <ShieldCheckIcon className="ml-1 h-4 w-4 text-amber-400 fill-amber-500 shrink-0" aria-label="Admin" />;
   }
   if (isVerified) {
-    return <CheckCircle className="ml-1 h-4 w-4 text-blue-500 fill-blue-200 shrink-0" aria-label="Verified User" />;
+    return <CheckCircleIcon className="h-4 w-4 text-blue-500 fill-blue-200 shrink-0" aria-label="Verified User" />;
   }
   return null;
 };
@@ -126,7 +148,7 @@ const LikeButton = ({ post }: { post: FeedPost }) => {
             aria-pressed={optimisticLikedByCurrentUser ? true : false}
             aria-label={optimisticLikedByCurrentUser ? "Unlike post" : "Like post"}
           >
-            <Heart className={cn("h-5 w-5 transition-all duration-200", 
+            <HeartIcon className={cn("h-5 w-5 transition-all duration-200", 
               optimisticLikedByCurrentUser ? "fill-current scale-110" : "fill-none",
               isAnimating && "animate-pulse scale-125")} />
             <span className="text-sm font-medium tabular-nums">{optimisticLikesCount}</span>
@@ -202,7 +224,7 @@ const CommentsList = ({ post }: { post: FeedPost }) => {
   if (isLoadingComments) {
     return (
       <div className="flex justify-center items-center py-4">
-        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+        <ArrowPathIcon className="h-4 w-4 animate-spin text-primary" />
       </div>
     );
   }
@@ -211,7 +233,7 @@ const CommentsList = ({ post }: { post: FeedPost }) => {
     return (
       <div className="flex flex-col items-center justify-center py-8 space-y-3">
         <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center">
-          <MessageSquare className="h-5 w-5 text-muted-foreground" />
+          <ChatBubbleLeftRightIcon className="h-5 w-5 text-muted-foreground" />
         </div>
         <div className="text-center space-y-1">
           <p className="text-sm font-medium text-muted-foreground">No comments yet</p>
@@ -279,7 +301,7 @@ const CommentsList = ({ post }: { post: FeedPost }) => {
                         size="icon"
                         className="h-8 w-8 text-muted-foreground/70 opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-muted/50"
                       >
-                        <MoreVertical className="h-4 w-4" />
+                        <ShieldCheckIcon className="h-4 w-4" />
                         <span className="sr-only">Comment options</span>
                       </Button>
                     </DropdownMenuTrigger>
@@ -289,7 +311,7 @@ const CommentsList = ({ post }: { post: FeedPost }) => {
                         onClick={() => handleDeleteComment(comment.id)}
                         disabled={isDeletingComment}
                       >
-                        <Trash2 className="h-4 w-4 mr-2" />
+                        <TrashIcon className="h-4 w-4" />
                         Delete
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -358,7 +380,7 @@ const CommentForm = ({ post, onCommentAdded }: { post: FeedPost, onCommentAdded?
     return (
       <div className="flex flex-col items-center justify-center py-6 space-y-3">
         <div className="w-10 h-10 rounded-full bg-muted/50 flex items-center justify-center">
-          <MessageSquare className="h-4 w-4 text-muted-foreground" />
+          <ChatBubbleLeftRightIcon className="h-4 w-4 text-muted-foreground" />
         </div>
         <div className="text-center space-y-1">
           <p className="text-sm font-medium text-muted-foreground">Sign in to comment</p>
@@ -408,9 +430,9 @@ const CommentForm = ({ post, onCommentAdded }: { post: FeedPost, onCommentAdded?
               disabled={!commentText.trim() || isSubmitting || commentText.length > 500}
             >
               {isSubmitting ? (
-                <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
+                <ArrowPathIcon className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
               ) : (
-                <Send className="h-3 w-3 sm:h-4 sm:w-4" />
+                <PaperAirplaneIcon className="h-3 w-3 sm:h-4 sm:w-4" />
               )}
             </Button>
           </div>
@@ -534,7 +556,7 @@ export function PostDetailModal({
           {/* Close Button */}
           <DialogClose asChild>
             <Button variant="ghost" size="icon" className="absolute top-4 right-4 z-50 h-10 w-10 rounded-full bg-black/50 backdrop-blur-md text-white hover:bg-black/70 hover:text-white shadow-md transition-all" aria-label="Close post view">
-              <X className="h-5 w-5" />
+              <XMarkIcon className="h-5 w-5" />
             </Button>
           </DialogClose>
 
@@ -547,7 +569,7 @@ export function PostDetailModal({
               className="absolute left-3 sm:left-5 top-1/2 -translate-y-1/2 z-50 h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-black/40 backdrop-blur-md text-white hover:bg-black/60 hover:text-white shadow-md transition-all" 
               aria-label="Previous post"
             >
-              <ChevronLeft className="h-6 w-6 sm:h-7 sm:w-7" />
+              <ChevronLeftIcon className="h-6 w-6 sm:h-7 sm:w-7" />
             </Button>
           )}
           {hasNext && onNext && (
@@ -558,7 +580,7 @@ export function PostDetailModal({
               className="absolute right-3 sm:right-5 top-1/2 -translate-y-1/2 z-50 h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-black/40 backdrop-blur-md text-white hover:bg-black/60 hover:text-white shadow-md transition-all" 
               aria-label="Next post"
             >
-              <ChevronRight className="h-6 w-6 sm:h-7 sm:w-7" />
+              <ChevronRightIcon className="h-6 w-6 sm:h-7 sm:w-7" />
             </Button>
           )}
 
@@ -607,16 +629,16 @@ export function PostDetailModal({
                     "opacity-0 group-hover:opacity-100"
                   )}>
                     {isImageZoomed ? (
-                      <ZoomOut className="h-4 w-4 text-white" />
+                      <MagnifyingGlassMinusIcon className="h-5 w-5 text-white" />
                     ) : (
-                      <ZoomIn className="h-4 w-4 text-white" />
+                      <MagnifyingGlassPlusIcon className="h-4 w-4 text-white" />
                     )}
                   </div>
                 </div>
               ) : (
                 <div className="text-white/70 text-center p-8 space-y-4">
                   <div className="w-16 h-16 mx-auto bg-white/10 rounded-full flex items-center justify-center">
-                    <MessageSquare className="h-8 w-8" />
+                    <ChatBubbleLeftRightIcon className="h-8 w-8" />
                   </div>
                   <p className="text-lg font-medium">Text-only post</p>
                   <p className="text-sm opacity-75">This post doesn't contain an image</p>
@@ -659,33 +681,33 @@ export function PostDetailModal({
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-white hover:bg-white/20 ml-2 transition-all duration-200">
-                          <MoreVertical className="h-4 w-4" />
-                          <span className="sr-only">More options</span>
-                        </Button>
+                        <ShieldCheckIcon className="h-4 w-4" />
+                        <span className="sr-only">More options</span>
+                      </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-48 bg-black/90 backdrop-blur-md border-white/20">
                         <DropdownMenuItem onClick={handleSharePost} className="text-white hover:bg-white/10">
-                          <Share2 className="h-4 w-4 mr-2" />
+                          <ShareIcon className="h-4 w-4 mr-2" />
                           Share post
                         </DropdownMenuItem>
                         {post.text && (
                           <DropdownMenuItem onClick={handleCopyText} className="text-white hover:bg-white/10">
-                            <Copy className="h-4 w-4 mr-2" />
+                            <DocumentDuplicateIcon className="h-4 w-4" />
                             Copy text
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuItem className="text-white hover:bg-white/10">
-                          <Bookmark className="h-4 w-4 mr-2" />
+                          <BookmarkIcon className="h-5 w-5" />
                           Save post
                         </DropdownMenuItem>
                         <DropdownMenuItem className="text-red-400 hover:bg-red-500/10">
-                          <Flag className="h-4 w-4 mr-2" />
+                          <FlagIcon className="h-4 w-4" />
                           Report
                         </DropdownMenuItem>
                         {post.planName && (
                           <DropdownMenuItem asChild>
                             <Link href={`/p/${post.planId}`} className="text-white hover:bg-white/10">
-                              <ExternalLink className="h-4 w-4 mr-2" />
+                              <ArrowTopRightOnSquareIcon className="h-4 w-4" />
                               View plan
                             </Link>
                           </DropdownMenuItem>
@@ -734,7 +756,7 @@ export function PostDetailModal({
                           className="text-white hover:text-green-400 p-0 h-auto transition-all duration-200 hover:scale-105"
                           onClick={handleSharePost}
                         >
-                          <Share2 className="h-5 w-5" fill="none" />
+                          <ShareIcon className="h-5 w-5" fill="none" />
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="bg-black/90 text-white border-white/20">
@@ -751,7 +773,7 @@ export function PostDetailModal({
                       variant="secondary" 
                       className="bg-white/10 text-white border-white/20 hover:bg-white/20 transition-all duration-200 cursor-pointer backdrop-blur-sm"
                     >
-                      <ExternalLink className="h-3 w-3 mr-1" />
+                      <ArrowTopRightOnSquareIcon className="h-3 w-3 mr-1" />
                       View Plan
                     </Badge>
                   </Link>
@@ -771,14 +793,14 @@ export function PostDetailModal({
                     <div className="flex items-center gap-3">
                       <div className="w-1 h-6 bg-primary rounded-full group-open:bg-primary/60 transition-colors"></div>
                       <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
-                        <MessageSquare className="h-4 w-4" />
+                        <UserIcon className="h-4 w-4" />
                         Discussion
                       </h3>
                       <Badge variant="secondary" className="text-xs font-medium bg-muted/50 text-muted-foreground border-border/30">
                         {(post.commentsCount || 0) + (post.text ? 1 : 0)}
                       </Badge>
                     </div>
-                    <ChevronDown className="h-4 w-4 text-muted-foreground group-open:rotate-180 transition-transform duration-200" />
+                    <ChevronDownIcon className="h-4 w-4 text-muted-foreground group-open:rotate-180 transition-transform duration-200" />
                   </summary>
                   <div className="border-t border-border/20 bg-background/50 max-h-[60vh] sm:max-h-none overflow-y-auto sm:flex-1">
                     <div className="space-y-4">

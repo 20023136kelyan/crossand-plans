@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { format, isSameDay } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { X } from 'lucide-react';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui/button';
 
 interface FullCalendarDrawerProps {
@@ -102,7 +102,7 @@ export function FullCalendarDrawer({
             onClick={onClose}
             className="h-8 w-8"
           >
-            <X className="h-4 w-4" />
+            <XMarkIcon className="h-4 w-4" />
           </Button>
         </div>
 
@@ -157,4 +157,4 @@ export function FullCalendarDrawer({
       </div>
     </>
   );
-} 
+}

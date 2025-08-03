@@ -2,7 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { useAuth } from '@/context/AuthContext';
-import { ChevronLeft, Loader2, Mail, Smartphone, Eye, EyeOff, Lock } from 'lucide-react';
+import { 
+  ChevronLeftIcon, 
+  ArrowPathIcon as Loader2, 
+  EnvelopeIcon, 
+  DevicePhoneMobileIcon, 
+  EyeIcon, 
+  EyeSlashIcon, 
+  LockClosedIcon 
+} from '@heroicons/react/24/outline';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { useSettings } from '@/context/SettingsContext';
@@ -410,7 +418,7 @@ export default function LoginFormMobile() {
           <div className="fixed inset-0 bg-gradient-to-b from-black/95 via-black/70 to-black/0 z-10 pointer-events-none" />
           <div className="relative z-20 w-full max-w-sm mx-auto px-4 mt-12 pb-32">
             <button className="mb-6 text-white" aria-label="Back to login" onClick={() => { setShowForgotPassword(false); setShowSuccess(false); setShowChangeEmail(false); }}>
-              <ChevronLeft className="h-7 w-7 text-white font-bold" />
+              <ChevronLeftIcon className="h-7 w-7 text-white font-bold" />
             </button>
             {/* Success State: Check Inbox */}
             {showSuccess && !showChangeEmail ? (
@@ -498,7 +506,7 @@ export default function LoginFormMobile() {
           <div className="fixed inset-0 bg-gradient-to-b from-black/95 via-black/70 to-black/0 z-10 pointer-events-none" />
           <div className="relative z-20 w-full max-w-sm mx-auto px-4 mt-12 pb-32">
             <button className="mb-6 text-white" onClick={() => setShowEmail(false)}>
-              <ChevronLeft className="h-7 w-7 text-white font-bold" />
+              <ChevronLeftIcon className="h-7 w-7 text-white font-bold" />
             </button>
             <h2 className="text-3xl font-bold text-white mb-2 text-left pl-3">Continue with email</h2>
             <p className="text-base text-gray-300 mb-6 text-left pl-3">Sign in to your <span className="text-orange-500 font-redressed text-xl">{siteName}</span> account.</p>
@@ -539,7 +547,7 @@ export default function LoginFormMobile() {
                   }}
                   aria-describedby={emailError ? 'email-error' : undefined}
                 />
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <EnvelopeIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               </div>
               {emailError && <div id="email-error" className="text-xs text-red-500 mb-2 pl-1">{emailError}</div>}
             {/* Password Field with error and forgot password */}
@@ -563,14 +571,14 @@ export default function LoginFormMobile() {
                 }}
                 aria-describedby={passwordError ? 'password-error' : undefined}
               />
-              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <LockClosedIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               <button
                 type="button"
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-orange-500 focus:outline-none"
                 tabIndex={-1}
                 onClick={() => setShowPassword(v => !v)}
               >
-                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
               </button>
             </div>
             {passwordError && <div className="text-xs text-red-500 mb-2 pl-1">{passwordError}</div>}
@@ -583,7 +591,7 @@ export default function LoginFormMobile() {
                 <div className="fixed inset-0 bg-gradient-to-b from-black/95 via-black/70 to-black/0 z-10 pointer-events-none" />
                 <div className="relative z-20 w-full max-w-sm mx-auto px-4 mt-12 pb-32">
                   <button className="mb-6 text-white" aria-label="Back to login" onClick={() => setShowForgotPassword(false)}>
-                    <ChevronLeft className="h-7 w-7 text-white font-bold" />
+                    <ChevronLeftIcon className="h-7 w-7 text-white font-bold" />
                   </button>
                   <h2 className="text-2xl font-bold text-white mb-2">Reset your password</h2>
                   <p className="text-sm text-gray-300 mb-6">Enter your email to receive a reset link.</p>
@@ -734,7 +742,7 @@ export default function LoginFormMobile() {
               onTouchStart={() => setIsBackPressed(true)}
               onTouchEnd={() => setIsBackPressed(false)}
             >
-              <ChevronLeft className="h-7 w-7 text-white font-bold" />
+              <ChevronLeftIcon className="h-7 w-7 text-white font-bold" />
             </button>
             <h2 className="text-3xl font-bold text-white mb-2 text-left pl-3">Continue with phone</h2>
             <p className="text-base text-gray-300 mb-6 text-left pl-3">Sign in with the phone number linked to your <span className="text-orange-500 font-redressed text-xl">{siteName}</span> account.</p>
@@ -830,7 +838,7 @@ export default function LoginFormMobile() {
               onTouchStart={() => setIsBackPressed(true)}
               onTouchEnd={() => setIsBackPressed(false)}
             >
-              <ChevronLeft className="h-7 w-7 text-white font-bold" />
+              <ChevronLeftIcon className="h-7 w-7 text-white font-bold" />
             </button>
             <h2 className="text-2xl font-bold text-white mb-2 text-center">Enter verification code</h2>
             <p className="text-sm text-gray-300 mb-6 text-center">A code was sent to <span className="text-orange-500 font-redressed text-lg">{countryCode} {phone}</span>.</p>
@@ -993,7 +1001,7 @@ export default function LoginFormMobile() {
             onTouchStart={() => setIsEmailPressed(true)}
             onTouchEnd={() => setIsEmailPressed(false)}
           >
-            <Mail className="h-5 w-5 mr-2" /> Sign in with email
+            <EnvelopeIcon className="h-5 w-5 mr-2" /> Sign in with email
           </button>
           <button
             type="button"
@@ -1005,7 +1013,7 @@ export default function LoginFormMobile() {
             onTouchStart={() => setIsPhonePressed(true)}
             onTouchEnd={() => setIsPhonePressed(false)}
           >
-            <Smartphone className="h-5 w-5 mr-2" /> Sign in with phone number
+            <DevicePhoneMobileIcon className="h-5 w-5 mr-2" /> Sign in with phone number
           </button>
           <p className="text-sm text-gray-400 mt-8">Don't have an account? <button 
             onClick={() => router.push('/signup')}

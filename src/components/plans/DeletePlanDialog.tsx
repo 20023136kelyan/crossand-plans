@@ -12,7 +12,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { Loader2 } from 'lucide-react';
+import { ArrowPathIcon } from '@heroicons/react/24/outline';
 
 interface DeletePlanDialogProps {
   open: boolean;
@@ -62,7 +62,7 @@ export function DeletePlanDialog({
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
             {(isDeleting || loading) && (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <ArrowPathIcon className="mr-2 h-4 w-4 animate-spin" />
             )}
             Delete Plan
           </AlertDialogAction>

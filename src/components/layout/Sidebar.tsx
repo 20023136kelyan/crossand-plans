@@ -4,8 +4,13 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutGrid, LayoutList, User as UserIcon, Shield, Compass, MessageSquare
-} from 'lucide-react';
+  HomeIcon,
+  QueueListIcon,
+  UserIcon,
+  ShieldCheckIcon,
+  MapIcon,
+  ChatBubbleLeftRightIcon
+} from '@heroicons/react/24/outline';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
@@ -42,16 +47,16 @@ export function Sidebar(props: SidebarProps) {
   
   if (user && currentUserProfile) {
     navItems.push(
-      { href: '/feed', label: 'Feed', icon: LayoutGrid, id: 'feed', ariaLabel: "Feed" },
-      { href: '/explore', label: 'Explore', icon: Compass, id: 'explore', ariaLabel: "Explore" },
-      { href: '/messages', label: 'Messages', icon: MessageSquare, id: 'messages', ariaLabel: "Messages" },
-      { href: '/plans', label: 'Plans', icon: LayoutList, id: 'plans', ariaLabel: "Plans" },
+      { href: '/feed', label: 'Home', icon: HomeIcon, id: 'feed', ariaLabel: "Home" },
+      { href: '/explore', label: 'Explore', icon: MapIcon, id: 'explore', ariaLabel: "Explore" },
+      { href: '/messages', label: 'Messages', icon: ChatBubbleLeftRightIcon, id: 'messages', ariaLabel: "Messages" },
+      { href: '/plans', label: 'Plans', icon: QueueListIcon, id: 'plans', ariaLabel: "Plans" },
       { href: `/users/${user.uid}`, label: 'Profile', icon: UserIcon, id: 'profile', ariaLabel: "Profile" }
     );
     
     // Add admin link if user is admin
     if (currentUserProfile?.role === 'admin') {
-      navItems.push({ href: '/admin/management', label: 'Admin', icon: Shield, id: 'admin', ariaLabel: "Admin Management", adminOnly: true });
+      navItems.push({ href: '/admin/management', label: 'Admin', icon: ShieldCheckIcon, id: 'admin', ariaLabel: "Admin Management", adminOnly: true });
     }
   } else if (user === null) {
     navItems.push({ href: '/login', label: 'Login', icon: UserIcon, id: 'login', ariaLabel: "Login" });
@@ -81,7 +86,7 @@ export function Sidebar(props: SidebarProps) {
                 </AvatarFallback>
               </Avatar>
             ) : (
-              <item.icon className="mr-3 h-4 w-4" />
+              <item.icon className="mr-3 h-4 w-4 transition-all duration-300 ease-out group-hover:scale-105" />
             )}
             <span className="text-sm font-medium">{item.label}</span>
             {notificationCount > 0 && (
@@ -93,7 +98,7 @@ export function Sidebar(props: SidebarProps) {
         );
 
         const className = cn(
-          "flex items-center w-full px-3 py-2 text-sm rounded-lg transition-colors",
+          "flex items-center w-full px-3 py-2 text-sm rounded-lg transition-all duration-300 ease-out",
           isActive
             ? "bg-primary/10 text-primary font-medium"
             : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"

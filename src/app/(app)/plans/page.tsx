@@ -30,11 +30,25 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import {
-  Edit3, Trash2, Share2, MapPin, Eye,
-  Users as UsersIcon, MailQuestion, UserCheck, History, MoreVertical,
-  ChevronDown, ChevronUp, Loader2, ListChecks, CheckCircle,
-  Users, Sparkles, Clock
-} from "lucide-react";
+  PencilSquareIcon as Edit3,
+  TrashIcon as Trash2,
+  ShareIcon as Share2,
+  MapPinIcon as MapPin,
+  EyeIcon as Eye,
+  UsersIcon,
+  QuestionMarkCircleIcon as MailQuestion,
+  CheckCircleIcon as UserCheck,
+  ClockIcon as History,
+  EllipsisVerticalIcon as MoreVertical,
+  ChevronDownIcon as ChevronDown,
+  ChevronUpIcon as ChevronUp,
+  ArrowPathIcon as Loader2,
+  ClipboardDocumentCheckIcon as ListChecks,
+  CheckCircleIcon,
+  UsersIcon as Users,
+  SparklesIcon as Sparkles,
+  ClockIcon as Clock
+} from "@heroicons/react/24/outline";
 import Link from "next/link";
 import Image from "next/image";
 import React, { useState, useMemo, useEffect, useCallback, useContext, useRef } from 'react';
@@ -1758,7 +1772,7 @@ export default function PlansPage() {
                                   <Link href={`/p/${share.originalPlanId}`}><Eye className="h-3.5 w-3.5"/></Link>
                                 </Button>
                                 <Button size="icon" className="h-7 w-7" onClick={() => handleAcceptShareRequest(share)} disabled={isAcceptingShare && shareToAccept?.id === share.id} aria-label="Accept Plan">
-                                  {(isAcceptingShare && shareToAccept?.id === share.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <CheckCircle className="mr-0 h-3.5 w-3.5"/>}
+                                  {(isAcceptingShare && shareToAccept?.id === share.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <CheckCircleIcon className="mr-0 h-3.5 w-3.5"/>}
                                 </Button>
                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => handleDeclineShareRequest(share)} disabled={isDecliningShare && shareToDecline?.id === share.id} aria-label="Decline Plan">
                                   {(isDecliningShare && shareToDecline?.id === share.id) ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <Trash2 className="h-3.5 w-3.5"/>}

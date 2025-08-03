@@ -25,11 +25,30 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription as 
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { 
-  CalendarDays, MapPin, Users, Edit3, Trash2, Share2, QrCode,
-  MessageSquare, Send, CheckCircle, XCircle, ChevronLeft, Grid2X2, Star as StarIconLucide, 
-  Loader2, Clock, ExternalLink, ThumbsUp, UserCheck, UserX, ThumbsDown, HelpCircle, CopyPlus,
+  CalendarIcon, 
+  MapPinIcon, 
+  UsersIcon, 
+  PencilIcon, 
+  TrashIcon, 
+  ShareIcon, 
+  QrCodeIcon,
+  ChatIcon, 
+  PaperAirplaneIcon, 
+  CheckCircleIcon, 
+  XCircleIcon, 
+  ChevronLeftIcon, 
+  Squares2X2Icon, 
+  StarIcon,
+  ArrowTopRightOnSquareIcon, 
+  ClockIcon, 
+  HandThumbUpIcon, 
+  UserCheckIcon, 
+  UserXMarkIcon, 
+  HandThumbDownIcon, 
+  QuestionMarkCircleIcon, 
+  DocumentDuplicateIcon,
   Camera, UploadCloud, Lock, Globe, Link as LinkIcon, MoreVertical, EyeOff, FileText, DollarSign, ListChecks, ShieldCheck as AdminShieldIcon, CheckCircle as VerifiedIcon, UserCircle as UserCircleIcon
-} from "lucide-react";
+} from "heroicons-react";
 import {
   DropdownMenu,
   DropdownMenuContent,

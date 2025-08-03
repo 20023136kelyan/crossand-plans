@@ -3,7 +3,7 @@
 import { useAuth } from '@/context/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import { ArrowPathIcon as Loader2 } from '@heroicons/react/24/outline';
 
 export default function AuthLayout({
   children,

@@ -6,10 +6,31 @@ import Image from 'next/image';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { 
-    Loader2, Edit3, MessageSquare, ShieldCheck as AdminIcon, CheckCircle, Settings as SettingsIcon, 
-    Users as UsersIcon, ChevronLeft, UserPlus, XCircle, ThumbsUp, Check, MoreVertical, Camera,
-    LayoutGrid, Calendar, Users, Eye, Upload
-} from "lucide-react";
+  ArrowPathIcon, 
+  PencilSquareIcon, 
+  ChatBubbleLeftRightIcon, 
+  ShieldCheckIcon, 
+  CheckCircleIcon, 
+  Cog6ToothIcon, 
+  UserGroupIcon, 
+  ChevronLeftIcon, 
+  UserPlusIcon, 
+  XCircleIcon, 
+  HandThumbUpIcon, 
+  CheckIcon, 
+  EllipsisVerticalIcon, 
+  CameraIcon,
+  Squares2X2Icon, 
+  CalendarIcon, 
+  UserGroupIcon as UsersIcon, 
+  EyeIcon, 
+  ArrowUpTrayIcon
+} from "@heroicons/react/24/outline";
+
+// Aliases for consistency with existing code
+const AdminIcon = ShieldCheckIcon;
+const SettingsIcon = Cog6ToothIcon;
+const MessageSquare = ChatBubbleLeftRightIcon;
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/context/AuthContext";
@@ -265,38 +286,25 @@ export default function PublicProfilePage() {
     if (selectedPostIndex !== null && selectedPostIndex > 0) {
       setSelectedPostIndex(selectedPostIndex - 1);
     }
-  };
 
   if (loading || (authLoading && !profileData)) { 
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background text-foreground">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <ArrowPathIcon className="h-5 w-5 animate-spin" />
       </div>
     );
   }
 
   if (!userProfile) { // Use userProfile derived from state
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center text-center p-6 bg-background text-foreground">
-        <UsersIcon className="h-20 w-20 text-muted-foreground/50 mb-4" />
-        <h1 className="text-2xl font-semibold mb-2">User Not Found</h1>
-        <p className="text-muted-foreground">The profile you are looking for does not exist or could not be loaded.</p>
-        <Button asChild variant="outline" className="mt-6">
-          <Link href="/explore">Go to Explore</Link>
-        </Button>
-      </div>
-    );
+    // ...
   }
-  
-  const userInitial = userProfile.name ? userProfile.name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase() : (userProfile.email ? userProfile.email[0].toUpperCase() : 'U');
-  const isOwnProfile = currentUser?.uid === userProfile.uid;
 
   return (
     <>
       <div className="min-h-screen bg-background text-foreground">
         <header className="md:hidden sticky top-0 z-30 flex items-center justify-between px-3 py-2 bg-background/80 backdrop-blur-sm">
           <Button variant="ghost" size="icon" onClick={() => router.back()} className="text-muted-foreground hover:text-foreground" aria-label="Go back">
-            <ChevronLeft className="h-5 w-5" />
+            <ChevronLeftIcon className="h-4 w-4 mr-1" />
           </Button>
           <div className="flex-1"></div>
         </header>
@@ -324,11 +332,11 @@ export default function PublicProfilePage() {
                       <div className="flex items-center gap-2">
                         <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">@{userProfile.username || "user"}</h1>
                         {isOwnProfile && (
-                                                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0 rounded-md hover:bg-primary/10 transition-all duration-200" asChild>
-                          <Link href={`/users/settings?tab=profile&returnUrl=${encodeURIComponent(`/u/${userProfile.uid}`)}`}>
-                            <Edit3 className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
-                          </Link>
-                        </Button>
+                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0 rounded-md hover:bg-primary/10 transition-all duration-200" asChild>
+                            <Link href={`/users/settings?tab=profile&returnUrl=${encodeURIComponent(`/u/${userProfile.uid}`)}`}>
+                              <PencilIcon className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                            </Link>
+                          </Button>
                         )}
                         <VerificationBadgeInline role={userProfile.role} isVerified={userProfile.isVerified} />
                       </div>
@@ -343,7 +351,7 @@ export default function PublicProfilePage() {
                           </Button>
                           <Button size="sm" variant="outline" className="h-8 w-8 p-0 rounded-lg border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all duration-200" asChild>
                             <Link href="/settings">
-                              <SettingsIcon className="h-3.5 w-3.5" />
+                              <CogIcon className="h-3.5 w-3.5" />
                             </Link>
                           </Button>
                         </>
@@ -360,7 +368,7 @@ export default function PublicProfilePage() {
                             {isInitiatingChat ? (
                               <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
                             ) : (
-                              <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
+                              <ChatBubbleLeftRightIcon className="h-4 w-4 mr-1" />
                             )}
                             Chat
                           </Button>
@@ -377,7 +385,7 @@ export default function PublicProfilePage() {
                               {friendActionLoading ? (
                                 <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
                               ) : (
-                                <XCircle className="h-3.5 w-3.5 mr-1.5" />
+                                <UserMinusIcon className="h-4 w-4 mr-1" />
                               )}
                               Remove Friend
                             </Button>
@@ -394,7 +402,7 @@ export default function PublicProfilePage() {
                               {friendActionLoading ? (
                                 <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
                               ) : (
-                                <XCircle className="h-3.5 w-3.5 mr-1.5" />
+                                <XCircleIcon className="h-4 w-4 mr-1" />
                               )}
                               Cancel Request
                             </Button>
@@ -412,7 +420,7 @@ export default function PublicProfilePage() {
                                 {friendActionLoading ? (
                                   <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
                                 ) : (
-                                  <Check className="h-3.5 w-3.5 mr-1.5" />
+                                  <CheckIcon className="h-4 w-4 mr-1" />
                                 )}
                                 Accept
                               </Button>
@@ -426,7 +434,7 @@ export default function PublicProfilePage() {
                                 {friendActionLoading ? (
                                   <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
                                 ) : (
-                                  <XCircle className="h-3.5 w-3.5 mr-1.5" />
+                                  <XCircleIcon className="h-4 w-4 mr-1" />
                                 )}
                                 Decline
                               </Button>
@@ -444,7 +452,7 @@ export default function PublicProfilePage() {
                               {friendActionLoading ? (
                                 <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
                               ) : (
-                                <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+                                <UserPlusIcon className="h-4 w-4 mr-1" />
                               )}
                               Send Friend Request
                             </Button>
@@ -452,7 +460,7 @@ export default function PublicProfilePage() {
                           
                           {/* More Options Dropdown */}
                           <Button size="sm" variant="outline" className="h-8 w-8 p-0 rounded-lg border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all duration-200">
-                            <MoreVertical className="h-3.5 w-3.5" />
+                            <EllipsisVerticalIcon className="h-4 w-4" />
                             <span className="sr-only">More options</span>
                           </Button>
                         </>
@@ -478,7 +486,7 @@ export default function PublicProfilePage() {
                   className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2 flex-1"
                 >
                   <span className="text-lg font-bold text-foreground">{userPosts?.length ?? 0}</span>
-                  <LayoutGrid className="h-4 w-4" />
+                  <Squares2X2Icon className="h-4 w-4 mr-1" />
                 </TabsTrigger>
                 <div className="w-px h-8 bg-border/30 self-center"></div>
                 <TabsTrigger 
@@ -486,7 +494,7 @@ export default function PublicProfilePage() {
                   className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2 flex-1"
                 >
                   <span className="text-lg font-bold text-foreground">{userStats?.plansCreatedCount ?? 0}</span>
-                  <Calendar className="h-4 w-4" />
+                  <CalendarIcon className="h-4 w-4 mr-1" />
                 </TabsTrigger>
                 <div className="w-px h-8 bg-border/30 self-center"></div>
                 <TabsTrigger 
@@ -494,7 +502,7 @@ export default function PublicProfilePage() {
                   className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2 flex-1"
                 >
                   <span className="text-lg font-bold text-foreground">{userStats?.followersCount ?? 0}</span>
-                  <Users className="h-4 w-4" />
+                  <UserGroupIcon className="h-4 w-4 mr-1" />
                 </TabsTrigger>
               </TabsList>
               
@@ -502,7 +510,7 @@ export default function PublicProfilePage() {
               <TabsContent value="posts" className="mt-6 p-0">
                 {userPosts.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground">
-                    <Camera className="mx-auto h-16 w-16 opacity-30 mb-3" />
+                    <PhotographIcon className="mx-auto h-16 w-16 opacity-30 mb-3" />
                     <p className="font-semibold text-lg">No Posts Yet</p>
                     {isOwnProfile && <p className="text-sm">Share your first plan highlight!</p>}
                   </div>
@@ -543,7 +551,7 @@ export default function PublicProfilePage() {
                {/* Plans Tab Content */}
                <TabsContent value="plans" className="mt-6 p-0">
                  <div className="text-center py-12 text-muted-foreground">
-                   <Calendar className="mx-auto h-16 w-16 opacity-30 mb-3" />
+                   <CalendarIcon className="mx-auto h-16 w-16 opacity-30 mb-3" />
                    <p className="font-semibold text-lg">Plans</p>
                    <p className="text-sm">Created plans will be displayed here</p>
                    <p className="text-xs mt-1">Privacy settings will control visibility</p>
@@ -553,7 +561,7 @@ export default function PublicProfilePage() {
                {/* Followers Tab Content */}
                <TabsContent value="followers" className="mt-6 p-0">
                  <div className="text-center py-12 text-muted-foreground">
-                   <Users className="mx-auto h-16 w-16 opacity-30 mb-3" />
+                   <UserGroupIcon className="mx-auto h-16 w-16 opacity-30 mb-3" />
                    <p className="font-semibold text-lg">Followers</p>
                    <p className="text-sm">Followers list will be displayed here</p>
                    <p className="text-xs mt-1">Privacy settings will control visibility</p>
@@ -603,14 +611,14 @@ export default function PublicProfilePage() {
                 setIsProfilePictureModalOpen(false);
                 // TODO: Implement upload functionality similar to the post creation interface
               }}>
-                <Upload className="h-4 w-4 mr-2" />
+                <ShieldCheckIcon className="h-4 w-4 mr-1" />
                 Change Picture
               </Button>
             ) : (
               <Button variant="outline" className="flex-1" onClick={() => {
                 // TODO: Implement full-screen view
               }}>
-                <Eye className="h-4 w-4 mr-2" />
+                <PencilSquareIcon className="h-4 w-4 mr-1" />
                 View Full Size
               </Button>
             )}

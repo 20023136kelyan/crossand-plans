@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, Search, Users, Send } from 'lucide-react';
+import { ArrowPathIcon, MagnifyingGlassIcon, UsersIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import type { Plan } from '@/types/user';
 
@@ -159,7 +159,7 @@ export function FriendPickerDialog({
       <DialogContent className="sm:max-w-md max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
+            <UsersIcon className="h-5 w-5" />
             Share with Friends
           </DialogTitle>
           <DialogDescription>
@@ -170,7 +170,7 @@ export function FriendPickerDialog({
         <div className="space-y-4 flex-1 min-h-0">
           {/* Search Input */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search friends..."
               value={searchQuery}
@@ -202,7 +202,7 @@ export function FriendPickerDialog({
           <ScrollArea className="flex-1 min-h-0 max-h-[300px]">
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin" />
+                <ArrowPathIcon className="h-6 w-6 animate-spin" />
                 <span className="ml-2 text-sm text-muted-foreground">Loading friends...</span>
               </div>
             ) : filteredFriends.length === 0 ? (
@@ -268,12 +268,12 @@ export function FriendPickerDialog({
           >
             {isSharing ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <ArrowPathIcon className="h-4 w-4 animate-spin mr-2" />
                 Sharing...
               </>
             ) : (
               <>
-                <Send className="h-4 w-4 mr-2" />
+                <PaperAirplaneIcon className="h-4 w-4 mr-2" />
                 Share ({selectedFriends.size})
               </>
             )}

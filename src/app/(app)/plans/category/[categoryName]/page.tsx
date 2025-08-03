@@ -12,14 +12,14 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import {
-  Search,
-  ArrowUpDown,
-  ChevronLeft,
-  PackageOpen,
-  CalendarDays, 
-  List,
-  Loader2
-} from "lucide-react";
+  MagnifyingGlassIcon,
+  ArrowsUpDownIcon,
+  ChevronLeftIcon,
+  ArchiveBoxXMarkIcon,
+  CalendarDaysIcon,
+  ListBulletIcon,
+  ArrowPathIcon
+} from "@heroicons/react/24/outline";
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { ExploreCard } from '@/components/explore/ExploreCard';
 import type { Plan as PlanType } from '@/types/user';
@@ -204,7 +204,7 @@ export default async function PlansCategoryPage({ params }: { params: Promise<{ 
 
   const EmptyState = ({ title, message }: { title: string; message: string }) => (
     <div className="flex flex-col items-center justify-center py-12 px-4 text-center space-y-4">
-      <PackageOpen className="h-12 w-12 text-muted-foreground/50" />
+      <MagnifyingGlassIcon className="h-4 w-4 text-muted-foreground" />
       <div className="space-y-2">
         <h3 className="text-lg font-medium">{title}</h3>
         <p className="text-sm text-muted-foreground max-w-sm mx-auto">{message}</p>
@@ -215,7 +215,7 @@ export default async function PlansCategoryPage({ params }: { params: Promise<{ 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[200px]">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <ArrowPathIcon className="h-4 w-4 animate-spin" />
       </div>
     );
   }
@@ -248,7 +248,7 @@ export default async function PlansCategoryPage({ params }: { params: Promise<{ 
       <div className="container max-w-7xl mx-auto p-4 space-y-4">
         <div className="flex items-center gap-4 mb-6">
           <Button variant="ghost" size="icon" onClick={() => router.back()} className="shrink-0">
-            <ChevronLeft className="h-5 w-5" />
+            <ChevronLeftIcon className="h-4 w-4" />
           </Button>
           <h1 className="text-2xl font-semibold tracking-tight">
             Plans in {decodedCategoryName}
@@ -259,7 +259,7 @@ export default async function PlansCategoryPage({ params }: { params: Promise<{ 
           <div className="sticky top-0 z-20 bg-background flex items-center justify-between gap-3 w-full py-2 border-b border-border shadow-sm mb-6 group">
             <div className="flex items-center gap-3 flex-1 min-w-0">
               <div className="relative flex-1 min-w-0">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                 <Input
                   type="search"
                   value={searchTerm}
@@ -279,18 +279,18 @@ export default async function PlansCategoryPage({ params }: { params: Promise<{ 
                   className="bg-card border-border hover:bg-secondary/50 text-sm rounded-lg h-9 whitespace-nowrap"
                 >
                   {sortConfig.key === 'date' ? 'Date' : 'Name'}
-                  <ArrowUpDown className="ml-1.5 h-4 w-4" />
+                  <ArrowsUpDownIcon className="ml-1.5 h-4 w-4" />
                 </Button>
               )}
 
               <div className="whitespace-nowrap">
                 <TabsList className="bg-muted p-1 rounded-lg inline-flex h-9">
                   <TabsTrigger value="list" className="px-2.5 py-1 text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded data-[state=active]:shadow-sm">
-                    <List className="h-4 w-4 mr-1" />
+                    <ListBulletIcon className="h-4 w-4 mr-1.5" />
                     List
                   </TabsTrigger>
                   <TabsTrigger value="calendar" className="px-2.5 py-1 text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded data-[state=active]:shadow-sm">
-                    <CalendarDays className="h-4 w-4 mr-1" />
+                    <CalendarDaysIcon className="h-4 w-4 mr-1.5" />
                     Calendar
                   </TabsTrigger>
                 </TabsList>

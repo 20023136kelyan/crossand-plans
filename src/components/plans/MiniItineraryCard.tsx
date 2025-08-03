@@ -3,7 +3,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { ItineraryImageLoader } from './ItineraryImageLoader';
-import { X } from 'lucide-react';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 import { cn } from '@/lib/utils';
 import type { FieldArrayWithId } from 'react-hook-form';
 import type { NewPlanFormValues } from './NewPlanForm';
@@ -37,8 +37,8 @@ export function MiniItineraryCard({ item, onRemove, isDragging }: MiniItineraryC
         variant="destructive"
         className="absolute top-1 right-1 h-6 w-6 rounded-full p-0 bg-black/50 hover:bg-red-500/80"
       >
-        <X className="h-4 w-4" />
+        <XMarkIcon className="h-4 w-4" />
       </Button>
     </div>
   );
-} 
+}

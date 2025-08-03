@@ -6,24 +6,24 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
-  Heart,
-  Share2,
-  Copy,
-  Calendar,
-  Users,
-  MapPin,
-  Clock,
-  Star,
-  CheckCircle,
-  XCircle,
-  UserPlus,
-  MessageCircle,
-  Download,
-  QrCode,
-  Link,
-  Mail,
-  Crown
-} from 'lucide-react';
+  HeartIcon,
+  ShareIcon,
+  DocumentDuplicateIcon,
+  CalendarIcon,
+  UserGroupIcon,
+  MapPinIcon,
+  ClockIcon,
+  StarIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  UserPlusIcon,
+  ChatBubbleLeftRightIcon,
+  ArrowDownTrayIcon,
+  QrCodeIcon,
+  LinkIcon,
+  EnvelopeIcon,
+  ShieldCheckIcon
+} from '@heroicons/react/24/outline';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -188,7 +188,7 @@ export function PlanActions({
         <CardContent className="p-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-primary" />
+              <CalendarIcon className="h-4 w-4 text-primary" />
               <div>
                 <div className="font-medium">Date</div>
                 <div className="text-muted-foreground">
@@ -198,7 +198,7 @@ export function PlanActions({
             </div>
             
             <div className="flex items-center gap-2">
-              <MapPin className="h-4 w-4 text-primary" />
+              <MapPinIcon className="h-4 w-4 text-primary" />
               <div>
                 <div className="font-medium">Location</div>
                 <div className="text-muted-foreground truncate">
@@ -208,7 +208,7 @@ export function PlanActions({
             </div>
             
             <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-primary" />
+              <UserGroupIcon className="h-4 w-4 text-primary" />
               <div>
                 <div className="font-medium">Participants</div>
                 <div className="text-muted-foreground">
@@ -218,7 +218,7 @@ export function PlanActions({
             </div>
             
             <div className="flex items-center gap-2">
-              <Star className="h-4 w-4 text-primary" />
+              <StarIcon className="h-4 w-4 text-primary" />
               <div>
                 <div className="font-medium">Rating</div>
                 <div className="text-muted-foreground">
@@ -238,7 +238,7 @@ export function PlanActions({
             <div className="space-y-4">
               <div className="text-center">
                 <Badge variant="default" className="mb-2">
-                  <Crown className="h-3 w-3 mr-1" />
+                  <ShieldCheckIcon className="h-3 w-3 mr-1" />
                   Plan Host
                 </Badge>
                 <h3 className="text-lg font-semibold">Manage Your Plan</h3>
@@ -249,11 +249,11 @@ export function PlanActions({
               
               <div className="grid grid-cols-2 gap-3">
                 <Button variant="default" className="w-full">
-                  <Users className="h-4 w-4 mr-2" />
+                  <UserGroupIcon className="h-4 w-4 mr-2" />
                   Manage Participants
                 </Button>
                 <Button variant="outline" className="w-full">
-                  <MessageCircle className="h-4 w-4 mr-2" />
+                  <ChatBubbleLeftRightIcon className="h-4 w-4 mr-2" />
                   Group Chat
                 </Button>
               </div>
@@ -265,7 +265,7 @@ export function PlanActions({
             <div className="space-y-4">
               <div className="text-center">
                 <Badge variant="default" className="mb-2">
-                  <CheckCircle className="h-3 w-3 mr-1" />
+                  <CheckCircleIcon className="h-3 w-3 mr-1" />
                   Confirmed
                 </Badge>
                 <h3 className="text-lg font-semibold">You're Going!</h3>
@@ -276,18 +276,18 @@ export function PlanActions({
               
               <div className="space-y-3">
                 <div className="flex gap-2">
-                  {getRSVPButton('yes', <CheckCircle className="h-4 w-4 mr-1" />, 'Going', 'default')}
-                  {getRSVPButton('maybe', <Clock className="h-4 w-4 mr-1" />, 'Maybe', 'outline')}
-                  {getRSVPButton('no', <XCircle className="h-4 w-4 mr-1" />, 'Can\'t Go', 'destructive')}
+                  {getRSVPButton('yes', <CheckCircleIcon className="h-4 w-4 mr-1" />, 'Going', 'default')}
+                  {getRSVPButton('maybe', <ClockIcon className="h-4 w-4 mr-1" />, 'Maybe', 'outline')}
+                  {getRSVPButton('no', <XCircleIcon className="h-4 w-4 mr-1" />, 'Can\'t Go', 'destructive')}
                 </div>
                 
                 <div className="grid grid-cols-2 gap-3">
                   <Button variant="outline" className="w-full">
-                    <MessageCircle className="h-4 w-4 mr-2" />
+                    <ChatBubbleLeftRightIcon className="h-4 w-4 mr-2" />
                     Group Chat
                   </Button>
                   <Button variant="outline" className="w-full">
-                    <Calendar className="h-4 w-4 mr-2" />
+                    <CalendarIcon className="h-4 w-4 mr-2" />
                     Add to Calendar
                   </Button>
                 </div>
@@ -300,7 +300,7 @@ export function PlanActions({
             <div className="space-y-4">
               <div className="text-center">
                 <Badge variant="secondary" className="mb-2">
-                  <Mail className="h-3 w-3 mr-1" />
+                  <EnvelopeIcon className="h-3 w-3 mr-1" />
                   Invited
                 </Badge>
                 <h3 className="text-lg font-semibold">You're Invited!</h3>
@@ -310,9 +310,9 @@ export function PlanActions({
               </div>
               
               <div className="flex gap-2">
-                {getRSVPButton('yes', <CheckCircle className="h-4 w-4 mr-1" />, 'Accept', 'default')}
-                {getRSVPButton('maybe', <Clock className="h-4 w-4 mr-1" />, 'Maybe', 'outline')}
-                {getRSVPButton('no', <XCircle className="h-4 w-4 mr-1" />, 'Decline', 'destructive')}
+                {getRSVPButton('yes', <CheckCircleIcon className="h-4 w-4 mr-1" />, 'Accept', 'default')}
+                {getRSVPButton('maybe', <ClockIcon className="h-4 w-4 mr-1" />, 'Maybe', 'outline')}
+                {getRSVPButton('no', <XCircleIcon className="h-4 w-4 mr-1" />, 'Decline', 'destructive')}
               </div>
             </div>
           )}
@@ -329,7 +329,7 @@ export function PlanActions({
               
               <div className="grid grid-cols-2 gap-3">
                 <Button onClick={handleJoinRequest} className="w-full">
-                  <UserPlus className="h-4 w-4 mr-2" />
+                  <UserPlusIcon className="h-4 w-4 mr-2" />
                   Request to Join
                 </Button>
                 <Button 
@@ -338,7 +338,7 @@ export function PlanActions({
                   disabled={isCopying}
                   className="w-full"
                 >
-                  <Copy className="h-4 w-4 mr-2" />
+                  <DocumentDuplicateIcon className="h-4 w-4 mr-2" />
                   {isCopying ? 'Copying...' : 'Copy Plan'}
                 </Button>
               </div>
@@ -365,13 +365,13 @@ export function PlanActions({
                   className="w-full"
                   size="lg"
                 >
-                  <Copy className="h-4 w-4 mr-2" />
+                  <DocumentDuplicateIcon className="h-4 w-4 mr-2" />
                   {isCopying ? 'Copying...' : 'Copy to My Plans'}
                 </Button>
               ) : (
                 <div className="space-y-3">
                   <Button className="w-full" size="lg">
-                    <UserPlus className="h-4 w-4 mr-2" />
+                    <UserPlusIcon className="h-4 w-4 mr-2" />
                     Sign In to Copy Plan
                   </Button>
                   <p className="text-xs text-muted-foreground text-center">
@@ -393,7 +393,7 @@ export function PlanActions({
                   onClick={() => handleShare('link')}
                   disabled={isSharing}
                 >
-                  <Link className="h-4 w-4" />
+                  <LinkIcon className="h-4 w-4" />
                 </Button>
                 
                 <PlanDropdownMenu
@@ -426,14 +426,14 @@ export function PlanActions({
             <div className="bg-white p-4 rounded-lg">
               {/* QR Code would be generated here */}
               <div className="w-48 h-48 bg-muted flex items-center justify-center">
-                <QrCode className="h-16 w-16 text-muted-foreground" />
+                <QrCodeIcon className="h-16 w-16 text-muted-foreground" />
               </div>
             </div>
             <p className="text-sm text-muted-foreground text-center">
               QR code for: {plan.name}
             </p>
             <Button onClick={() => handleShare('link')} variant="outline">
-              <Download className="h-4 w-4 mr-2" />
+              <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
               Download QR Code
             </Button>
           </div>

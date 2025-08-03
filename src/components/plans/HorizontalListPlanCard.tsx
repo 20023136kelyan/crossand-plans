@@ -2,7 +2,7 @@
 
 import { Plan } from '@/types/plan';
 import { format, parseISO, isValid, isPast } from 'date-fns';
-import { MapPin, Clock, Users, MoreVertical, CheckCircle, Edit3, Eye, Trash2, Maximize, Calendar, User, Play, HelpCircle, Check, X, AlertCircle } from 'lucide-react';
+import { MapPinIcon, ClockIcon, UsersIcon, EllipsisVerticalIcon, CheckCircleIcon, PencilIcon, EyeIcon, TrashIcon, ArrowsPointingOutIcon, CalendarIcon, UserIcon, PlayIcon, QuestionMarkCircleIcon, CheckIcon, XMarkIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -164,7 +164,7 @@ export function HorizontalListPlanCard({ plan, currentUserUid }: HorizontalListP
             <div className="flex justify-between items-center mt-1">
               {formattedTime && (
                 <div className="flex items-center text-sm text-muted-foreground">
-                  <Clock className="h-3.5 w-3.5 mr-1.5 flex-shrink-0" />
+                  <ClockIcon className="h-3.5 w-3.5 mr-1.5 flex-shrink-0" />
                   <span className="text-sm">{formattedTime}</span>
                 </div>
               )}
@@ -211,7 +211,7 @@ export function HorizontalListPlanCard({ plan, currentUserUid }: HorizontalListP
               
               {/* Pin overlay */}
               <div className="absolute inset-0 flex items-center justify-center">
-                <MapPin className="h-4 w-4 text-primary drop-shadow-sm" />
+                <MapPinIcon className="h-4 w-4 text-primary drop-shadow-sm" />
               </div>
             </div>
             <span className="truncate" title={`${plan.location}, ${plan.city}`}>
@@ -237,7 +237,7 @@ export function HorizontalListPlanCard({ plan, currentUserUid }: HorizontalListP
                 return (
                   <Avatar key={`participant-${userId}`} className="h-7 w-7 border-2 border-background shadow-sm">
                     <AvatarFallback className="text-xs bg-zinc-100 dark:bg-zinc-800">
-                      <User className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400" />
+                      <UserIcon className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400" />
                     </AvatarFallback>
                   </Avatar>
                 );
@@ -273,13 +273,13 @@ export function HorizontalListPlanCard({ plan, currentUserUid }: HorizontalListP
                      statusType === 'declined' ? "Declined" : 
                      "No RSVP yet"}
             >
-              {statusType === 'completed' && <CheckCircle className="h-4 w-4" />}
-              {statusType === 'attended' && <CheckCircle className="h-4 w-4" />}
-              {statusType === 'ongoing' && <Play className="h-3.5 w-3.5" />}
-              {statusType === 'going' && <Check className="h-4 w-4" />}
-              {statusType === 'maybe' && <HelpCircle className="h-3.5 w-3.5" />}
-              {statusType === 'declined' && <X className="h-4 w-4" />}
-              {statusType === 'noresponse' && <AlertCircle className="h-3.5 w-3.5" />}
+              {statusType === 'completed' && <CheckCircleIcon className="h-4 w-4" />}
+              {statusType === 'attended' && <CheckCircleIcon className="h-4 w-4" />}
+              {statusType === 'ongoing' && <PlayIcon className="h-3.5 w-3.5" />}
+              {statusType === 'going' && <CheckIcon className="h-4 w-4" />}
+              {statusType === 'maybe' && <QuestionMarkCircleIcon className="h-3.5 w-3.5" />}
+              {statusType === 'declined' && <XMarkIcon className="h-4 w-4" />}
+              {statusType === 'noresponse' && <ExclamationCircleIcon className="h-3.5 w-3.5" />}
             </div>
           </div>
         </div>

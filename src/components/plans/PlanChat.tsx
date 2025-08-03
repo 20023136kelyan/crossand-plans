@@ -7,17 +7,17 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
-  MessageCircle,
-  Send,
-  Users,
-  MoreVertical,
-  Pin,
-  Reply,
-  Heart,
-  Smile,
-  Image as ImageIcon,
-  Paperclip
-} from 'lucide-react';
+  ChatBubbleLeftRightIcon,
+  PaperAirplaneIcon,
+  UsersIcon,
+  EllipsisVerticalIcon,
+  BookmarkIcon,
+  ArrowUturnLeftIcon,
+  HeartIcon,
+  FaceSmileIcon,
+  PhotoIcon,
+  PaperClipIcon
+} from '@heroicons/react/24/outline';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -204,7 +204,7 @@ export function PlanChat({ plan, planId, currentUser, isParticipant, className }
     return (
       <Card className={`bg-background/30 backdrop-blur-sm border border-border/30 ${className || ''}`}>
         <CardContent className="p-8 text-center">
-          <MessageCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <ChatBubbleLeftRightIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="text-lg font-semibold mb-2">Group Chat</h3>
           <p className="text-muted-foreground mb-4">
             Join this plan to participate in the group chat and coordinate with other participants.
@@ -219,12 +219,12 @@ export function PlanChat({ plan, planId, currentUser, isParticipant, className }
     <Card className={`bg-background/30 backdrop-blur-sm border border-border/30 ${className || ''}`}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
         <CardTitle className="text-xl font-semibold flex items-center gap-2">
-          <MessageCircle className="h-5 w-5 text-primary" />
+          <ChatBubbleLeftRightIcon className="h-5 w-5 text-primary" />
           Group Chat
         </CardTitle>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="bg-background/50 flex items-center gap-1">
-            <Users className="h-3 w-3" />
+            <UsersIcon className="h-3 w-3" />
             {onlineUsers.length} online
           </Badge>
         </div>
@@ -273,7 +273,7 @@ export function PlanChat({ plan, planId, currentUser, isParticipant, className }
                           : 'bg-muted'
                       }`}>
                         {message.isPinned && (
-                          <Pin className="h-3 w-3 absolute -top-1 -right-1 text-yellow-500" />
+                          <BookmarkIcon className="h-3 w-3 absolute -top-1 -right-1 text-yellow-500" />
                         )}
                         
                         {message.userId !== currentUserId && (
@@ -318,20 +318,20 @@ export function PlanChat({ plan, planId, currentUser, isParticipant, className }
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                                <MoreVertical className="h-3 w-3" />
+                                <EllipsisVerticalIcon className="h-3 w-3" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => addReaction(message.id, '❤️')}>
-                                <Heart className="h-4 w-4 mr-2" />
+                                <HeartIcon className="h-4 w-4 mr-2" />
                                 React
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => togglePin(message.id)}>
-                                <Pin className="h-4 w-4 mr-2" />
+                                <BookmarkIcon className="h-4 w-4 mr-2" />
                                 {message.isPinned ? 'Unpin' : 'Pin'}
                               </DropdownMenuItem>
                               <DropdownMenuItem>
-                                <Reply className="h-4 w-4 mr-2" />
+                                <ArrowUturnLeftIcon className="h-4 w-4 mr-2" />
                                 Reply
                               </DropdownMenuItem>
                             </DropdownMenuContent>
@@ -351,10 +351,10 @@ export function PlanChat({ plan, planId, currentUser, isParticipant, className }
         <div className="p-4 border-t border-border/30">
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-              <Paperclip className="h-4 w-4" />
+              <PaperClipIcon className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-              <ImageIcon className="h-4 w-4" />
+              <PhotoIcon className="h-4 w-4" />
             </Button>
             <div className="flex-1 relative">
               <Input
@@ -371,7 +371,7 @@ export function PlanChat({ plan, planId, currentUser, isParticipant, className }
                 size="sm"
                 className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 p-0"
               >
-                <Smile className="h-4 w-4" />
+                <FaceSmileIcon className="h-4 w-4" />
               </Button>
             </div>
             <Button
@@ -379,7 +379,7 @@ export function PlanChat({ plan, planId, currentUser, isParticipant, className }
               disabled={!newMessage.trim() || isLoading}
               size="sm"
             >
-              <Send className="h-4 w-4" />
+              <PaperAirplaneIcon className="h-4 w-4" />
             </Button>
           </div>
         </div>

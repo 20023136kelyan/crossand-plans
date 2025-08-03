@@ -2,7 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Loader2, RefreshCw, Mail } from 'lucide-react';
+import { 
+  ChevronLeftIcon as ChevronLeft,
+  ArrowPathIcon as Loader2,
+  ArrowPathIcon as RefreshCw,
+  EnvelopeIcon as Mail
+} from '@heroicons/react/24/outline';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import { sendEmailVerification } from 'firebase/auth';

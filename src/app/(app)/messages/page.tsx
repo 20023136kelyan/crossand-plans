@@ -23,8 +23,23 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  MessageCircle, Search, UserPlus, Send, Loader2, ShieldCheck as AdminIcon, CheckCircle, Trash2, MoreVertical, Users as ManageFriendsIcon, XCircle, Plus, Pin, MessageCircleIcon
-} from "lucide-react";
+  ChatBubbleLeftRightIcon,
+  MagnifyingGlassIcon,
+  UserPlusIcon,
+  PaperAirplaneIcon,
+  ArrowPathIcon,
+  ShieldCheckIcon,
+  CheckCircleIcon,
+  TrashIcon,
+  EllipsisVerticalIcon,
+  UserGroupIcon,
+  XCircleIcon,
+  PlusIcon,
+  MapPinIcon
+} from "@heroicons/react/24/outline";
+
+// Alias ShieldCheckIcon to AdminIcon for consistency
+const AdminIcon = ShieldCheckIcon;
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -82,7 +97,7 @@ const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, is
     return <AdminIcon className="ml-1 h-3.5 w-3.5 text-amber-400 fill-amber-500 shrink-0" aria-label="Admin" />;
   }
   if (isVerified) {
-    return <CheckCircle className="ml-1 h-3.5 w-3.5 text-blue-500 fill-blue-200 shrink-0" aria-label="Verified" />;
+    return <CheckCircleIcon className="h-4 w-4" aria-label="Verified" />;
   }
   return null;
 };
@@ -173,7 +188,7 @@ function ManageFriendsDialog({
           </div>
           {searchLoading ? (
             <div className="flex justify-center py-4">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <ArrowPathIcon className="h-4 w-4 animate-spin" />
             </div>
           ) : searchResults.length > 0 ? (
             <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar-vertical">
@@ -194,15 +209,15 @@ function ManageFriendsDialog({
                       <Badge variant="default" className="text-xs whitespace-nowrap">Friends</Badge>
                     ) : su.friendshipStatus === 'pending_sent' ? (
                       <Button size="sm" variant="outline" onClick={() => onFriendAction('cancel', su)} disabled={friendActionLoading}>
-                        <XCircle className="mr-1.5 h-3.5 w-3.5" /> Cancel
+                        <XCircleIcon className="mr-1.5 h-3.5 w-3.5" /> Cancel
                       </Button>
                     ) : su.friendshipStatus === 'pending_received' ? (
                       <Button size="sm" onClick={() => onFriendAction('accept', su)} disabled={friendActionLoading}>
-                        <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Accept
+                        <CheckCircleIcon className="mr-1.5 h-3.5 w-3.5" /> Accept
                       </Button>
                     ) : (
                       <Button size="sm" variant="outline" onClick={() => onFriendAction('send', su)} disabled={friendActionLoading}>
-                        <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Add
+                        <UserPlusIcon className="mr-1.5 h-3.5 w-3.5" /> Add
                       </Button>
                     )}
                   </div>
@@ -218,7 +233,7 @@ function ManageFriendsDialog({
 
         {friendshipsLoading ? (
           <div className="flex justify-center items-center py-6">
-            <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />
+            <ArrowPathIcon className="mx-auto h-6 w-6 animate-spin text-primary" />
           </div>
         ) : (
           <>
@@ -238,10 +253,10 @@ function ManageFriendsDialog({
                       </Link>
                       <div className="flex gap-2 flex-shrink-0 ml-2">
                         <Button size="sm" onClick={() => onFriendAction('accept', req)} disabled={friendActionLoading}>
-                          <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Accept
+                          <CheckCircleIcon className="mr-1.5 h-3.5 w-3.5" /> Accept
                         </Button>
                         <Button size="sm" variant="ghost" onClick={() => onFriendAction('decline', req)} disabled={friendActionLoading}>
-                          <XCircle className="mr-1.5 h-3.5 w-3.5" /> Decline
+                          <XCircleIcon className="mr-1.5 h-3.5 w-3.5" /> Decline
                         </Button>
                       </div>
                     </div>
@@ -273,7 +288,7 @@ function ManageFriendsDialog({
                         onClick={() => onFriendAction('remove', friend)}
                         disabled={friendActionLoading}
                       >
-                        <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Unfriend
+                        <TrashIcon className="mr-1.5 h-3.5 w-3.5" /> Unfriend
                       </Button>
                     </div>
                   ))}
@@ -304,7 +319,7 @@ function ManageFriendsDialog({
                         onClick={() => onFriendAction('cancel', req)}
                         disabled={friendActionLoading}
                       >
-                        <XCircle className="mr-1.5 h-3.5 w-3.5" /> Cancel
+                        <XCircleIcon className="mr-1.5 h-3.5 w-3.5" /> Cancel
                       </Button>
                     </div>
                   ))}
@@ -580,7 +595,7 @@ export default function MessagesPage() {
       uid: otherParticipant?.uid || 'unknown',
       name: firstName,
       avatarUrl: otherParticipant?.avatarUrl || null,
-      initial: firstName ? firstName.charAt(0).toUpperCase() : (otherParticipant?.uid ? otherParticipant.uid.charAt(0).toUpperCase() : <UserPlus className="h-5 w-5"/>),
+      initial: firstName ? firstName.charAt(0).toUpperCase() : (otherParticipant?.uid ? otherParticipant.uid.charAt(0).toUpperCase() : <UserPlusIcon className="h-4 w-4" />),
       dataAiHint: 'person avatar',
       role: otherParticipant?.role || null,
       isVerified: otherParticipant?.isVerified || false,
@@ -703,7 +718,7 @@ export default function MessagesPage() {
   if (authLoading || (loadingChats && user)) {
     return (
       <div className="flex flex-col h-[calc(100vh-6rem)] md:h-[calc(100vh-4rem)] items-center justify-center">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <ArrowPathIcon className="h-12 w-12 animate-spin text-primary" />
       </div>
     );
   }
@@ -727,9 +742,7 @@ export default function MessagesPage() {
                 className="p-2 rounded-full hover:bg-muted transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 aria-label="Start new chat"
               >
-                <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path d="M12 19v-6m0 0V5m0 8H6m6 0h6"/>
-                </svg>
+                <PlusIcon className="h-5 w-5" />
               </button>
             </div>
           </div>
@@ -738,7 +751,7 @@ export default function MessagesPage() {
         {/* Search Bar */}
         <div className="border-t border-border/50 bg-background/50 px-4 py-3">
           <div className="relative max-w-4xl mx-auto">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"
               placeholder="Search messages..."
@@ -776,7 +789,7 @@ export default function MessagesPage() {
                     className="flex flex-col items-center flex-shrink-0 w-14 group"
                   >
                     <div className="relative">
-                      <div className="h-12 w-12 rounded-full bg-muted overflow-hidden border-2 border-foreground/10 group-hover:border-primary/30 transition-colors">
+                      <div className="h-12 w-12 rounded-full bg-muted/80 overflow-hidden border-2 border-foreground/10 group-hover:border-primary/30 transition-colors">
                         {onlineUser?.avatarUrl ? (
                           <img 
                             src={onlineUser.avatarUrl} 
@@ -811,7 +824,7 @@ export default function MessagesPage() {
         <section className="bg-muted/30 border-y border-border/50">
           <div className="max-w-4xl mx-auto px-4 py-2">
             <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground px-2 py-1.5">
-              <Pin className="h-3.5 w-3.5 text-muted-foreground/80" />
+              <MapPinIcon className="h-3.5 w-3.5 text-muted-foreground/80" />
               <span>Pinned Conversations</span>
             </div>
             <div className="space-y-1">
@@ -827,7 +840,7 @@ export default function MessagesPage() {
         <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b border-border/50">
           <div className="max-w-4xl mx-auto px-4 pt-3 pb-2">
             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground px-2">
-              <MessageCircleIcon className="h-4 w-4 flex-shrink-0" />
+              <PaperAirplaneIcon className="h-4 w-4 flex-shrink-0" />
               <span>All Messages</span>
               {filteredChats.length > 0 && (
                 <span className="ml-auto text-xs text-muted-foreground/80">
@@ -843,7 +856,7 @@ export default function MessagesPage() {
           {filteredChats.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto">
               <div className="bg-muted/50 rounded-full p-4 mb-4">
-                <MessageCircleIcon className="h-10 w-10 text-muted-foreground/50" />
+                <MagnifyingGlassIcon className="h-10 w-10 text-muted-foreground/50" />
               </div>
               <h3 className="text-lg font-semibold mb-1.5">No messages yet</h3>
               <p className="text-sm text-muted-foreground mb-6">
@@ -854,7 +867,7 @@ export default function MessagesPage() {
                 className="rounded-full px-6 shadow-sm"
                 size="sm"
               >
-                <Plus className="h-4 w-4 mr-2" />
+                <PlusIcon className="h-4 w-4 mr-2" />
                 New Message
               </Button>
             </div>

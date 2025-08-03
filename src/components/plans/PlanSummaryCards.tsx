@@ -4,7 +4,16 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Clock, MapPin, Users, Check, X, Eye, CheckCircle } from 'lucide-react';
+import {
+  ClockIcon,
+  MapPinIcon,
+  UserGroupIcon,
+  CheckIcon,
+  XMarkIcon,
+  EyeIcon,
+  CheckCircleIcon
+} from '@heroicons/react/24/outline';
+import { CheckIcon as SolidCheckIcon, XMarkIcon as SolidXMarkIcon, CheckCircleIcon as SolidCheckCircleIcon } from '@heroicons/react/24/solid';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import type { Plan, RSVPStatusType } from '@/types/user';
@@ -141,9 +150,9 @@ export function PlanSummaryCards({ className }: PlanSummaryCardsProps) {
       <Card className={cn("w-full bg-transparent border-none shadow-none", className)}>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center text-muted-foreground">
-          <Clock className="mr-2 h-4 w-4" />
-          Recent & Upcoming
-        </CardTitle>
+            <ClockIcon className="mr-2 h-4 w-4" />
+            Recent & Upcoming
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center h-32">
@@ -159,13 +168,13 @@ export function PlanSummaryCards({ className }: PlanSummaryCardsProps) {
       <Card className={cn("w-full bg-transparent border-none shadow-none", className)}>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center text-muted-foreground">
-          <Clock className="mr-2 h-4 w-4" />
-          Recent & Upcoming
-        </CardTitle>
+            <ClockIcon className="mr-2 h-4 w-4" />
+            Recent & Upcoming
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="text-center py-8">
-            <Clock className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
+            <ClockIcon className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
             <p className="text-sm text-muted-foreground">No upcoming plans</p>
           </div>
         </CardContent>
@@ -177,7 +186,7 @@ export function PlanSummaryCards({ className }: PlanSummaryCardsProps) {
     <Card className={cn("w-full bg-transparent border-none shadow-none", className)}>
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-medium flex items-center text-muted-foreground">
-          <Clock className="mr-2 h-4 w-4" />
+          <ClockIcon className="mr-2 h-4 w-4" />
           Next Adventures
         </CardTitle>
       </CardHeader>
@@ -218,7 +227,7 @@ export function PlanSummaryCards({ className }: PlanSummaryCardsProps) {
                         }`}
                         title={displayInfo.description}
                       >
-                        {isFullyDone && <CheckCircle className="w-3 h-3 mr-1" />}
+                        {isFullyDone && <SolidCheckCircleIcon className="w-3 h-3 mr-1" />}
                         {displayInfo.badge}
                       </Badge>
                     )}
@@ -235,18 +244,18 @@ export function PlanSummaryCards({ className }: PlanSummaryCardsProps) {
               <div className="space-y-1 mb-3">
                 {plan.eventTime && (
                   <div className="flex items-center text-xs text-muted-foreground">
-                    <Clock className="mr-1.5 h-3 w-3" />
+                    <ClockIcon className="mr-1.5 h-3 w-3" />
                     {format(new Date(plan.eventTime), 'MMM d, h:mm a')}
                   </div>
                 )}
                 {plan.location && (
                   <div className="flex items-center text-xs text-muted-foreground">
-                    <MapPin className="mr-1.5 h-3 w-3" />
+                    <MapPinIcon className="mr-1.5 h-3 w-3" />
                     <span className="truncate">{plan.location}</span>
                   </div>
                 )}
                 <div className="flex items-center text-xs text-muted-foreground">
-                  <Users className="mr-1.5 h-3 w-3" />
+                  <UserGroupIcon className="mr-1.5 h-3 w-3" />
                   {(plan.participantUserIds?.length || 0) + 1} participant{((plan.participantUserIds?.length || 0) + 1) === 1 ? '' : 's'}
                 </div>
               </div>
@@ -259,7 +268,7 @@ export function PlanSummaryCards({ className }: PlanSummaryCardsProps) {
                   onClick={() => handleViewPlan(plan.id)}
                   className="flex-1 h-8 text-xs"
                 >
-                  <Eye className="mr-1.5 h-3 w-3" />
+                  <EyeIcon className="mr-1.5 h-3 w-3" />
                   {isFullyDone ? 'View Memories' : isCompleted ? 'View Details' : 'View'}
                 </Button>
                 
@@ -272,7 +281,7 @@ export function PlanSummaryCards({ className }: PlanSummaryCardsProps) {
                       disabled={processingRsvp === plan.id}
                       className="h-8 px-2 text-green-600 hover:text-green-700 hover:bg-green-50"
                     >
-                      <Check className="h-3 w-3" />
+                      <SolidCheckIcon className="h-3 w-3" />
                     </Button>
                     <Button
                       variant="outline"
@@ -281,7 +290,7 @@ export function PlanSummaryCards({ className }: PlanSummaryCardsProps) {
                       disabled={processingRsvp === plan.id}
                       className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
                     >
-                      <X className="h-3 w-3" />
+                      <SolidXMarkIcon className="h-3 w-3" />
                     </Button>
                   </>
                 )}

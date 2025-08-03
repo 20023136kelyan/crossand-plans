@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Camera, Upload, Loader2 } from 'lucide-react';
+import { CameraIcon, ArrowUpTrayIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { Plan } from '@/types/plan';
 import { useRef, useState } from 'react';
 
@@ -47,7 +47,7 @@ export function PlanPhotoHighlights({
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Camera className="h-5 w-5" />
+              <CameraIcon className="h-5 w-5" />
               Photo Highlights
             </CardTitle>
           </CardHeader>
@@ -88,9 +88,9 @@ export function PlanPhotoHighlights({
                   disabled={!selectedHighlightFile || highlightUploading}
                 >
                   {highlightUploading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <ArrowPathIcon className="h-4 w-4 animate-spin" />
                   ) : (
-                    <Upload className="h-4 w-4" />
+                    <ArrowUpTrayIcon className="h-4 w-4" />
                   )}
                   Upload
                 </Button>

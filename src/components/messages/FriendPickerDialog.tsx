@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, UserCircle, UserPlus } from "lucide-react"; // Added UserPlus for empty state button
+import { ArrowPathIcon, MagnifyingGlassIcon, UserCircleIcon, UserPlusIcon } from "@heroicons/react/24/outline";
 import { useAuth } from '@/context/AuthContext';
 import { getFriendships } from '@/services/clientServices'; // Client-side service
 import type { FriendEntry } from '@/types/user';
@@ -88,7 +88,7 @@ export function FriendPickerDialog({
         </DialogHeader>
         <div className="px-6 pt-2 pb-2">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search friends..."
               value={searchTerm}
@@ -100,18 +100,19 @@ export function FriendPickerDialog({
         <div className="flex-1 overflow-y-auto px-6 pb-6 custom-scrollbar-vertical">
           {loadingFriends ? (
             <div className="flex justify-center items-center py-10 h-32">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <ArrowPathIcon className="h-4 w-4 animate-spin text-primary" />
             </div>
           ) : filteredFriends.length === 0 ? (
             <div className="text-center py-10 h-32 flex flex-col items-center justify-center">
-              <UserCircle className="mx-auto h-10 w-10 text-muted-foreground/50 mb-2" />
+              <UserCircleIcon className="h-5 w-5 mr-2" />
+              <MagnifyingGlassIcon className="h-4 w-4 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
                 {actualFriends.length === 0 ? "You have no friends yet." : "No friends match your search."}
               </p>
               {actualFriends.length === 0 && (
                 <Button variant="link" className="text-xs mt-1 h-auto p-0" asChild>
                   <Link href="/messages" onClick={() => onOpenChange(false)}>
-                    <UserPlus className="mr-1 h-3.5 w-3.5"/> Manage Contacts
+                    <UserPlusIcon className="h-4 w-4 mr-2" /> Manage Contacts
                   </Link>
                 </Button>
               )}

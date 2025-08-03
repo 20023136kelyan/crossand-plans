@@ -6,7 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Loader2, UserPlus, X, Check, ChevronsUpDown } from 'lucide-react';
+import { ArrowPathIcon, UserPlusIcon, XMarkIcon, CheckIcon, ChevronUpDownIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '@/context/AuthContext';
 import { getFriendships } from '@/services/clientServices';
 import type { FriendEntry } from '@/types/user';
@@ -139,7 +139,7 @@ export function FriendMultiSelectInput({
                                 }}
                                 aria-label={`Remove ${friendName}`}
                             >
-                                <X className="h-3 w-3 text-muted-foreground" />
+                                <XMarkIcon className="h-3 w-3 text-muted-foreground" />
                             </button>
                         </div>
                     );
@@ -156,13 +156,13 @@ export function FriendMultiSelectInput({
             >
                 <div className="flex items-center">
                 {(isLoadingFriends && isPopoverOpen) || authLoading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <ArrowPathIcon className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
-                <UserPlus className="mr-2 h-4 w-4" />
+                <UserPlusIcon className="mr-2 h-4 w-4" />
                 )}
                 {(isLoadingFriends && isPopoverOpen) || authLoading ? 'Loading friends...' : ((selectedUserIds?.length || 0) > 0 ? `${selectedUserIds?.length || 0} friend(s) invited` : 'Invite friends...')}
                 </div>
-                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                <ChevronUpDownIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
             </Button>
             </PopoverTrigger>
             <PopoverContent 
@@ -208,7 +208,7 @@ export function FriendMultiSelectInput({
                             <AvatarFallback className="text-[10px]">{friend.name ? friend.name.charAt(0).toUpperCase() : 'F'}</AvatarFallback>
                         </Avatar>
                         {friend.name || `User (${friend.friendUid.substring(0,5)})`}
-                        <Check
+                        <CheckIcon
                         className={cn(
                             "ml-auto h-3.5 w-3.5",
                             (selectedUserIds || []).includes(friend.friendUid) ? "opacity-100" : "opacity-0"

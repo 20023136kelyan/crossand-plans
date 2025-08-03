@@ -12,27 +12,27 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  CalendarDays,
-  MapPin,
-  Star,
-  Users,
-  Share2,
-  Heart,
-  Clock,
-  ChevronLeft,
-  Loader2,
-  Copy,
+  CalendarDaysIcon,
+  MapPinIcon,
+  StarIcon,
+  UsersIcon,
+  ShareIcon,
+  HeartIcon,
+  ClockIcon,
+  ChevronLeftIcon,
+  ArrowPathIcon,
+  DocumentDuplicateIcon,
   LinkIcon,
-  QrCode,
-  MessageSquare,
-  MoreHorizontal,
-  Edit,
-  Trash2,
-  CheckCircle,
-  AlertCircle,
-  CalendarCheck,
-  Calendar
-} from 'lucide-react';
+  QrCodeIcon,
+  ChatBubbleLeftRightIcon,
+  EllipsisHorizontalIcon,
+  PencilSquareIcon,
+  TrashIcon,
+  CheckCircleIcon,
+  ExclamationCircleIcon,
+  CalendarDaysIcon as CalendarCheckIcon,
+  CalendarIcon
+} from '@heroicons/react/24/outline';
 import { format, parseISO, isValid, isPast, isFuture, isToday } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import type { Plan as PlanType } from '@/types/user';
@@ -107,13 +107,13 @@ const PlanHero = memo(function PlanHero({
     if (!isValid(eventDate)) return null;
     
     if (isPast(eventDate) && !isToday(eventDate)) {
-      return { label: 'Completed', variant: 'secondary' as const, icon: CheckCircle };
+      return { label: 'Completed', variant: 'secondary' as const, icon: CheckCircleIcon };
     }
     if (isToday(eventDate)) {
-      return { label: 'Today', variant: 'default' as const, icon: CalendarCheck };
+      return { label: 'Today', variant: 'default' as const, icon: CalendarCheckIcon };
     }
     if (isFuture(eventDate)) {
-      return { label: 'Upcoming', variant: 'outline' as const, icon: Calendar };
+      return { label: 'Upcoming', variant: 'outline' as const, icon: CalendarIcon };
     }
     return null;
   }, [plan.eventTime]);
@@ -198,18 +198,18 @@ const PlanHero = memo(function PlanHero({
           </h1>
           <div className="flex items-center gap-4 text-white/90">
             <div className="flex items-center gap-1">
-              <MapPin className="h-4 w-4" />
+              <MapPinIcon className="h-4 w-4" />
               <span className="text-sm font-medium drop-shadow">{plan.location || 'Location not specified'}</span>
             </div>
             {typeof plan.averageRating === 'number' && (
               <div className="flex items-center gap-1">
-                <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
+                <StarIcon className="h-4 w-4 text-amber-400 fill-amber-400" />
                 <span className="text-sm font-medium drop-shadow">{plan.averageRating?.toFixed(1)}</span>
               </div>
             )}
             {clientFormattedEventDateTime && (
               <div className="flex items-center gap-1">
-                <Clock className="h-4 w-4" />
+                <ClockIcon className="h-4 w-4" />
                 <span className="text-sm font-medium drop-shadow">{clientFormattedEventDateTime}</span>
               </div>
             )}
@@ -239,7 +239,7 @@ const PlanHero = memo(function PlanHero({
           {/* Action Buttons */}
           <div className="flex items-center gap-2">
             <div className="flex items-center px-2 py-1.5 rounded-md bg-muted/50 text-sm text-muted-foreground gap-1">
-              <MapPin className="h-3 w-3" />
+              <MapPinIcon className="h-3 w-3" />
               <span className="font-medium">{plan.itinerary?.length || 0}</span>
             </div>
             
@@ -251,9 +251,9 @@ const PlanHero = memo(function PlanHero({
                 size="sm"
               >
                 {copyLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <ArrowPathIcon className="h-4 w-4 animate-spin" />
                 ) : (
-                  <Copy className="h-4 w-4" />
+                  <DocumentDuplicateIcon className="h-4 w-4" />
                 )}
                 Copy Plan
               </Button>

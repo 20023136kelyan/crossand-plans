@@ -598,3 +598,21 @@ export interface AISimpleProfile {
   uid: string;
   preferences: string[];
 }
+
+// User preferences type (subset of UserProfile for preference-related operations)
+export type UserPreferences = Pick<UserProfile, 
+  | 'allergies'
+  | 'dietaryRestrictions'
+  | 'generalPreferences'
+  | 'favoriteCuisines'
+  | 'physicalLimitations'
+  | 'activityTypePreferences'
+  | 'activityTypeDislikes'
+  | 'environmentalSensitivities'
+  | 'preferredTransitModes'
+  | 'travelTolerance'
+  | 'budgetFlexibilityNotes'
+  | 'socialPreferences'
+  | 'availabilityNotes'
+  | 'preferences'
+>;

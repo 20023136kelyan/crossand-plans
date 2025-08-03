@@ -3,7 +3,7 @@
 import { useSettings } from '@/context/SettingsContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Wrench, RefreshCw } from 'lucide-react';
+import { WrenchScrewdriverIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 
 const CrossandLogo = ({ className }: { className?: string }) => (
@@ -37,7 +37,7 @@ export default function MaintenancePage() {
         <CardContent className="space-y-6">
           <div className="flex justify-center">
             <div className="p-4 bg-orange-100 dark:bg-orange-900/20 rounded-full">
-              <Wrench className="h-8 w-8 text-orange-600 dark:text-orange-400" />
+              <WrenchScrewdriverIcon className="h-8 w-8 text-orange-600 dark:text-orange-400" />
             </div>
           </div>
           
@@ -56,7 +56,7 @@ export default function MaintenancePage() {
               variant="outline" 
               className="w-full"
             >
-              <RefreshCw className="h-4 w-4 mr-2" />
+              <ArrowPathIcon className="h-4 w-4 mr-2" />
               Check Again
             </Button>
             

@@ -1,6 +1,6 @@
 'use client';
 
-import { BadgeCheck, ShieldCheck } from 'lucide-react';
+import { CheckBadgeIcon, ShieldCheckIcon } from '@heroicons/react/24/solid';
 import type { UserRoleType } from '@/types/user';
 
 interface VerificationBadgeProps {
@@ -13,13 +13,13 @@ export function VerificationBadge({ role, isVerified }: VerificationBadgeProps) 
 
   if (role === 'admin') {
     return (
-      <ShieldCheck className="h-3.5 w-3.5 ml-1 text-primary" />
+      <ShieldCheckIcon className="h-3.5 w-3.5 ml-1 text-primary" />
     );
   }
 
   if (isVerified) {
     return (
-      <BadgeCheck className="h-3.5 w-3.5 ml-1 text-primary" />
+      <CheckBadgeIcon className="h-3.5 w-3.5 ml-1 text-primary" />
     );
   }
 

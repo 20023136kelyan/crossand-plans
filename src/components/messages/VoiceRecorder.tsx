@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Button } from '@/components/ui/button';
-import { Mic, Square } from 'lucide-react';
+import { MicrophoneIcon, StopIcon } from '@heroicons/react/24/outline';
 import { formatDuration, requestMicrophoneAccess, createMediaRecorder } from '@/lib/audioUtils';
 import { cn } from '@/lib/utils';
 

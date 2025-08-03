@@ -7,7 +7,34 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { GoogleMap, useJsApiLoader, CircleF } from '@react-google-maps/api';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronDown, ChevronUp, ChevronRight, SearchIcon, Target, Check, CheckCircle, MapPin, Clock, Users, DollarSign, MessageSquare, ArrowLeft, Sparkles, Loader2, X, Edit, Pencil, RefreshCw, Plus, Settings2, UserPlus, Navigation, Crown } from 'lucide-react';
+import {
+  CalendarDaysIcon as CalendarIcon,
+  ChevronLeftIcon as ChevronLeft,
+  ChevronDownIcon as ChevronDown,
+  ChevronUpIcon as ChevronUp,
+  ChevronRightIcon as ChevronRight,
+  MagnifyingGlassIcon as SearchIcon,
+  MapPinIcon as Target,
+  CheckIcon as Check,
+  CheckCircleIcon as CheckCircle,
+  MapPinIcon as MapPin,
+  ClockIcon as Clock,
+  UsersIcon as Users,
+  CurrencyDollarIcon as DollarSign,
+  ChatBubbleLeftEllipsisIcon as MessageSquare,
+  ArrowLeftIcon as ArrowLeft,
+  SparklesIcon as Sparkles,
+  ArrowPathIcon as Loader2,
+  XMarkIcon as X,
+  PencilIcon as Edit,
+  PencilIcon as Pencil,
+  ArrowPathIcon as RefreshCw,
+  PlusIcon as Plus,
+  Cog6ToothIcon as Settings2,
+  UserPlusIcon as UserPlus,
+  MapIcon as Navigation,
+  TrophyIcon as Crown
+} from '@heroicons/react/24/outline';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 

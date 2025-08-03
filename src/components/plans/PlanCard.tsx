@@ -6,7 +6,25 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Edit3, Trash2, Share2, MapPin, Eye, Users as UsersIcon, MailQuestion, UserCheck, History, MoreVertical, ChevronDown, ChevronUp, Loader2, ListChecks, CheckCircle, Users, Sparkles } from "lucide-react";
+import { 
+  PencilSquareIcon,
+  TrashIcon,
+  ShareIcon,
+  MapPinIcon,
+  EyeIcon,
+  UserGroupIcon,
+  EnvelopeIcon,
+  ClockIcon,
+  EllipsisVerticalIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  ArrowPathIcon,
+  ClipboardDocumentCheckIcon,
+  CheckCircleIcon,
+  UserGroupIcon as UsersIcon,
+  SparklesIcon
+} from '@heroicons/react/24/outline';
+import { CheckCircleIcon as CheckCircleIconSolid } from '@heroicons/react/24/solid';
 import Link from "next/link";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
@@ -32,11 +50,11 @@ export enum UserPlanViewStatus {
 }
 
 export const userPlanViewStatusConfig: Record<UserPlanViewStatus, { label: string; icon: React.ElementType; badgeVariant: "default" | "secondary" | "destructive" | "outline" | "premium" }> = {
-  [UserPlanViewStatus.INVITED_TO_PLAN]: { label: 'Invitation', icon: MailQuestion, badgeVariant: 'default' },
-  [UserPlanViewStatus.MY_DRAFT_UPCOMING]: { label: 'Draft', icon: Edit3, badgeVariant: 'outline' },
+  [UserPlanViewStatus.INVITED_TO_PLAN]: { label: 'Invitation', icon: EnvelopeIcon, badgeVariant: 'default' },
+  [UserPlanViewStatus.MY_DRAFT_UPCOMING]: { label: 'Draft', icon: PencilSquareIcon, badgeVariant: 'outline' },
   [UserPlanViewStatus.MY_AWAITING_RESPONSES]: { label: 'Awaiting Confirmations', icon: UsersIcon, badgeVariant: 'secondary' },
-  [UserPlanViewStatus.MY_CONFIRMED_READY]: { label: 'Confirmed & Ready', icon: CheckCircle, badgeVariant: 'default' },
-  [UserPlanViewStatus.COMPLETED]: { label: 'Completed', icon: History, badgeVariant: 'outline' },
+  [UserPlanViewStatus.MY_CONFIRMED_READY]: { label: 'Confirmed & Ready', icon: CheckCircleIcon, badgeVariant: 'default' },
+  [UserPlanViewStatus.COMPLETED]: { label: 'Completed', icon: ClockIcon, badgeVariant: 'outline' },
 };
 
 interface PlanCardProps {
@@ -205,7 +223,7 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
                 </Badge>
                 {timeUrgency === 'urgent' && (
                   <Badge variant="destructive" className="text-xs px-1.5 py-0.5">
-                    <Sparkles className="h-3 w-3 mr-1" />
+                    <SparklesIcon className="h-4 w-4 mr-2" />
                     Urgent
                   </Badge>
                 )}
@@ -219,14 +237,14 @@ export const PlanCard = React.memo(({ plan, currentUserUid }: PlanCardProps) => 
             )}
             
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <MapPin className="h-3 w-3" />
+              <MapPinIcon className="h-4 w-4 mr-2" />
               <span className="truncate">{plan.location}</span>
             </div>
             
             {plan.status === 'draft' && (
               <div className="mt-2">
                 <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
-                  <ListChecks className="h-3 w-3" />
+                  <ClipboardDocumentCheckIcon className="h-4 w-4" />
                   <span>Completion: {completionPercentage}%</span>
                 </div>
                 <div className="w-full bg-muted rounded-full h-1.5">

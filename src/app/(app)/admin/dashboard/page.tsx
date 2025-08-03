@@ -4,7 +4,14 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Shield, Users, FileText, Settings, BarChart3, ChevronLeft } from "lucide-react";
+import { 
+  ShieldCheckIcon,
+  UserGroupIcon,
+  DocumentTextIcon,
+  Cog6ToothIcon,
+  ChartBarIcon,
+  ChevronLeftIcon 
+} from "@heroicons/react/24/outline";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
@@ -25,7 +32,7 @@ export default function AdminDashboardPage() {
     // Show loading or nothing if not admin (will be redirected)
     return (
         <div className="flex h-screen items-center justify-center">
-            <Shield className="h-12 w-12 animate-pulse text-primary" />
+            <ShieldCheckIcon className="h-12 w-12 animate-pulse text-primary" />
         </div>
     );
   }
@@ -34,11 +41,11 @@ export default function AdminDashboardPage() {
     <div className="space-y-8 p-4 sm:p-6 md:p-8">
       <header className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-            <Shield className="h-8 w-8 text-primary" />
+            <UserGroupIcon className="h-8 w-8 text-primary" />
             <h1 className="text-2xl sm:text-3xl font-bold text-foreground/80 opacity-80">Admin Dashboard</h1>
         </div>
         <Button variant="outline" onClick={() => router.back()} size="sm">
-            <ChevronLeft className="mr-2 h-4 w-4" /> Back
+            <ChevronLeftIcon className="h-4 w-4 mr-2" /> Back
         </Button>
       </header>
 
@@ -47,7 +54,7 @@ export default function AdminDashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <Card className="bg-card/70 border-border/30">
             <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2"><Users className="text-primary"/>User Management</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2"><UserGroupIcon className="h-5 w-5" />User Management</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">View users, manage roles, and verify accounts.</p>
@@ -58,7 +65,7 @@ export default function AdminDashboardPage() {
           </Card>
           <Card className="bg-card/70 border-border/30">
             <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2"><FileText className="text-primary"/>Content Moderation</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2"><DocumentTextIcon className="h-5 w-5" />Content Moderation</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">Review reported plans, posts, and comments.</p>
@@ -69,7 +76,7 @@ export default function AdminDashboardPage() {
           </Card>
           <Card className="bg-card/70 border-border/30">
             <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2"><BarChart3 className="text-primary"/>App Analytics</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2"><ChartBarIcon className="h-5 w-5" />App Analytics</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">View key metrics and application usage statistics.</p>
@@ -85,7 +92,7 @@ export default function AdminDashboardPage() {
         <h2 className="text-xl font-semibold mb-4 text-foreground/90">Settings & Configuration</h2>
          <Card className="bg-card/70 border-border/30">
             <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2"><Settings className="text-primary"/>Application Settings</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2"><Cog6ToothIcon className="h-5 w-5" />Application Settings</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">Manage global application settings and features.</p>

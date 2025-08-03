@@ -10,17 +10,17 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { 
-  Upload, 
-  File, 
-  X, 
-  AlertTriangle, 
-  CheckCircle, 
-  FileImage, 
-  FileText, 
-  FileVideo,
-  Music,
-  Archive
-} from 'lucide-react';
+  ArrowUpTrayIcon,
+  DocumentIcon,
+  XMarkIcon,
+  ExclamationTriangleIcon,
+  CheckCircleIcon,
+  PhotoIcon,
+  DocumentTextIcon,
+  FilmIcon,
+  MusicalNoteIcon,
+  ArchiveBoxIcon
+} from '@heroicons/react/24/outline';
 import { cn } from '@/lib/utils';
 
 interface FileUploadProps {
@@ -140,11 +140,11 @@ export function FileUpload({
 
   const getFileIcon = (file: File) => {
     const type = file.type;
-    if (type.startsWith('image/')) return <FileImage className="h-4 w-4" />;
-    if (type.startsWith('video/')) return <FileVideo className="h-4 w-4" />;
-    if (type.startsWith('audio/')) return <Music className="h-4 w-4" />;
-    if (type.includes('zip') || type.includes('rar') || type.includes('tar')) return <Archive className="h-4 w-4" />;
-    return <FileText className="h-4 w-4" />;
+    if (type.startsWith('image/')) return <PhotoIcon className="h-4 w-4" />;
+    if (type.startsWith('video/')) return <FilmIcon className="h-4 w-4" />;
+    if (type.startsWith('audio/')) return <MusicalNoteIcon className="h-4 w-4" />;
+    if (type.includes('zip') || type.includes('rar') || type.includes('tar')) return <ArchiveBoxIcon className="h-4 w-4" />;
+    return <DocumentTextIcon className="h-4 w-4" />;
   };
 
   const formatFileSize = (bytes: number) => {
@@ -167,7 +167,7 @@ export function FileUpload({
           <div {...getRootProps()} className="text-center space-y-4">
             <input {...getInputProps()} />
             <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center">
-              <Upload className="h-6 w-6 text-muted-foreground" />
+              <ArrowUpTrayIcon className="h-6 w-6 text-muted-foreground" />
             </div>
             <div className="space-y-2">
               <p className="text-sm font-medium">
@@ -208,10 +208,10 @@ export function FileUpload({
                           {formatFileSize(uploadedFile.file.size)}
                         </Badge>
                         {uploadedFile.status === 'success' && (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
+                          <CheckCircleIcon className="h-4 w-4 text-green-500" />
                         )}
                         {uploadedFile.status === 'error' && (
-                          <AlertTriangle className="h-4 w-4 text-red-500" />
+                          <ExclamationTriangleIcon className="h-4 w-4 text-amber-500" />
                         )}
                         <Button
                           variant="ghost"
@@ -219,7 +219,7 @@ export function FileUpload({
                           onClick={() => removeFile(uploadedFile.id)}
                           className="h-6 w-6 p-0"
                         >
-                          <X className="h-3 w-3" />
+                          <XMarkIcon className="h-3 w-3" />
                         </Button>
                       </div>
                     </div>
@@ -312,7 +312,7 @@ export function FileUploadButton({
       <label htmlFor="file-upload-button">
         <Button asChild disabled={disabled}>
           <span className="cursor-pointer">
-            <Upload className="h-4 w-4 mr-2" />
+            <ArrowUpTrayIcon className="h-5 w-5 mr-2" />
             {children}
           </span>
         </Button>

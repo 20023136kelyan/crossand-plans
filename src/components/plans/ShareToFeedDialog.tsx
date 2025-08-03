@@ -12,7 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Loader2, Share2 } from 'lucide-react';
+import { ArrowPathIcon, ShareIcon } from '@heroicons/react/24/outline';
 import type { Plan } from '@/types/user';
 
 interface ShareToFeedDialogProps {
@@ -60,7 +60,7 @@ export function ShareToFeedDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Share2 className="h-5 w-5" />
+            <ShareIcon className="h-5 w-5" />
             Share to Feed
           </DialogTitle>
           <DialogDescription>
@@ -117,12 +117,12 @@ export function ShareToFeedDialog({
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <ArrowPathIcon className="h-4 w-4 animate-spin mr-2" />
                 Sharing...
               </>
             ) : (
               <>
-                <Share2 className="h-4 w-4 mr-2" />
+                <ShareIcon className="h-4 w-4 mr-2" />
                 Share to Feed
               </>
             )}

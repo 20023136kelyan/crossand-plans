@@ -14,10 +14,51 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Loader2, Edit3, MessageSquare, ShieldCheck as AdminIcon, CheckCircle, Settings,
-  UserPlus, XCircle as XIcon, Check, MoreVertical, Camera, ChevronLeft, Users as UsersIconIcon,
-  RotateCcw, EyeOff, Phone, Video, LayoutGrid, Calendar, Users, Eye, Upload, UserMinus, Instagram, X, Clock
-} from "lucide-react";
+  ArrowPathIcon, 
+  PencilSquareIcon, 
+  ChatBubbleLeftRightIcon, 
+  ShieldCheckIcon, 
+  CheckCircleIcon, 
+  Cog6ToothIcon, 
+  UserPlusIcon, 
+  XCircleIcon, 
+  CheckIcon, 
+  EllipsisVerticalIcon, 
+  CameraIcon, 
+  ChevronLeftIcon, 
+  UserGroupIcon,
+  ArrowPathIcon as RotateCcwIcon,
+  EyeSlashIcon,
+  PhoneIcon,
+  VideoCameraIcon,
+  Squares2X2Icon,
+  CalendarIcon,
+  EyeIcon,
+  ArrowUpTrayIcon,
+  UserMinusIcon,
+  XMarkIcon,
+  ClockIcon
+} from "@heroicons/react/24/outline";
+import { Instagram } from "lucide-react"; // Keeping Instagram from lucide as it's not in Heroicons
+
+// Aliases for consistency with existing code
+const AdminIcon = ShieldCheckIcon;
+const MessageSquare = ChatBubbleLeftRightIcon;
+const Settings = Cog6ToothIcon;
+const XIcon = XCircleIcon;
+const MoreVertical = EllipsisVerticalIcon;
+const Camera = CameraIcon;
+const ChevronLeft = ChevronLeftIcon;
+const UsersIcon = UserGroupIcon;
+const EyeOff = EyeSlashIcon;
+const Phone = PhoneIcon;
+const Video = VideoCameraIcon;
+const LayoutGrid = Squares2X2Icon;
+const Calendar = CalendarIcon;
+const Eye = EyeIcon;
+const Upload = ArrowUpTrayIcon;
+const X = XMarkIcon;
+const Clock = ClockIcon;
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -44,7 +85,7 @@ const VerificationBadgeInline = ({ role, isVerified }: { role: UserProfile['role
     return <AdminIcon className="ml-1.5 h-5 w-5 text-amber-400 fill-amber-500 shrink-0" aria-label="Admin" />;
   }
   if (isVerified) {
-    return <CheckCircle className="ml-1.5 h-5 w-5 text-blue-500 fill-blue-200 shrink-0" aria-label="Verified User" />;
+    return <CheckCircleIcon className="ml-1.5 h-5 w-5 text-blue-500 fill-blue-200 shrink-0" aria-label="Verified User" />;
   }
   return null;
 };
@@ -95,7 +136,7 @@ const PlansTabContent = ({ profileId, isOwnProfile, currentUser }: TabContentPro
   if (loading) {
     return (
       <div className="text-center py-12">
-        <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+        <ArrowPathIcon className="mx-auto h-8 w-8 animate-spin text-primary" />
         <p className="text-sm text-muted-foreground mt-2">Loading plans...</p>
       </div>
     );
@@ -749,7 +790,7 @@ export default function UserProfilePage() {
   if (loadingProfile || (authLoading && !profileData.userProfile)) { 
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background text-foreground">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <ArrowPathIcon className="h-12 w-12 animate-spin text-primary" />
       </div>
     );
   }
@@ -757,7 +798,7 @@ export default function UserProfilePage() {
   if (!userProfile) { 
     return (
       <div className="flex min-h-screen flex-col items-center justify-center text-center p-6 bg-background text-foreground">
-        <UsersIconIcon className="h-20 w-20 text-muted-foreground/30 mb-4" />
+        <UsersIcon className="h-20 w-20 text-muted-foreground/30 mb-4" />
         <h1 className="text-2xl font-semibold mb-2">User Not Found</h1>
         <p className="text-muted-foreground">The profile you are looking for does not exist or could not be loaded.</p>
         <Button asChild variant="outline" className="mt-6">
@@ -773,7 +814,7 @@ export default function UserProfilePage() {
     <div className="min-h-screen bg-background text-foreground">
          <header className="md:hidden sticky top-0 z-30 flex items-center justify-between px-3 py-2 bg-background/80 backdrop-blur-sm">
             <Button variant="ghost" size="icon" onClick={() => router.back()} className="text-muted-foreground hover:text-foreground" aria-label="Go back">
-                <ChevronLeft className="h-5 w-5" />
+                <ChevronLeftIcon className="h-4 w-4 mr-1" />
             </Button>
             <div className="flex-1"></div>
         </header>
@@ -809,10 +850,10 @@ export default function UserProfilePage() {
               {/* Verification badge */}
               <div className="absolute bottom-2 right-2">
                 {userProfile.role === 'admin' && (
-                  <AdminIcon className="h-6 w-6 text-amber-400 fill-amber-500 shrink-0 drop-shadow-lg" aria-label="Admin" />
+                  <ShieldCheckIcon className="h-6 w-6 text-amber-400 fill-amber-500 shrink-0 drop-shadow-lg" aria-label="Admin" />
                 )}
                 {userProfile.role !== 'admin' && userProfile.isVerified && (
-                  <CheckCircle className="h-6 w-6 text-blue-500 fill-blue-200 shrink-0 drop-shadow-lg" aria-label="Verified" />
+                  <CheckIcon className="h-6 w-6 text-blue-500 fill-blue-200 shrink-0 drop-shadow-lg" aria-label="Verified" />
                 )}
               </div>
               
@@ -828,7 +869,7 @@ export default function UserProfilePage() {
                 {isOwnProfile && (
                   <Button size="sm" variant="ghost" className="absolute -right-6 top-0 h-5 w-5 p-0 rounded-md hover:bg-primary/10 transition-all duration-200" asChild>
                     <Link href={`/users/settings?tab=profile&returnUrl=${encodeURIComponent(`/users/${userProfile.uid}`)}`}>
-                      <Edit3 className="h-5 w-5 text-muted-foreground hover:text-primary" />
+                      <PencilSquareIcon className="h-5 w-5 text-muted-foreground hover:text-primary" />
                     </Link>
                   </Button>
                 )}
@@ -883,9 +924,9 @@ export default function UserProfilePage() {
                     disabled={isInitiatingChat || followActionLoading}
                   >
                     {isInitiatingChat ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      <ArrowPathIcon className="h-5 w-5 animate-spin" />
                     ) : (
-                      <MessageSquare className="h-4 w-4 mr-2" />
+                      <ChatBubbleLeftRightIcon className="h-4 w-4 mr-1" />
                     )}
                     Message
                   </Button>
@@ -898,19 +939,19 @@ export default function UserProfilePage() {
                   disabled={followButtonState.disabled || followActionLoading}
                 >
                   {followActionLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    <ArrowPathIcon className="h-5 w-5 animate-spin" />
                   ) : followRequestPending ? (
                     <>
-                      <Clock className="h-4 w-4 mr-2" /> Request Sent
+                      <ShieldCheckIcon className="h-4 w-4 mr-1" /> Request Sent
                     </>
                   ) : isFollowing ? (
                     <>
-                      <UserMinus className="h-4 w-4 mr-2" />
+                      <UserMinusIcon className="h-4 w-4 mr-1" />
                       Unfollow
                     </>
                   ) : (
                     <>
-                      <UserPlus className="h-4 w-4 mr-2" />
+                      <UserPlusIcon className="h-4 w-4 mr-1" />
                       Follow
                     </>
                   )}
@@ -943,7 +984,7 @@ export default function UserProfilePage() {
                   className="w-10 p-0"
                   onClick={() => router.push('/users/settings')}
                 >
-                  <Settings className="h-4 w-4" />
+                  <Cog6ToothIcon className="h-4 w-4 mr-1" />
                 </Button>
               </div>
             )}
@@ -960,14 +1001,14 @@ export default function UserProfilePage() {
                 value="posts" 
                 className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2"
               >
-                <LayoutGrid className="h-4 w-4" />
+                <Squares2X2Icon className="h-4 w-4 mr-1" />
                 <span className="text-sm font-medium">Posts</span>
               </TabsTrigger>
               <TabsTrigger 
                 value="plans" 
                 className="data-[state=active]:text-foreground data-[state=active]:rounded-none data-[state=active]:shadow-none data-[state=active]:bg-transparent data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary rounded-none h-full flex flex-col items-center justify-center gap-1 relative text-muted-foreground hover:text-foreground transition-colors px-2"
               >
-                <Calendar className="h-4 w-4" />
+                <CalendarIcon className="h-4 w-4 mr-1" />
                 <span className="text-sm font-medium">Plans</span>
               </TabsTrigger>
             </TabsList>
@@ -976,7 +1017,7 @@ export default function UserProfilePage() {
             <TabsContent value="posts" className="mt-6 p-0">
               {userPostsArray.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
-                  <Camera className="mx-auto h-16 w-16 opacity-30 mb-3" />
+                  <CameraIcon className="mx-auto h-16 w-16 opacity-30 mb-3" />
                   <p className="font-semibold text-lg">No Posts Yet</p>
                   {isOwnProfile && <p className="text-sm">Share your first plan highlight!</p>}
                 </div>
@@ -1034,7 +1075,7 @@ export default function UserProfilePage() {
                  disabled={isUploadingAvatar} 
                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-3 font-medium transition-all duration-200"
                >
-                 {isUploadingAvatar ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : "Save Avatar"}
+                 {isUploadingAvatar ? <ArrowPathIcon className="animate-spin mr-2 h-4 w-4" /> : "Save Avatar"}
                </Button>
                <Button 
                  variant="outline" 
@@ -1092,14 +1133,14 @@ export default function UserProfilePage() {
                 setIsProfilePictureModalOpen(false);
                 avatarFileInputRef.current?.click();
               }}>
-                <Upload className="h-4 w-4 mr-2" />
+                <ArrowUpTrayIcon className="h-4 w-4 mr-1" />
                 Change Picture
               </Button>
             ) : (
               <Button variant="outline" className="flex-1" onClick={() => {
                 // TODO: Implement full-screen view
               }}>
-                <Eye className="h-4 w-4 mr-2" />
+                <EyeIcon className="h-4 w-4 mr-1" />
                 View Full Size
               </Button>
             )}

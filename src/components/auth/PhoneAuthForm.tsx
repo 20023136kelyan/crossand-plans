@@ -8,7 +8,7 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2, ChevronsUpDown, Check } from 'lucide-react';
+import { ArrowPathIcon, ArrowsUpDownIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import { useSettings } from '@/context/SettingsContext';
@@ -237,7 +237,7 @@ export function PhoneAuthForm() {
               className="w-full h-10 mt-4 bg-orange-500 hover:bg-orange-600 text-white font-medium" 
               disabled={isSubmitting || isSendingCode}
             >
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isSubmitting && <ArrowPathIcon className="mr-2 h-4 w-4 animate-spin" />}
               Verify Code
             </Button>
           </form>
@@ -274,7 +274,7 @@ export function PhoneAuthForm() {
                                 <span className="text-sm">+1</span>
                               </span>
                             )}
-                            <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+                            <ArrowsUpDownIcon className="ml-1 h-3 w-3 shrink-0 opacity-50" />
                           </Button>
                         </FormControl>
                       </PopoverTrigger>
@@ -310,7 +310,7 @@ export function PhoneAuthForm() {
                                     <span className="flex-1 truncate">
                                       {country.name} ({country.dialCode})
                                     </span>
-                                    <Check
+                                    <CheckIcon
                                       className={cn(
                                         "ml-auto h-4 w-4",
                                         field.value === country.code ? "opacity-100" : "opacity-0"
@@ -352,7 +352,7 @@ export function PhoneAuthForm() {
               className="w-full h-10 mt-4 bg-orange-500 hover:bg-orange-600 text-white font-medium" 
               disabled={isSendingCode || isSubmitting || cooldownTime > 0}
             >
-              {isSendingCode && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isSendingCode && <ArrowPathIcon className="mr-2 h-4 w-4 animate-spin" />}
               {cooldownTime > 0 
                 ? cooldownTime > 60 
                   ? `Wait ${Math.floor(cooldownTime / 60)}m ${cooldownTime % 60}s` 

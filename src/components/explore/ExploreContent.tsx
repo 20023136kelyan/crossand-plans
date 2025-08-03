@@ -13,7 +13,31 @@ import { getUserProfile } from '@/services/clientServices';
 import { useToast } from '@/hooks/use-toast';
 import { Plan, Profile, Category, City, SearchedUser, Influencer, PlanCollection } from '@/types/user';
 import { useAuth } from '@/context/AuthContext';
-import { Loader2, MapPin, Calendar, Star, Search, Users, Heart, Share2, BookmarkPlus, Lock, Percent, Check, X, UserCheck, UserPlus, BadgeCheck, ArrowLeft, Layers, Crown, TrendingUp, Clock, Sparkles, Filter } from 'lucide-react';
+import {
+  ArrowPathIcon as Loader2,
+  MapPinIcon as MapPin,
+  CalendarDaysIcon as Calendar,
+  StarIcon as Star,
+  MagnifyingGlassIcon as Search,
+  UsersIcon as Users,
+  HeartIcon as Heart,
+  ShareIcon as Share2,
+  BookmarkIcon as BookmarkPlus,
+  LockClosedIcon as Lock,
+  ReceiptPercentIcon as Percent,
+  CheckIcon as Check,
+  XMarkIcon as X,
+  CheckCircleIcon as UserCheck,
+  UserPlusIcon as UserPlus,
+  CheckBadgeIcon as BadgeCheck,
+  ArrowLeftIcon as ArrowLeft,
+  Squares2X2Icon as Layers,
+  TrophyIcon as Crown,
+  ArrowTrendingUpIcon as TrendingUp,
+  ClockIcon as Clock,
+  SparklesIcon as Sparkles,
+  FunnelIcon as Filter
+} from '@heroicons/react/24/outline';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -21,7 +45,8 @@ import { Separator } from '@/components/ui/separator';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { calculateEnhancedPlanScore } from '@/lib/utils/enhancedRanking';
 import { useRouter } from 'next/navigation';
-import type { UserPreferences, GeoPoint } from '@/types/user';
+import type { GeoPoint } from 'firebase/firestore';
+import type { UserProfile as UserPreferences } from '@/types/user';
 import { UserSearchResultCard } from './UserSearchResultCard';
 import { trackSearch, trackResultClick, getRecentSearches, clearSearchHistory } from '@/services/searchAnalyticsService.client';
 import type { PersonalizedRecommendations } from '@/services/recommendationService.admin';

@@ -32,27 +32,28 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  MessageSquare,
-  Heart,
-  Loader2,
-  X as XIcon,
-  UserCircle as UserCircleIcon,
-  MoreVertical,
-  Trash2,
-  CheckCircle,
-  ShieldCheck as AdminIcon,
-  Lock as LockIcon,
-  EyeOff,
-  PackageOpen,
-  AlertTriangle,
-  MapPin,
-  Clock,
-  Users,
-  Star,
-  ArrowLeft,
-  ArrowRight,
-  Eye
-} from "lucide-react";
+  ChatBubbleLeftRightIcon,
+  HeartIcon,
+  ArrowPathIcon,
+  XMarkIcon,
+  UserCircleIcon,
+  EllipsisVerticalIcon,
+  TrashIcon,
+  CheckCircleIcon,
+  ShieldCheckIcon as AdminIcon,
+  LockClosedIcon as LockIcon,
+  EyeSlashIcon,
+  ArchiveBoxIcon as PackageOpen,
+  ExclamationTriangleIcon,
+  MapPinIcon,
+  ClockIcon,
+  UserGroupIcon,
+  StarIcon,
+  ArrowRightIcon,
+  ArrowPathIcon as Loader2Icon,
+  ArrowLeftIcon,
+  EyeIcon
+} from "@heroicons/react/24/outline";
 import Link from "next/link";
 import Image from 'next/image';
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
@@ -80,7 +81,7 @@ const VerificationBadge = ({ role, isVerified }: { role: UserRoleType | null, is
     return <AdminIcon className="ml-1.5 h-4 w-4 text-amber-400 fill-amber-500 shrink-0" aria-label="Admin" />;
   }
   if (isVerified) {
-    return <CheckCircle className="ml-1.5 h-4 w-4 text-blue-500 fill-blue-200 shrink-0" aria-label="Verified" />;
+    return <CheckCircleIcon className="ml-1.5 h-4 w-4 text-blue-500 fill-blue-200 shrink-0" aria-label="Verified" />;
   }
   return null;
 };
@@ -439,17 +440,17 @@ const FeedPostCard = React.memo(({
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-white hover:bg-white/10 ml-auto" onClick={(e) => e.stopPropagation()}>
                           <span className="sr-only">More options</span>
-                          <MoreVertical className="h-4 w-4" />
+                          <ExclamationTriangleIcon className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-48 bg-background">
-                        <DropdownMenuItem onSelect={() => onHidePost(item.id)} className="cursor-pointer text-xs"><EyeOff className="mr-2 h-3.5 w-3.5"/> Hide Post</DropdownMenuItem>
-                        <DropdownMenuItem className="cursor-pointer text-xs text-destructive focus:text-destructive focus:bg-destructive/10"><AlertTriangle className="mr-2 h-3.5 w-3.5"/> Report Post</DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => onHidePost(item.id)} className="cursor-pointer text-xs"><EyeSlashIcon className="mr-2 h-3.5 w-3.5"/> Hide Post</DropdownMenuItem>
+                        <DropdownMenuItem className="cursor-pointer text-xs text-destructive focus:text-destructive focus:bg-destructive/10"><ExclamationTriangleIcon className="mr-2 h-3.5 w-3.5"/> Report Post</DropdownMenuItem>
                         {isOwnPost && (
                           <>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={() => onRequestDeletePost(item)} className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer text-xs">
-                              <Trash2 className="mr-2 h-3.5 w-3.5"/> Delete Post
+                              <TrashIcon className="mr-2 h-3.5 w-3.5"/> Delete Post
                             </DropdownMenuItem>
                           </>
                         )}
@@ -480,7 +481,7 @@ const FeedPostCard = React.memo(({
                       onClick={(e) => { e.stopPropagation(); handleLikeClick(); }}
                       disabled={!currentUserId}
                     >
-                      <Heart className= "h-20 w-20" />
+                      <HeartIcon className="h-4 w-4 mr-2" />
                       <span className="text-base">{optimisticLikesCount || 0}</span>
                     </Button>
                     <Button
@@ -489,14 +490,14 @@ const FeedPostCard = React.memo(({
                       className="p-1 h-auto flex items-center gap-2 text-white"
                       onClick={(e) => { e.stopPropagation(); onOpenCommentsModal(item); }}
                     >
-                      <MessageSquare className="h-20 w-20" />
+                      <ChatBubbleLeftRightIcon className="h-4 w-4 mr-2" />
                       <span className="text-base">{optimisticCommentsCount || 0}</span>
                     </Button>
                   </div>
                   
                   {/* Swipe hint */}
                   <div className="absolute bottom-4 right-4 flex items-center gap-1 text-white/60 text-xs">
-                    <ArrowLeft className="h-3 w-3" />
+                    <ArrowLeftIcon className="h-3 w-3" />
                     <span>Swipe left for template</span>
                   </div>
                   
@@ -564,7 +565,7 @@ const FeedPostCard = React.memo(({
                 className="h-8 w-8 rounded-full"
                 onClick={handleFlipBack}
               >
-                <ArrowLeft className="h-4 w-4" />
+                <ArrowLeftIcon className="h-4 w-4" />
               </Button>
               <div className="text-center">
                 <h3 className="font-semibold text-lg text-gray-800">Plan Snippet</h3>
@@ -577,7 +578,7 @@ const FeedPostCard = React.memo(({
             <div className="flex-1 overflow-y-auto">
               {loadingTemplate ? (
                 <div className="flex items-center justify-center h-full">
-                  <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                  <ArrowPathIcon className="h-4 w-4 animate-spin text-gray-500" />
                 </div>
               ) : templateData ? (
                 <div className="space-y-4 animate-in slide-in-from-bottom duration-300">
@@ -598,7 +599,7 @@ const FeedPostCard = React.memo(({
                         by {templateData.creatorName || templateData.templateOriginalHostName || 'Unknown'}
                       </span>
                       {templateData.creatorIsVerified && (
-                        <CheckCircle className="h-4 w-4 text-blue-500" />
+                        <CheckCircleIcon className="h-4 w-4 text-green-500" />
                       )}
                     </div>
                   </div>
@@ -607,7 +608,7 @@ const FeedPostCard = React.memo(({
                   <div className="space-y-3">
                     {/* City, Category, Price - single row */}
                     <div className="flex items-center justify-center gap-2 text-sm text-gray-700 mb-2">
-                      <MapPin className="h-4 w-4 text-gray-500" />
+                      <MapPinIcon className="h-4 w-4 text-gray-500" />
                       <span>{templateData.city}</span>
                       <span className="mx-1">•</span>
                       <span>{templateData.eventType || 'Event'}</span>
@@ -618,7 +619,7 @@ const FeedPostCard = React.memo(({
                     {/* Rating */}
                     {templateData.averageRating && (
                       <div className="flex items-center gap-2 text-sm">
-                        <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                        <StarIcon className="h-4 w-4 text-yellow-500 fill-yellow-500" />
                         <span className="text-gray-700">
                           {templateData.averageRating.toFixed(1)} ({templateData.reviewCount || 0} reviews)
                         </span>
@@ -654,7 +655,7 @@ const FeedPostCard = React.memo(({
               ) : (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center">
-                    <PackageOpen className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                    <PackageOpen className="h-16 w-16 text-gray-300 mx-auto my-8" />
                     <p className="text-gray-600">No template available</p>
                     <p className="text-sm text-gray-500">This post doesn't have an associated template</p>
                   </div>
@@ -665,26 +666,26 @@ const FeedPostCard = React.memo(({
                         {/* Action buttons */}
             {templateData && (
               <div className="absolute bottom-4 left-4 flex flex-row items-center gap-3 z-20">
-                <Eye
+                <EyeIcon
                   className="h-6 w-6 text-blue-600 cursor-pointer hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-400 rounded transition"
                   aria-label="View Template"
                   tabIndex={0}
-                  onClick={(e) => {
+                  onClick={(e: React.MouseEvent<SVGSVGElement>) => {
                     e.stopPropagation();
                     window.open(`/p/${templateData.id}`, '_blank');
                   }}
-                  onKeyDown={(e) => {
+                  onKeyDown={(e: React.KeyboardEvent<SVGSVGElement>) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
                       window.open(`/p/${templateData.id}`, '_blank');
                     }
                   }}
                 />
-                <Star
+                <StarIcon
                   className="h-6 w-6 text-yellow-500 cursor-pointer hover:text-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-400 rounded transition"
                   aria-label="Copy to My Plans"
                   tabIndex={0}
-                  onClick={async (e) => {
+                  onClick={async (e: React.MouseEvent<SVGSVGElement>) => {
                     e.stopPropagation();
                     if (!user || !currentUserId) {
                       toast({ title: "Login Required", description: "Please log in to copy templates.", variant: "destructive" });
@@ -705,7 +706,7 @@ const FeedPostCard = React.memo(({
                       toast({ title: "Copy Error", description: error.message || "An unexpected error occurred.", variant: "destructive" });
                     }
                   }}
-                  onKeyDown={async (e) => {
+                  onKeyDown={async (e: React.KeyboardEvent<SVGSVGElement>) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
                       if (!user || !currentUserId) {
@@ -734,7 +735,7 @@ const FeedPostCard = React.memo(({
             
             {/* Swipe hint for back side */}
             <div className="absolute bottom-4 right-4 flex items-center gap-1 text-gray-600 text-xs">
-              <ArrowRight className="h-3 w-3" />
+              <ArrowRightIcon className="h-3 w-3" />
               <span>Swipe right to return</span>
             </div>
           </div>
@@ -895,20 +896,20 @@ export default function FeedPage() {
   const hasNextPost = useMemo(() => { if (!activePostForDetailModal) return false; const currentIndex = visibleFeedPosts.findIndex(p => p.id === activePostForDetailModal.id); return currentIndex !== -1 && currentIndex < visibleFeedPosts.length - 1; }, [activePostForDetailModal, visibleFeedPosts]);
   const hasPreviousPost = useMemo(() => { if (!activePostForDetailModal) return false; const currentIndex = visibleFeedPosts.findIndex(p => p.id === activePostForDetailModal.id); return currentIndex !== -1 && currentIndex > 0; }, [activePostForDetailModal, visibleFeedPosts]);
 
-  if (authLoading && !user) { return (<div className="flex min-h-[calc(100vh-10rem)] items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>); }
+  if (authLoading && !user) { return (<div className="flex min-h-[calc(100vh-10rem)] items-center justify-center"><Loader2Icon className="h-10 w-10 animate-spin text-primary" /></div>); }
 
   return (
     <div className="min-h-screen">
       <div className="mx-auto max-w-7xl pb-20 px-4">
         {/* This is where the "For You" content will now directly live */}
-        {loadingFeed && visibleFeedPosts.length === 0 && (<div className="flex min-h-[calc(100vh-15rem)] items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-gray-600" /></div>)}
+        {loadingFeed && visibleFeedPosts.length === 0 && (<div className="flex min-h-[calc(100vh-15rem)] items-center justify-center"><Loader2Icon className="h-10 w-10 animate-spin text-gray-600" /></div>)}
         {!loadingFeed && visibleFeedPosts.length === 0 && (<div className="text-center py-10 text-gray-600 min-h-[calc(100vh-15rem)] flex flex-col justify-center items-center"><PackageOpen className="mx-auto h-12 w-12 mb-4 opacity-70" /><p className="text-lg font-semibold">Your feed is looking a bit quiet.</p><p>Share your plan highlights or explore to find content!</p></div>)}
         {visibleFeedPosts.length > 0 && (
           <>
             <div className="grid grid-cols-1 gap-6 justify-items-center">
               {visibleFeedPosts.map(item => (<FeedPostCard key={item.id} item={item} currentUserId={user?.uid} currentUserProfile={currentUserProfile} onOpenCommentsModal={handleOpenPostDetailModal} onUpdatePostInList={updateFeedPostInList} onHidePost={hidePostLocally} onRequestDeletePost={handleRequestDeletePost} onOpenDetailModal={handleOpenPostDetailModal} plan={planData[item.planId]} />))}
             </div>
-            {hasMore && (<div className="flex justify-center mt-8 mb-4"><Button onClick={loadMorePosts} disabled={loadingMore} className="bg-primary text-primary-foreground hover:bg-primary/90">{loadingMore ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading...</>) : ("Load More Posts")}</Button></div>)}
+            {hasMore && (<div className="flex justify-center mt-8 mb-4"><Button onClick={loadMorePosts} disabled={loadingMore} className="bg-primary text-primary-foreground hover:bg-primary/90">{loadingMore ? (<><Loader2Icon className="mr-2 h-4 w-4 animate-spin" />Loading...</>) : ("Load More Posts")}</Button></div>)}
             {!hasMore && (<p className="text-center text-gray-500 mt-8 mb-4">You've reached the end of the feed.</p>)}
           </>
         )}
@@ -916,7 +917,7 @@ export default function FeedPage() {
       {/* ExploreContent is no longer rendered here */}
 
       {activePostForDetailModal && (<PostDetailModal post={activePostForDetailModal} authorProfile={authorForDetailModal} isLoadingAuthor={loadingAuthorForDetailModal} isOpen={isPostDetailModalOpen} onClose={handleClosePostDetailModal} onNext={handleNextPost} onPrevious={handlePreviousPost} hasNext={hasNextPost} hasPrevious={hasPreviousPost} />)}
-      <AlertDialog open={!!postToDelete} onOpenChange={(open) => { if(!open) setPostToDelete(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete Post?</AlertDialogTitle><AlertDialogDescription>This will permanently delete this post. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setPostToDelete(null)} disabled={isDeletingPost}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeletePost} disabled={isDeletingPost} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">{isDeletingPost ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4"/>} Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+      <AlertDialog open={!!postToDelete} onOpenChange={(open) => { if(!open) setPostToDelete(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete Post?</AlertDialogTitle><AlertDialogDescription>This will permanently delete this post. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setPostToDelete(null)} disabled={isDeletingPost}>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeletePost} disabled={isDeletingPost} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">{isDeletingPost ? <Loader2Icon className="mr-2 h-4 w-4 animate-spin" /> : <TrashIcon className="mr-2 h-4 w-4"/>} Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
     </div>
   );
 }

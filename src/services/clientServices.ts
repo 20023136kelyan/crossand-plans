@@ -12,6 +12,7 @@ import {
   doc, 
   getDoc,
   getDocs,
+  setDoc,
   limit,
   Unsubscribe 
 } from 'firebase/firestore';
@@ -1006,6 +1007,27 @@ export async function getUserPlans(userId: string): Promise<Plan[]> {
   } catch (error) {
     console.error('Error fetching user plans:', error);
     return [];
+  }
+}
+
+/**
+ * Save a plan to user's saved plans
+ */
+export async function savePlanToUser(userId: string, planId: string): Promise<void> {
+  if (!userId || !planId) {
+    throw new Error('User ID and Plan ID are required');
+  }
+
+  try {
+    const savedPlanRef = doc(getDb(), 'users', userId, 'savedPlans', planId);
+    await setDoc(savedPlanRef, {
+      planId,
+      savedAt: new Date().toISOString(),
+    });
+    console.log('✅ Plan saved to user:', planId);
+  } catch (error) {
+    console.error('Error saving plan to user:', error);
+    throw error;
   }
 }
 

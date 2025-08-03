@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2, Phone, Mail } from 'lucide-react';
+import { ArrowPathIcon as Loader2, PhoneIcon, EnvelopeIcon } from '@heroicons/react/24/outline';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import { useSettings } from '@/context/SettingsContext';
@@ -159,7 +159,7 @@ export function LoginForm() {
                 onClick={() => setShowPhoneForm(false)}
                 disabled={isSubmitting || isGoogleSubmitting || isPhoneSubmitting || isSendingResetEmail}
               >
-                <Mail className="h-4 w-4 mr-2" />
+                <EnvelopeIcon className="h-4 w-4 mr-2" />
                 Email
               </Button>
             </div>
@@ -291,7 +291,7 @@ export function LoginForm() {
                 {isPhoneSubmitting ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <Phone className="h-4 w-4 mr-2" />
+                  <PhoneIcon className="h-4 w-4 mr-2" />
                 )}
                 Phone
               </Button>

@@ -1,6 +1,17 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, User, CalendarDays, Users, Settings, ShieldAlert, HandCoins, CalendarPlus, Search, Bell } from 'lucide-react';
+import {
+  HomeIcon,
+  UserIcon,
+  CalendarIcon,
+  UserGroupIcon,
+  Cog6ToothIcon,
+  ShieldExclamationIcon,
+  BanknotesIcon,
+  PlusCircleIcon,
+  MagnifyingGlassIcon,
+  BellIcon
+} from '@heroicons/react/24/outline';
 import {
   SidebarMenu,
   SidebarMenuItem,
@@ -12,12 +23,12 @@ import {
 import { cn } from '@/lib/utils';
 
 const navItems = [
-  { href: '/', label: 'Home', icon: Home },
-  { href: '/plans/create/initiate', label: 'Create Plan', icon: CalendarPlus },
-  { href: '/plans', label: 'My Plans', icon: CalendarDays },
-  { href: '/explore', label: 'Explore', icon: Search },
-  { href: '/profile', label: 'My Profile', icon: User },
-  { href: '/friends', label: 'Friends', icon: Users },
-  { href: '/payments', label: 'Payments', icon: HandCoins },
-  { href: '/users/notifications', label: 'Notifications', icon: Bell },
+  { href: '/', label: 'Home', icon: HomeIcon },
+  { href: '/plans/create/initiate', label: 'Create Plan', icon: PlusCircleIcon },
+  { href: '/plans', label: 'My Plans', icon: CalendarIcon },
+  { href: '/explore', label: 'Explore', icon: MagnifyingGlassIcon },
+  { href: '/profile', label: 'My Profile', icon: UserIcon },
+  { href: '/friends', label: 'Friends', icon: UserGroupIcon },
+  { href: '/payments', label: 'Payments', icon: BanknotesIcon },
+  { href: '/users/notifications', label: 'Notifications', icon: BellIcon },
 ];

@@ -1,7 +1,8 @@
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Crown, Check, Star } from "lucide-react";
+import { CheckIcon, StarIcon } from "@heroicons/react/24/outline";
+import { CheckCircleIcon, StarIcon as SolidStarIcon } from "@heroicons/react/20/solid";
 import type { Subscription, SubscriptionPlan } from "@/types/subscription";
 
 const planFeatures = {
@@ -70,7 +71,7 @@ export function SubscriptionCard({ plan, currentSubscription, onSubscribe, onMan
         <ul className="space-y-2">
           {features.map((feature, index) => (
             <li key={index} className="flex items-center gap-2">
-              <Check className="h-4 w-4 text-primary" />
+              <SolidStarIcon className="h-5 w-5 text-yellow-500" />
               <span>{feature}</span>
             </li>
           ))}

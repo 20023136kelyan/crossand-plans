@@ -3,7 +3,13 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Users, BadgeCheck, Search, Star } from 'lucide-react';
+import {
+  ArrowLeftIcon as ArrowLeft,
+  UsersIcon as Users,
+  CheckBadgeIcon as BadgeCheck,
+  MagnifyingGlassIcon as Search,
+  StarIcon as Star
+} from '@heroicons/react/24/outline';
 import React, { useState } from 'react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -114,4 +120,4 @@ export function CreatorsExploreContent({ profiles }: { profiles: Profile[] }) {
       </div>
     </div>
   );
-} 
+}

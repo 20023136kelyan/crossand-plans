@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Heart, MessageCircle, Share } from 'lucide-react';
+import { ArrowTopRightOnSquareIcon, HeartIcon, ChatBubbleLeftRightIcon, ShareIcon } from '@heroicons/react/24/outline';
 import type { FeedPost, Plan } from '@/types/user';
 import { useAuth } from '@/context/AuthContext';
 import { formatDistanceToNow, parseISO } from 'date-fns';
@@ -117,15 +117,15 @@ export function FeedPostCard({ post, plan }: FeedPostCardProps) {
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-5">
             <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary p-0 h-auto">
-              <Heart className="mr-1.5 h-5 w-5" fill="none" />
+              <HeartIcon className="mr-1.5 h-5 w-5" />
               <span className="text-xs font-medium">{post.likesCount || 349}</span>
             </Button>
             <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary p-0 h-auto">
-              <MessageCircle className="mr-1.5 h-5 w-5" fill="none" />
+              <ChatBubbleLeftRightIcon className="mr-1.5 h-5 w-5" />
               <span className="text-xs font-medium">{post.commentsCount || 760}</span>
             </Button>
             <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary p-0 h-auto">
-              <Share className="h-5 w-5" fill="none" />
+              <ShareIcon className="h-5 w-5" />
             </Button>
           </div>
 

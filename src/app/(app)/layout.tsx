@@ -52,10 +52,36 @@ import { cn, commonImageExtensions } from '@/lib/utils';
 import ReactCrop, { type Crop, type PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import Link from 'next/link';
-import {
-  Loader2, PlusCircle, Share2, Globe, Lock as LockIcon, Edit3, Camera, Sparkles, X as XIcon, UploadCloud,
-  MessageSquare, User as UserIcon, Search, LayoutGrid, LayoutList, ChevronLeft, ImageIcon, ImagePlus, ArrowRight, ArrowLeft as BackArrowIcon, Check, ChevronsUpDown, Settings, LogOut, Crop as CropIcon, Square, RectangleVertical, Smartphone
-} from 'lucide-react';
+import { 
+  ArrowPathIcon as Loader2,
+  PlusCircleIcon as PlusCircle,
+  ShareIcon as Share2,
+  GlobeAltIcon as Globe,
+  LockClosedIcon as LockIcon,
+  PencilSquareIcon as Edit3,
+  CameraIcon as Camera,
+  SparklesIcon as Sparkles,
+  XMarkIcon as XIcon,
+  CloudArrowUpIcon as UploadCloud,
+  ChatBubbleLeftRightIcon as MessageSquare,
+  UserIcon,
+  MagnifyingGlassIcon as Search,
+  Squares2X2Icon as LayoutGrid,
+  ListBulletIcon as LayoutList,
+  ChevronLeftIcon as ChevronLeft,
+  PhotoIcon as ImageIcon,
+  PlusIcon as ImagePlus,
+  ArrowRightIcon as ArrowRight,
+  ArrowLeftIcon as BackArrowIcon,
+  CheckIcon as Check,
+  ArrowsUpDownIcon as ChevronsUpDown,
+  Cog6ToothIcon as Settings,
+  ArrowLeftOnRectangleIcon as LogOut,
+  ScissorsIcon as CropIcon,
+  StopIcon as Square,
+  RectangleGroupIcon as RectangleVertical,
+  DevicePhoneMobileIcon as Smartphone,
+} from "@heroicons/react/24/outline";
 import { Label } from '@/components/ui/label';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { auth } from '@/lib/firebase';

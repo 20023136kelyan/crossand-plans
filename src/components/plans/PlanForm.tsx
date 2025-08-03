@@ -19,26 +19,91 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Slider } from '@/components/ui/slider';
-import { Calendar } from '@/components/ui/calendar';
 import { 
-  CalendarIcon, 
-  Loader2, 
-  PlusCircle, 
-  ListChecks, 
-  MapPin as MapPinIcon, 
-  ArrowLeft, 
-  Users as UsersIcon, 
-  Sparkles, 
-  Building, 
-  FileText, 
-  MessageSquare, 
-  Calendar as CalendarLucide, 
-  DollarSign, 
-  CheckCircle, 
-  Settings,
-  Clock,
-  ChevronDown
-} from 'lucide-react';
+  // Heroicons
+  ArrowDownTrayIcon,
+  ArrowPathIcon,
+  ArrowRightIcon,
+  ArrowTopRightOnSquareIcon,
+  ArrowUpRightIcon,
+  ArrowsPointingInIcon,
+  ArrowsPointingOutIcon,
+  BuildingOfficeIcon,
+  ChatBubbleLeftRightIcon,
+  CheckCircleIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronLeftIcon as ArrowLeftIcon,
+  ChevronRightIcon,
+  ChevronUpIcon,
+  ClockIcon,
+  Cog6ToothIcon,
+  DocumentDuplicateIcon,
+  DocumentIcon as FileIcon,
+  DocumentTextIcon,
+  EllipsisVerticalIcon,
+  EnvelopeIcon,
+  ExclamationCircleIcon,
+  ExclamationTriangleIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  FilmIcon as VideoIcon,
+  GlobeAltIcon,
+  InformationCircleIcon,
+  LinkIcon,
+  ListBulletIcon as ListChecks,
+  MagnifyingGlassMinusIcon,
+  MagnifyingGlassPlusIcon,
+  MapPinIcon,
+  MinusIcon,
+  MusicalNoteIcon as MusicIcon,
+  PencilSquareIcon as Edit3,
+  PhotoIcon as ImageIcon,
+  PlusCircleIcon,
+  PlusIcon,
+  QuestionMarkCircleIcon,
+  ShareIcon,
+  SparklesIcon,
+  StarIcon,
+  TrashIcon,
+  UserGroupIcon as UsersIcon,
+  UserPlusIcon,
+  XCircleIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
+
+// Calendar component (not an icon)
+import { Calendar } from '@/components/ui/calendar';
+
+// Re-export for backward compatibility
+const Loader2 = ({ className }: { className?: string }) => (
+  <ArrowPathIcon className={cn('animate-spin', className)} />
+);
+
+// Map Lucide icon names to Heroicons components
+const IconMap = {
+  Sparkles: SparklesIcon,
+  Clock: ClockIcon,
+  Building: BuildingOfficeIcon,
+  FileText: DocumentTextIcon,
+  MessageSquare: ChatBubbleLeftRightIcon,
+  CheckCircle: CheckCircleIcon,
+  ArrowLeft: ArrowLeftIcon,
+  ChevronDown: ChevronDownIcon,
+  PlusCircle: PlusCircleIcon,
+} as const;
+
+type IconName = keyof typeof IconMap;
+
+// Helper component to render icons with fallback
+const Icon = ({ name, className, ...props }: { name: IconName } & React.ComponentProps<'svg'>) => {
+  const IconComponent = IconMap[name];
+  if (!IconComponent) {
+    console.warn(`Icon '${name}' not found in IconMap`);
+    return null;
+  }
+  return <IconComponent className={className} {...props} />;
+};
 import { cn } from '@/lib/utils';
 import { format, parseISO, isValid as isDateValid } from 'date-fns';
 import {

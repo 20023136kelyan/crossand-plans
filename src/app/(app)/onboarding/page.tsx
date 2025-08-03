@@ -3,11 +3,26 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { completeOnboardingAction } from '@/app/actions/userActions';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, Loader2, Save, LogOut, Heart, Activity, Users, MapPin, Phone, Mail, Globe, Calendar, Utensils, Car, Users as UsersIcon } from 'lucide-react';
+import { 
+  ChevronLeftIcon, 
+  ArrowDownTrayIcon, 
+  ArrowLeftOnRectangleIcon, 
+  HeartIcon, 
+  ChartBarIcon, 
+  UserGroupIcon, 
+  MapPinIcon, 
+  PhoneIcon, 
+  EnvelopeIcon, 
+  GlobeAltIcon, 
+  CalendarIcon, 
+  TruckIcon 
+} from '@heroicons/react/24/outline';
+import { Utensils as UtensilsIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
@@ -821,8 +836,8 @@ export default function OnboardingPage() {
   if (authLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-amber-50 to-orange-100">
-        <Loader2 className="h-12 w-12 animate-spin text-orange-500" />
-                    </div>
+        <ArrowPathIcon className="h-12 w-12 animate-spin text-orange-500" />
+      </div>
     );
   }
 
@@ -863,7 +878,7 @@ export default function OnboardingPage() {
           onClick={signOut}
           className="text-orange-600 hover:text-orange-700"
         >
-          <LogOut className="h-4 w-4 mr-2" />
+          <ArrowLeftOnRectangleIcon className="h-4 w-4 mr-2" />
           Log Out
         </Button>
         <button
@@ -970,7 +985,7 @@ export default function OnboardingPage() {
         {/* Loading State */}
         {isSubmitting && (
           <div className="mt-8 flex items-center gap-2 text-orange-600">
-            <Loader2 className="h-5 w-5 animate-spin" />
+            <ArrowPathIcon className="h-5 w-5 animate-spin" />
             <span>Saving your profile...</span>
           </div>
         )}

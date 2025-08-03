@@ -3,7 +3,7 @@
 import { NewPlanForm } from '@/components/plans/NewPlanForm';
 import { GoogleMapsProvider } from '@/context/GoogleMapsContext';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, Sparkles } from 'lucide-react';
+import { ChevronLeftIcon as ChevronLeft, SparklesIcon as Sparkles } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 

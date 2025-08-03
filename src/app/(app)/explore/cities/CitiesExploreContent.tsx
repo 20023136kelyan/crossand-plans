@@ -3,9 +3,12 @@
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import Image from 'next/image';
-import { MapPin, ArrowLeft } from 'lucide-react';
+import {
+  MapPinIcon as MapPin,
+  ArrowLeftIcon as ArrowLeft
+} from '@heroicons/react/24/outline';
 import { Input } from '@/components/ui/input';
-import { Search } from 'lucide-react';
+import { MagnifyingGlassIcon as Search } from '@heroicons/react/24/outline';
 import { useState } from 'react';
 import type { City } from '@/types/user';
 
@@ -98,4 +101,4 @@ export function CitiesExploreContent({ cities }: { cities: City[] }) {
       </div>
     </div>
   );
-} 
+}

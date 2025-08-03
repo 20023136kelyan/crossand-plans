@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import TextareaAutosize from 'react-textarea-autosize';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Globe, PlusCircle, Ticket, UserCheck, Users, Edit2, ChevronDown, ChevronLeft, ChevronRight, Trash2, ArrowUpDown, CalendarIcon, Clock, MapPin as MapPinIcon, Tag } from 'lucide-react';
+import { GlobeAltIcon, PlusCircleIcon, TicketIcon, UsersIcon, PencilIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, TrashIcon, ArrowsUpDownIcon, CalendarIcon, ClockIcon, MapPinIcon, TagIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { useToast } from '@/hooks/use-toast';
 import React, { useState, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -448,7 +448,7 @@ export function NewPlanForm() {
                             <AccordionItem value="item-1">
                                 <AccordionTrigger className="text-muted-foreground hover:no-underline">
                                     <div className="flex items-center gap-3">
-                                        <Users className="h-5 w-5" />
+                                        <UsersIcon className="h-5 w-5" />
                                         <span className="font-semibold text-base text-foreground">Invite Friends</span>
                                     </div>
                                 </AccordionTrigger>
@@ -540,7 +540,7 @@ export function NewPlanForm() {
                                             onClick={addNewStop}
                                             className="w-full h-full bg-input/50 border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center text-muted-foreground hover:bg-input hover:border-primary transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background"
                                         >
-                                            <PlusCircle className="h-12 w-12 mb-4" />
+                                            <PlusCircleIcon className="h-12 w-12 mb-4" />
                                             <span className="text-lg font-semibold">Add Stop</span>
                                         </button>
                                     </div>
@@ -555,7 +555,7 @@ export function NewPlanForm() {
                                 <FormField control={form.control} name="status" render={({ field }) => (
                                     <Select onValueChange={field.onChange} value={field.value}>
                                         <SelectTrigger className="w-auto bg-input border-border rounded-lg text-sm">
-                                            <Globe className="h-4 w-4 mr-2" /> 
+                                            <GlobeAltIcon className="h-4 w-4 mr-2" /> 
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent className="bg-popover text-foreground border-border">

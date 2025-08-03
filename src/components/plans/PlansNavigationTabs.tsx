@@ -1,6 +1,6 @@
 'use client';
 
-import { CalendarDays, Star, History } from "lucide-react";
+import { CalendarDaysIcon, StarIcon, ClockIcon } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/utils";
 
 interface PlansNavigationTabsProps {
@@ -13,17 +13,17 @@ export function PlansNavigationTabs({ activeTab, onTabChange }: PlansNavigationT
     {
       id: 'upcoming' as const,
       label: 'Upcoming',
-      icon: CalendarDays,
+      icon: CalendarDaysIcon,
     },
     {
       id: 'saved' as const,
       label: 'Saved',
-      icon: Star,
+      icon: StarIcon,
     },
     {
       id: 'past' as const,
       label: 'Past',
-      icon: History,
+      icon: ClockIcon,
     }
   ];
 

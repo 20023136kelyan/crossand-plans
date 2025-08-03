@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { QrCode, Download, Share2, Copy } from 'lucide-react';
+import { QrCodeIcon, ArrowDownTrayIcon, ShareIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import type { Plan } from '@/types/user';
@@ -90,7 +90,7 @@ export function QRCodeDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <QrCode className="h-5 w-5" />
+            <QrCodeIcon className="h-5 w-5" />
             QR Code
           </DialogTitle>
           <DialogDescription>
@@ -130,7 +130,7 @@ export function QRCodeDialog({
               onClick={handleCopyUrl}
               className="flex items-center gap-2"
             >
-              <Copy className="h-4 w-4" />
+              <DocumentDuplicateIcon className="h-4 w-4" />
               Copy URL
             </Button>
             
@@ -141,7 +141,7 @@ export function QRCodeDialog({
               disabled={isGenerating}
               className="flex items-center gap-2"
             >
-              <Download className="h-4 w-4" />
+              <ArrowDownTrayIcon className="h-4 w-4" />
               {isGenerating ? 'Downloading...' : 'Download'}
             </Button>
             
@@ -151,7 +151,7 @@ export function QRCodeDialog({
               onClick={handleShare}
               className="flex items-center gap-2"
             >
-              <Share2 className="h-4 w-4" />
+              <ShareIcon className="h-4 w-4" />
               Share
             </Button>
           </div>

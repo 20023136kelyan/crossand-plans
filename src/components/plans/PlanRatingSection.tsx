@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Star, X, Loader2, Sparkles } from 'lucide-react';
+import { StarIcon, XMarkIcon, ArrowPathIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -50,7 +50,7 @@ const RatingInput = ({ currentRating, onRatingChange, disabled, hasRated }: Rati
               onMouseLeave={() => !disabled && setHoverRating(0)}
               disabled={disabled}
             >
-              <Star
+              <StarIcon
                 className={cn(
                   "h-8 w-8 transition-all duration-200 ease-out",
                   isFilled
@@ -80,7 +80,7 @@ const RatingInput = ({ currentRating, onRatingChange, disabled, hasRated }: Rati
       
       {hasRated && (
         <div className="flex items-center justify-center gap-2 p-2 bg-gradient-to-r from-muted/50 to-muted/30 rounded-lg border border-border/50">
-          <Sparkles className="h-3 w-3 text-orange-500" />
+          <SparklesIcon className="h-3 w-3 text-orange-500" />
           <span className="text-xs font-medium text-muted-foreground">
             You rated this plan {currentRating} star{currentRating !== 1 ? 's' : ''}
           </span>
@@ -119,7 +119,7 @@ export function PlanRatingSection({
     <Card className="overflow-hidden bg-gradient-to-br from-card to-card/80 border-border/50">
       <CardHeader className="bg-gradient-primary p-4">
         <CardTitle className="flex items-center gap-3 text-center justify-center text-primary-foreground">
-          <Star className="h-5 w-5" />
+          <StarIcon className="h-5 w-5" />
           <span className="text-lg font-semibold">Rate This Plan</span>
         </CardTitle>
         <p className="text-sm text-primary-foreground/80 text-center mt-1">
@@ -148,12 +148,12 @@ export function PlanRatingSection({
               >
                 {ratingLoading ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    <ArrowPathIcon className="h-4 w-4 animate-spin mr-2" />
                     Submitting...
                   </>
                 ) : (
                   <>
-                    <Star className="h-4 w-4 mr-2" />
+                    <StarIcon className="h-4 w-4 mr-2" />
                     Submit Rating
                   </>
                 )}
@@ -168,12 +168,12 @@ export function PlanRatingSection({
               >
                 {ratingLoading ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    <ArrowPathIcon className="h-4 w-4 animate-spin mr-2" />
                     Updating...
                   </>
                 ) : (
                   <>
-                    <X className="h-4 w-4 mr-2" />
+                    <XMarkIcon className="h-4 w-4 mr-2" />
                     Change Rating
                   </>
                 )}
@@ -185,7 +185,7 @@ export function PlanRatingSection({
             <div className="text-center p-3 bg-gradient-to-r from-muted/30 to-muted/20 rounded-lg border border-border/50">
               <div className="flex items-center justify-center gap-2 mb-1">
                 <div className="p-1 bg-gradient-primary rounded-full">
-                  <Sparkles className="h-3 w-3 text-primary-foreground" />
+                  <SparklesIcon className="h-3 w-3 text-primary-foreground" />
                 </div>
                 <span className="text-sm font-medium text-foreground">
                   Thank you for your feedback!

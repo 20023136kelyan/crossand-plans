@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Check, X, Clock, Loader2, Users, Crown, MessageCircle, UserPlus, MoreHorizontal, Calendar, MapPin, Settings } from 'lucide-react';
+
 import { Plan } from '@/types/plan';
 import { User } from 'firebase/auth';
+import { CheckIcon, XMarkIcon, ClockIcon, ArrowPathIcon, UsersIcon, SparklesIcon, ChatBubbleLeftRightIcon, UserPlusIcon, EllipsisHorizontalIcon, CalendarIcon, MapPinIcon, Cog6ToothIcon } from '@heroicons/react/24/outline';
 
 interface UserProfile {
   name?: string;
@@ -35,17 +36,17 @@ interface PlanParticipantsProps {
 
 const rsvpButtonConfig = {
   yes: {
-    icon: Check,
+    icon: CheckIcon,
     label: 'Going',
     variant: 'default' as const,
   },
   maybe: {
-    icon: Clock,
+    icon: ClockIcon,
     label: 'Maybe',
     variant: 'outline' as const,
   },
   no: {
-    icon: X,
+    icon: XMarkIcon,
     label: "Can't Go",
     variant: 'outline' as const,
   },
@@ -53,22 +54,22 @@ const rsvpButtonConfig = {
 
 const participantResponseConfig = {
   going: {
-    icon: Check,
+    icon: CheckIcon,
     label: 'Going',
     color: 'text-green-600',
   },
   maybe: {
-    icon: Clock,
+    icon: ClockIcon,
     label: 'Maybe',
     color: 'text-yellow-600',
   },
   'not-going': {
-    icon: X,
+    icon: XMarkIcon,
     label: "Can't Go",
     color: 'text-red-600',
   },
   pending: {
-    icon: Clock,
+    icon: ClockIcon,
     label: 'Pending',
     color: 'text-gray-600',
   },
@@ -109,7 +110,7 @@ export function PlanParticipants({
             size="sm"
             className="flex items-center gap-2 h-9 px-4"
           >
-            <Calendar className="h-4 w-4" />
+            <CalendarIcon className="h-4 w-4" />
             {currentUserResponse ? (
               <>
                 <span className="text-sm font-medium">
@@ -136,7 +137,7 @@ export function PlanParticipants({
               onClick={onAdvancedRSVP}
               className="flex-1 text-xs"
             >
-              <Settings className="h-3 w-3 mr-1" />
+              <Cog6ToothIcon className="h-3 w-3 mr-1" />
               Advanced RSVP
             </Button>
           )}
@@ -147,7 +148,7 @@ export function PlanParticipants({
               onClick={onManageParticipants}
               className="flex-1 text-xs"
             >
-              <Users className="h-3 w-3 mr-1" />
+              <UsersIcon className="h-3 w-3 mr-1" />
               Manage
             </Button>
           )}
@@ -158,7 +159,7 @@ export function PlanParticipants({
               onClick={onJoinWaitlist}
               className="flex-1 text-xs"
             >
-              <Clock className="h-3 w-3 mr-1" />
+              <ClockIcon className="h-3 w-3 mr-1" />
               Waitlist
             </Button>
           )}
@@ -171,7 +172,7 @@ export function PlanParticipants({
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm flex items-center gap-2">
               <div className="p-1.5 rounded-lg bg-primary/10">
-                <Users className="h-4 w-4 text-primary" />
+                <UsersIcon className="h-4 w-4 text-primary" />
               </div>
               Participants
               <Badge variant="outline" className="text-xs">
@@ -185,21 +186,21 @@ export function PlanParticipants({
           <div className="grid grid-cols-3 gap-2">
             <div className="text-center p-2 rounded bg-primary/5">
               <div className="flex items-center justify-center gap-1">
-                <Check className="h-3 w-3 text-primary" />
+                <CheckIcon className="h-3 w-3 text-primary" />
                 <span className="text-lg font-bold text-primary">{rsvpSummary.yes}</span>
               </div>
               <p className="text-xs text-primary">Going</p>
             </div>
             <div className="text-center p-2 rounded bg-yellow-500/5">
               <div className="flex items-center justify-center gap-1">
-                <Clock className="h-3 w-3 text-yellow-600" />
+                <ClockIcon className="h-3 w-3 text-yellow-600" />
                 <span className="text-lg font-bold text-yellow-600">{rsvpSummary.maybe}</span>
               </div>
               <p className="text-xs text-yellow-600">Maybe</p>
             </div>
             <div className="text-center p-2 rounded bg-red-500/5">
               <div className="flex items-center justify-center gap-1">
-                <X className="h-3 w-3 text-red-600" />
+                <XMarkIcon className="h-3 w-3 text-red-600" />
                 <span className="text-lg font-bold text-red-600">{rsvpSummary.no}</span>
               </div>
               <p className="text-xs text-red-600">Can't Go</p>
@@ -210,7 +211,7 @@ export function PlanParticipants({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-medium flex items-center gap-1">
-                <Users className="h-3 w-3" />
+                <UsersIcon className="h-3 w-3" />
                 All Participants ({totalParticipants})
               </h4>
               <span className="text-xs text-muted-foreground">
@@ -230,7 +231,7 @@ export function PlanParticipants({
                     </AvatarFallback>
                   </Avatar>
                   <div className="absolute -bottom-1 -right-1">
-                    <Crown className="h-3 w-3 text-primary bg-background rounded-full p-0.5" />
+                    <SparklesIcon className="h-3 w-3 text-primary bg-background rounded-full p-0.5" />
                   </div>
                   {isHost && (
                     <div className="absolute -top-1 -left-1">
@@ -287,7 +288,7 @@ export function PlanParticipants({
                     size="sm" 
                     className="h-12 w-12 rounded-full p-0 border-dashed border-2 hover:border-primary hover:bg-primary/5 transition-colors"
                   >
-                    <UserPlus className="h-6 w-6 text-muted-foreground hover:text-primary" />
+                    <UserPlusIcon className="h-6 w-6 text-muted-foreground hover:text-primary" />
                   </Button>
                   <span className="text-xs text-muted-foreground truncate max-w-16 text-center">
                     Invite
@@ -310,7 +311,7 @@ export function PlanParticipants({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
+              <CalendarIcon className="h-5 w-5" />
               RSVP to {plan.name}
             </DialogTitle>
           </DialogHeader>
@@ -334,7 +335,7 @@ export function PlanParticipants({
                     className="flex items-center justify-start gap-3 h-12 px-4"
                   >
                     {rsvpLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <ArrowPathIcon className="h-4 w-4 animate-spin" />
                     ) : (
                       <config.icon className="h-4 w-4" />
                     )}
@@ -362,7 +363,7 @@ export function PlanParticipants({
                 }}
                 className="text-xs"
               >
-                <Settings className="h-3 w-3 mr-1" />
+                <Cog6ToothIcon className="h-3 w-3 mr-1" />
                 Advanced Options
               </Button>
             )}

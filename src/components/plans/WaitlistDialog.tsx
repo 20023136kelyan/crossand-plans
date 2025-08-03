@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Users, Clock, AlertCircle, UserPlus, Crown } from 'lucide-react';
+import { UsersIcon, ClockIcon, ExclamationTriangleIcon, UserPlusIcon, TrophyIcon } from '@heroicons/react/24/outline';
 import { Plan } from '@/types/plan';
 import { User } from 'firebase/auth';
 
@@ -71,7 +71,7 @@ export function WaitlistDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
+            <UsersIcon className="h-5 w-5" />
             Event Waitlist
           </DialogTitle>
         </DialogHeader>
@@ -80,7 +80,7 @@ export function WaitlistDialog({
           {/* Event Status */}
           <div className="p-4 rounded-lg bg-orange-50 border border-orange-200">
             <div className="flex items-center gap-2 mb-2">
-              <AlertCircle className="h-4 w-4 text-orange-600" />
+              <ExclamationTriangleIcon className="h-4 w-4 text-orange-600" />
               <span className="font-medium text-orange-800">Event at Capacity</span>
             </div>
             <p className="text-sm text-orange-700">
@@ -93,7 +93,7 @@ export function WaitlistDialog({
           {isOnWaitlist ? (
             <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
               <div className="flex items-center gap-2 mb-2">
-                <Clock className="h-4 w-4 text-blue-600" />
+                <ClockIcon className="h-4 w-4 text-blue-600" />
                 <span className="font-medium text-blue-800">You're on the waitlist</span>
               </div>
               <p className="text-sm text-blue-700">

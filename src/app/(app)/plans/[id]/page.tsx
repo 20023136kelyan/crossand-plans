@@ -4,22 +4,22 @@ import { useEffect, useState, useRef, useMemo, useCallback, memo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { format, parseISO, isValid } from 'date-fns';
-import { 
-  CalendarDays, 
-  MapPin, 
-  Users, 
-  MessageSquare, 
-  Share2, 
-  ThumbsUp, 
-  ThumbsDown, 
-  ChevronLeft,
-  Loader2,
-  Clock,
-  HelpCircle,
-  X,
-  Check,
-  Star
-} from 'lucide-react';
+import {
+  CalendarDaysIcon as CalendarDays,
+  MapPinIcon as MapPin,
+  UsersIcon as Users,
+  ChatBubbleLeftEllipsisIcon as MessageSquare,
+  ShareIcon as Share2,
+  HandThumbUpIcon as ThumbsUp,
+  HandThumbDownIcon as ThumbsDown,
+  ChevronLeftIcon as ChevronLeft,
+  ArrowPathIcon as Loader2,
+  ClockIcon as Clock,
+  QuestionMarkCircleIcon as HelpCircle,
+  XMarkIcon as X,
+  CheckIcon as Check,
+  StarIcon as Star
+} from '@heroicons/react/24/outline';
 
 import { useAuth } from '@/context/AuthContext';
 import { getPlanById } from '@/services/clientServices';

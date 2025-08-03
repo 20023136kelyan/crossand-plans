@@ -3,7 +3,7 @@
 
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Share2, ChevronUp, Calendar, Clock, MapPin, Users, X } from 'lucide-react';
+import { ArrowLeftIcon, ShareIcon, ChevronUpIcon, CalendarIcon, ClockIcon, MapPinIcon, UserGroupIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { getPublicPlanByIdAction } from '@/app/actions/planActions';
@@ -283,7 +283,7 @@ export default function PublicPlanPage() {
             {error || "The plan you're looking for doesn't exist, has been moved, or is not public."}
           </p>
           <Button onClick={() => router.push('/')} variant="outline">
-            <ArrowLeft className="h-4 w-4 mr-2" />
+            <ArrowLeftIcon className="h-4 w-4 mr-2" />
             Go to Homepage
           </Button>
         </div>
@@ -304,7 +304,7 @@ export default function PublicPlanPage() {
           onClick={() => router.back()}
           className="text-white hover:bg-white/10 transition-colors"
         >
-          <ArrowLeft className="h-5 w-5" />
+          <ArrowLeftIcon className="h-5 w-5" />
         </Button>
         
         <Button 
@@ -313,7 +313,7 @@ export default function PublicPlanPage() {
           className="text-white hover:bg-white/10 transition-colors"
           onClick={() => {}}
         >
-          <Share2 className="h-5 w-5" />
+          <ShareIcon className="h-5 w-5" />
         </Button>
       </header>
 
@@ -356,9 +356,9 @@ export default function PublicPlanPage() {
             {plan.status && (
               <Badge className="bg-black/20 backdrop-blur-sm border-0 text-white">
                 {plan.status === 'completed' ? 'Completed' : 
-                plan.status === 'in_progress' ? 'In progress' :
-                plan.status === 'upcoming' ? 'Upcoming' : 
-                plan.status === 'archived' ? 'Archived' : plan.status}
+                plan.status === 'published' ? 'Published' :
+                plan.status === 'archived' ? 'Archived' : 
+                plan.status === 'cancelled' ? 'Cancelled' : plan.status}
               </Badge>
             )}
             {plan.eventType && (
@@ -377,22 +377,22 @@ export default function PublicPlanPage() {
           <div className="flex flex-col gap-3 pt-2">
             {formattedDateTime && (
               <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
+                <CalendarIcon className="h-4 w-4" />
                 <span>{formattedDateTime}</span>
               </div>
             )}
             
             {plan.location && (
               <div className="flex items-center gap-2">
-                <MapPin className="h-4 w-4" />
+                <MapPinIcon className="h-4 w-4" />
                 <span>{plan.location}</span>
               </div>
             )}
             
             <div className="flex items-center gap-2">
-              <Users className="h-4 w-4" />
+              <UserGroupIcon className="h-4 w-4" />
               <span>
-                {plan.participantCount || Object.keys(plan.participantResponses || {}).length} participants
+                {plan.participantsCount || Object.keys(plan.participantResponses || {}).length} participants
               </span>
             </div>
             
@@ -418,7 +418,7 @@ export default function PublicPlanPage() {
           >
             <div className="flex flex-col items-center gap-2 cursor-pointer">
               <span className="text-sm font-medium">Swipe up for details</span>
-              <ChevronUp className="h-6 w-6" />
+              <ChevronUpIcon className="h-6 w-6" />
             </div>
           </motion.div>
         </div>
@@ -439,7 +439,7 @@ export default function PublicPlanPage() {
             className="absolute top-3 right-3 z-30"
             onClick={closeDrawer}
           >
-            <X className="h-4 w-4" />
+            <XMarkIcon className="h-4 w-4" />
           </Button>
         )}
         

@@ -2,7 +2,23 @@
 
 import { Plan } from '@/types/plan';
 import { parseISO, isValid, isPast } from 'date-fns';
-import { MoreHorizontal, Eye, Edit3, CheckCircle, Trash2, Share2, QrCode, Link as LinkIcon, Users, MessageSquare, Download, Flag, Bookmark, Settings, UserPlus } from 'lucide-react';
+import {
+  EllipsisHorizontalIcon,
+  EyeIcon,
+  PencilSquareIcon,
+  CheckCircleIcon,
+  TrashIcon,
+  ShareIcon,
+  QrCodeIcon,
+  LinkIcon,
+  UserGroupIcon,
+  ChatBubbleLeftRightIcon,
+  ArrowDownTrayIcon,
+  FlagIcon,
+  BookmarkIcon,
+  Cog6ToothIcon,
+  UserPlusIcon
+} from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import {
@@ -116,14 +132,14 @@ export function PlanDropdownMenu({
           style={{ width: 40, height: 40, minWidth: 40, minHeight: 40 }}
           disabled={isLoading}
         >
-          <MoreHorizontal className="h-6 w-6" />
+          <EllipsisHorizontalIcon className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className={className}>
         {/* Basic Actions - Always Available */}
         <DropdownMenuItem asChild>
           <Link href={`/p/${plan.id}`} className="flex items-center text-xs cursor-pointer">
-            <Eye className="mr-2 h-3.5 w-3.5" /> View Details
+            <EyeIcon className="h-4 w-4 mr-2" /> View Details
           </Link>
         </DropdownMenuItem>
         
@@ -132,19 +148,19 @@ export function PlanDropdownMenu({
           <>
             <DropdownMenuItem asChild>
               <Link href={`/plans/create?editId=${plan.id}`} className="flex items-center text-xs cursor-pointer">
-                <Edit3 className="mr-2 h-3.5 w-3.5" /> Edit Plan
+                <PencilSquareIcon className="h-4 w-4 mr-2" /> Edit Plan
               </Link>
             </DropdownMenuItem>
             
             {canManage && onManageParticipants && (
               <DropdownMenuItem onClick={onManageParticipants}>
-                <UserPlus className="mr-2 h-3.5 w-3.5" /> Manage Participants
+                <UserPlusIcon className="h-4 w-4 mr-2" /> Manage Participants
               </DropdownMenuItem>
             )}
             
             {variant === 'enhanced' && (
               <DropdownMenuItem>
-                <Settings className="mr-2 h-3.5 w-3.5" /> Plan Settings
+                <Cog6ToothIcon className="h-4 w-4 mr-2" /> Plan Settings
               </DropdownMenuItem>
             )}
           </>
@@ -162,7 +178,7 @@ export function PlanDropdownMenu({
               }}
               className="flex items-center text-xs cursor-pointer"
             >
-              <CheckCircle className="mr-2 h-3.5 w-3.5" /> Mark as Completed
+              <CheckCircleIcon className="h-4 w-4 mr-2" /> Mark as Completed
             </DropdownMenuItem>
           </>
         )}
@@ -179,7 +195,7 @@ export function PlanDropdownMenu({
               disabled={isConfirmingCompletion}
               className="flex items-center text-xs cursor-pointer"
             >
-              <CheckCircle className="mr-2 h-3.5 w-3.5" /> Confirm Completion
+              <CheckCircleIcon className="h-4 w-4 mr-2" /> Confirm Completion
             </DropdownMenuItem>
           </>
         )}
@@ -190,27 +206,27 @@ export function PlanDropdownMenu({
             <DropdownMenuSeparator />
             {onShare && (
               <DropdownMenuItem onClick={onShare}>
-                <Share2 className="mr-2 h-3.5 w-3.5" /> Share
+                <ShareIcon className="h-4 w-4 mr-2" /> Share
               </DropdownMenuItem>
             )}
             {onCopyLink && (
               <DropdownMenuItem onClick={onCopyLink}>
-                <LinkIcon className="mr-2 h-3.5 w-3.5" /> Copy Link
+                <LinkIcon className="h-4 w-4 mr-2" /> Copy Link
               </DropdownMenuItem>
             )}
             {onQRCode && (
               <DropdownMenuItem onClick={onQRCode}>
-                <QrCode className="mr-2 h-3.5 w-3.5" /> QR Code
+                <QrCodeIcon className="h-4 w-4 mr-2" /> QR Code
               </DropdownMenuItem>
             )}
             {onShareWithFriends && (
               <DropdownMenuItem onClick={onShareWithFriends}>
-                <Users className="mr-2 h-3.5 w-3.5" /> Share with Friends
+                <UserGroupIcon className="h-4 w-4 mr-2" /> Share with Friends
               </DropdownMenuItem>
             )}
             {onShareToFeed && (
               <DropdownMenuItem onClick={onShareToFeed}>
-                <MessageSquare className="mr-2 h-3.5 w-3.5" /> Share to Feed
+                <ChatBubbleLeftRightIcon className="h-4 w-4 mr-2" /> Share to Feed
               </DropdownMenuItem>
             )}
           </>
@@ -219,7 +235,7 @@ export function PlanDropdownMenu({
         {/* Copy Plan Action */}
         {canCopy && onCopyPlan && (
           <DropdownMenuItem onClick={onCopyPlan}>
-            <Bookmark className="mr-2 h-3.5 w-3.5" /> Copy Plan
+            <BookmarkIcon className="h-4 w-4 mr-2" /> Copy Plan
           </DropdownMenuItem>
         )}
         
@@ -228,24 +244,24 @@ export function PlanDropdownMenu({
           <>
             {!isHost && onSaveToCollection && (
               <DropdownMenuItem onClick={onSaveToCollection}>
-                <Bookmark className="mr-2 h-3.5 w-3.5" />
+                <BookmarkIcon className="h-4 w-4 mr-2" />
                 {isSaved ? 'Remove from Collection' : 'Save to Collection'}
               </DropdownMenuItem>
             )}
             
             <DropdownMenuItem>
-              <Download className="mr-2 h-3.5 w-3.5" /> Export Plan
+              <ArrowDownTrayIcon className="h-4 w-4 mr-2" /> Export Plan
             </DropdownMenuItem>
             
             {onViewAnalytics && (
               <DropdownMenuItem onClick={onViewAnalytics}>
-                <Eye className="mr-2 h-3.5 w-3.5" /> View Analytics
+                <EyeIcon className="h-4 w-4 mr-2" /> View Analytics
               </DropdownMenuItem>
             )}
             
             {onViewComments && (
               <DropdownMenuItem onClick={onViewComments}>
-                <MessageSquare className="mr-2 h-3.5 w-3.5" /> View Comments
+                <ChatBubbleLeftRightIcon className="h-4 w-4 mr-2" /> View Comments
               </DropdownMenuItem>
             )}
             
@@ -253,7 +269,7 @@ export function PlanDropdownMenu({
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={onReport} className="text-orange-600">
-                  <Flag className="mr-2 h-3.5 w-3.5" /> Report Plan
+                  <FlagIcon className="h-4 w-4 mr-2" /> Report Plan
                 </DropdownMenuItem>
               </>
             )}
@@ -272,7 +288,7 @@ export function PlanDropdownMenu({
               }}
               className="flex items-center text-xs text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
             >
-              <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete Plan
+              <TrashIcon className="h-4 w-4 mr-2" /> Delete Plan
             </DropdownMenuItem>
           </>
         )}

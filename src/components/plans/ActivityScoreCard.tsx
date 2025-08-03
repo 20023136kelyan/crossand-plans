@@ -1,6 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Trophy, Users, Calendar, Star } from "lucide-react";
+import { TrophyIcon, UserGroupIcon, CalendarIcon, StarIcon } from '@heroicons/react/24/outline';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface ActivityScoreCardProps {
@@ -24,7 +24,7 @@ export function ActivityScoreCard({
     <Card className="w-full">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Trophy className="h-5 w-5 text-primary" />
+          <TrophyIcon className="h-5 w-5 text-amber-500" />
           Activity Score
         </CardTitle>
         <CardDescription>Your engagement level and achievements</CardDescription>
@@ -46,7 +46,7 @@ export function ActivityScoreCard({
               <h4 className="font-semibold">{levelTitle}</h4>
               <div className="flex items-center mt-1">
                 {Array.from({ length: 5 }).map((_, i) => (
-                  <Star
+                  <StarIcon
                     key={i}
                     className={`h-4 w-4 ${
                       i < levelStars ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground/30"
@@ -74,21 +74,21 @@ export function ActivityScoreCard({
           <div className="grid grid-cols-3 gap-4">
             <div className="text-center">
               <div className="flex justify-center mb-2">
-                <Calendar className="h-5 w-5 text-primary" />
+                <CalendarIcon className="h-4 w-4 text-primary" />
               </div>
               <div className="text-xl font-bold">{plansCreated}</div>
               <div className="text-xs text-muted-foreground">Plans Created</div>
             </div>
             <div className="text-center">
               <div className="flex justify-center mb-2">
-                <Users className="h-5 w-5 text-primary" />
+                <UserGroupIcon className="h-4 w-4 text-primary" />
               </div>
               <div className="text-xl font-bold">{plansShared}</div>
               <div className="text-xs text-muted-foreground">Plans Shared</div>
             </div>
             <div className="text-center">
               <div className="flex justify-center mb-2">
-                <Trophy className="h-5 w-5 text-primary" />
+                <TrophyIcon className="h-5 w-5 text-amber-500" />
               </div>
               <div className="text-xl font-bold">{eventAttendance}%</div>
               <div className="text-xs text-muted-foreground">Attendance</div>

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import NextImage from 'next/image';
 import { cn } from '@/lib/utils';
-import { Play, Pause, Loader2, Mic } from 'lucide-react';
+import { PlayIcon, PauseIcon, ArrowPathIcon, MicrophoneIcon } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui/button';
 import { AudioPlayer } from './AudioPlayer';
 
@@ -146,7 +146,7 @@ export function MediaMessage({
       {/* Loading overlay */}
       {isLoading && !isAudio && (
         <div className="absolute inset-0 flex items-center justify-center bg-muted/50 rounded-md">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <ArrowPathIcon className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       )}
 
@@ -158,7 +158,7 @@ export function MediaMessage({
       )}>
         {isAudio && !src ? (
           <div className="flex items-center justify-center p-4 bg-muted/50 rounded-md">
-            <Mic className="h-6 w-6 text-muted-foreground" />
+            <MicrophoneIcon className="h-6 w-6 text-muted-foreground" />
           </div>
         ) : (
           renderMedia()
@@ -176,9 +176,9 @@ export function MediaMessage({
             aria-label={isPlaying ? 'Pause' : 'Play'}
           >
             {isPlaying ? (
-              <Pause className="h-6 w-6" />
+              <PauseIcon className="h-6 w-6" />
             ) : (
-              <Play className="h-6 w-6 ml-1" /> // Slight offset for play icon
+              <PlayIcon className="h-6 w-6 ml-1" /> // Slight offset for play icon
             )}
           </Button>
         </div>

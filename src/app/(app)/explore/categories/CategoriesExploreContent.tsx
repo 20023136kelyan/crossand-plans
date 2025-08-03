@@ -2,7 +2,11 @@
 
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { ArrowLeft, Search, Layers } from 'lucide-react';
+import {
+  ArrowLeftIcon as ArrowLeft,
+  MagnifyingGlassIcon as Search,
+  Squares2X2Icon as Layers
+} from '@heroicons/react/24/outline';
 import { Input } from '@/components/ui/input';
 import { useState } from 'react';
 import type { Category } from '@/types/user';
@@ -91,4 +95,4 @@ export function CategoriesExploreContent({ categories }: { categories: Category[
       </div>
     </div>
   );
-} 
+}

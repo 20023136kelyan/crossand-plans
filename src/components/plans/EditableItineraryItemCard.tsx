@@ -7,7 +7,36 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from '@/components/ui/form';
-import { Trash2, Sparkles, CheckCircle, XCircle, ExternalLink, Clock, Car, Footprints, Bike, TramFront, Loader2, Edit3, Save, Ban, MoveUp, MoveDown, CalendarClock, Star, Info, ChevronDown, MapPin } from 'lucide-react';
+import { 
+  TrashIcon, 
+  SparklesIcon, 
+  CheckCircleIcon, 
+  XCircleIcon, 
+  ArrowTopRightOnSquareIcon, 
+  ClockIcon, 
+  TruckIcon, 
+  UserIcon, 
+  ArrowPathIcon, 
+  PencilSquareIcon, 
+  CheckIcon, 
+  XMarkIcon, 
+  ArrowUpIcon, 
+  ArrowDownIcon, 
+  CalendarIcon, 
+  StarIcon, 
+  InformationCircleIcon, 
+  ChevronDownIcon, 
+  MapPinIcon,
+  ListBulletIcon,
+  // New Heroicons imports
+  ChevronDownIcon as HeroChevronDown,
+  SparklesIcon as HeroSparkles,
+  ArrowTopRightOnSquareIcon as HeroExternalLink,
+  TrashIcon as HeroTrash,
+  XMarkIcon as HeroBan,
+  CheckCircleIcon as HeroSave,
+  KeyIcon
+} from '@heroicons/react/24/outline';
 import type { PlanFormValues, ItineraryItemSchemaValues } from './PlanForm';
 import React, { useEffect, useRef, useState, useCallback, memo, useMemo } from 'react';
 import Image from 'next/image';
@@ -38,11 +67,12 @@ interface EditableItineraryItemCardProps {
   isOnlyItem?: boolean; // To disable remove if it's the only item in a single-stop plan
 }
 
+// Transit mode options with Heroicons
 const transitModeOptions: { value: TransitMode; label: string; icon: React.ElementType }[] = [
-  { value: 'driving', label: 'Driving', icon: Car },
-  { value: 'walking', label: 'Walking', icon: Footprints },
-  { value: 'bicycling', label: 'Bicycling', icon: Bike },
-  { value: 'transit', label: 'Transit', icon: TramFront },
+  { value: 'driving', label: 'Driving', icon: TruckIcon },
+  { value: 'walking', label: 'Walking', icon: UserIcon },
+  { value: 'bicycling', label: 'Bicycling', icon: KeyIcon },
+  { value: 'transit', label: 'Transit', icon: ListBulletIcon },
 ];
 
 // Helper function to abbreviate large numbers
@@ -650,7 +680,7 @@ const EditableItineraryItemCardImpl = ({
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-muted/30 to-muted/50 text-muted-foreground">
               <div className="text-center">
                 <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-muted flex items-center justify-center">
-                  <ExternalLink className="h-6 w-6 text-muted-foreground" />
+                  <ArrowTopRightOnSquareIcon className="h-6 w-6 text-muted-foreground" />
                 </div>
                 <span className="text-sm text-muted-foreground">No image available</span>
               </div>
@@ -665,7 +695,7 @@ const EditableItineraryItemCardImpl = ({
             {/* Read-only collapsed view */}
             {!isEditing && (
               <div className="bg-black/80 backdrop-blur-sm rounded-full px-3 py-2 flex items-center gap-2 shadow-lg text-white">
-                <CalendarClock className="h-4 w-4" />
+                <CalendarIcon className="h-4 w-4" />
                 <span className="text-sm font-medium">
                   {formattedStartTime} - {formattedEndTime}
                 </span>
@@ -690,11 +720,11 @@ const EditableItineraryItemCardImpl = ({
           {placeInfo && (
             <div className="absolute bottom-3 right-3 bg-black/80 backdrop-blur-sm rounded-lg px-3 py-2 shadow-lg max-w-48">
               <div className="flex items-center gap-2 text-white">
-                <Info className="h-4 w-4 flex-shrink-0" />
+                <InformationCircleIcon className="h-4 w-4 flex-shrink-0" />
                 <div className="text-xs space-y-1">
                   {placeInfo.rating && (
                     <div className="flex items-center gap-1">
-                      <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                      <StarIcon className="h-3 w-3 fill-yellow-400 text-yellow-400" />
                       <span className="font-medium">{placeInfo.rating.toFixed(1)}</span>
                       {placeInfo.reviewCount && (
                         <span className="text-white/70">({abbreviateNumber(placeInfo.reviewCount)})</span>
@@ -735,7 +765,7 @@ const EditableItineraryItemCardImpl = ({
                 disabled={isFirst}
                 className="h-8 w-8 bg-card/90 hover:bg-card text-card-foreground shadow-sm backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed border border-border/50"
               >
-                <MoveUp className="h-4 w-4" />
+                <ArrowUpIcon className="h-4 w-4" />
               </Button>
               <Button
                 type="button"
@@ -745,7 +775,7 @@ const EditableItineraryItemCardImpl = ({
                 disabled={isLast}
                 className="h-8 w-8 bg-card/90 hover:bg-card text-card-foreground shadow-sm backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed border border-border/50"
               >
-                <MoveDown className="h-4 w-4" />
+                <ArrowDownIcon className="h-4 w-4" />
               </Button>
               <Button
                 type="button"
@@ -754,7 +784,7 @@ const EditableItineraryItemCardImpl = ({
                 onClick={handleEdit}
                 className="h-8 w-8 bg-secondary/90 hover:bg-secondary text-secondary-foreground shadow-sm backdrop-blur-sm"
               >
-                <Edit3 className="h-4 w-4" />
+                <PencilSquareIcon className="h-4 w-4" />
               </Button>
               {!isOnlyItem && (
                 <Button
@@ -763,7 +793,7 @@ const EditableItineraryItemCardImpl = ({
                   size="sm"
                   onClick={handleRemove}
                 >
-                  <Trash2 className="h-4 w-4 mr-1" /> Delete
+                  <TrashIcon className="h-4 w-4 mr-1" /> Delete
                 </Button>
               )}
             </div>
@@ -788,7 +818,7 @@ const EditableItineraryItemCardImpl = ({
                   <p className="text-sm font-medium text-foreground capitalize">{transitMode || 'driving'}</p>
                   {isCalculatingTransit ? (
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <ArrowPathIcon className="h-3 w-3 animate-spin" />
                       <span>Calculating route...</span>
                     </div>
                   ) : (
@@ -869,7 +899,7 @@ const EditableItineraryItemCardImpl = ({
                     onClick={() => setShowPlaceEditor(true)}
                     className="w-full bg-muted/20 hover:bg-muted/30 rounded-lg px-4 py-3 text-left transition-colors flex items-center gap-3"
                   >
-                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                    <MapPinIcon className="h-4 w-4 text-muted-foreground" />
                     <div className="flex-1">
                       {typeof placeName === 'string' && placeName.trim() ? (
                         <p className="text-sm font-medium leading-none">{placeName}</p>
@@ -1002,7 +1032,7 @@ const EditableItineraryItemCardImpl = ({
                 onClick={() => setShowAdvancedFields(true)}
                 className="w-full h-8 text-muted-foreground hover:text-foreground text-xs justify-start px-3"
               >
-                <ChevronDown className="h-3 w-3 mr-2" />
+                <HeroChevronDown className="h-3 w-3 mr-2" />
                 Advanced details
                 {((address && String(address).trim()) || (city && String(city).trim())) && (
                   <span className="ml-1 text-xs text-primary opacity-80">(auto-filled)</span>
@@ -1022,7 +1052,7 @@ const EditableItineraryItemCardImpl = ({
                     onClick={() => setShowAdvancedFields(false)}
                     className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
                   >
-                    <ChevronDown className="h-3 w-3 rotate-180" />
+                    <HeroChevronDown className="h-3 w-3 rotate-180" />
                   </Button>
                 </div>
                 
@@ -1083,7 +1113,7 @@ const EditableItineraryItemCardImpl = ({
                           <p className="text-sm font-medium text-foreground">Travel Method</p>
                           {isCalculatingTransit ? (
                             <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <Loader2 className="h-3 w-3 animate-spin" />
+                              <ArrowPathIcon className="h-3 w-3 animate-spin" />
                               <span>Calculating route...</span>
                             </div>
                           ) : (
@@ -1130,7 +1160,7 @@ const EditableItineraryItemCardImpl = ({
             {currentItem?.activitySuggestions && currentItem.activitySuggestions.length > 0 && (
               <div className="bg-muted/30 rounded-xl p-4 border border-border">
                 <h4 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary" />
+                  <HeroSparkles className="h-4 w-4 text-primary" />
                   Activity Suggestions
                 </h4>
                 <div className="space-y-2">
@@ -1154,7 +1184,7 @@ const EditableItineraryItemCardImpl = ({
                   onClick={() => setShowDescription(true)}
                   className="w-full h-8 text-muted-foreground hover:text-foreground text-xs justify-start px-3"
                 >
-                  <ChevronDown className="h-3 w-3 mr-2" />
+                  <HeroChevronDown className="h-3 w-3 mr-2" />
                   Add description <span className="opacity-60">(optional)</span>
                 </Button>
               ) : (
@@ -1168,7 +1198,7 @@ const EditableItineraryItemCardImpl = ({
                       onClick={() => setShowDescription(false)}
                       className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
                     >
-                      <ChevronDown className="h-3 w-3 rotate-180" />
+                      <HeroChevronDown className="h-3 w-3 rotate-180" />
                     </Button>
                   </div>
                   <FormField
@@ -1203,7 +1233,7 @@ const EditableItineraryItemCardImpl = ({
                   {currentItem?.address && (
                     <div className="flex items-start gap-2">
                       <div className="w-5 h-5 mt-0.5 rounded bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <ExternalLink className="h-3 w-3 text-primary" />
+                        <HeroExternalLink className="h-3 w-3 text-primary" />
                       </div>
                       <div>
                         <p className="text-sm font-medium text-foreground">Address</p>
@@ -1227,7 +1257,7 @@ const EditableItineraryItemCardImpl = ({
             {currentItem?.activitySuggestions && currentItem.activitySuggestions.length > 0 && (
               <div className="bg-muted/30 rounded-xl p-4 border border-border">
                 <h4 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary" />
+                  <HeroSparkles className="h-4 w-4 text-primary" />
                   Activity Suggestions
                 </h4>
                 <div className="space-y-2">
@@ -1253,7 +1283,7 @@ const EditableItineraryItemCardImpl = ({
               size="sm"
               onClick={handleRemove}
             >
-              <Trash2 className="h-4 w-4 mr-1" /> Delete
+              <HeroTrash className="h-4 w-4 mr-1" /> Delete
             </Button>
           )}
 
@@ -1263,7 +1293,7 @@ const EditableItineraryItemCardImpl = ({
             size="sm"
             onClick={handleCancel}
           >
-            <Ban className="h-4 w-4 mr-1" /> Cancel
+            <HeroBan className="h-4 w-4 mr-1" /> Cancel
           </Button>
           <Button
             type="button"
@@ -1272,7 +1302,7 @@ const EditableItineraryItemCardImpl = ({
             onClick={handleSave}
             className="bg-gradient-primary/90 hover:bg-gradient-primary-hover text-primary-foreground"
           >
-            <Save className="h-4 w-4 mr-1" /> Save
+            <HeroSave className="h-4 w-4 mr-1" /> Save
           </Button>
         </CardFooter>
       )}

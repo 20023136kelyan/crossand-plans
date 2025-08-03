@@ -7,7 +7,19 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Check, X, Clock, Users, Plus, Minus, AlertCircle, Calendar, UserPlus, Info, Loader2 } from 'lucide-react';
+import { 
+  CheckIcon, 
+  XMarkIcon, 
+  ClockIcon, 
+  UserGroupIcon, 
+  PlusIcon, 
+  MinusIcon, 
+  ExclamationTriangleIcon, 
+  CalendarIcon, 
+  UserPlusIcon, 
+  InformationCircleIcon,
+  ArrowPathIcon
+} from '@heroicons/react/24/outline';
 import { Plan, ParticipantResponse } from '@/types/plan';
 import { RSVPDetails } from '@/types/user';
 import { User } from 'firebase/auth';
@@ -25,9 +37,9 @@ interface AdvancedRSVPDialogProps {
 }
 
 const responseOptions = [
-  { value: 'going', label: 'Going', icon: Check, color: 'text-green-600', bgColor: 'bg-green-50' },
-  { value: 'maybe', label: 'Maybe', icon: Clock, color: 'text-yellow-600', bgColor: 'bg-yellow-50' },
-  { value: 'not-going', label: "Can't Go", icon: X, color: 'text-red-600', bgColor: 'bg-red-50' }
+  { value: 'going', label: 'Going', icon: CheckIcon, color: 'text-green-600', bgColor: 'bg-green-50' },
+  { value: 'maybe', label: 'Maybe', icon: ClockIcon, color: 'text-yellow-600', bgColor: 'bg-yellow-50' },
+  { value: 'not-going', label: "Can't Go", icon: XMarkIcon, color: 'text-red-600', bgColor: 'bg-red-50' }
 ];
 
 
@@ -173,7 +185,7 @@ export function AdvancedRSVPDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
+            <CalendarIcon className="h-4 w-4 mr-2" />
             {hasExistingRSVP ? 'Update RSVP' : 'RSVP'} to {plan.name}
           </DialogTitle>
         </DialogHeader>
@@ -207,7 +219,7 @@ export function AdvancedRSVPDialog({
           {isHost && (
             <div className="p-3 rounded-lg border bg-green-50 border-green-200">
               <div className="flex items-center gap-2">
-                <Info className="h-4 w-4 text-green-600" />
+                <InformationCircleIcon className="h-4 w-4" />
                 <span className="text-sm font-medium text-green-800">Host RSVP</span>
               </div>
               <p className="text-sm text-green-700 mt-1">
@@ -220,7 +232,7 @@ export function AdvancedRSVPDialog({
           {rsvpDeadline && (
             <div className={`p-3 rounded-lg border ${isDeadlinePassed ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-200'}`}>
               <div className="flex items-center gap-2">
-                <AlertCircle className={`h-4 w-4 ${isDeadlinePassed ? 'text-red-600' : 'text-blue-600'}`} />
+                <ExclamationTriangleIcon className={`h-4 w-4 ${isDeadlinePassed ? 'text-red-600' : 'text-blue-600'}`} />
                 <span className={`text-sm font-medium ${isDeadlinePassed ? 'text-red-800' : 'text-blue-800'}`}>
                   {isDeadlinePassed ? 'RSVP Deadline Passed' : 'RSVP Deadline'}
                 </span>
@@ -238,7 +250,7 @@ export function AdvancedRSVPDialog({
           {isAtCapacity && response === 'going' && !currentRSVP && (
             <div className="p-3 rounded-lg border bg-orange-50 border-orange-200">
               <div className="flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-orange-600" />
+                <ExclamationTriangleIcon className="h-4 w-4 mr-2" />
                 <span className="text-sm font-medium text-orange-800">Event at Capacity</span>
               </div>
               <p className="text-sm text-orange-700 mt-1">
@@ -295,7 +307,7 @@ export function AdvancedRSVPDialog({
                   onClick={() => setGuestCount(Math.max(0, guestCount - 1))}
                   disabled={guestCount <= 0}
                 >
-                  <Minus className="h-4 w-4" />
+                  <MinusIcon className="h-4 w-4" />
                 </Button>
                 <span className="text-lg font-medium w-8 text-center">{guestCount}</span>
                 <Button
@@ -305,7 +317,7 @@ export function AdvancedRSVPDialog({
                   onClick={() => setGuestCount(Math.min(maxGuests, guestCount + 1))}
                   disabled={guestCount >= maxGuests}
                 >
-                  <Plus className="h-4 w-4" />
+                  <PlusIcon className="h-4 w-4" />
                 </Button>
               </div>
               {guestCount > 0 && (
@@ -316,28 +328,22 @@ export function AdvancedRSVPDialog({
             </div>
           )}
 
-
-
-
-
-
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleSubmit} disabled={isSubmitting || response === 'pending'}>
+              {isSubmitting ? (
+                <>
+                  <ArrowPathIcon className="h-4 w-4 mr-2 animate-spin" />
+                  {hasExistingRSVP ? 'Updating...' : 'Submitting...'}
+                </>
+              ) : (
+                hasExistingRSVP ? 'Update RSVP' : 'Submit RSVP'
+              )}
+            </Button>
+          </DialogFooter>
         </div>
-
-        <DialogFooter className="flex gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting || response === 'pending'}>
-            {isSubmitting ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                {hasExistingRSVP ? 'Updating...' : 'Submitting...'}
-              </>
-            ) : (
-              hasExistingRSVP ? 'Update RSVP' : 'Submit RSVP'
-            )}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -13,7 +13,7 @@ import { AdminSecurity } from '@/components/admin/security/AdminSecurity';
 import { AdminIntegrations } from '@/components/admin/integrations/AdminIntegrations';
 import { AdminBackups } from '@/components/admin/backups/AdminBackups';
 import { AdminContentCuration } from '@/components/admin/content/AdminContentCuration';
-import { Shield, AlertTriangle } from 'lucide-react';
+import { ShieldCheckIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
 export default function AdminManagement() {
   const { user } = useAuth();
@@ -65,7 +65,7 @@ export default function AdminManagement() {
   if (isMobile) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-background">
-        <AlertTriangle className="w-16 h-16 text-destructive mb-4" />
+        <ExclamationTriangleIcon className="w-16 h-16 text-destructive mb-4" />
         <h1 className="text-2xl font-bold text-center mb-2">Desktop Access Only</h1>
         <p className="text-center text-muted-foreground">
           Admin management functions are only available on desktop devices for security reasons.
@@ -78,7 +78,7 @@ export default function AdminManagement() {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="flex flex-col items-center p-8">
-          <Shield className="w-16 h-16 text-destructive mb-4" />
+          <ShieldCheckIcon className="w-16 h-16 text-destructive mb-4" />
           <h1 className="text-2xl font-bold">Access Denied</h1>
           <p className="text-muted-foreground mt-2">
             You don't have permission to access this area.
@@ -92,7 +92,7 @@ export default function AdminManagement() {
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-[1600px] mx-auto">
         <div className="flex items-center gap-4 mb-8">
-          <Shield className="w-8 h-8" />
+          <ShieldCheckIcon className="w-8 h-8" />
           <h1 className="text-3xl font-bold">Admin Management Console</h1>
         </div>
 

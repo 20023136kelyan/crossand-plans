@@ -6,7 +6,7 @@ import { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, Users, Calendar, Crown } from 'lucide-react';
+import { ExclamationTriangleIcon, UserGroupIcon, CalendarIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 
 interface LimitGuardProps {
@@ -64,7 +64,7 @@ export function LimitGuard({
       <Card className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
-            <AlertTriangle className="h-5 w-5" />
+            <ExclamationTriangleIcon className="h-5 w-5" />
             {type === 'plan-creation' ? 'Plan Limit Reached' : 'Participant Limit Reached'}
           </CardTitle>
           <CardDescription className="text-amber-700 dark:text-amber-300">
@@ -78,9 +78,9 @@ export function LimitGuard({
           <div className="flex items-center justify-between p-3 bg-white dark:bg-gray-900 rounded-lg border">
             <div className="flex items-center gap-2">
               {type === 'plan-creation' ? (
-                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <CalendarIcon className="h-4 w-4 mr-2" />
               ) : (
-                <Users className="h-4 w-4 text-muted-foreground" />
+                <UserGroupIcon className="h-4 w-4 mr-2" />
               )}
               <span className="text-sm font-medium">
                 {type === 'plan-creation' ? 'Plans Created' : 'Participants'}
@@ -102,7 +102,7 @@ export function LimitGuard({
             {showUpgrade && (
               <div className="flex flex-col sm:flex-row gap-2">
                 <Button variant="outline" size="sm" className="flex-1">
-                  <Crown className="h-4 w-4 mr-2" />
+                  <ShieldCheckIcon className="h-4 w-4 mr-2" />
                   Upgrade Account
                 </Button>
                 {type === 'plan-creation' && (
@@ -129,7 +129,7 @@ export function LimitGuard({
         <Card className="border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-950/20">
           <CardContent className="pt-4">
             <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-200">
-              <AlertTriangle className="h-4 w-4" />
+              <ExclamationTriangleIcon className="h-4 w-4" />
               <span className="text-sm font-medium">
                 {type === 'plan-creation' 
                   ? `Only ${remaining} plan${remaining !== 1 ? 's' : ''} remaining`

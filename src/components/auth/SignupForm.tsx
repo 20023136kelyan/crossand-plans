@@ -13,7 +13,14 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2, Eye, EyeOff, Shield, Check, X } from 'lucide-react';
+import { 
+  ArrowPathIcon as Loader2,
+  EyeIcon as Eye,
+  EyeSlashIcon as EyeOff,
+  ShieldCheckIcon as Shield,
+  CheckIcon as Check,
+  XMarkIcon as X 
+} from '@heroicons/react/24/outline';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import { useSettings } from '@/context/SettingsContext';

@@ -12,14 +12,14 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import {
-  Search,
-  ArrowUpDown,
-  ChevronLeft,
-  List,
-  CalendarDays,
-  PackageOpen,
-  Loader2,
-} from "lucide-react";
+  MagnifyingGlassIcon,
+  ArrowsUpDownIcon,
+  ChevronLeftIcon,
+  ListBulletIcon,
+  CalendarDaysIcon,
+  ArchiveBoxXMarkIcon,
+  ArrowPathIcon
+} from "@heroicons/react/24/outline";
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { ExploreCard } from '@/components/explore/ExploreCard';
 import type { Plan as PlanType } from '@/types/user';
@@ -194,12 +194,12 @@ export default function CityPlansPage() {
 
   const EmptyState = ({ title, message }: { title: string; message: string }) => (
     <div className="text-center py-12 sm:py-16 flex flex-col items-center">
-      <PackageOpen className="h-20 w-20 sm:h-24 sm:w-24 text-muted-foreground/30 mb-6" />
+      <ArchiveBoxXMarkIcon className="h-20 w-20 sm:h-24 sm:w-24 text-muted-foreground/30 mb-6" />
       <h2 className="text-xl sm:text-2xl font-semibold text-foreground mb-2">{title}</h2>
       <p className="text-muted-foreground mb-6 max-w-sm text-sm sm:text-base">{message}</p>
       <Button asChild variant="outline" onClick={() => router.push('/explore')}>
         <Link href="/explore">
-            <ChevronLeft className="mr-2 h-4 w-4" /> Back to Explore
+            <ChevronLeftIcon className="h-4 w-4 mr-1" /> Back to Explore
         </Link>
       </Button>
     </div>
@@ -256,7 +256,7 @@ export default function CityPlansPage() {
   if (loading) {
     return (
         <div className="flex flex-col h-[calc(100vh-6rem)] md:h-[calc(100vh-4rem)] items-center justify-center">
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            <ArrowPathIcon className="h-4 w-4 animate-spin" />
             <p className="mt-2 text-muted-foreground">Loading plans for {decodedCityName || 'city'}...</p>
         </div>
     );
@@ -267,7 +267,7 @@ export default function CityPlansPage() {
         <div className="flex flex-col h-[calc(100vh-6rem)] md:h-[calc(100vh-4rem)] items-center justify-center">
             <p className="text-muted-foreground">City not specified.</p>
              <Button asChild variant="outline" className="mt-4">
-                <Link href="/explore"><ChevronLeft className="mr-2 h-4 w-4" /> Back to Explore</Link>
+                <Link href="/explore"><ChevronLeftIcon className="h-4 w-4 mr-1" /> Back to Explore</Link>
             </Button>
         </div>
     );
@@ -276,7 +276,7 @@ export default function CityPlansPage() {
   return (
     <div className="space-y-6">
       <Button variant="outline" onClick={() => router.push('/explore')} className="mb-4 print:hidden">
-        <ChevronLeft className="mr-2 h-4 w-4" /> Back to Explore
+        <ChevronLeftIcon className="h-4 w-4 mr-1" /> Back to Explore
       </Button>
 
       <h1 className="text-3xl sm:text-4xl font-bold opacity-60">

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { ChevronLeftIcon, ChevronRightIcon, CalendarIcon } from '@heroicons/react/24/outline';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns';
 import { cn } from '@/lib/utils';
 import type { Plan } from '@/types/user';
@@ -68,7 +68,7 @@ export function UpcomingPlansCalendar({ className }: UpcomingPlansCalendarProps)
       <Card className={cn("w-full bg-transparent border-none shadow-none", className)}>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center text-muted-foreground">
-            <Calendar className="mr-2 h-4 w-4" />
+            <CalendarIcon className="mr-2 h-4 w-4" />
             Adventure Calendar
           </CardTitle>
         </CardHeader>
@@ -85,7 +85,7 @@ export function UpcomingPlansCalendar({ className }: UpcomingPlansCalendarProps)
     <Card className={cn("w-full bg-transparent border-none shadow-none", className)}>
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-medium flex items-center text-muted-foreground">
-          <Calendar className="mr-2 h-4 w-4" />
+          <CalendarIcon className="mr-2 h-4 w-4" />
           Adventure Calendar
         </CardTitle>
       </CardHeader>
@@ -98,7 +98,7 @@ export function UpcomingPlansCalendar({ className }: UpcomingPlansCalendarProps)
             onClick={goToPreviousMonth}
             className="h-8 w-8 p-0"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeftIcon className="h-4 w-4" />
           </Button>
           <h3 className="text-sm font-medium">
             {format(currentDate, 'MMMM yyyy')}
@@ -109,7 +109,7 @@ export function UpcomingPlansCalendar({ className }: UpcomingPlansCalendarProps)
             onClick={goToNextMonth}
             className="h-8 w-8 p-0"
           >
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRightIcon className="h-4 w-4" />
           </Button>
         </div>
 

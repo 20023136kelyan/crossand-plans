@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, Search, X, TrendingUp } from 'lucide-react';
+import { ArrowPathIcon, MagnifyingGlassIcon, XCircleIcon, ArrowTrendingUpIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { searchGifs, getTrendingGifs, type GifObject } from '@/lib/giphy';
 import { MediaMessage } from './MediaMessage';
 import { cn } from '@/lib/utils';
@@ -129,7 +129,7 @@ export function GifPicker({ onSelect, onClose, className, isOpen = true }: GifPi
     >
       <div className="p-3 border-b border-border flex items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <MagnifyingGlassIcon className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
             placeholder="Search GIFs..."
@@ -145,25 +145,25 @@ export function GifPicker({ onSelect, onClose, className, isOpen = true }: GifPi
               className="absolute right-0 top-0 h-full w-8 text-muted-foreground hover:bg-transparent"
               onClick={() => setSearchQuery('')}
             >
-              <X className="h-4 w-4" />
+              <XCircleIcon className="h-4 w-4" />
             </Button>
           )}
         </div>
         <Button variant="ghost" size="icon" className="ml-2 h-8 w-8" onClick={onClose}>
-          <X className="h-4 w-4" />
+          <XMarkIcon className="h-4 w-4" />
         </Button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-2 will-change-transform">
         {isLoading ? (
           <div className="h-full flex items-center justify-center">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <ArrowPathIcon className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : gifs.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-4 text-muted-foreground">
             {isSearching ? (
               <>
-                <Loader2 className="h-8 w-8 animate-spin mb-2" />
+                <ArrowPathIcon className="h-8 w-8 animate-spin mb-2" />
                 <p>Searching GIFs...</p>
               </>
             ) : (
@@ -174,7 +174,7 @@ export function GifPicker({ onSelect, onClose, className, isOpen = true }: GifPi
           <div className="columns-3 gap-1 space-y-1">
             {!searchQuery && (
               <div className="col-span-2 px-2 py-1 text-xs text-muted-foreground flex items-center">
-                <TrendingUp className="h-3.5 w-3.5 mr-1.5" />
+                <ArrowTrendingUpIcon className="h-3.5 w-3.5 mr-1.5" />
                 {isSearching ? 'Searching...' : 'Trending'}
               </div>
             )}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 import { cn } from '@/lib/utils';
 import { format, parseISO, isValid } from 'date-fns';
 
@@ -121,4 +121,4 @@ export function PlanItemCard({ plan, className }: PlanItemCardProps) {
       </div>
     </div>
   );
-} 
+}
