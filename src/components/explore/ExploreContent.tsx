@@ -9,10 +9,11 @@ import React, { useEffect, useState, useMemo, useRef, useCallback, startTransiti
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { fetchExplorePageDataAction, searchCollectionsAction } from '@/app/actions/exploreActions';
 import { getUserLocationAction, searchUsersAction } from '@/app/actions/userActions';
-import { getUserProfile } from '@/services/clientServices';
+import { getUserProfile, savePlanToUser } from '@/services/clientServices';
 import { useToast } from '@/hooks/use-toast';
 import { Plan, Profile, Category, City, SearchedUser, Influencer, PlanCollection } from '@/types/user';
 import { useAuth } from '@/context/AuthContext';
+import { copyPlanToMyAccountAction } from '@/app/actions/planActions';
 import {
   ArrowPathIcon as Loader2,
   MapPinIcon as MapPin,
@@ -109,7 +110,7 @@ const PlanCard = ({ plan }: { plan: Plan }) => {
   const { user } = useAuth(); const { toast } = useToast(); const [saving, setSaving] = useState(false);
   const handleSave = async (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation(); if (!user) { toast({ title: "Login Required", description: "Please log in to save plans", variant: "destructive"}); return; }
-    setSaving(true); try { const success = await savePlanToUser(user.uid, plan.id); if (success) { toast({ title: "Template Saved", description: "Activity template has been added to your saved collection"}); } else { toast({ title: "Error", description: "Failed to save template", variant: "destructive"}); } } catch (error) { console.error('Error saving template:', error); toast({ title: "Error", description: "Failed to save template", variant: "destructive"}); } finally { setSaving(false); }
+    setSaving(true); try { await savePlanToUser(user.uid, plan.id); toast({ title: "Template Saved", description: "Activity template has been added to your saved collection"}); } catch (error) { console.error('Error saving template:', error); toast({ title: "Error", description: "Failed to save template", variant: "destructive"}); } finally { setSaving(false); }
   };
   const maxDiscount = useMemo(() => { if (!plan.venues?.length) return 0; return Math.max(...plan.venues.map(v => v.discount)); }, [plan.venues]);
   return (

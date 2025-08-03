@@ -6,12 +6,12 @@ import Image from 'next/image';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { 
-  ArrowPathIcon, 
+  ArrowPathIcon as Loader2, 
   PencilSquareIcon, 
   ChatBubbleLeftRightIcon, 
   ShieldCheckIcon, 
   CheckCircleIcon, 
-  Cog6ToothIcon, 
+  Cog6ToothIcon as CogIcon, 
   UserGroupIcon, 
   ChevronLeftIcon, 
   UserPlusIcon, 
@@ -24,12 +24,14 @@ import {
   CalendarIcon, 
   UserGroupIcon as UsersIcon, 
   EyeIcon, 
-  ArrowUpTrayIcon
+  ArrowUpTrayIcon,
+  UserMinusIcon,
+  PhotoIcon as PhotographIcon
 } from "@heroicons/react/24/outline";
 
 // Aliases for consistency with existing code
 const AdminIcon = ShieldCheckIcon;
-const SettingsIcon = Cog6ToothIcon;
+const SettingsIcon = CogIcon;
 const MessageSquare = ChatBubbleLeftRightIcon;
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -54,7 +56,7 @@ const VerificationBadgeInline = ({ role, isVerified }: { role: UserProfile['role
     return <AdminIcon className="ml-1.5 h-5 w-5 text-amber-400 fill-amber-500 shrink-0" aria-label="Admin" />;
   }
   if (isVerified) {
-    return <CheckCircle className="ml-1.5 h-5 w-5 text-blue-500 fill-blue-200 shrink-0" aria-label="Verified User" />;
+    return <CheckCircleIcon className="ml-1.5 h-5 w-5 text-blue-500 fill-blue-200 shrink-0" aria-label="Verified User" />;
   }
   return null;
 };
@@ -286,18 +288,39 @@ export default function PublicProfilePage() {
     if (selectedPostIndex !== null && selectedPostIndex > 0) {
       setSelectedPostIndex(selectedPostIndex - 1);
     }
+  };
 
   if (loading || (authLoading && !profileData)) { 
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background text-foreground">
-        <ArrowPathIcon className="h-5 w-5 animate-spin" />
+        <Loader2 className="h-5 w-5 animate-spin" />
       </div>
     );
   }
 
-  if (!userProfile) { // Use userProfile derived from state
-    // ...
+  if (!userProfile) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background text-foreground">
+        <div className="text-center">
+          <XCircleIcon className="h-12 w-12 text-muted-foreground mb-4" />
+          <h1 className="text-xl font-semibold mb-2">Profile Not Found</h1>
+          <p className="text-muted-foreground">This user's profile could not be loaded.</p>
+          <Button variant="outline" className="mt-4" onClick={() => router.back()}>
+            Go Back
+          </Button>
+        </div>
+      </div>
+    );
   }
+
+  // Now userProfile is guaranteed to be non-null due to early return above
+
+  // Get user initials for avatar fallback
+  const userInitial = userProfile.name ? userProfile.name.charAt(0).toUpperCase() : 
+                     userProfile.username ? userProfile.username.charAt(0).toUpperCase() : 'U';
+
+  // Check if this is the current user's own profile
+  const isOwnProfile = currentUser?.uid === userProfile.uid;
 
   return (
     <>
@@ -321,7 +344,7 @@ export default function PublicProfilePage() {
                   >
                     <Avatar className="h-20 w-20 sm:h-24 sm:w-24 text-xl sm:text-2xl ring-2 ring-border/40 shadow-lg flex-shrink-0 transition-all duration-300 group-hover:ring-primary/50 group-hover:shadow-xl">
                       <AvatarImage src={userProfile.avatarUrl || undefined} alt={userProfile.username || userProfile.name || "User Avatar"} data-ai-hint="person portrait"/>
-                      <AvatarFallback className="bg-gradient-to-br from-muted to-muted/80 text-muted-foreground font-semibold">{userInitial}</AvatarFallback>
+                    <AvatarFallback className="bg-gradient-to-br from-muted to-muted/80 text-muted-foreground font-semibold">{userInitial}</AvatarFallback>
                     </Avatar>
                   </button>
                   <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-gradient-to-br from-green-400 to-green-500 rounded-full border-2 border-background shadow-sm"></div>
@@ -334,7 +357,7 @@ export default function PublicProfilePage() {
                         {isOwnProfile && (
                           <Button size="sm" variant="ghost" className="h-6 w-6 p-0 rounded-md hover:bg-primary/10 transition-all duration-200" asChild>
                             <Link href={`/users/settings?tab=profile&returnUrl=${encodeURIComponent(`/u/${userProfile.uid}`)}`}>
-                              <PencilIcon className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                              <PencilSquareIcon className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
                             </Link>
                           </Button>
                         )}
@@ -597,7 +620,7 @@ export default function PublicProfilePage() {
           
           <div className="flex flex-col items-center space-y-4">
             <Avatar className="h-32 w-32 border-2 border-border/20 shadow-lg">
-              <AvatarImage src={userProfile?.avatarUrl || undefined} alt={userProfile?.username || userProfile?.name || "User Avatar"} />
+              <AvatarImage src={userProfile.avatarUrl || undefined} alt={userProfile.username || userProfile.name || "User Avatar"} />
               <AvatarFallback className="text-2xl font-semibold bg-gradient-to-br from-muted to-muted/80 text-muted-foreground">{userInitial}</AvatarFallback>
             </Avatar>
           </div>
@@ -629,4 +652,4 @@ export default function PublicProfilePage() {
   );
 }
 
-    
+  
