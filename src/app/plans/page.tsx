@@ -87,17 +87,3 @@ export default async function PlansPage() {
     </div>
   );
 }
-
-// Placeholder Edit Page
-export async function EditPlanPage({ params }: { params: { planId: string } }) {
-    return (
-        <div className="text-center p-10">
-            <h1 className="text-2xl font-semibold">Edit Plan (ID: {params.planId})</h1>
-            <p className="text-muted-foreground">This edit page is a placeholder.</p>
-            <Button asChild className="mt-4"><Link href={`/plans/${params.planId}`}>Back to Plan Details</Link></Button>
-        </div>
-    );
-}
-// Create a route for edit page at src/app/plans/[planId]/edit/page.tsx for this to work or remove this.
-// For now, we are not creating edit page to keep scope small.
-

@@ -54,7 +54,7 @@ function EditPlanDetailsPageComponent() {
         const formVals: Partial<PlanFormValues> = {
           name: planData.name,
           description: planData.description,
-          eventTime: planData.eventTime.toISOString(),
+          eventTime: planData.eventTime,
           location: planData.location,
           city: planData.city,
           eventType: planData.eventType,
