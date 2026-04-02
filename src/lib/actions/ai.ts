@@ -175,7 +175,7 @@ export async function generatePlan(input: GenerateFullPlanDetailsInput) {
       name: plan.name,
       description: plan.description,
       eventType: plan.eventType,
-      itinerary: plan.venues.map(venue => ({
+      itinerary: plan.itinerary.map(venue => ({
         placeName: venue.placeName,
         description: venue.description,
         activitySuggestions: venue.activitySuggestions,
