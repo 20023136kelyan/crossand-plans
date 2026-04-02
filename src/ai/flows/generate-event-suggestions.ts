@@ -1,4 +1,4 @@
-// use server'
+'use server';
 
 /**
  * @fileOverview Generates tailored event suggestions based on plan details and participant preferences.
@@ -8,8 +8,8 @@
  * - GenerateEventSuggestionsOutput - The return type for the generateEventSuggestions function.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import {z} from 'zod';
+import {deriveEventSuggestions} from '@/ai/local-generators';
 
 const GenerateEventSuggestionsInputSchema = z.object({
   city: z.string().describe('The city where the event will take place.'),
@@ -37,43 +37,8 @@ export type GenerateEventSuggestionsOutput = z.infer<
 export async function generateEventSuggestions(
   input: GenerateEventSuggestionsInput
 ): Promise<GenerateEventSuggestionsOutput> {
-  return generateEventSuggestionsFlow(input);
+  const validatedInput = GenerateEventSuggestionsInputSchema.parse(input);
+  return {
+    suggestions: deriveEventSuggestions(validatedInput),
+  };
 }
-
-const generateEventSuggestionsPrompt = ai.definePrompt({
-  name: 'generateEventSuggestionsPrompt',
-  input: {schema: GenerateEventSuggestionsInputSchema},
-  output: {schema: GenerateEventSuggestionsOutputSchema},
-  prompt: `You are an AI assistant that suggests events based on the plan's details and the participants' preferences and dietary restrictions.
-
-  Plan Description: {{{planDescription}}}
-  City: {{{city}}}
-  Time: {{{time}}}
-  Friend Preferences and Restrictions: {{#each friendPreferences}}{{{this}}}, {{/each}}
-
-  Please provide a list of event suggestions that would be suitable for this group.
-  Format the output as a numbered list of suggestions.
-  `,
-});
-
-const generateEventSuggestionsFlow = ai.defineFlow(
-  {
-    name: 'generateEventSuggestionsFlow',
-    inputSchema: GenerateEventSuggestionsInputSchema,
-    outputSchema: GenerateEventSuggestionsOutputSchema,
-  },
-  async input => {
-    try {
-      const {output} = await generateEventSuggestionsPrompt(input);
-      if (!output) {
-        console.error("AI prompt for event suggestions returned no output for input:", input);
-        throw new Error('AI failed to generate event suggestions output.');
-      }
-      return output;
-    } catch (e) {
-      console.error(`Error in generateEventSuggestionsFlow for input: ${JSON.stringify(input)}:`, e);
-      throw new Error(`generateEventSuggestionsFlow failed: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-);
-

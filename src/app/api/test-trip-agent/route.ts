@@ -1,12 +1,8 @@
 import { NextResponse } from 'next/server';
 import { generatePlan } from '@/lib/actions/ai';
 
-if (!process.env.GEMINI_API_KEY) {
-  throw new Error('GEMINI_API_KEY environment variable is not set');
-}
-
 export async function GET() {
-  console.log('Testing Gemini trip planning agent...\n');
+  console.log('Testing trip planning generator...\n');
 
   try {
     const input = {

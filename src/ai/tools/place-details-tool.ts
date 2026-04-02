@@ -5,8 +5,7 @@
  * - GetPlaceDetailsInputSchema: Input schema for the tool.
  * - GetPlaceDetailsOutputSchema: Output schema for the tool.
  */
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import {z} from 'zod';
 
 export const GetPlaceDetailsInputSchema = z.object({
   placeName: z.string().describe("The name of the place."),
@@ -29,87 +28,73 @@ export const GetPlaceDetailsOutputSchema = z.object({
 });
 export type GetPlaceDetailsOutput = z.infer<typeof GetPlaceDetailsOutputSchema>;
 
-export const getPlaceDetails = ai.defineTool(
-  {
-    name: 'getPlaceDetails',
-    description: 'Fetches details for a specific place, including its operational status (e.g., OPERATIONAL, CLOSED_TEMPORARILY) and opening hours. Use this to verify a place is open before suggesting it for an itinerary item.',
-    inputSchema: GetPlaceDetailsInputSchema,
-    outputSchema: GetPlaceDetailsOutputSchema,
-  },
-  async (input: GetPlaceDetailsInput): Promise<GetPlaceDetailsOutput> => {
-    console.warn(`[MOCK] getPlaceDetails called for: ${input.placeName}. Returning mock operational status and hours.`);
-    // MOCK IMPLEMENTATION: In a real app, this would call Google Places API or similar.
-    // For now, assume most places are operational and have standard hours.
-    
-    // Simulate a small chance of a place being closed
-    if (Math.random() < 0.05) { // 5% chance of being permanently closed
-        return {
-            isOperational: false,
-            statusText: "Permanently Closed",
-        };
-    }
-    if (Math.random() < 0.05) { // Another 5% chance of being temporarily closed
-        return {
-            isOperational: false,
-            statusText: "Temporarily Closed",
-        };
-    }
-
-    // Mock typical Mon-Fri 9am-5pm, Sat 10am-4pm, Sun closed
-    // Day: 0 (Sunday) to 6 (Saturday)
-    // Time: HHMM format
-    const mockOpeningHours: OpeningHoursPeriod[] = [
-      { open: { day: 1, time: "0900" }, close: { day: 1, time: "1700" } }, // Mon
-      { open: { day: 2, time: "0900" }, close: { day: 2, time: "1700" } }, // Tue
-      { open: { day: 3, time: "0900" }, close: { day: 3, time: "1700" } }, // Wed
-      { open: { day: 4, time: "0900" }, close: { day: 4, time: "1700" } }, // Thu
-      { open: { day: 5, time: "0900" }, close: { day: 5, time: "1700" } }, // Fri
-      { open: { day: 6, time: "1000" }, close: { day: 6, time: "1600" } }, // Sat
-    ];
-    
-    // Simulate some restaurants with evening hours
-    if (input.placeName?.toLowerCase().includes('restaurant') || input.placeName?.toLowerCase().includes('diner') || input.placeName?.toLowerCase().includes('cafe')) {
-        const restaurantHours : OpeningHoursPeriod[] = [
-            { open: { day: 0, time: "1100" }, close: { day: 0, time: "2100" } }, // Sun
-            { open: { day: 1, time: "1100" }, close: { day: 1, time: "2200" } }, // Mon
-            { open: { day: 2, time: "1100" }, close: { day: 2, time: "2200" } }, // Tue
-            { open: { day: 3, time: "1100" }, close: { day: 3, time: "2200" } }, // Wed
-            { open: { day: 4, time: "1100" }, close: { day: 4, time: "2200" } }, // Thu
-            { open: { day: 5, time: "1100" }, close: { day: 5, time: "2300" } }, // Fri
-            { open: { day: 6, time: "1100" }, close: { day: 6, time: "2300" } }, // Sat
-        ];
-         return {
-            isOperational: true,
-            openingHours: restaurantHours,
-            statusText: "Open", 
-        };
-    }
-     // Simulate some museums
-    if (input.placeName?.toLowerCase().includes('museum') || input.placeName?.toLowerCase().includes('gallery')) {
-        const museumHours : OpeningHoursPeriod[] = [
-            // Closed Mon
-            { open: { day: 2, time: "1000" }, close: { day: 2, time: "1800" } }, // Tue
-            { open: { day: 3, time: "1000" }, close: { day: 3, time: "1800" } }, // Wed
-            { open: { day: 4, time: "1000" }, close: { day: 4, time: "1800" } }, // Thu
-            { open: { day: 5, time: "1000" }, close: { day: 5, time: "2000" } }, // Fri (late night)
-            { open: { day: 6, time: "1000" }, close: { day: 6, time: "1800" } }, // Sat
-            { open: { day: 0, time: "1200" }, close: { day: 0, time: "1700" } }, // Sun
-        ];
-         return {
-            isOperational: true,
-            openingHours: museumHours,
-            statusText: "Open", 
-        };
-    }
-
-
+export async function getPlaceDetails(input: GetPlaceDetailsInput): Promise<GetPlaceDetailsOutput> {
+  const name = input.placeName.toLowerCase();
+  if (name.includes('closed') || name.includes('permanently closed')) {
     return {
-      isOperational: true,
-      openingHours: mockOpeningHours,
-      statusText: "Open", 
+      isOperational: false,
+      statusText: 'Permanently Closed',
     };
   }
-);
+
+  if (name.includes('temporarily closed')) {
+    return {
+      isOperational: false,
+      statusText: 'Temporarily Closed',
+    };
+  }
+
+  const restaurantHours: OpeningHoursPeriod[] = [
+    { open: { day: 0, time: '1100' }, close: { day: 0, time: '2100' } },
+    { open: { day: 1, time: '1100' }, close: { day: 1, time: '2200' } },
+    { open: { day: 2, time: '1100' }, close: { day: 2, time: '2200' } },
+    { open: { day: 3, time: '1100' }, close: { day: 3, time: '2200' } },
+    { open: { day: 4, time: '1100' }, close: { day: 4, time: '2200' } },
+    { open: { day: 5, time: '1100' }, close: { day: 5, time: '2300' } },
+    { open: { day: 6, time: '1100' }, close: { day: 6, time: '2300' } },
+  ];
+
+  const museumHours: OpeningHoursPeriod[] = [
+    { open: { day: 1, time: '1000' }, close: { day: 1, time: '1800' } },
+    { open: { day: 2, time: '1000' }, close: { day: 2, time: '1800' } },
+    { open: { day: 3, time: '1000' }, close: { day: 3, time: '1800' } },
+    { open: { day: 4, time: '1000' }, close: { day: 4, time: '1800' } },
+    { open: { day: 5, time: '1000' }, close: { day: 5, time: '2000' } },
+    { open: { day: 6, time: '1000' }, close: { day: 6, time: '1800' } },
+    { open: { day: 0, time: '1200' }, close: { day: 0, time: '1700' } },
+  ];
+
+  const defaultHours: OpeningHoursPeriod[] = [
+    { open: { day: 1, time: '0900' }, close: { day: 1, time: '1700' } },
+    { open: { day: 2, time: '0900' }, close: { day: 2, time: '1700' } },
+    { open: { day: 3, time: '0900' }, close: { day: 3, time: '1700' } },
+    { open: { day: 4, time: '0900' }, close: { day: 4, time: '1700' } },
+    { open: { day: 5, time: '0900' }, close: { day: 5, time: '1700' } },
+    { open: { day: 6, time: '1000' }, close: { day: 6, time: '1600' } },
+  ];
+
+  if (name.includes('restaurant') || name.includes('diner') || name.includes('cafe')) {
+    return {
+      isOperational: true,
+      openingHours: restaurantHours,
+      statusText: 'Open',
+    };
+  }
+
+  if (name.includes('museum') || name.includes('gallery')) {
+    return {
+      isOperational: true,
+      openingHours: museumHours,
+      statusText: 'Open',
+    };
+  }
+
+  return {
+    isOperational: true,
+    openingHours: defaultHours,
+    statusText: 'Open',
+  };
+}
 
 // The isPlaceOpenAt function has been moved to src/lib/datetime-utils.ts
 // to resolve the "use server" export error.
