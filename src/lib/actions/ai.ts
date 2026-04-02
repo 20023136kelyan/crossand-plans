@@ -15,13 +15,6 @@ import { generatePlanPriceRange, type GeneratePlanPriceRangeInput, type Generate
 import { generateFullPlanDetailsFlow } from "@/ai/flows/generate-full-plan-details";
 import type { GenerateFullPlanDetailsInput, GenerateFullPlanDetailsOutput } from "@/ai/flows/plan-types";
 import { generateItineraryItemDetails, type GenerateItineraryItemDetailsInput, type GenerateItineraryItemDetailsOutput } from "@/ai/flows/generate-itinerary-item-details";
-import { TripPlanningAgent } from '@/ai/agents/trip-planning-agent';
-
-if (!process.env.GEMINI_API_KEY) {
-  throw new Error('GEMINI_API_KEY environment variable is not set');
-}
-
-const tripPlanningAgent = new TripPlanningAgent(process.env.GEMINI_API_KEY);
 
 export async function getAISuggestions(
   input: SuggestionRequestValues
@@ -176,41 +169,24 @@ export async function generatePlan(input: GenerateFullPlanDetailsInput) {
       throw new Error('Price range is required');
     }
 
-    // Convert input to agent format
-    const agentInput = {
-      userPrompt: input.userPrompt,
-      city: input.userEnteredCity,
-      priceRange: input.priceRange,
-      eventTime: input.userSuggestedEventTime,
-      preferences: input.participantPreferences
-    };
+    const plan = await generateFullPlanDetailsFlow(input);
 
-    // Generate plan using Gemini agent
-    const plan = await tripPlanningAgent.generatePlan(agentInput);
-
-    // Validate venues exist
-    const venuesValid = await tripPlanningAgent.validateVenues(plan, agentInput.city);
-    if (!venuesValid) {
-      throw new Error('One or more venues could not be verified');
-    }
-
-    // Convert agent response to app format
     return {
       name: plan.name,
       description: plan.description,
-      eventType: plan.type,
+      eventType: plan.eventType,
       itinerary: plan.venues.map(venue => ({
-        placeName: venue.name,
+        placeName: venue.placeName,
         description: venue.description,
-        activitySuggestions: venue.activities,
-        suggestedOrder: venue.order,
-        suggestedDuration: venue.duration,
-        status: 'OPERATIONAL' // Will be updated with Google Places data
+        activitySuggestions: venue.activitySuggestions,
+        suggestedOrder: venue.suggestedOrder,
+        suggestedDuration: venue.suggestedDuration,
+        status: venue.status,
       })),
-      city: agentInput.city,
+      city: plan.city,
       eventTime: input.userSuggestedEventTime,
-      priceRange: agentInput.priceRange,
-      location: plan.venues[0]?.name || ''
+      priceRange: plan.priceRange,
+      location: plan.location || plan.itinerary[0]?.placeName || '',
     };
   } catch (error) {
     console.error('Error generating plan:', error);
