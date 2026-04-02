@@ -1,4 +1,4 @@
- 'use server';
+'use server';
 
 /**
  * @fileOverview Generates tailored event suggestions based on plan details and participant preferences.

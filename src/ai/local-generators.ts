@@ -312,8 +312,7 @@ export function deriveTripPlanDraft(input: TripPlanContext): {
     planDescription: input.preferences?.join(' '),
     friendPreferences: input.preferences,
   });
-  const stopCount = theme === 'Social Gathering' ? 2 : 2;
-  const venues = Array.from({length: stopCount}, (_, index) => {
+  const venues = Array.from({length: 2}, (_, index) => {
     const placeName = buildStopName(input.city, theme, index);
     const activities = [
       `Enjoy the ${venueLabel(theme, index)}`,
@@ -481,4 +480,3 @@ export function estimateTravelMinutes(
   const buckets = [12, 15, 18, 20, 22, 25, 28, 30];
   return pick(buckets, seed);
 }
-
