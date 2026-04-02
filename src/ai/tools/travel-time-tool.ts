@@ -4,8 +4,8 @@
  * - GetTravelTimeInputSchema: Input schema for the tool.
  * - GetTravelTimeOutputSchema: Output schema for the tool.
  */
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import {z} from 'zod';
+import {estimateTravelMinutes} from '@/ai/local-generators';
 
 export const GetTravelTimeInputSchema = z.object({
   originAddress: z.string().describe("The full starting address, e.g., '1600 Amphitheatre Parkway'."),
@@ -22,22 +22,15 @@ export const GetTravelTimeOutputSchema = z.object({
 });
 export type GetTravelTimeOutput = z.infer<typeof GetTravelTimeOutputSchema>;
 
-export const getTravelTime = ai.defineTool(
-  {
-    name: 'getTravelTime',
-    description: 'Estimates the travel time in seconds between two specified locations (origin and destination). Useful for planning sequential events and allowing for travel between them. Provide full addresses and cities for best results.',
-    inputSchema: GetTravelTimeInputSchema,
-    outputSchema: GetTravelTimeOutputSchema,
-  },
-  async (input) => {
-    console.warn(`[MOCK] getTravelTime called for: ${input.originAddress}, ${input.originCity} to ${input.destinationAddress}, ${input.destinationCity}. Returning mock travel time.`);
-    // MOCK IMPLEMENTATION: In a real app, this would call Google Maps Directions API or similar.
-    // For now, return a mock duration (e.g., 15 minutes for short distances, 30 for longer, or random)
-    // For simplicity, let's return a fixed 1200 seconds (20 minutes) + a small random factor.
-    const baseDuration = 1200; // 20 minutes
-    const randomFactor = Math.floor(Math.random() * 600); // 0 to 10 minutes
-    return {
-      durationSeconds: baseDuration + randomFactor,
-    };
-  }
-);
+export async function getTravelTime(input: GetTravelTimeInput): Promise<GetTravelTimeOutput> {
+  const minutes = estimateTravelMinutes(
+    input.originAddress,
+    input.originCity,
+    input.destinationAddress,
+    input.destinationCity
+  );
+
+  return {
+    durationSeconds: minutes * 60,
+  };
+}

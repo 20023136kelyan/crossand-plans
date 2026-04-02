@@ -1,4 +1,4 @@
-import {z} from 'genkit';
+import {z} from 'zod';
 
 // Schema definitions
 export const ItineraryItemSchema = z.object({
